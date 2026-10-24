@@ -11,8 +11,10 @@ import { actAs, call, seedHuman } from "./_access-helper";
  * artifacts and handoffs; a run in another person's private direct thread never
  * appears (not even as a bar), while the viewer's own does, and neither do the
  * markers of a task whose only run lives there; deleted tasks and projects
- * never appear; people are shown by name, never by email; cross-company data
- * never leaks; malformed or over-wide queries are rejected by the route.
+ * never appear; rows are agents only, and a person's action is a marker on the
+ * receiving agent's row that names them by display name, never by email;
+ * cross-company data never leaks; malformed or over-wide queries are rejected
+ * by the route.
  */
 const maybe = dbAvailable ? test : test.skip;
 
@@ -146,8 +148,9 @@ maybe("the route rejects a window wider than 31 days", async () => {
         assert.equal(over.status, 400);
         const fine = await call(route.GET as never, `/api/timeline?from=${t.now - 7 * DAY}&to=${t.now}`);
         assert.equal(fine.status, 200);
-        const body = fine.json as { spans?: unknown[]; actors?: unknown[] };
+        const body = fine.json as { spans?: unknown[]; actors?: { kind: string }[] };
         assert.ok(Array.isArray(body.spans) && body.spans.length > 0);
+        assert.ok(Array.isArray(body.actors) && body.actors.every((a) => a.kind === "agent"), "the route never returns a person row");
     } finally {
         await actAs(null);
     }
@@ -212,20 +215,59 @@ maybe("deleted tasks and projects never appear", async () => {
     assert.equal(tl.totals.runs, tl.spans.length);
 });
 
-maybe("people are shown by name, never by email", async () => {
+maybe("people are never rows: their notes are markers on the task's agent, named by display name, never by email", async () => {
     const t = await seedTimeline();
     const db = await getDb();
     const s = await getSchema();
-    // The owner (no display name) and the other person (named) both act on the task.
+    // The owner (no display name) and the other person (named) both act on the task (assigned to Atlas).
     await db.insert(s.taskEvents).values([
         { companyId: t.companyId, taskId: t.taskIn.id, eventType: "task_note", actorType: "human", actorId: t.ownerId, createdAt: new Date(t.now - 4 * MIN) },
         { companyId: t.companyId, taskId: t.taskIn.id, eventType: "task_note", actorType: "human", actorId: t.otherUserId, createdAt: new Date(t.now - 4 * MIN) },
     ]);
     const { loadWorkTimeline } = await import("@/lib/work-timeline-reads");
     const tl = await loadWorkTimeline(t.companyId, t.owner, window(t.now));
-    assert.ok(!JSON.stringify(tl).includes("@example.com"), "no email address in the response");
-    const humans = tl.actors.filter((a) => a.kind === "human").map((a) => a.name).sort();
-    assert.deepEqual(humans, ["Other Person", "Teammate"]);
+    const json = JSON.stringify(tl);
+    assert.ok(!json.includes("@example.com"), "no email address in the response");
+    assert.ok(!tl.actors.some((a) => (a.kind as string) === "human"), "no actor of type human");
+    assert.ok(!json.includes("human:") && !json.includes(t.ownerId) && !json.includes(t.otherUserId), "no person id anywhere");
+    const notes = tl.events.filter((e) => e.kind === "note" && e.byName);
+    assert.ok(notes.every((e) => e.actorId === `agent:${t.atlas.id}`), "on the assigned agent's row");
+    assert.deepEqual(notes.map((e) => e.byName).sort(), ["Other Person", "Teammate"]);
+    assert.deepEqual(notes.map((e) => e.label).sort(), ["Note by Other Person", "Note by Teammate"]);
+});
+
+maybe("a person's assignment and approval are markers on the receiving agent's row, never edges", async () => {
+    const t = await seedTimeline();
+    const db = await getDb();
+    const s = await getSchema();
+    const at = new Date(t.now - 4 * MIN);
+    // The other person assigns the in-scope task to Nova...
+    await db.insert(s.taskEvents).values({ companyId: t.companyId, taskId: t.taskIn.id, eventType: "task_assigned", actorType: "human", actorId: t.otherUserId, payloadJson: { assignee: { type: "agent", id: t.nova.id } }, createdAt: at });
+    // ...and approves a request Atlas raised on it.
+    const [approval] = await db.insert(s.approvals).values({ companyId: t.companyId, projectId: t.project.id, requesterAgentId: t.atlas.id, requestedAt: new Date(t.now - 5 * MIN), status: "approved", resolverUserId: t.otherUserId, resolvedAt: at }).returning();
+    await db.insert(s.approvalTaskLinks).values({ companyId: t.companyId, approvalId: approval.id, taskId: t.taskIn.id });
+
+    const { loadWorkTimeline } = await import("@/lib/work-timeline-reads");
+    const tl = await loadWorkTimeline(t.companyId, t.owner, window(t.now));
+    assert.ok(tl.actors.every((a) => a.kind === "agent"), "no actor of type human");
+    const assigned = tl.events.find((e) => e.kind === "assigned" && e.byName);
+    assert.ok(assigned, "the assignment is a marker");
+    assert.equal(assigned.actorId, `agent:${t.nova.id}`, "on the assigned agent's row");
+    assert.equal(assigned.at, at.getTime());
+    assert.equal(assigned.label, "Assigned by Other Person");
+    const decided = tl.events.find((e) => e.kind === "approval_decided");
+    assert.ok(decided, "the decision is a marker");
+    assert.equal(decided.actorId, `agent:${t.atlas.id}`, "on the requesting agent's row");
+    assert.equal(decided.label, "Approved by Other Person");
+    assert.ok(tl.edges.every((e) => e.from.startsWith("agent:") && e.to.startsWith("agent:")), "edges only join agents");
+    assert.ok(!JSON.stringify(tl).includes(t.otherUserId), "the person's id appears nowhere");
+    const novaRun = tl.spans.find((sp) => sp.id === t.novaRun.id);
+    assert.equal(novaRun?.source, "delegated", "a person's assignment still counts as delegated work");
+
+    // A restricted member without Nova in scope sees no trace of the assignment.
+    const scoped = await loadWorkTimeline(t.companyId, t.scoped, window(t.now));
+    assert.ok(!JSON.stringify(scoped).includes(t.nova.id));
+    assert.ok(scoped.events.some((e) => e.label === "Approved by Other Person" && e.actorId === `agent:${t.atlas.id}`));
 });
 
 maybe("a task whose only run is in another person's private thread leaves no markers", async () => {

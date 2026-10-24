@@ -1,26 +1,36 @@
 "use client";
 
+import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useRouter } from "next/navigation";
 import {
     IconCalendar,
     IconChartLine,
+    IconChevronDown,
     IconChevronRight,
+    IconExternalLink,
     IconMinus,
     IconPlus,
+    IconX,
 } from "@tabler/icons-react";
 import { PageHeader } from "@/components/page-header";
 import { SearchableSelect } from "@/components/ui/searchable-select";
-import { formatCost, RUN_OUTCOME_LABEL, taskHref, type RunOutcome } from "@/lib/task-story";
+import { formatCost, RUN_OUTCOME_LABEL, type RunOutcome } from "@/lib/task-story";
 import { formatRunDuration, formatTokenCount } from "@/lib/run-ledger-copy";
 import { useLivePoll, type LivePollRun } from "@/lib/use-realtime";
 import { cn } from "@/lib/utils";
 import {
+    autoFitTodayRange,
+    clusterSpans,
     EDGE_KIND_LABEL,
-    EVENT_KIND_LABEL,
+    projectHue,
+    timeTicks,
     type TimelineActor,
+    type TimelineCluster,
     type TimelineEdge,
+    type TimelineEvent,
     type TimelineEventKind,
+    type TimelineRowItem,
+    type TimelineSource,
     type TimelineSpan,
     type WorkTimeline,
 } from "@/lib/work-timeline";
@@ -29,32 +39,44 @@ const DAY_MS = 86_400_000;
 const ROW_H = 44;
 const LABEL_W = 208;
 const AXIS_H = 30;
-const ZOOM_PX_PER_DAY = [48, 96, 192, 384, 768];
-const DEFAULT_ZOOM = 1;
+const BAR_H = 10;
+/** Every pill and cluster gets an invisible hit target at least this wide, centred on it. */
+const HIT_MIN_W = 10;
+/** The hit target fills the row height minus this much at the top and bottom. */
+const HIT_INSET_Y = 4;
+/** Zoom is a magnification over "fill the container": 1 = fill, higher = zoom in (and scroll). */
+const ZOOM_LEVELS = [1, 1.5, 2, 3, 4, 6];
+const DEFAULT_ZOOM = 0;
 const LIVE_TOPICS = ["agents", "projects"] as const;
 
 type FilterOption = { value: string; label: string; description?: string | null };
+type ColourBy = "outcome" | "source" | "project";
+type Focus =
+    | { type: "task"; taskId: string }
+    | { type: "agent"; actorId: string }
+    | { type: "span"; spanId: string };
 
-const OUTCOME_FILL: Record<RunOutcome, string> = {
-    running: "rgba(34,211,238,0.18)",
-    done: "rgba(16,185,129,0.32)",
-    needs_you: "rgba(245,158,11,0.32)",
-    failed: "rgba(244,63,94,0.32)",
-    stopped: "rgba(113,113,122,0.28)",
+const OUTCOME_PILL: Record<RunOutcome, string> = {
+    running: "#22d3ee",
+    done: "#10b981",
+    needs_you: "#f59e0b",
+    failed: "#f43f5e",
+    stopped: "#71717a",
 };
 const OUTCOME_STROKE: Record<RunOutcome, string> = {
-    running: "rgba(34,211,238,0.75)",
-    done: "rgba(52,211,153,0.85)",
-    needs_you: "rgba(251,191,36,0.85)",
-    failed: "rgba(251,113,133,0.85)",
-    stopped: "rgba(113,113,122,0.85)",
+    running: "#22d3ee",
+    done: "#34d399",
+    needs_you: "#fbbf24",
+    failed: "#fb7185",
+    stopped: "#71717a",
 };
-const OUTCOME_TEXT: Record<RunOutcome, string> = {
-    running: "text-cyan-300",
-    done: "text-emerald-300",
-    needs_you: "text-amber-300",
-    failed: "text-rose-300",
-    stopped: "text-zinc-400",
+const SOURCE_PILL: Record<TimelineSource, { fill: string; stroke: string }> = {
+    delegated: { fill: "#3b82f6", stroke: "#60a5fa" },
+    automation: { fill: "#f59e0b", stroke: "#fbbf24" },
+};
+const SOURCE_LABEL: Record<TimelineSource, string> = {
+    delegated: "Delegated",
+    automation: "Automation",
 };
 
 const EVENT_COLOUR: Record<TimelineEventKind, string> = {
@@ -74,6 +96,11 @@ function formatBusy(ms: number): string {
     return `${(ms / 3_600_000).toFixed(1)}h`;
 }
 
+function formatPercent(rate: number | null | undefined): string {
+    if (rate == null || !Number.isFinite(rate)) return "—";
+    return `${Math.round(rate * 100)}%`;
+}
+
 function formatRange(ms: number): string {
     return new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric" }).format(new Date(ms));
 }
@@ -82,44 +109,28 @@ function formatClock(ms: number): string {
     return new Intl.DateTimeFormat("en-US", { hour: "numeric", minute: "2-digit", hour12: false }).format(new Date(ms));
 }
 
-// ─── Ticks ──────────────────────────────────────────────────────────────────
-
-const TICK_INTERVALS = [3_600_000, 3 * 3_600_000, 6 * 3_600_000, 12 * 3_600_000, DAY_MS, 2 * DAY_MS, 7 * DAY_MS];
-
-function computeTicks(fromMs: number, toMs: number, pxPerMs: number): { intervalMs: number; ticks: number[] } {
-    const intervalMs = TICK_INTERVALS.find((iv) => iv * pxPerMs >= 80) ?? 7 * DAY_MS;
-    const ticks: number[] = [];
-    const start = Math.ceil(fromMs / intervalMs) * intervalMs;
-    for (let t = start; t <= toMs; t += intervalMs) ticks.push(t);
-    return { intervalMs, ticks };
-}
-
-function tickLabel(ms: number, intervalMs: number): string {
-    const d = new Date(ms);
-    if (intervalMs >= DAY_MS) {
-        return new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric" }).format(d);
-    }
-    return new Intl.DateTimeFormat("en-US", { hour: "numeric", hour12: false }).format(d);
-}
-
 // ─── Range presets ──────────────────────────────────────────────────────────
 
 type Preset = "today" | "7d" | "30d" | "custom";
 
-function presetRange(preset: Preset, now = new Date()): { fromMs: number; toMs: number } {
-    const toMs = now.getTime();
-    if (preset === "today") {
-        const start = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
-        return { fromMs: start, toMs };
-    }
-    if (preset === "7d") return { fromMs: toMs - 7 * DAY_MS, toMs };
-    if (preset === "30d") return { fromMs: toMs - 30 * DAY_MS, toMs };
-    return { fromMs: toMs - 7 * DAY_MS, toMs };
-}
-
 function localDayMs(value: string): number | null {
     const d = new Date(`${value}T00:00:00`);
     return Number.isNaN(d.getTime()) ? null : d.getTime();
+}
+
+function matchesFocus(span: TimelineSpan, focus: Focus | null): boolean {
+    if (!focus) return true;
+    if (focus.type === "task") return span.taskId === focus.taskId;
+    if (focus.type === "agent") return span.actorId === focus.actorId;
+    return span.id === focus.spanId;
+}
+
+function clusterMatchesFocus(cluster: TimelineCluster, spanById: Map<string, TimelineSpan>, focus: Focus | null): boolean {
+    if (!focus) return true;
+    return cluster.spanIds.some((id) => {
+        const span = spanById.get(id);
+        return span ? matchesFocus(span, focus) : false;
+    });
 }
 
 // ─── Client ─────────────────────────────────────────────────────────────────
@@ -131,8 +142,10 @@ export function TimelineClient({ initial, initialFilter, agents, projects, custo
     projects: FilterOption[];
     customers: FilterOption[];
 }) {
-    const router = useRouter();
-    const [range, setRange] = useState<{ preset: Preset; fromMs: number; toMs: number }>({ preset: "7d", fromMs: initial.from, toMs: initial.to });
+    const [range, setRange] = useState<{ preset: Preset; fromMs: number; toMs: number }>(() => {
+        const auto = autoFitTodayRange(initial.spans, initial.now);
+        return { preset: "today", fromMs: auto.fromMs, toMs: auto.toMs };
+    });
     const [customFrom, setCustomFrom] = useState("");
     const [customTo, setCustomTo] = useState("");
     const [filters, setFilters] = useState<{ agentId: string; projectId: string; customerId: string }>({
@@ -141,16 +154,15 @@ export function TimelineClient({ initial, initialFilter, agents, projects, custo
         customerId: initialFilter?.customerId ?? "",
     });
     const [zoom, setZoom] = useState(DEFAULT_ZOOM);
+    const [colourBy, setColourBy] = useState<ColourBy>("outcome");
+    const [showEvents, setShowEvents] = useState(false);
     const [data, setData] = useState<WorkTimeline>(initial);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [tooltip, setTooltip] = useState<{ x: number; y: number; node: React.ReactNode } | null>(null);
-    const [scrollLeft, setScrollLeft] = useState(0);
-    const [viewport, setViewport] = useState(0);
-
-    const pxPerMs = ZOOM_PX_PER_DAY[zoom] / DAY_MS;
-    const chartWidth = Math.max(1, Math.round((range.toMs - range.fromMs) * pxPerMs));
-    const xFor = (ms: number) => (ms - range.fromMs) * pxPerMs;
+    const [focus, setFocus] = useState<Focus | null>(null);
+    const [hoverActor, setHoverActor] = useState<string | null>(null);
+    const [selected, setSelected] = useState<TimelineSpan | null>(null);
 
     const query = useMemo(() => {
         const params = new URLSearchParams({ from: String(range.fromMs), to: String(range.toMs) });
@@ -160,8 +172,6 @@ export function TimelineClient({ initial, initialFilter, agents, projects, custo
         return params.toString();
     }, [range.fromMs, range.toMs, filters.agentId, filters.projectId, filters.customerId]);
 
-    // `run.active` turns false once this query is superseded, so a slow
-    // response for an old range never overwrites the current one.
     const load = useCallback(async (run: LivePollRun) => {
         setLoading(true);
         try {
@@ -183,9 +193,6 @@ export function TimelineClient({ initial, initialFilter, agents, projects, custo
         }
     }, [query]);
 
-    // Live while today is in range: one poll (fast while the socket is down,
-    // slow while it is up), a throttled refetch on realtime invalidations, and
-    // never two requests in flight. A past range loads once per change.
     const startOfToday = useMemo(() => new Date(new Date().getFullYear(), new Date().getMonth(), new Date().getDate()).getTime(), []);
     const includesToday = range.toMs >= startOfToday;
     useLivePoll(load, {
@@ -203,7 +210,15 @@ export function TimelineClient({ initial, initialFilter, agents, projects, custo
     }, [includesToday, load]);
 
     const setPreset = (preset: Preset) => {
-        setRange({ preset, ...presetRange(preset) });
+        setZoom(DEFAULT_ZOOM);
+        if (preset === "today") {
+            const auto = autoFitTodayRange(data.spans, Date.now());
+            setRange({ preset: "today", fromMs: auto.fromMs, toMs: auto.toMs });
+            return;
+        }
+        const now = Date.now();
+        if (preset === "7d") setRange({ preset: "7d", fromMs: now - 7 * DAY_MS, toMs: now });
+        else setRange({ preset: "30d", fromMs: now - 30 * DAY_MS, toMs: now });
     };
 
     const applyCustom = () => {
@@ -212,6 +227,7 @@ export function TimelineClient({ initial, initialFilter, agents, projects, custo
         if (from == null) return;
         const toMs = to ? to + DAY_MS : Date.now();
         if (toMs <= from) return;
+        setZoom(DEFAULT_ZOOM);
         setRange({ preset: "custom", fromMs: from, toMs });
     };
 
@@ -219,46 +235,73 @@ export function TimelineClient({ initial, initialFilter, agents, projects, custo
     const clearFilters = () => setFilters({ agentId: "", projectId: "", customerId: "" });
 
     const actorById = useMemo(() => new Map(data.actors.map((a) => [a.id, a])), [data.actors]);
-    const rowIndex = useMemo(() => new Map(data.actors.map((a, i) => [a.id, i])), [data.actors]);
-    const spansByActor = useMemo(() => {
-        const map = new Map<string, TimelineSpan[]>();
-        for (const s of data.spans) {
-            const list = map.get(s.actorId) ?? [];
-            list.push(s);
-            map.set(s.actorId, list);
-        }
-        return map;
-    }, [data.spans]);
-    const eventsByActor = useMemo(() => {
-        const map = new Map<string, { kind: TimelineEventKind; at: number; taskId: string }[]>();
-        for (const e of data.events) {
-            const list = map.get(e.actorId) ?? [];
-            list.push({ kind: e.kind, at: e.at, taskId: e.taskId });
-            map.set(e.actorId, list);
-        }
-        return map;
-    }, [data.events]);
-
-    const windowMs = range.toMs - range.fromMs;
+    const spanById = useMemo(() => new Map(data.spans.map((s) => [s.id, s])), [data.spans]);
 
     const openSpan = useCallback((span: TimelineSpan) => {
-        if (span.href) router.push(span.href);
-    }, [router]);
-
-    const handleScroll = useCallback((left: number, vp: number) => {
-        setScrollLeft(left);
-        setViewport(vp);
+        setTooltip(null);
+        setSelected(span);
+        setFocus(span.taskId ? { type: "task", taskId: span.taskId } : { type: "span", spanId: span.id });
     }, []);
 
+    const zoomToCluster = useCallback((cluster: TimelineCluster) => {
+        const span = Math.max(cluster.end - cluster.start, 1);
+        const margin = Math.max(span * 0.15, 5 * 60_000);
+        setTooltip(null);
+        setZoom(DEFAULT_ZOOM);
+        setRange({ preset: "custom", fromMs: cluster.start - margin, toMs: cluster.end + margin });
+    }, []);
+
+    const changeRange = useCallback((fromMs: number, toMs: number) => {
+        if (toMs <= fromMs) return;
+        setTooltip(null);
+        setZoom(DEFAULT_ZOOM);
+        setRange({ preset: "custom", fromMs, toMs });
+    }, []);
+
+    const clear = useCallback(() => {
+        setTooltip(null);
+        setFocus(null);
+        setSelected(null);
+        setHoverActor(null);
+    }, []);
+
+    useEffect(() => {
+        const onKey = (event: KeyboardEvent) => {
+            if (event.key === "Escape") clear();
+        };
+        window.addEventListener("keydown", onKey);
+        return () => window.removeEventListener("keydown", onKey);
+    }, [clear]);
+
+    const activeFocus: Focus | null = hoverActor ? { type: "agent", actorId: hoverActor } : focus;
+
+    // Rows are agents only, so every span's actor is an agent.
+    const agentsActive = useMemo(() => new Set(data.spans.map((s) => s.actorId)).size, [data.spans]);
+    const taskTitleById = useMemo(() => {
+        const map = new Map<string, string>();
+        for (const s of data.spans) if (s.taskId && s.taskTitle) map.set(s.taskId, s.taskTitle);
+        return map;
+    }, [data.spans]);
+
     return (
-        <div className="mx-auto w-full max-w-[1200px] space-y-5 pb-20">
+        <div className="mx-auto w-full max-w-[1400px] space-y-5 pb-20">
             <PageHeader
                 eyebrow="Timeline"
                 title="Who worked on what"
-                description="One row per agent and person: when they were busy, on what, and who handed work to whom."
+                description="One row per agent: when it was busy, on what, and which agent handed work to which. People's actions show as markers on the agent they reached."
             />
 
-            {/* Range presets + filters + zoom */}
+            {/* KPI row */}
+            <dl className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
+                <Total label="Runs" value={String(data.totals.runs)} />
+                <Total label="Agents active" value={String(agentsActive)} />
+                <Total label="Run time" value={formatBusy(data.totals.busyMs)} />
+                <Total label="Tokens" value={formatTokenCount(data.totals.tokens)} />
+                <Total label="Cost" value={formatCost(data.totals.costCents) ?? "$0.00"} />
+                <Total label="Success rate" value={formatPercent(data.totals.successRate)} />
+            </dl>
+
+            {/* One toolbar: range + colour-by + filters left, zoom right */}
             <div className="flex flex-wrap items-center gap-2">
                 <div role="toolbar" aria-label="Time range" className="flex items-center gap-1 rounded-xl border border-zinc-800 bg-zinc-950/40 p-1">
                     {(["today", "7d", "30d"] as Preset[]).map((preset) => (
@@ -276,7 +319,22 @@ export function TimelineClient({ initial, initialFilter, agents, projects, custo
                     <input type="date" value={customTo} onChange={(e) => setCustomTo(e.target.value)} aria-label="To date" className="bg-transparent text-xs text-zinc-200 outline-none" />
                     <button type="button" onClick={applyCustom} disabled={!customFrom} className="rounded-lg bg-zinc-800 px-2.5 py-1 text-xs font-medium text-zinc-100 disabled:opacity-50">Apply</button>
                 </div>
-                <span className="hidden text-xs text-zinc-500 sm:inline">{formatRange(range.fromMs)} – {formatRange(range.toMs)}</span>
+                <span className="hidden text-xs text-zinc-500 xl:inline">{formatRange(range.fromMs)} – {formatRange(range.toMs)}</span>
+
+                <div role="toolbar" aria-label="Colour by" className="flex items-center gap-0.5 rounded-xl border border-zinc-800 bg-zinc-950/40 p-1">
+                    {(["outcome", "source", "project"] as ColourBy[]).map((mode) => (
+                        <button key={mode} type="button" aria-pressed={colourBy === mode} onClick={() => setColourBy(mode)}
+                            className={cn("rounded-lg px-2.5 py-1.5 text-xs font-medium capitalize transition-colors",
+                                colourBy === mode ? "bg-zinc-800 text-zinc-100" : "text-zinc-400 hover:text-zinc-200")}>
+                            {mode === "outcome" ? "Outcome" : mode}
+                        </button>
+                    ))}
+                </div>
+                <button type="button" aria-pressed={showEvents} onClick={() => setShowEvents((v) => !v)}
+                    className={cn("rounded-xl border px-3 py-2 text-xs font-medium transition-colors",
+                        showEvents ? "border-cyan-500/50 bg-cyan-500/10 text-cyan-200" : "border-zinc-800 bg-zinc-950/40 text-zinc-400 hover:text-zinc-200")}>
+                    Show events
+                </button>
 
                 <div className="ml-auto flex items-center gap-1.5">
                     <div className="hidden flex-wrap items-center gap-1.5 lg:flex">
@@ -291,18 +349,10 @@ export function TimelineClient({ initial, initialFilter, agents, projects, custo
                     <div className="flex items-center gap-0.5 rounded-xl border border-zinc-800 bg-zinc-950/40 p-1">
                         <button type="button" onClick={() => setZoom((z) => Math.max(0, z - 1))} disabled={zoom === 0} aria-label="Zoom out" className="rounded-lg p-1.5 text-zinc-400 hover:bg-zinc-800 hover:text-zinc-200 disabled:opacity-40"><IconMinus className="h-4 w-4" /></button>
                         <button type="button" onClick={() => setZoom(DEFAULT_ZOOM)} aria-label="Reset zoom" className="rounded-lg px-2 py-1.5 text-[11px] font-medium text-zinc-400 hover:text-zinc-200">Reset</button>
-                        <button type="button" onClick={() => setZoom((z) => Math.min(ZOOM_PX_PER_DAY.length - 1, z + 1))} disabled={zoom === ZOOM_PX_PER_DAY.length - 1} aria-label="Zoom in" className="rounded-lg p-1.5 text-zinc-400 hover:bg-zinc-800 hover:text-zinc-200 disabled:opacity-40"><IconPlus className="h-4 w-4" /></button>
+                        <button type="button" onClick={() => setZoom((z) => Math.min(ZOOM_LEVELS.length - 1, z + 1))} disabled={zoom === ZOOM_LEVELS.length - 1} aria-label="Zoom in" className="rounded-lg p-1.5 text-zinc-400 hover:bg-zinc-800 hover:text-zinc-200 disabled:opacity-40"><IconPlus className="h-4 w-4" /></button>
                     </div>
                 </div>
             </div>
-
-            {/* Totals strip */}
-            <dl className="grid grid-cols-3 gap-3 sm:grid-cols-4">
-                <Total label="Runs" value={String(data.totals.runs)} />
-                <Total label="Busy time" value={formatBusy(data.totals.busyMs)} />
-                <Total label="Tokens" value={formatTokenCount(data.totals.tokens)} />
-                <Total label="Cost" value={formatCost(data.totals.costCents) ?? "$0.00"} />
-            </dl>
 
             {error && (
                 <p className="rounded-xl border border-rose-500/30 bg-rose-500/10 px-3 py-2 text-sm text-rose-200">{error}</p>
@@ -319,41 +369,56 @@ export function TimelineClient({ initial, initialFilter, agents, projects, custo
                     data={data}
                     fromMs={range.fromMs}
                     toMs={range.toMs}
-                    pxPerMs={pxPerMs}
-                    chartWidth={chartWidth}
-                    xFor={xFor}
-                    spansByActor={spansByActor}
-                    eventsByActor={eventsByActor}
-                    actorById={actorById}
-                    rowIndex={rowIndex}
-                    windowMs={windowMs}
-                    scrollLeft={scrollLeft}
-                    viewport={viewport}
-                    onScroll={handleScroll}
-                    onOpen={openSpan}
+                    zoom={zoom}
+                    colourBy={colourBy}
+                    showEvents={showEvents}
+                    focus={activeFocus}
+                    spanById={spanById}
+                    taskTitleById={taskTitleById}
+                    onOpenSpan={openSpan}
+                    onZoomCluster={zoomToCluster}
+                    onRangeChange={changeRange}
+                    onHoverActor={setHoverActor}
+                    onClear={clear}
                     setTooltip={setTooltip}
                 />
             </div>
 
             {/* Phone: per-actor list */}
             <div className="md:hidden">
-                <PhoneList data={data} spansByActor={spansByActor} onOpen={openSpan} />
+                <PhoneList data={data} colourBy={colourBy} onOpen={openSpan} />
             </div>
 
-            {/* Legend + hints */}
+            {/* Legend follows the colour mode */}
             <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-xs text-zinc-500">
                 <span className="font-semibold uppercase tracking-wide text-zinc-600">Legend</span>
-                {(["done", "needs_you", "failed", "stopped", "running"] as RunOutcome[]).map((o) => (
+                {colourBy === "outcome" && (["done", "needs_you", "failed", "stopped", "running"] as RunOutcome[]).map((o) => (
                     <span key={o} className="inline-flex items-center gap-1.5">
-                        <span className="h-2.5 w-2.5 rounded-sm" style={{ backgroundColor: OUTCOME_STROKE[o] }} />
+                        <span className="h-2.5 w-2.5 rounded-sm" style={{ backgroundColor: OUTCOME_PILL[o] }} />
                         {RUN_OUTCOME_LABEL[o]}
                     </span>
                 ))}
-                <span className="ml-auto hidden items-center gap-1.5 lg:inline-flex"><kbd className="rounded border border-zinc-700 px-1 font-mono text-[10px]">Enter</kbd> opens a bar&apos;s task or chat</span>
+                {colourBy === "source" && (["delegated", "automation"] as TimelineSource[]).map((s) => (
+                    <span key={s} className="inline-flex items-center gap-1.5">
+                        <span className="h-2.5 w-2.5 rounded-sm" style={{ backgroundColor: SOURCE_PILL[s].fill }} />
+                        {SOURCE_LABEL[s]}
+                    </span>
+                ))}
+                {colourBy === "project" && <span>Each colour is a project; chat runs are grey.</span>}
+                <span className="ml-auto hidden items-center gap-1.5 lg:inline-flex"><kbd className="rounded border border-zinc-700 px-1 font-mono text-[10px]">Enter</kbd> opens a run · <kbd className="rounded border border-zinc-700 px-1 font-mono text-[10px]">Esc</kbd> clears</span>
             </div>
 
-            {tooltip && (
-                <div className="pointer-events-none fixed z-50 max-w-xs rounded-xl border border-zinc-700 bg-zinc-950/95 px-3 py-2 shadow-2xl"
+            {/* Detail panel */}
+            {selected && (
+                <>
+                    <div className="fixed inset-0 z-40 bg-black/50 md:hidden" onClick={clear} />
+                    <DetailPanel span={selected} actor={actorById.get(selected.actorId)} onClose={clear} />
+                </>
+            )}
+
+            {/* The detail panel replaces the hover tooltip; never show both. */}
+            {tooltip && !selected && (
+                <div className="pointer-events-none fixed z-[60] max-w-xs rounded-xl border border-zinc-700 bg-zinc-950/95 px-3 py-2 shadow-2xl"
                     style={{ left: Math.min(tooltip.x + 12, window.innerWidth - 300), top: tooltip.y + 12 }}>
                     {tooltip.node}
                 </div>
@@ -373,44 +438,119 @@ function Total({ label, value }: { label: string; value: string }) {
 
 // ─── Gantt ──────────────────────────────────────────────────────────────────
 
-function GanttChart({ data, fromMs, toMs, pxPerMs, chartWidth, xFor, spansByActor, eventsByActor, actorById, rowIndex, windowMs, scrollLeft, viewport, onScroll, onOpen, setTooltip }: {
+function GanttChart({ data, fromMs, toMs, zoom, colourBy, showEvents, focus, spanById, taskTitleById, onOpenSpan, onZoomCluster, onRangeChange, onHoverActor, onClear, setTooltip }: {
     data: WorkTimeline;
     fromMs: number;
     toMs: number;
-    pxPerMs: number;
-    chartWidth: number;
-    xFor: (ms: number) => number;
-    spansByActor: Map<string, TimelineSpan[]>;
-    eventsByActor: Map<string, { kind: TimelineEventKind; at: number; taskId: string }[]>;
-    actorById: Map<string, TimelineActor>;
-    rowIndex: Map<string, number>;
-    windowMs: number;
-    scrollLeft: number;
-    viewport: number;
-    onScroll: (left: number, viewport: number) => void;
-    onOpen: (span: TimelineSpan) => void;
+    zoom: number;
+    colourBy: ColourBy;
+    showEvents: boolean;
+    focus: Focus | null;
+    spanById: Map<string, TimelineSpan>;
+    taskTitleById: Map<string, string>;
+    onOpenSpan: (span: TimelineSpan) => void;
+    onZoomCluster: (cluster: TimelineCluster) => void;
+    onRangeChange: (fromMs: number, toMs: number) => void;
+    onHoverActor: (actorId: string | null) => void;
+    onClear: () => void;
     setTooltip: (t: { x: number; y: number; node: React.ReactNode } | null) => void;
 }) {
+    const rootRef = useRef<HTMLDivElement>(null);
     const scrollRef = useRef<HTMLDivElement>(null);
-    const totalWidth = LABEL_W + chartWidth;
-    const { intervalMs, ticks } = computeTicks(fromMs, toMs, pxPerMs);
+    const [containerWidth, setContainerWidth] = useState(0);
+    const [idleOpen, setIdleOpen] = useState(false);
+    const [scrollLeft, setScrollLeft] = useState(0);
+    const [viewport, setViewport] = useState(0);
 
     useEffect(() => {
-        const el = scrollRef.current;
+        const el = rootRef.current;
         if (!el) return;
-        onScroll(el.scrollLeft, Math.max(1, el.clientWidth - LABEL_W));
-    }, [chartWidth, data.actors.length, onScroll]);
+        const measure = () => setContainerWidth(Math.max(0, el.clientWidth));
+        measure();
+        const ro = new ResizeObserver(measure);
+        ro.observe(el);
+        return () => ro.disconnect();
+    }, []);
 
+    const spansByActor = useMemo(() => {
+        const map = new Map<string, TimelineSpan[]>();
+        for (const s of data.spans) {
+            const list = map.get(s.actorId);
+            if (list) list.push(s);
+            else map.set(s.actorId, [s]);
+        }
+        return map;
+    }, [data.spans]);
+    const eventsByActor = useMemo(() => {
+        const map = new Map<string, TimelineEvent[]>();
+        for (const e of data.events) {
+            const list = map.get(e.actorId);
+            if (list) list.push(e);
+            else map.set(e.actorId, [e]);
+        }
+        return map;
+    }, [data.events]);
+
+    const windowMs = toMs - fromMs;
+    const plotWidth = Math.max(120, containerWidth - LABEL_W);
+    const zoomFactor = ZOOM_LEVELS[zoom] ?? 1;
+    const chartWidth = Math.max(plotWidth, Math.round(plotWidth * zoomFactor));
+    const pxPerMs = chartWidth / windowMs;
+    const xFor = (ms: number) => (ms - fromMs) * pxPerMs;
+
+    const { active, idle } = useMemo(() => {
+        const active = data.actors.filter((a) => (spansByActor.get(a.id)?.length ?? 0) > 0 || (eventsByActor.get(a.id)?.length ?? 0) > 0);
+        const idle = data.actors.filter((a) => (spansByActor.get(a.id)?.length ?? 0) === 0 && (eventsByActor.get(a.id)?.length ?? 0) === 0);
+        return { active, idle };
+    }, [data.actors, spansByActor, eventsByActor]);
+
+    const rows = useMemo(() => (idleOpen ? [...active, ...idle] : active), [active, idle, idleOpen]);
+    const rowIndex = useMemo(() => new Map(rows.map((a, i) => [a.id, i])), [rows]);
+
+    const itemsByActor = useMemo(() => {
+        const map = new Map<string, TimelineRowItem[]>();
+        for (const [actorId, spans] of spansByActor) map.set(actorId, clusterSpans(spans, pxPerMs));
+        return map;
+    }, [spansByActor, pxPerMs]);
+
+    const visibleEdges = useMemo(() => {
+        if (!focus) return [];
+        if (focus.type === "task") return data.edges.filter((e) => e.taskId === focus.taskId);
+        if (focus.type === "agent") return data.edges.filter((e) => e.from === focus.actorId || e.to === focus.actorId);
+        return [];
+    }, [focus, data.edges]);
+
+    const ticks = useMemo(() => timeTicks(fromMs, toMs, chartWidth), [fromMs, toMs, chartWidth]);
     const nowX = xFor(data.now);
+    const totalWidth = LABEL_W + chartWidth;
+    const contentHeight = rows.length * ROW_H;
 
-    const handleScroll = () => {
+    const updateScroll = useCallback(() => {
         const el = scrollRef.current;
         if (!el) return;
-        onScroll(el.scrollLeft, Math.max(1, el.clientWidth - LABEL_W));
-    };
+        // The tooltip is fixed-positioned; once the chart moves under it, it points at nothing.
+        setTooltip(null);
+        setScrollLeft(el.scrollLeft);
+        setViewport(Math.max(1, el.clientWidth - LABEL_W));
+    }, [setTooltip]);
+
+    useEffect(() => { updateScroll(); }, [chartWidth, rows.length, updateScroll]);
+    useEffect(() => {
+        const el = scrollRef.current;
+        if (el) el.scrollLeft = 0;
+    }, [fromMs, toMs]);
 
     return (
-        <div className="overflow-hidden rounded-2xl border border-zinc-800/80 bg-zinc-950/40">
+        <div ref={rootRef} className="overflow-hidden rounded-2xl border border-zinc-800/80 bg-zinc-950/40">
+            <style>{`
+                @media (prefers-reduced-motion: no-preference) {
+                    @keyframes tl-shimmer {
+                        0%, 100% { fill-opacity: 0.55; }
+                        50% { fill-opacity: 0.95; }
+                    }
+                    .tl-running { animation: tl-shimmer 2.6s ease-in-out infinite; }
+                }
+            `}</style>
             {data.actors.length === 0 ? (
                 <div className="px-5 py-14 text-center">
                     <IconChartLine className="mx-auto h-8 w-8 text-zinc-600" />
@@ -419,39 +559,56 @@ function GanttChart({ data, fromMs, toMs, pxPerMs, chartWidth, xFor, spansByActo
                 </div>
             ) : (
                 <>
-                    <div ref={scrollRef} onScroll={handleScroll} className="timeline-scroll max-h-[62vh] overflow-auto overscroll-x-contain">
+                    <div ref={scrollRef} onScroll={updateScroll} className="timeline-scroll max-h-[62vh] overflow-auto overscroll-x-contain">
                         <div className="relative" style={{ width: totalWidth }}>
                             {/* Axis header */}
                             <div className="sticky top-0 z-30 flex" style={{ height: AXIS_H }}>
                                 <div className="sticky left-0 z-40 shrink-0 border-b border-r border-zinc-800 bg-zinc-950" style={{ width: LABEL_W }} />
                                 <div className="relative shrink-0 border-b border-zinc-800 bg-zinc-950/95" style={{ width: chartWidth }}>
-                                    {ticks.map((t) => (
-                                        <span key={t} className="absolute top-0 flex h-full items-center font-mono text-[10px] text-zinc-500" style={{ left: xFor(t), transform: "translateX(-50%)" }}>
-                                            {tickLabel(t, intervalMs)}
+                                    <svg width={chartWidth} height={AXIS_H} className="absolute inset-0 block" aria-hidden>
+                                        {ticks.minor.map((t) => (
+                                            <line key={t} x1={xFor(t)} x2={xFor(t)} y1={AXIS_H - 4} y2={AXIS_H} stroke="rgba(113,113,122,0.35)" strokeWidth={1} />
+                                        ))}
+                                        {ticks.major.map((t) => (
+                                            <line key={t.ms} x1={xFor(t.ms)} x2={xFor(t.ms)} y1={AXIS_H - 7} y2={AXIS_H} stroke="rgba(161,161,170,0.6)" strokeWidth={1} />
+                                        ))}
+                                    </svg>
+                                    {ticks.major.map((t) => (
+                                        <span key={t.ms} className="absolute top-0 flex items-center whitespace-nowrap font-mono text-[10px] text-zinc-500" style={{ left: xFor(t.ms), height: AXIS_H - 7, transform: xFor(t.ms) < 32 ? "none" : xFor(t.ms) > chartWidth - 32 ? "translateX(-100%)" : "translateX(-50%)" }}>
+                                            {t.label}
                                         </span>
                                     ))}
                                 </div>
                             </div>
 
                             {/* Rows */}
-                            {data.actors.map((actor, i) => (
-                                <div key={actor.id} className="flex" style={{ height: ROW_H }}>
-                                    <div className="sticky left-0 z-20 flex shrink-0 items-center gap-2 border-b border-r border-zinc-800/80 bg-zinc-950 px-3" style={{ width: LABEL_W }}>
+                            {rows.map((actor) => (
+                                <div key={actor.id} className="group/row flex" style={{ height: ROW_H }}>
+                                    <div
+                                        className="sticky left-0 z-20 flex shrink-0 items-center gap-2 border-b border-r border-zinc-800/80 bg-zinc-950 px-3 transition-colors group-hover/row:bg-zinc-900/60"
+                                        style={{ width: LABEL_W }}
+                                        onMouseEnter={() => onHoverActor(actor.id)}
+                                        onMouseLeave={() => onHoverActor(null)}
+                                    >
                                         <ActorAvatar actor={actor} />
                                         <div className="min-w-0 flex-1">
                                             <div className="truncate text-sm font-medium text-zinc-100">{actor.name}</div>
                                             <div className="truncate text-[11px] text-zinc-500">{actor.runCount} runs · {Math.round((actor.busyMs / Math.max(1, windowMs)) * 100)}% busy</div>
                                         </div>
                                     </div>
-                                    <div className="relative shrink-0 border-b border-zinc-800/50" style={{ width: chartWidth }}>
-                                        <svg width={chartWidth} height={ROW_H} className="block" role="presentation">
+                                    <div className="relative shrink-0 border-b border-zinc-800/50 transition-colors group-hover/row:bg-zinc-900/30" style={{ width: chartWidth }}>
+                                        <svg width={chartWidth} height={ROW_H} className="block" role="presentation" onClick={onClear}>
                                             <RowContent
                                                 actor={actor}
-                                                i={i}
-                                                spans={spansByActor.get(actor.id) ?? []}
-                                                events={eventsByActor.get(actor.id) ?? []}
+                                                items={itemsByActor.get(actor.id) ?? []}
+                                                events={showEvents ? (eventsByActor.get(actor.id) ?? []) : []}
                                                 xFor={xFor}
-                                                onOpen={onOpen}
+                                                colourBy={colourBy}
+                                                focus={focus}
+                                                spanById={spanById}
+                                                taskTitleById={taskTitleById}
+                                                onOpenSpan={onOpenSpan}
+                                                onZoomCluster={onZoomCluster}
                                                 setTooltip={setTooltip}
                                             />
                                         </svg>
@@ -459,33 +616,53 @@ function GanttChart({ data, fromMs, toMs, pxPerMs, chartWidth, xFor, spansByActo
                                 </div>
                             ))}
 
+                            {/* Collapsed idle agents */}
+                            {idle.length > 0 && (
+                                <div className="flex" style={{ height: ROW_H }}>
+                                    <button
+                                        type="button"
+                                        onClick={() => setIdleOpen((v) => !v)}
+                                        className="sticky left-0 z-20 flex w-full items-center gap-2 border-b border-r border-zinc-800/80 bg-zinc-950 px-3 text-left text-xs text-zinc-500 hover:bg-zinc-900/60"
+                                        style={{ width: totalWidth }}
+                                    >
+                                        <IconChevronDown className={cn("h-4 w-4 transition-transform", idleOpen && "rotate-180")} />
+                                        {idleOpen ? "Hide idle agents" : `+${idle.length} idle ${idle.length === 1 ? "agent" : "agents"}`}
+                                    </button>
+                                </div>
+                            )}
+
                             {/* Overlay: edges + now line */}
-                            <div className="pointer-events-none absolute" style={{ left: LABEL_W, top: AXIS_H, width: chartWidth, height: data.actors.length * ROW_H }}>
-                                <svg width={chartWidth} height={data.actors.length * ROW_H} className="block">
+                            <div className="pointer-events-none absolute" style={{ left: LABEL_W, top: AXIS_H, width: chartWidth, height: contentHeight }}>
+                                <svg width={chartWidth} height={contentHeight} className="block">
+                                    {ticks.major.map((t) => (
+                                        <line key={t.ms} x1={xFor(t.ms)} x2={xFor(t.ms)} y1={0} y2={contentHeight} stroke="rgba(255,255,255,0.04)" strokeWidth={1} />
+                                    ))}
                                     {data.now >= fromMs && data.now <= toMs && (
                                         <g>
-                                            <line x1={nowX} x2={nowX} y1={0} y2={data.actors.length * ROW_H} stroke="rgba(34,211,238,0.55)" strokeDasharray="3 3" strokeWidth={1} />
+                                            <line x1={nowX} x2={nowX} y1={0} y2={contentHeight} stroke="rgba(34,211,238,0.55)" strokeDasharray="3 3" strokeWidth={1} />
                                             <rect x={nowX - 16} y={0} width={32} height={14} rx={7} fill="rgba(34,211,238,0.9)" />
                                             <text x={nowX} y={10} textAnchor="middle" fontSize={9} fill="#04252b" fontWeight={600}>now</text>
                                         </g>
                                     )}
-                                    {data.edges.map((edge) => (
-                                        <EdgePath key={edge.id} edge={edge} rowIndex={rowIndex} xFor={xFor} colour={actorById.get(edge.from)?.colour} />
+                                    {visibleEdges.map((edge) => (
+                                        <EdgePath key={edge.id} edge={edge} rowIndex={rowIndex} xFor={xFor} />
                                     ))}
                                 </svg>
                             </div>
                         </div>
                     </div>
 
-                    {/* Mini-map / brush */}
+                    {/* Mini-map with drag handles */}
                     <Minimap
                         data={data}
                         fromMs={fromMs}
                         toMs={toMs}
+                        plotWidth={plotWidth}
                         chartWidth={chartWidth}
                         scrollLeft={scrollLeft}
                         viewport={viewport}
                         onSeek={(left) => { const el = scrollRef.current; if (el) el.scrollLeft = left; }}
+                        onRangeChange={onRangeChange}
                     />
                 </>
             )}
@@ -507,87 +684,155 @@ function ActorAvatar({ actor }: { actor: TimelineActor }) {
     );
 }
 
-function RowContent({ actor, i, spans, events, xFor, onOpen, setTooltip }: {
+function pillStyle(span: TimelineSpan, colourBy: ColourBy): { fill: string; stroke: string; hollow: boolean } {
+    if (colourBy === "source") {
+        const c = SOURCE_PILL[span.source];
+        return { fill: c.fill, stroke: c.stroke, hollow: false };
+    }
+    if (colourBy === "project") {
+        if (!span.projectId) return { fill: "rgba(113,113,122,0.65)", stroke: "rgba(113,113,122,0.9)", hollow: false };
+        const h = projectHue(span.projectId);
+        return { fill: `hsl(${h} 72% 60%)`, stroke: `hsl(${h} 72% 65%)`, hollow: false };
+    }
+    if (span.outcome === "stopped") return { fill: "transparent", stroke: "#71717a", hollow: true };
+    return { fill: OUTCOME_PILL[span.outcome], stroke: OUTCOME_STROKE[span.outcome], hollow: false };
+}
+
+/**
+ * An invisible hit target around a drawn pill: at least HIT_MIN_W wide and
+ * centred on it, nearly the full row tall. At 7 or 30 days a pill can be 2–4
+ * px wide; the target keeps it easy to hover and click without changing the
+ * pill itself.
+ */
+function HitRect({ x, width }: { x: number; width: number }) {
+    const w = Math.max(HIT_MIN_W, width);
+    return <rect x={x + width / 2 - w / 2} y={HIT_INSET_Y} width={w} height={ROW_H - 2 * HIT_INSET_Y} fill="transparent" pointerEvents="all" />;
+}
+
+function RowContent({ actor, items, events, xFor, colourBy, focus, spanById, taskTitleById, onOpenSpan, onZoomCluster, setTooltip }: {
     actor: TimelineActor;
-    i: number;
-    spans: TimelineSpan[];
-    events: { kind: TimelineEventKind; at: number; taskId: string }[];
+    items: TimelineRowItem[];
+    events: TimelineEvent[];
     xFor: (ms: number) => number;
-    onOpen: (span: TimelineSpan) => void;
+    colourBy: ColourBy;
+    focus: Focus | null;
+    spanById: Map<string, TimelineSpan>;
+    taskTitleById: Map<string, string>;
+    onOpenSpan: (span: TimelineSpan) => void;
+    onZoomCluster: (cluster: TimelineCluster) => void;
     setTooltip: (t: { x: number; y: number; node: React.ReactNode } | null) => void;
 }) {
-    const y = ROW_H / 2;
-    const stripeId = `tl-stripe-${i}`;
+    const y = (ROW_H - BAR_H) / 2;
+    const showTooltip = (e: { currentTarget: Element }, node: React.ReactNode) => {
+        const rect = e.currentTarget.getBoundingClientRect();
+        setTooltip({ x: rect.left + rect.width / 2, y: rect.top, node });
+    };
     return (
         <>
-            <defs>
-                <pattern id={stripeId} width="7" height="7" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
-                    <rect width="3" height="7" fill="rgba(34,211,238,0.5)" />
-                </pattern>
-            </defs>
-            {spans.map((span) => {
+            {items.map((item) => {
+                if (item.kind === "cluster") {
+                    const c = item.cluster;
+                    const x = xFor(c.start);
+                    const width = Math.max(4, xFor(c.end) - xFor(c.start));
+                    const dimmed = focus && !clusterMatchesFocus(c, spanById, focus) ? "opacity-20" : "opacity-70 hover:opacity-100";
+                    const cx = x + width / 2;
+                    return (
+                        <g key={`c:${c.spanIds[0]}`}
+                            role="button"
+                            tabIndex={0}
+                            className={cn("cursor-zoom-in transition-opacity", dimmed)}
+                            onClick={(e) => { e.stopPropagation(); onZoomCluster(c); }}
+                            onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); e.stopPropagation(); onZoomCluster(c); } }}
+                            onMouseEnter={(e) => showTooltip(e, <span className="text-xs text-zinc-200">{c.count} runs · {RUN_OUTCOME_LABEL[dominantOutcome(c)]}</span>)}
+                            onMouseLeave={() => setTooltip(null)}
+                            aria-label={`${c.count} runs, zoom to expand`}
+                        >
+                            <HitRect x={x} width={width} />
+                            <rect x={x} y={y} width={width} height={BAR_H} rx={Math.min(BAR_H / 2, width / 2)} fill="rgba(148,163,184,0.4)" stroke="rgba(148,163,184,0.7)" strokeWidth={1} />
+                            {width >= 26 && <text x={cx} y={y + BAR_H / 2 + 3} textAnchor="middle" fontSize={8} fill="#e4e4e7" fontWeight={600}>{c.count}</text>}
+                        </g>
+                    );
+                }
+                const span = item.span;
                 const x = xFor(span.start);
-                const width = Math.max(3, xFor(span.end) - xFor(span.start));
-                const cancelled = span.status === "cancelled";
-                const fill = cancelled ? "transparent" : span.running ? `url(#${stripeId})` : OUTCOME_FILL[span.outcome];
-                const stroke = OUTCOME_STROKE[span.outcome];
-                const showTooltip = (e: React.MouseEvent | React.FocusEvent) => {
-                    const rect = (e.currentTarget as Element).getBoundingClientRect();
-                    setTooltip({ x: rect.left + rect.width / 2, y: rect.top, node: <SpanTooltip span={span} actorName={actor.name} /> });
-                };
+                const width = Math.max(4, xFor(span.end) - xFor(span.start));
+                const style = pillStyle(span, colourBy);
+                const dimmed = !matchesFocus(span, focus) ? "opacity-20" : span.outcome === "running" && colourBy === "outcome" ? "tl-running" : "opacity-70 hover:opacity-100";
                 const rect = (
-                    <rect x={x} y={8} width={width} height={ROW_H - 16} rx={4}
-                        fill={fill} stroke={stroke} strokeWidth={1}
-                        strokeDasharray={cancelled ? "4 3" : undefined}
-                        className={cn(span.running && "animate-pulse")} />
+                    <>
+                        <HitRect x={x} width={width} />
+                        <rect x={x} y={y} width={width} height={BAR_H} rx={Math.min(BAR_H / 2, width / 2)}
+                            fill={style.fill} stroke={style.stroke} strokeWidth={1}
+                        />
+                    </>
                 );
+                const label = `${span.taskTitle ?? "Chat"}: ${RUN_OUTCOME_LABEL[span.outcome]}`;
+                const handlers = {
+                    onClick: (e: React.MouseEvent) => { e.preventDefault(); e.stopPropagation(); onOpenSpan(span); },
+                    onKeyDown: (e: React.KeyboardEvent) => { if (e.key === "Enter") { e.preventDefault(); e.stopPropagation(); onOpenSpan(span); } },
+                    onMouseEnter: (e: React.MouseEvent) => showTooltip(e, <SpanTooltip span={span} actorName={actor.name} />),
+                    onMouseLeave: () => setTooltip(null),
+                    onFocus: (e: React.FocusEvent) => showTooltip(e, <SpanTooltip span={span} actorName={actor.name} />),
+                    onBlur: () => setTooltip(null),
+                };
                 return span.href ? (
-                    <a key={span.id} href={span.href} onClick={(e) => { e.preventDefault(); onOpen(span); }}
-                        onMouseEnter={(e) => showTooltip(e)} onMouseLeave={() => setTooltip(null)}
-                        onFocus={(e) => showTooltip(e)} onBlur={() => setTooltip(null)}
-                        aria-label={`${span.taskTitle ?? "Chat"}: ${RUN_OUTCOME_LABEL[span.outcome]}`}
-                    >
+                    <a key={span.id} href={span.href} tabIndex={0} aria-label={label}
+                        className={cn("transition-opacity", dimmed)} {...handlers}>
                         {rect}
                     </a>
                 ) : (
-                    <g key={span.id} onMouseEnter={(e) => showTooltip(e)} onMouseLeave={() => setTooltip(null)}>{rect}</g>
+                    <g key={span.id} role="button" tabIndex={0} aria-label={label}
+                        className={cn("transition-opacity", dimmed)} {...handlers}>
+                        {rect}
+                    </g>
                 );
             })}
-            {events.map((ev, i) => (
-                <a key={`${ev.kind}:${ev.taskId}:${ev.at}:${i}`} href={taskHref(ev.taskId)} tabIndex={-1}
-                    onMouseEnter={(e) => {
-                        const rect = (e.currentTarget as Element).getBoundingClientRect();
-                        setTooltip({ x: rect.left, y: rect.top, node: <span className="text-xs text-zinc-200">{EVENT_KIND_LABEL[ev.kind]}</span> });
-                    }}
-                    onMouseLeave={() => setTooltip(null)}>
-                    <EventMarker kind={ev.kind} cx={xFor(ev.at)} cy={y} />
-                    <title>{EVENT_KIND_LABEL[ev.kind]}</title>
-                </a>
+            {events.map((ev) => (
+                <EventTick key={ev.id} event={ev} cx={xFor(ev.at)} taskTitle={taskTitleById.get(ev.taskId) ?? null}
+                    onEnter={(e) => showTooltip(e, <EventTooltip event={ev} taskTitle={taskTitleById.get(ev.taskId) ?? null} />)}
+                    onLeave={() => setTooltip(null)} />
             ))}
         </>
     );
 }
 
-function EventMarker({ kind, cx, cy }: { kind: TimelineEventKind; cx: number; cy: number }) {
-    const colour = EVENT_COLOUR[kind];
-    const r = 4;
-    if (kind === "assigned") {
-        return <path d={`M ${cx} ${cy - r} L ${cx + r} ${cy} L ${cx} ${cy + r} L ${cx - r} ${cy} Z`} fill={colour} stroke="rgba(0,0,0,0.5)" strokeWidth={1} />;
+function dominantOutcome(cluster: TimelineCluster): RunOutcome {
+    let best: RunOutcome = "done";
+    let bestN = -1;
+    for (const [outcome, n] of Object.entries(cluster.outcomeCounts) as [RunOutcome, number][]) {
+        if (n > bestN) { best = outcome; bestN = n; }
     }
-    if (kind === "approval_requested" || kind === "approval_decided") {
-        const dir = kind === "approval_requested" ? -1 : 1;
-        return <path d={`M ${cx} ${cy + dir * r} L ${cx - r} ${cy - dir * r} L ${cx + r} ${cy - dir * r} Z`} fill={colour} />;
-    }
-    if (kind === "file") {
-        return <rect x={cx - r} y={cy - r} width={r * 2} height={r * 2} rx={1} fill={colour} />;
-    }
-    if (kind === "created") {
-        return <circle cx={cx} cy={cy} r={r} fill="none" stroke={colour} strokeWidth={1.5} />;
-    }
-    return <circle cx={cx} cy={cy} r={r - 0.5} fill={colour} />;
+    return best;
 }
 
-function EdgePath({ edge, rowIndex, xFor, colour }: { edge: TimelineEdge; rowIndex: Map<string, number>; xFor: (ms: number) => number; colour: string | undefined }) {
+function EventTick({ event, cx, taskTitle, onEnter, onLeave }: {
+    event: TimelineEvent;
+    cx: number;
+    taskTitle: string | null;
+    onEnter: (e: React.MouseEvent) => void;
+    onLeave: () => void;
+}) {
+    // A person's action is drawn a little taller so it reads apart from the agent's own markers.
+    const top = event.byName ? ROW_H - 12 : ROW_H - 9;
+    return (
+        <g onMouseEnter={onEnter} onMouseLeave={onLeave} onClick={(e) => e.stopPropagation()} aria-label={taskTitle ? `${event.label}: ${taskTitle}` : event.label}>
+            <rect x={cx - HIT_MIN_W / 2} y={ROW_H - 14} width={HIT_MIN_W} height={13} fill="transparent" pointerEvents="all" />
+            <line x1={cx} x2={cx} y1={top} y2={ROW_H - 3} stroke={EVENT_COLOUR[event.kind]} strokeWidth={1.5} />
+        </g>
+    );
+}
+
+function EventTooltip({ event, taskTitle }: { event: TimelineEvent; taskTitle: string | null }) {
+    return (
+        <div className="space-y-0.5">
+            <div className="text-sm font-medium text-zinc-100">{event.label}</div>
+            {taskTitle && <div className="text-xs text-zinc-400">{taskTitle}</div>}
+            <div className="text-xs text-zinc-500">{formatClock(event.at)}</div>
+        </div>
+    );
+}
+
+function EdgePath({ edge, rowIndex, xFor }: { edge: TimelineEdge; rowIndex: Map<string, number>; xFor: (ms: number) => number }) {
     const from = rowIndex.get(edge.from);
     const to = rowIndex.get(edge.to);
     if (from == null || to == null) return null;
@@ -597,69 +842,98 @@ function EdgePath({ edge, rowIndex, xFor, colour }: { edge: TimelineEdge; rowInd
     const dy = y2 - y1;
     const bulge = Math.min(48, Math.max(24, Math.abs(dy) * 0.35));
     const d = `M ${x} ${y1} C ${x + bulge} ${y1}, ${x + bulge} ${y2}, ${x} ${y2}`;
-    const stroke = colour ?? "rgba(148,163,184,0.7)";
     return (
         <g>
-            <path d={d} fill="none" stroke={stroke} strokeWidth={1.25} strokeOpacity={0.55} />
-            <path d={`M ${x - 3.5} ${y2 + (dy >= 0 ? -5 : 5)} L ${x} ${y2} L ${x + 3.5} ${y2 + (dy >= 0 ? -5 : 5)}`} fill="none" stroke={stroke} strokeWidth={1.25} />
+            <path d={d} fill="none" stroke="rgba(148,163,184,0.9)" strokeWidth={1.25} strokeOpacity={0.7} />
+            <path d={`M ${x - 3.5} ${y2 + (dy >= 0 ? -5 : 5)} L ${x} ${y2} L ${x + 3.5} ${y2 + (dy >= 0 ? -5 : 5)}`} fill="none" stroke="rgba(148,163,184,0.9)" strokeWidth={1.25} />
             <title>{EDGE_KIND_LABEL[edge.kind]}</title>
         </g>
     );
 }
 
-function Minimap({ data, fromMs, toMs, chartWidth, scrollLeft, viewport, onSeek }: {
+function Minimap({ data, fromMs, toMs, plotWidth, chartWidth, scrollLeft, viewport, onSeek, onRangeChange }: {
     data: WorkTimeline;
     fromMs: number;
     toMs: number;
+    plotWidth: number;
     chartWidth: number;
     scrollLeft: number;
     viewport: number;
     onSeek: (left: number) => void;
+    onRangeChange: (fromMs: number, toMs: number) => void;
 }) {
     const ref = useRef<HTMLDivElement>(null);
     const height = 40;
     const labelGap = LABEL_W;
-    const plotWidth = chartWidth;
-    const xMini = (ms: number) => (ms - fromMs) / (toMs - fromMs) * plotWidth;
-    const dragRef = useRef(false);
+    const windowMs = toMs - fromMs;
+    const xMini = (ms: number) => ((ms - fromMs) / windowMs) * plotWidth;
+    const [drag, setDrag] = useState<null | { mode: "body" | "left" | "right"; startX: number; startFrom: number; startTo: number; startScrollLeft: number }>(null);
+    const [preview, setPreview] = useState<{ from: number; to: number } | null>(null);
 
-    const seek = (clientX: number) => {
-        const el = ref.current;
-        if (!el) return;
-        const rect = el.getBoundingClientRect();
+    const clientToMs = (clientX: number) => {
+        const rect = ref.current!.getBoundingClientRect();
         const frac = Math.min(1, Math.max(0, (clientX - rect.left - labelGap) / plotWidth));
-        const center = frac * chartWidth;
-        onSeek(Math.max(0, Math.min(chartWidth, center - viewport / 2)));
+        return fromMs + frac * windowMs;
     };
+
+    const onPointerDown = (mode: "body" | "left" | "right") => (e: React.PointerEvent) => {
+        e.preventDefault();
+        e.stopPropagation();
+        (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+        setDrag({ mode, startX: e.clientX, startFrom: fromMs, startTo: toMs, startScrollLeft: scrollLeft });
+    };
+
+    const onPointerMove = (e: React.PointerEvent) => {
+        if (!drag) return;
+        if (drag.mode === "body") {
+            const dx = e.clientX - drag.startX;
+            const next = drag.startScrollLeft + dx * (chartWidth / plotWidth);
+            onSeek(Math.max(0, Math.min(chartWidth - viewport, next)));
+            return;
+        }
+        const t = clientToMs(e.clientX);
+        if (drag.mode === "left") {
+            setPreview({ from: Math.min(t, drag.startTo - 5 * 60_000), to: drag.startTo });
+        } else {
+            setPreview({ from: drag.startFrom, to: Math.max(t, drag.startFrom + 5 * 60_000) });
+        }
+    };
+
+    const onPointerUp = () => {
+        if (drag?.mode === "left" && preview) onRangeChange(Math.max(fromMs - 31 * DAY_MS, preview.from), preview.to);
+        else if (drag?.mode === "right" && preview) onRangeChange(preview.from, Math.min(Date.now() + 15 * 60_000, preview.to));
+        setDrag(null);
+        setPreview(null);
+    };
+
+    const brushFrom = preview ? preview.from : fromMs + (scrollLeft / chartWidth) * windowMs;
+    const brushTo = preview ? preview.to : fromMs + ((scrollLeft + viewport) / chartWidth) * windowMs;
 
     return (
         <div ref={ref} className="relative hidden border-t border-zinc-800/80 bg-zinc-950/60 md:block"
             style={{ height: height + 8 }}
-            onPointerDown={(e) => { dragRef.current = true; (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId); seek(e.clientX); }}
-            onPointerMove={(e) => { if (dragRef.current) seek(e.clientX); }}
-            onPointerUp={() => { dragRef.current = false; }}
-            onPointerCancel={() => { dragRef.current = false; }}
-        >
+            onPointerMove={onPointerMove} onPointerUp={onPointerUp} onPointerCancel={onPointerUp}>
             <div className="absolute" style={{ left: labelGap, top: 4, width: plotWidth, height }}>
                 <svg width={plotWidth} height={height}>
                     {data.spans.map((s) => {
                         const x = xMini(s.start);
                         const w = Math.max(1.5, xMini(s.end) - xMini(s.start));
-                        return <rect key={s.id} x={x} y={12} width={w} height={height - 24} fill={OUTCOME_STROKE[s.outcome]} opacity={0.5} />;
+                        return <rect key={s.id} x={x} y={12} width={w} height={height - 24} fill={OUTCOME_PILL[s.outcome]} opacity={0.5} />;
                     })}
                 </svg>
             </div>
-            {/* Brush */}
-            <div className="absolute top-0 rounded ring-1 ring-cyan-400/60 bg-cyan-400/10" style={{
-                left: labelGap + (scrollLeft / chartWidth) * plotWidth,
-                width: Math.max(24, (viewport / chartWidth) * plotWidth),
-                height: height + 8,
-            }} />
+            {/* Brush with drag handles */}
+            <div className="absolute top-0 rounded ring-1 ring-cyan-400/60 bg-cyan-400/10"
+                style={{ left: labelGap + xMini(brushFrom), width: Math.max(24, xMini(brushTo) - xMini(brushFrom)), height: height + 8 }}>
+                <div className="absolute inset-y-0 left-0 w-1.5 cursor-ew-resize" onPointerDown={onPointerDown("left")} aria-hidden />
+                <div className="absolute inset-0 cursor-grab active:cursor-grabbing" onPointerDown={onPointerDown("body")} aria-hidden />
+                <div className="absolute inset-y-0 right-0 w-1.5 cursor-ew-resize" onPointerDown={onPointerDown("right")} aria-hidden />
+            </div>
         </div>
     );
 }
 
-// ─── Tooltip + phone list ───────────────────────────────────────────────────
+// ─── Tooltip + phone list + detail panel ────────────────────────────────────
 
 function SpanTooltip({ span, actorName }: { span: TimelineSpan; actorName: string }) {
     const parts = [formatRunDuration(span.durationMs)];
@@ -670,7 +944,7 @@ function SpanTooltip({ span, actorName }: { span: TimelineSpan; actorName: strin
     return (
         <div className="space-y-0.5">
             <div className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wide text-zinc-500">
-                <span className={OUTCOME_TEXT[span.outcome]}>{RUN_OUTCOME_LABEL[span.outcome]}</span>
+                <span>{RUN_OUTCOME_LABEL[span.outcome]}</span>
                 <span>·</span>
                 <span>{actorName}</span>
             </div>
@@ -684,11 +958,66 @@ function SpanTooltip({ span, actorName }: { span: TimelineSpan; actorName: strin
     );
 }
 
-function PhoneList({ data, spansByActor, onOpen }: {
+function DetailPanel({ span, actor, onClose }: { span: TimelineSpan; actor: TimelineActor | undefined; onClose: () => void }) {
+    const openLabel = span.kind === "chat" ? "Open chat" : "Open task";
+    return (
+        <aside className="fixed inset-x-0 bottom-0 z-50 max-h-[85vh] overflow-y-auto rounded-t-2xl border-t border-zinc-800 bg-zinc-950 shadow-2xl md:inset-x-auto md:inset-y-0 md:right-0 md:max-h-none md:w-[360px] md:rounded-none md:border-l md:border-t-0">
+            <div className="flex items-start justify-between gap-3 border-b border-zinc-800/80 px-5 py-4">
+                <div className="min-w-0">
+                    <p className="text-[11px] font-semibold uppercase tracking-wide text-zinc-500">Run</p>
+                    <h2 className="mt-1 break-words text-sm font-semibold leading-snug text-zinc-100">{span.taskTitle ?? span.threadLabel ?? "Chat"}</h2>
+                </div>
+                <button type="button" onClick={onClose} aria-label="Close" className="rounded-lg p-1.5 text-zinc-400 hover:bg-zinc-800 hover:text-zinc-200"><IconX className="h-4 w-4" /></button>
+            </div>
+            <div className="space-y-3 px-5 py-4 text-sm">
+                <Field label="Agent">{actor ? actor.name : "—"}</Field>
+                <Field label="Project">{span.projectName ?? "—"}</Field>
+                <Field label="Outcome">
+                    <span className="inline-flex items-center gap-1.5">
+                        <span className="h-2.5 w-2.5 rounded-sm" style={{ backgroundColor: OUTCOME_PILL[span.outcome] }} />
+                        {RUN_OUTCOME_LABEL[span.outcome]}
+                    </span>
+                </Field>
+                <Field label="Time">{formatClock(span.startedAtMs)} – {span.endedAtMs ? formatClock(span.endedAtMs) : "now"}</Field>
+                <Field label="Duration">{formatRunDuration(span.durationMs)}</Field>
+                <Field label="Tools">{span.toolCalls ?? "—"}</Field>
+                <Field label="Tokens">{span.tokens > 0 ? formatTokenCount(span.tokens) : "—"}</Field>
+                <Field label="Cost">{formatCost(span.costCents) ?? "—"}</Field>
+            </div>
+            {span.href && (
+                <div className="border-t border-zinc-800/80 px-5 py-4">
+                    <Link href={span.href} className="inline-flex items-center gap-2 rounded-xl bg-cyan-500/15 px-3 py-2 text-sm font-medium text-cyan-200 ring-1 ring-inset ring-cyan-500/40 hover:bg-cyan-500/25">
+                        {openLabel}<IconExternalLink className="h-4 w-4" />
+                    </Link>
+                </div>
+            )}
+        </aside>
+    );
+}
+
+function Field({ label, children }: { label: string; children: React.ReactNode }) {
+    return (
+        <div className="flex items-baseline justify-between gap-4">
+            <span className="shrink-0 text-xs uppercase tracking-wide text-zinc-500">{label}</span>
+            <span className="min-w-0 text-right font-mono text-sm tabular-nums text-zinc-100">{children}</span>
+        </div>
+    );
+}
+
+function PhoneList({ data, colourBy, onOpen }: {
     data: WorkTimeline;
-    spansByActor: Map<string, TimelineSpan[]>;
+    colourBy: ColourBy;
     onOpen: (span: TimelineSpan) => void;
 }) {
+    const spansByActor = useMemo(() => {
+        const map = new Map<string, TimelineSpan[]>();
+        for (const s of data.spans) {
+            const list = map.get(s.actorId);
+            if (list) list.push(s);
+            else map.set(s.actorId, [s]);
+        }
+        return map;
+    }, [data.spans]);
     if (data.actors.length === 0) {
         return <div className="rounded-2xl border border-zinc-800/80 bg-zinc-950/40 px-5 py-12 text-center text-sm text-zinc-400">Nothing happened in this window.</div>;
     }
@@ -705,19 +1034,22 @@ function PhoneList({ data, spansByActor, onOpen }: {
                             <span className="ml-auto text-xs text-zinc-500">{actor.runCount} runs</span>
                         </header>
                         <ul className="space-y-2">
-                            {spans.map((span) => (
-                                <li key={span.id}>
-                                    <button type="button" onClick={() => onOpen(span)} disabled={!span.href}
-                                        className="flex w-full items-center gap-3 rounded-xl border border-zinc-800/80 bg-zinc-950/40 px-3 py-2 text-left disabled:cursor-default">
-                                        <span className={cn("h-2.5 w-2.5 shrink-0 rounded-sm", span.outcome === "running" && "animate-pulse")} style={{ backgroundColor: OUTCOME_STROKE[span.outcome] }} />
-                                        <span className="min-w-0 flex-1">
-                                            <span className="block truncate text-sm text-zinc-100">{span.taskTitle ?? span.threadLabel ?? "Chat"}</span>
-                                            <span className="block truncate text-xs text-zinc-500">{formatClock(span.startedAtMs)} – {span.endedAtMs ? formatClock(span.endedAtMs) : "now"} · {RUN_OUTCOME_LABEL[span.outcome]}</span>
-                                        </span>
-                                        <IconChevronRight className="h-4 w-4 shrink-0 text-zinc-600" />
-                                    </button>
-                                </li>
-                            ))}
+                            {spans.map((span) => {
+                                const style = pillStyle(span, colourBy);
+                                return (
+                                    <li key={span.id}>
+                                        <button type="button" onClick={() => onOpen(span)}
+                                            className="flex w-full items-center gap-3 rounded-xl border border-zinc-800/80 bg-zinc-950/40 px-3 py-2 text-left transition-colors hover:border-zinc-700">
+                                            <span className="h-4 w-1.5 shrink-0 rounded-full" style={{ backgroundColor: style.hollow ? style.stroke : style.fill, outline: style.hollow ? `1px solid ${style.stroke}` : undefined }} />
+                                            <span className="min-w-0 flex-1">
+                                                <span className="block truncate text-sm text-zinc-100">{span.taskTitle ?? span.threadLabel ?? "Chat"}</span>
+                                                <span className="block truncate text-xs text-zinc-500">{formatClock(span.startedAtMs)} – {span.endedAtMs ? formatClock(span.endedAtMs) : "now"} · {RUN_OUTCOME_LABEL[span.outcome]}</span>
+                                            </span>
+                                            <IconChevronRight className="h-4 w-4 shrink-0 text-zinc-600" />
+                                        </button>
+                                    </li>
+                                );
+                            })}
                         </ul>
                     </section>
                 );

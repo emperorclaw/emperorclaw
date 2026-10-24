@@ -11,10 +11,11 @@ export const dynamic = "force-dynamic";
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 /**
- * The company Timeline: a Gantt of who worked on what, when, and who handed
- * work to whom. The server renders the default 7-day window and the filter
- * options (member-scoped); the client re-fetches as the range and filters
- * change and keeps the chart live while today is in range.
+ * The company Timeline: a Gantt of which agents worked on what, when, and
+ * which agent handed work to which (rows are agents only; people's actions are
+ * markers on the agent they reached). The server renders the default "Today"
+ * window and the filter options (member-scoped); the client re-fetches as the
+ * range and filters change and keeps the chart live while today is in range.
  */
 export default async function TimelinePage({ searchParams }: { searchParams: Promise<{ agentId?: string; projectId?: string; customerId?: string }> }) {
     const guard = await requireRole("viewer")().catch(() => null);

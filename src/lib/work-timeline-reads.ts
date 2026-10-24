@@ -49,7 +49,12 @@ import {
  * Soft-deleted tasks and projects never appear: a run whose task (or the
  * task's project) is deleted is dropped entirely, as on the task page.
  *
- * People are named by display name, or "Teammate" — never by email.
+ * Rows are agents only. A person's action is a marker on the row of the agent
+ * that received it: an assignment on the assignee, an approval decision on
+ * the requesting agent, a note or status change on the task's assigned agent.
+ * A person's action with no visible receiving agent is dropped, and handoff
+ * edges only ever join two visible agents. People are named (in the marker's
+ * `byName`) by display name, or "Teammate" — never by email.
  *
  * Privacy: a run whose thread is a PRIVATE direct thread the viewer does not
  * own never appears (not even as a bar) — the same `userMayUseThread` rule the
@@ -67,11 +72,11 @@ const ADMIN_ROLES = new Set(["owner", "admin", "instance_admin"]);
 // query reports `capped: true`.
 const RAW_ROW_LIMIT = 4000;
 const UNNAMED_PERSON = "Teammate";
-const DAY_MS = 86_400_000;
 
-/** The page's default window: the last 7 days, ending now (computed here, not in the render). */
+/** The page's default window: today (midnight to a small future margin), computed here, not in the render. */
 export function defaultTimelineWindow(nowMs = Date.now()): { fromMs: number; toMs: number; nowMs: number } {
-    return { fromMs: nowMs - 7 * DAY_MS, toMs: nowMs, nowMs };
+    const startOfToday = new Date(new Date(nowMs).getFullYear(), new Date(nowMs).getMonth(), new Date(nowMs).getDate()).getTime();
+    return { fromMs: startOfToday, toMs: nowMs + 15 * 60_000, nowMs };
 }
 
 export interface TimelineQuery {
@@ -178,15 +183,16 @@ export async function loadWorkTimeline(companyId: string, viewer: TaskViewer, qu
     const userIdToName = new Map<string, string>();
     for (const m of memberRows) userIdToName.set(m.userId, m.displayName?.trim() || UNNAMED_PERSON);
 
-    // Only visible agents and company members ever become canonical ids; any
-    // other id resolves to null and whatever named it is dropped.
+    // Only visible agents ever become canonical ids; any other id resolves to
+    // null and whatever named it is dropped. People never become ids at all:
+    // they are only ever a display name on an agent's marker.
     const agentCanonical = (id: string | null | undefined) => (id && agentName.has(id) ? `agent:${id}` : null);
-    const humanUserId = (id: string | null | undefined) => {
+    const personName = (id: string | null | undefined): string | null => {
         if (!id) return null;
         // Human ids arrive as either a user id (actors, resolvers) or a
         // company_members id (assignees); normalize both to the user id.
         const userId = memberIdToUserId.get(id) ?? id;
-        return userIdToName.has(userId) ? userId : null;
+        return userIdToName.get(userId) ?? null;
     };
 
     // ── Runs (left-joined to tasks for scope + param filtering) ───────────
@@ -360,45 +366,53 @@ export async function loadWorkTimeline(companyId: string, viewer: TaskViewer, qu
         pendingAtByTask.set(a.taskId, list);
     }
 
-    // Build the humans registry (people who acted OR were assigned).
-    const humans = new Map<string, string>(); // canonical userId -> name
-    const registerHuman = (id: string | null | undefined) => {
-        const userId = humanUserId(id);
-        if (!userId) return null;
-        humans.set(userId, userIdToName.get(userId) ?? UNNAMED_PERSON);
-        return `human:${userId}`;
-    };
-
     const events: BuildEventSource[] = [];
     const edgeEvents: EdgeEventInput[] = [];
     const edgeRuns: EdgeRunInput[] = [];
+    // Tasks assigned by another actor, agent or person (for the "delegated" colour-by source).
+    const assignedByOtherTaskIds = new Set<string>();
+    const ASSIGNMENT_EVENTS = new Set(["task_generated", "task_assigned", "task_reassigned"]);
 
     for (const row of eventRows) {
         if (!markerVisible(row.taskId)) continue;
         const kind = eventKindFor(row.eventType);
         if (!kind) continue;
-        let actorId: string | null = null;
-        if (row.actorType === "agent") actorId = agentCanonical(row.actorId);
-        else if (row.actorType === "human") actorId = registerHuman(row.actorId);
-        if (!actorId) continue; // system events (and actors out of view) have no row to draw on
-        events.push({ id: `ev:${row.id}`, actorId, taskId: row.taskId, kind, atMs: row.createdAt.getTime() });
+        const atMs = row.createdAt.getTime();
+        // An assignee out of view (or a person) resolves to null: no marker, no edge, no id.
+        const assigneeId = assigneeAgentCanonical(row.payloadJson, agentCanonical);
 
-        // An assignee out of view resolves to null: no edge, and no id.
-        const assigneeId = assigneeCanonical(row.payloadJson, agentCanonical, registerHuman);
-        if (assigneeId) {
-            edgeEvents.push({ id: row.id, eventType: row.eventType, actorId, assigneeId, taskId: row.taskId, atMs: row.createdAt.getTime() });
+        if (row.actorType === "agent") {
+            const actorId = agentCanonical(row.actorId);
+            if (!actorId) continue; // an agent out of view has no row to draw on
+            events.push({ id: `ev:${row.id}`, actorId, taskId: row.taskId, kind, atMs });
+            if (assigneeId) {
+                edgeEvents.push({ id: row.id, eventType: row.eventType, actorId, assigneeId, taskId: row.taskId, atMs });
+                if (ASSIGNMENT_EVENTS.has(row.eventType) && assigneeId !== actorId) assignedByOtherTaskIds.add(row.taskId);
+            }
+            continue;
         }
+        if (row.actorType !== "human") continue; // system events have no one to credit
+        const byName = personName(row.actorId);
+        if (!byName) continue; // not a member of this company
+        // A person's action lands on the agent that received it: the assignee
+        // for an assignment, otherwise the task's assigned agent.
+        const receiver = ASSIGNMENT_EVENTS.has(row.eventType) ? assigneeId : row.eventType === "task_claimed" ? null : agentCanonical(row.taskAssignedAgentId);
+        if (!receiver) continue;
+        events.push({ id: `ev:${row.id}`, actorId: receiver, taskId: row.taskId, kind, atMs, byName });
+        if (ASSIGNMENT_EVENTS.has(row.eventType)) assignedByOtherTaskIds.add(row.taskId);
     }
 
     for (const row of approvalRows) {
         if (!markerVisible(row.taskId)) continue;
+        // Both markers sit on the requesting agent's row; without one, there is nowhere to draw.
         const requester = agentCanonical(row.requesterAgentId);
-        if (requester && row.requestedAt.getTime() >= fromMs && row.requestedAt.getTime() <= toMs) {
+        if (!requester) continue;
+        if (row.requestedAt.getTime() >= fromMs && row.requestedAt.getTime() <= toMs) {
             events.push({ id: `apr:${row.approvalId}`, actorId: requester, taskId: row.taskId, kind: "approval_requested", atMs: row.requestedAt.getTime() });
         }
-        const resolver = row.resolvedAt && row.resolvedAt.getTime() >= fromMs && row.resolvedAt.getTime() <= toMs ? registerHuman(row.resolverUserId) : null;
-        if (resolver && row.resolvedAt) {
-            events.push({ id: `apd:${row.approvalId}`, actorId: resolver, taskId: row.taskId, kind: "approval_decided", atMs: row.resolvedAt.getTime() });
+        const byName = personName(row.resolverUserId);
+        if (byName && row.resolvedAt && row.resolvedAt.getTime() >= fromMs && row.resolvedAt.getTime() <= toMs) {
+            events.push({ id: `apd:${row.approvalId}`, actorId: requester, taskId: row.taskId, kind: "approval_decided", atMs: row.resolvedAt.getTime(), byName, decision: row.status });
         }
     }
 
@@ -432,18 +446,25 @@ export async function loadWorkTimeline(companyId: string, viewer: TaskViewer, qu
         const thread = run.threadId ? threadById.get(run.threadId) : undefined;
         const info = run.taskId ? taskInfo.get(run.taskId) : undefined;
         const pending = pendingAtByTask.get(run.taskId ?? "") ?? [];
+        const trigger = run.triggerMessageId ? triggerByMessageId.get(run.triggerMessageId) : undefined;
+        const triggeredByOtherAgent =
+            run.triggerKind === "message" && trigger != null && trigger.senderType === "agent" && trigger.senderId != null && trigger.senderId !== run.agentId;
+        const assignedByOther = run.taskId != null && assignedByOtherTaskIds.has(run.taskId);
         return {
             runId: run.id,
             agentId: `agent:${run.agentId}`,
             taskId: run.taskId,
             taskTitle: run.taskId ? (info?.title ?? null) : null,
             projectName: run.taskId ? (info?.projectName ?? null) : null,
+            projectId: run.taskId ? (info?.projectId ?? null) : null,
             threadLabel: run.taskId ? null : threadLabel(thread, (id) => agentName.get(id ?? "") ?? null),
             href: run.taskId ? taskHref(run.taskId) : threadHref(thread),
             status: run.status,
             exitReason: run.exitReason,
             pendingApproval: pending.some((at) => approvalInRun(at, { startedAtMs: run.startedAt.getTime(), endedAtMs: run.endedAt?.getTime() ?? null })),
             triggerKind: run.triggerKind,
+            triggeredByOtherAgent,
+            assignedByOther,
             startedAtMs: run.startedAt.getTime(),
             endedAtMs: run.endedAt?.getTime() ?? null,
             durationMs: run.durationMs,
@@ -455,7 +476,6 @@ export async function loadWorkTimeline(companyId: string, viewer: TaskViewer, qu
         };
     });
 
-    const humansList = [...humans.entries()].map(([id, name]) => ({ id, name }));
     // Newest events win a cut, matching the builder.
     const cappedEvents = events.sort((a, b) => b.atMs - a.atMs).slice(0, TIMELINE_EVENT_CAP + 1);
 
@@ -464,7 +484,6 @@ export async function loadWorkTimeline(companyId: string, viewer: TaskViewer, qu
         toMs,
         nowMs,
         agents: agentRows.map((a) => ({ id: a.id, name: a.name, avatarUrl: agentAvatarSrc({ id: a.id, avatarUrl: a.avatarUrl }), hue: a.avatarAppearance?.hue ?? deriveAppearance(a.id).hue })),
-        humans: humansList,
         runs,
         events: cappedEvents,
         edgeEvents,
@@ -474,20 +493,15 @@ export async function loadWorkTimeline(companyId: string, viewer: TaskViewer, qu
     });
 }
 
-/** Resolve a task_events payload's assignee to a canonical actor id, or null (unknown or out of view). */
-function assigneeCanonical(
+/** Resolve a task_events payload's assignee to a visible agent's canonical id, or null (a person, unknown, or out of view). */
+function assigneeAgentCanonical(
     payloadJson: unknown,
     agentCanonical: (id: string | null | undefined) => string | null,
-    registerHuman: (id: string | null | undefined) => string | null,
 ): string | null {
     const payload = payloadJson && typeof payloadJson === "object" ? payloadJson as Record<string, unknown> : {};
     const assignee = payload.assignee as { type?: unknown; id?: unknown } | null | undefined;
     if (assignee && typeof assignee === "object" && typeof assignee.id === "string") {
-        return assignee.type === "agent"
-            ? agentCanonical(assignee.id)
-            : assignee.type === "human" || assignee.type === "member"
-                ? registerHuman(assignee.id)
-                : null;
+        return assignee.type === "agent" ? agentCanonical(assignee.id) : null;
     }
     if (typeof payload.assignedAgentId === "string" && payload.assignedAgentId) return agentCanonical(payload.assignedAgentId);
     return null;
@@ -500,6 +514,8 @@ interface EventRow {
     payloadJson: unknown;
     actorType: string;
     actorId: string | null;
+    /** The task's current assigned agent: where a person's note or status change is drawn. */
+    taskAssignedAgentId: string | null;
     createdAt: Date;
 }
 
@@ -542,6 +558,7 @@ async function loadEventRows(companyId: string, viewer: TaskViewer, from: Date, 
         payloadJson: taskEvents.payloadJson,
         actorType: taskEvents.actorType,
         actorId: taskEvents.actorId,
+        taskAssignedAgentId: tasks.assignedAgentId,
         createdAt: taskEvents.createdAt,
     }).from(taskEvents)
         .innerJoin(tasks, eq(tasks.id, taskEvents.taskId))
@@ -562,12 +579,13 @@ async function loadEventRows(companyId: string, viewer: TaskViewer, from: Date, 
 
 async function loadApprovalRows(companyId: string, viewer: TaskViewer, from: Date, to: Date, param: TaskParamFilter, visibleAgentIds: string[]) {
     const { none, condition } = scopedTaskPredicate(viewer);
-    if (none) return [];
+    if (none || visibleAgentIds.length === 0) return [];
     return db.select({
         approvalId: approvals.id,
         taskId: approvalTaskLinks.taskId,
         requesterAgentId: approvals.requesterAgentId,
         resolverUserId: approvals.resolverUserId,
+        status: approvals.status,
         requestedAt: approvals.requestedAt,
         resolvedAt: approvals.resolvedAt,
     }).from(approvalTaskLinks)
@@ -579,10 +597,8 @@ async function loadApprovalRows(companyId: string, viewer: TaskViewer, from: Dat
             eq(approvals.companyId, companyId),
             lt(approvals.requestedAt, to),
             or(isNull(approvals.resolvedAt), gte(approvals.resolvedAt, from)),
-            // Something to draw: a visible requester, or a person's decision.
-            visibleAgentIds.length === 0
-                ? isNotNull(approvals.resolverUserId)
-                : or(inArray(approvals.requesterAgentId, visibleAgentIds), isNotNull(approvals.resolverUserId)),
+            // Both markers sit on the requesting agent's row, so it must be visible.
+            inArray(approvals.requesterAgentId, visibleAgentIds),
             ...liveTaskConditions(condition, param),
         ))
         .orderBy(desc(approvals.requestedAt))

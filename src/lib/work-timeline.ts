@@ -1,6 +1,8 @@
 // The company "Timeline" page (docs/roadmap/product-decisions.md): a
-// Gantt-style chart of who (agents and people) worked on what, when, and who
-// handed work to whom. This module is the PURE builder — every input is a
+// Gantt-style chart of which agents worked on what, when, and which agent
+// handed work to which. Rows are AGENTS ONLY: a person's action (assigning a
+// task, deciding an approval, a note) is never a row; it is a marker on the
+// row of the agent that received it ("Assigned by Priya"). This module is the PURE builder — every input is a
 // plain object and nothing touches the database — so it is unit-tested
 // directly (tests/unit/work-timeline.test.ts). The database reads and the
 // access/scope/privacy filtering live in work-timeline-reads.ts, which feeds
@@ -20,16 +22,20 @@ export const TIMELINE_SPAN_CAP = 2000;
 export const TIMELINE_EVENT_CAP = 2000;
 export const TIMELINE_EDGE_CAP = 1000;
 
-export type TimelineActorKind = "agent" | "human";
+/** Whether a run was handed to the agent ("delegated") or the agent acted on its own ("automation"). */
+export type TimelineSource = "delegated" | "automation";
+
+/** Rows are agents only. */
+export type TimelineActorKind = "agent";
 
 export interface TimelineActor {
-    /** Canonical id: "agent:<id>" or "human:<userId>". Shared by spans/events/edges. */
+    /** Canonical id: "agent:<id>". Shared by spans/events/edges. */
     id: string;
     kind: TimelineActorKind;
     name: string;
     /** Two-letter fallback when there is no avatar. */
     initials: string;
-    /** Agent avatar endpoint (agents only); null for people. */
+    /** Agent avatar endpoint, or null for the initials fallback. */
     avatarUrl: string | null;
     /** A stable colour for bars and markers (hsl(...)). */
     colour: string;
@@ -55,6 +61,10 @@ export interface TimelineSpan {
     end: number;
     running: boolean;
     outcome: RunOutcome;
+    /** Colour-by "Source": delegated work vs the agent acting on its own. */
+    source: TimelineSource;
+    /** Stable project id for colour-by "Project"; null for chat runs. */
+    projectId: string | null;
     /** Raw run status, kept so a cancelled bar can draw hollow. */
     status: string;
     triggerKind: string;
@@ -79,11 +89,16 @@ export type TimelineEventKind =
 
 export interface TimelineEvent {
     id: string;
+    /** The agent row the marker sits on (for a person's action: the agent that received it). */
     actorId: string;
     taskId: string;
     kind: TimelineEventKind;
     /** Epoch ms. */
     at: number;
+    /** Display name of the person who caused the marker, or null when the agent itself acted. Never an email. */
+    byName: string | null;
+    /** Tooltip text, e.g. "Note", "Assigned by Priya", "Approved by Priya". */
+    label: string;
 }
 
 export type TimelineEdgeKind = "created" | "assigned" | "reassigned" | "triggered_run";
@@ -103,6 +118,8 @@ export interface TimelineTotals {
     busyMs: number;
     tokens: number;
     costCents: number;
+    /** done / finished (non-running) runs, or null when nothing has finished. */
+    successRate: number | null;
 }
 
 export interface WorkTimeline {
@@ -174,9 +191,207 @@ export function initialsOf(name: string | null | undefined): string {
 }
 
 /** The stable colour for a bar/marker: a character hue for agents, a neutral for people. */
-export function actorColour(kind: TimelineActorKind, hue: number | null | undefined): string {
+export function actorColour(kind: "agent" | "human", hue: number | null | undefined): string {
     if (kind === "agent") return `hsl(${((hue ?? 205) % 360 + 360) % 360} 72% 60%)`;
     return "hsl(215 16% 64%)";
+}
+
+// ─── Colour-by "Source" ─────────────────────────────────────────────────────
+
+/**
+ * Whether a run counts as "delegated" (another actor handed this work to the
+ * agent) rather than "automation" (the agent acted on its own). Delegated =
+ * another agent's message triggered the run, or another actor assigned its
+ * task. Everything else — task/objective/self triggers — is automation.
+ */
+export function deriveRunSource(run: { triggeredByOtherAgent: boolean; assignedByOther: boolean }): TimelineSource {
+    return run.triggeredByOtherAgent || run.assignedByOther ? "delegated" : "automation";
+}
+
+/** A stable hue (0–359) for a project id, so "Colour by project" never changes between renders. */
+export function projectHue(id: string | null | undefined): number {
+    if (!id) return 215;
+    let hash = 0;
+    for (let i = 0; i < id.length; i++) hash = (hash * 31 + id.charCodeAt(i)) >>> 0;
+    return hash % 360;
+}
+
+// ─── Clustering ─────────────────────────────────────────────────────────────
+
+export interface TimelineCluster {
+    count: number;
+    start: number;
+    end: number;
+    /** How many runs of each outcome are folded into the cluster. */
+    outcomeCounts: Partial<Record<RunOutcome, number>>;
+    spanIds: string[];
+}
+
+export type TimelineRowItem =
+    | { kind: "span"; span: TimelineSpan }
+    | { kind: "cluster"; cluster: TimelineCluster };
+
+/**
+ * Collapse runs that are closer than `minGapPx` at the current zoom into a
+ * single cluster pill (the "barcode" fix for 7/30-day views). Spans are
+ * assumed to be on the same row; the result preserves start order, with each
+ * cluster spanning its earliest start to its latest end.
+ */
+export function clusterSpans(spans: readonly TimelineSpan[], pxPerMs: number, minGapPx = 4): TimelineRowItem[] {
+    const sorted = [...spans].sort((a, b) => a.start - b.start);
+    const items: TimelineRowItem[] = [];
+    const mergeCounts = (base: Partial<Record<RunOutcome, number>>, outcome: RunOutcome): Partial<Record<RunOutcome, number>> => {
+        const next = { ...base };
+        next[outcome] = (next[outcome] ?? 0) + 1;
+        return next;
+    };
+    for (const span of sorted) {
+        const last = items[items.length - 1];
+        if (last && last.kind === "cluster") {
+            if ((span.start - last.cluster.end) * pxPerMs < minGapPx) {
+                const c = last.cluster;
+                c.count += 1;
+                c.end = Math.max(c.end, span.end);
+                c.outcomeCounts = mergeCounts(c.outcomeCounts, span.outcome);
+                c.spanIds.push(span.id);
+                continue;
+            }
+        } else if (last && last.kind === "span") {
+            if ((span.start - last.span.end) * pxPerMs < minGapPx) {
+                const a = last.span;
+                const outcomeCounts = mergeCounts(mergeCounts({}, a.outcome), span.outcome);
+                items[items.length - 1] = {
+                    kind: "cluster",
+                    cluster: { count: 2, start: a.start, end: Math.max(a.end, span.end), outcomeCounts, spanIds: [a.id, span.id] },
+                };
+                continue;
+            }
+        }
+        items.push({ kind: "span", span });
+    }
+    return items;
+}
+
+// ─── Auto-fit "Today" range ─────────────────────────────────────────────────
+
+const MIN_MS = 60_000;
+const HOUR_MS = 3_600_000;
+
+/**
+ * The "Today" window, auto-fitted to the day's activity: from the first run
+ * that started today (minus 30 minutes, never before midnight) to now (plus 15
+ * minutes). A running run that began yesterday pins the left edge to midnight.
+ * An empty day falls back to the last 8 hours.
+ */
+export function autoFitTodayRange(spans: readonly { startedAtMs: number; running: boolean }[], nowMs: number): { fromMs: number; toMs: number } {
+    const startOfToday = new Date(new Date(nowMs).getFullYear(), new Date(nowMs).getMonth(), new Date(nowMs).getDate()).getTime();
+    let first = Infinity;
+    for (const s of spans) {
+        if (s.startedAtMs >= startOfToday) first = Math.min(first, s.startedAtMs);
+        else if (s.running) first = Math.min(first, startOfToday);
+    }
+    if (!Number.isFinite(first)) return { fromMs: nowMs - 8 * HOUR_MS, toMs: nowMs };
+    return { fromMs: Math.max(startOfToday, first - 30 * MIN_MS), toMs: nowMs + 15 * MIN_MS };
+}
+
+// ─── Time axis ticks ────────────────────────────────────────────────────────
+
+const DAY_MS = 24 * HOUR_MS;
+/** Candidate tick steps, finest first. */
+const TICK_STEPS = [
+    5 * MIN_MS, 10 * MIN_MS, 15 * MIN_MS, 30 * MIN_MS,
+    HOUR_MS, 2 * HOUR_MS, 3 * HOUR_MS, 6 * HOUR_MS, 12 * HOUR_MS,
+    DAY_MS, 2 * DAY_MS, 3 * DAY_MS, 7 * DAY_MS,
+];
+/** Room each labelled tick needs; ~6–10 labels across a typical chart. */
+const TICK_LABEL_PX = 100;
+/** The closest faint minor ticks may sit. */
+const MINOR_TICK_PX = 10;
+const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+
+export interface TimeTicks {
+    /** Labelled ticks. */
+    major: { ms: number; label: string }[];
+    /** Faint unlabelled ticks between the labelled ones (never on a major tick). */
+    minor: number[];
+}
+
+export interface TimeTickOptions {
+    /**
+     * The viewer's UTC offset in minutes at an instant (east positive). Defaults
+     * to the browser's local zone; tests pass a fixed offset. Evaluated per tick,
+     * so ticks stay on local hours and midnights across a DST change.
+     */
+    offsetMinutes?: (ms: number) => number;
+}
+
+const localOffset = (ms: number) => -new Date(ms).getTimezoneOffset();
+const pad2 = (n: number) => String(n).padStart(2, "0");
+
+/**
+ * Ticks for the time axis of [fromMs, toMs] drawn `widthPx` wide. Picks the
+ * finest step (5/10/15/30 min, 1/2/3/6/12 h, 1/2/3 days, 1 week) that keeps
+ * labelled ticks at least ~100 px apart — so ~6–10 labels on a typical chart,
+ * more when zoomed in. Steps of a day or more sit on local midnights (a week
+ * on Mondays) and read as days: "Mon 19" for ranges up to 10 days, "Oct 19"
+ * beyond; sub-day ticks read "14:00", except a tick on local midnight, which
+ * names the day. Minor ticks are the finest step that divides the major step
+ * and stays ≥ 10 px apart (hours under a day step).
+ */
+export function timeTicks(fromMs: number, toMs: number, widthPx: number, options: TimeTickOptions = {}): TimeTicks {
+    const empty: TimeTicks = { major: [], minor: [] };
+    if (!Number.isFinite(fromMs) || !Number.isFinite(toMs) || toMs <= fromMs || !(widthPx > 0)) return empty;
+    const offsetMinutes = options.offsetMinutes ?? localOffset;
+    const spanMs = toMs - fromMs;
+    const pxPerMs = widthPx / spanMs;
+    const maxLabels = Math.max(2, Math.floor(widthPx / TICK_LABEL_PX));
+    const major = TICK_STEPS.find((step) => spanMs / step <= maxLabels) ?? TICK_STEPS[TICK_STEPS.length - 1];
+    const minor = TICK_STEPS.find((step) => step < major && major % step === 0 && step * pxPerMs >= MINOR_TICK_PX) ?? null;
+    const longRange = spanMs > 10 * DAY_MS;
+
+    // Work in "local ms" (UTC ms shifted by the offset), so UTC getters read local fields.
+    const toLocal = (ms: number) => ms + offsetMinutes(ms) * MIN_MS;
+    const toUtc = (local: number) => {
+        const guess = local - offsetMinutes(local) * MIN_MS;
+        return local - offsetMinutes(guess) * MIN_MS;
+    };
+    const dayLabel = (local: number) => {
+        const d = new Date(local);
+        return longRange ? `${MONTHS[d.getUTCMonth()]} ${d.getUTCDate()}` : `${WEEKDAYS[d.getUTCDay()]} ${d.getUTCDate()}`;
+    };
+    const label = (local: number) => {
+        const d = new Date(local);
+        if (major >= DAY_MS || (d.getUTCHours() === 0 && d.getUTCMinutes() === 0)) return dayLabel(local);
+        return `${pad2(d.getUTCHours())}:${pad2(d.getUTCMinutes())}`;
+    };
+    // The first aligned local instant at or after `localFrom` for a step.
+    const firstAligned = (localFrom: number, step: number) => {
+        if (step === 7 * DAY_MS) {
+            // Epoch day 0 (1970-01-01) was a Thursday; Monday is day 4.
+            const day = Math.ceil(localFrom / DAY_MS);
+            return (day + ((4 - day) % 7 + 7) % 7) * DAY_MS;
+        }
+        return Math.ceil(localFrom / step) * step;
+    };
+    const walk = (step: number, limit: number): number[] => {
+        const out: number[] = [];
+        const localFrom = toLocal(fromMs);
+        const localTo = toLocal(toMs);
+        for (let local = firstAligned(localFrom, step); local <= localTo && out.length < limit; local += step) {
+            const ms = toUtc(local);
+            // A DST jump can fold two local instants together; keep ticks strictly increasing.
+            if (ms >= fromMs && ms <= toMs && (out.length === 0 || ms > out[out.length - 1])) out.push(local);
+        }
+        return out;
+    };
+
+    const majorLocal = walk(major, 500);
+    const majorSet = new Set(majorLocal);
+    return {
+        major: majorLocal.map((local) => ({ ms: toUtc(local), label: label(local) })),
+        minor: minor == null ? [] : walk(minor, 5000).filter((local) => !majorSet.has(local)).map(toUtc),
+    };
 }
 
 // ─── Event kind mapping ─────────────────────────────────────────────────────
@@ -197,6 +412,30 @@ export function eventKindFor(eventType: string): TimelineEventKind | null {
     return null;
 }
 
+/** Past-tense verb for an approval decision; unknown values read "Decided". */
+const DECISION_VERB: Record<string, string> = { approved: "Approved", rejected: "Rejected", dismissed: "Dismissed" };
+const PERSON_VERB: Record<TimelineEventKind, string> = {
+    created: "Created",
+    assigned: "Assigned",
+    status: "Status changed",
+    note: "Note",
+    approval_requested: "Approval requested",
+    approval_decided: "Decided",
+    file: "File added",
+};
+
+/**
+ * A marker's tooltip text. A person's action reads "<Verb> by <name>"
+ * ("Assigned by Priya", "Approved by Priya", "Note by Priya"); an agent's own
+ * marker is the plain kind label ("Note").
+ */
+export function eventLabel(kind: TimelineEventKind, byName: string | null | undefined, decision?: string | null): string {
+    const name = byName?.trim();
+    if (!name) return EVENT_KIND_LABEL[kind];
+    const verb = kind === "approval_decided" ? (DECISION_VERB[decision ?? ""] ?? "Decided") : PERSON_VERB[kind];
+    return `${verb} by ${name}`;
+}
+
 // ─── Edge derivation ────────────────────────────────────────────────────────
 
 /**
@@ -215,9 +454,11 @@ export function eventKindFor(eventType: string): TimelineEventKind | null {
  *     resolves `triggerActorId` from the trigger message's sender). This is the
  *     "agent A asked agent B to act" handoff path.
  *
- * Edges only connect actors that are actually present in the timeline (the
- * builder drops any edge whose `from` or `to` is not a visible actor), so a
- * scoped view can never leak an out-of-scope agent through an edge.
+ * Edges only connect agents that are actually present in the timeline (the
+ * builder drops any edge whose `from` or `to` is not a visible agent row), so
+ * a scoped view can never leak an out-of-scope agent through an edge, and a
+ * person's assignment is never an edge: it is an "Assigned by …" marker on
+ * the receiving agent's row instead.
  */
 
 export interface EdgeEventInput {
@@ -283,12 +524,17 @@ export interface BuildRunSource {
     taskId: string | null;
     taskTitle: string | null;
     projectName: string | null;
+    projectId: string | null;
     threadLabel: string | null;
     href: string | null;
     status: string;
     exitReason: string | null;
     pendingApproval: boolean;
     triggerKind: string;
+    /** True when a different agent's message triggered this run (the handoff path). */
+    triggeredByOtherAgent: boolean;
+    /** True when another actor assigned this run's task. */
+    assignedByOther: boolean;
     startedAtMs: number;
     endedAtMs: number | null;
     durationMs: number | null;
@@ -301,19 +547,23 @@ export interface BuildRunSource {
 
 export interface BuildEventSource {
     id: string;
+    /** The agent row to draw on. */
     actorId: string;
     taskId: string;
     kind: TimelineEventKind;
     atMs: number;
+    /** Display name of the person who acted, when a person did (never an email). */
+    byName?: string | null;
+    /** An approval's final status, for "Approved by …" / "Rejected by …". */
+    decision?: string | null;
 }
 
 export interface BuildTimelineInput {
     fromMs: number;
     toMs: number;
     nowMs: number;
+    /** The (already scoped) agents: the ONLY rows the timeline has. */
     agents: BuildAgentSource[];
-    /** People who acted or were assigned work; only referenced ones become rows. */
-    humans: { id: string; name: string }[];
     runs: BuildRunSource[];
     events: BuildEventSource[];
     edgeEvents: EdgeEventInput[];
@@ -329,16 +579,12 @@ export interface BuildTimelineInput {
 export function buildWorkTimeline(input: BuildTimelineInput): WorkTimeline {
     const { fromMs, toMs, nowMs } = input;
 
-    // Rows: agents first (activity, then name), then humans who acted.
-    const humanById = new Map(input.humans.map((h) => [`human:${h.id}`, h]));
-
-    // Visible actors are EXACTLY the (already scoped) agent rows plus the
-    // people the caller supplied. Runs, events and edges never widen the set:
-    // anything naming an actor outside it is dropped, so an out-of-scope or
-    // deleted agent never appears through a span, a marker or a handoff, and
-    // the totals only count bars that have a row.
+    // Visible actors are EXACTLY the (already scoped) agent rows. Runs,
+    // events and edges never widen the set: anything naming an actor outside
+    // it (a person, an out-of-scope or deleted agent) is dropped, so no person
+    // ever gets a row or a handoff end, and the totals only count bars that
+    // have a row.
     const actorIds = new Set<string>(input.agents.map((a) => `agent:${a.id}`));
-    for (const human of input.humans) actorIds.add(`human:${human.id}`);
 
     // Build spans (clipped) and accumulate per-actor stats.
     const spans: TimelineSpan[] = [];
@@ -372,6 +618,8 @@ export function buildWorkTimeline(input: BuildTimelineInput): WorkTimeline {
             end: clipped.end,
             running: clipped.running,
             outcome: runOutcome({ status: run.status, exitReason: run.exitReason }, { pendingApproval: run.pendingApproval }),
+            source: deriveRunSource(run),
+            projectId: run.projectId,
             status: run.status,
             triggerKind: run.triggerKind,
             startedAtMs: run.startedAtMs,
@@ -391,19 +639,19 @@ export function buildWorkTimeline(input: BuildTimelineInput): WorkTimeline {
         .sort((a, b) => a.atMs - b.atMs);
     const events: TimelineEvent[] = windowEvents
         .slice(-TIMELINE_EVENT_CAP)
-        .map((event) => ({ id: event.id, actorId: event.actorId, taskId: event.taskId, kind: event.kind, at: event.atMs }));
+        .map((event) => {
+            const byName = event.byName?.trim() || null;
+            return { id: event.id, actorId: event.actorId, taskId: event.taskId, kind: event.kind, at: event.atMs, byName, label: eventLabel(event.kind, byName, event.decision) };
+        });
 
-    // Edges: only between visible actors, capped (newest kept).
+    // Edges: only between visible agents, capped (newest kept).
     const allEdges = deriveEdges(input.edgeEvents, input.edgeRuns)
         .filter((edge) => edge.at >= fromMs && edge.at <= toMs)
         .filter((edge) => actorIds.has(edge.from) && actorIds.has(edge.to))
         .sort((a, b) => a.at - b.at);
     const edges = allEdges.slice(-TIMELINE_EDGE_CAP);
 
-    // Actors: agents first (activity, then name), then humans who acted.
-    const humansPresent = [...new Set(input.humans.map((h) => `human:${h.id}`))].filter((id) => {
-        return spans.some((s) => s.actorId === id) || events.some((e) => e.actorId === id) || edges.some((e) => e.from === id || e.to === id);
-    });
+    // Actors: agents only, by activity, then runs, then name.
     const agentsOrdered = input.agents
         .map((a) => ({ id: `agent:${a.id}`, a }))
         .sort((x, y) => {
@@ -415,47 +663,27 @@ export function buildWorkTimeline(input: BuildTimelineInput): WorkTimeline {
             if (byRuns !== 0) return byRuns;
             return x.a.name.localeCompare(y.a.name);
         });
-    const humansOrdered = humansPresent
-        .sort((a, b) => {
-            const sa = stats.get(a);
-            const sb = stats.get(b);
-            const byBusy = (sb?.busyMs ?? 0) - (sa?.busyMs ?? 0);
-            if (byBusy !== 0) return byBusy;
-            return (humanById.get(a)?.name ?? a).localeCompare(humanById.get(b)?.name ?? b);
-        });
+    const actors: TimelineActor[] = agentsOrdered.map(({ id, a }) => ({
+        id,
+        kind: "agent" as const,
+        name: a.name,
+        initials: initialsOf(a.name),
+        avatarUrl: a.avatarUrl,
+        colour: actorColour("agent", a.hue),
+        runCount: stats.get(id)?.runCount ?? 0,
+        busyMs: stats.get(id)?.busyMs ?? 0,
+        tokens: stats.get(id)?.tokens ?? 0,
+        costCents: stats.get(id)?.costCents ?? 0,
+    }));
 
-    const actors: TimelineActor[] = [
-        ...agentsOrdered.map(({ id, a }) => ({
-            id,
-            kind: "agent" as const,
-            name: a.name,
-            initials: initialsOf(a.name),
-            avatarUrl: a.avatarUrl,
-            colour: actorColour("agent", a.hue),
-            runCount: stats.get(id)?.runCount ?? 0,
-            busyMs: stats.get(id)?.busyMs ?? 0,
-            tokens: stats.get(id)?.tokens ?? 0,
-            costCents: stats.get(id)?.costCents ?? 0,
-        })),
-        ...humansOrdered.map((id) => ({
-            id,
-            kind: "human" as const,
-            name: humanById.get(id)?.name ?? "Someone",
-            initials: initialsOf(humanById.get(id)?.name),
-            avatarUrl: null,
-            colour: actorColour("human", null),
-            runCount: stats.get(id)?.runCount ?? 0,
-            busyMs: stats.get(id)?.busyMs ?? 0,
-            tokens: stats.get(id)?.tokens ?? 0,
-            costCents: stats.get(id)?.costCents ?? 0,
-        })),
-    ];
-
+    const finished = spans.filter((s) => !s.running);
+    const done = finished.filter((s) => s.outcome === "done").length;
     const totals: TimelineTotals = {
         runs: spans.length,
         busyMs: spans.reduce((sum, s) => sum + (s.end - s.start), 0),
         tokens: spans.reduce((sum, s) => sum + s.tokens, 0),
         costCents: spans.reduce((sum, s) => sum + s.costCents, 0),
+        successRate: finished.length > 0 ? done / finished.length : null,
     };
 
     const capped =
