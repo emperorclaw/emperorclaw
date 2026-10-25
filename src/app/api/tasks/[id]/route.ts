@@ -1,12 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
-import { and, eq, isNull } from "drizzle-orm";
-import { db } from "@/db";
-import { tasks } from "@/db/schema";
 import { AuthError, requireRole } from "@/lib/roles";
 import { updateTaskForCompany } from "@/lib/openclaw/tasks";
-import { broadcastMcpEvent } from "@/lib/pubsub";
 import { serializeTaskWithAssignee } from "@/lib/task-assignee";
 import { memberMayAssignAgents, memberMaySeeTaskId } from "@/lib/member-scope";
+import { archiveTasksForCaller } from "@/lib/task-archive";
 
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
     let ctx;
@@ -65,26 +62,12 @@ export async function DELETE(_req: NextRequest, { params }: { params: Promise<{ 
     }
 
     const { id: taskId } = await params;
-    if (!(await memberMaySeeTaskId(ctx.companyId, ctx.scope, taskId))) {
-        return NextResponse.json({ error: "Task not found" }, { status: 404 });
-    }
     try {
-        const [existing] = await db.select().from(tasks).where(and(
-            eq(tasks.id, taskId),
-            eq(tasks.companyId, ctx.companyId),
-            isNull(tasks.deletedAt),
-        )).limit(1);
-
-        if (!existing) {
+        // Same checks as the bulk archive: company, then the member's scope.
+        const { tasks: [task] } = await archiveTasksForCaller(ctx, [taskId]);
+        if (!task) {
             return NextResponse.json({ error: "Task not found" }, { status: 404 });
         }
-
-        const [task] = await db.update(tasks).set({
-            deletedAt: new Date(),
-            updatedAt: new Date(),
-        }).where(eq(tasks.id, taskId)).returning();
-
-        await broadcastMcpEvent(ctx.companyId, { type: "task_updated", task });
         return NextResponse.json({ task });
     } catch (error) {
         console.error("Task delete error:", error);

@@ -17,6 +17,7 @@ import {
     formatAge,
     groupBoardTasks,
     isRecurringTask,
+    laneIsBulkArchivable,
     priorityLevel,
     REVIEW_BUCKET_LABEL,
     reviewBucketFor,
@@ -28,8 +29,8 @@ import {
 } from "@/lib/project-board-model";
 import { projectTitle } from "@/lib/project-title";
 import { cn } from "@/lib/utils";
-import { BoardLane, LaneList, LaneSwitcher, laneCount, type CardHandlers, type Lane } from "./board/board-lanes";
-import { BlockTaskDialog, ConfirmArchiveTaskDialog, ProjectFormDialog, TaskFormDialog, workTypeLabel } from "./board/board-dialogs";
+import { BoardLane, LaneList, LaneSwitcher, laneCount, type CardHandlers, type Lane, type RowSelection } from "./board/board-lanes";
+import { BlockTaskDialog, ConfirmArchiveTaskDialog, ConfirmArchiveTasksDialog, ProjectFormDialog, TaskFormDialog, workTypeLabel } from "./board/board-dialogs";
 import { ProjectHeader } from "./board/project-header";
 import { ProjectNotesPanel } from "./board/project-notes-panel";
 import { TaskCard, type TaskView } from "./board/task-card";
@@ -102,6 +103,26 @@ async function patchTaskRequest(taskId: string, body: Record<string, unknown>) {
     return data.task;
 }
 
+/** The bulk archive routes take at most this many ids per request. */
+const BULK_ARCHIVE_CHUNK = 200;
+const UNDO_TOAST_MS = 8000;
+
+/** POST `{ taskIds }` to a bulk route in chunks; returns the ids the server changed. */
+async function bulkTaskRequest(url: string, taskIds: string[], resultKey: "archived" | "restored") {
+    const changed: string[] = [];
+    let skipped = 0;
+    for (let start = 0; start < taskIds.length; start += BULK_ARCHIVE_CHUNK) {
+        const res = await fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ taskIds: taskIds.slice(start, start + BULK_ARCHIVE_CHUNK) }) });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(typeof data.error === "string" ? data.error : "Request failed");
+        if (Array.isArray(data[resultKey])) changed.push(...data[resultKey]);
+        if (Array.isArray(data.skipped)) skipped += data.skipped.length;
+    }
+    return { changed, skipped };
+}
+
+const taskCount = (count: number) => `${count} ${count === 1 ? "task" : "tasks"}`;
+
 /** Wall clock that ticks each minute. 0 until mounted, so server and client render the same HTML. */
 function useMinuteClock() {
     const [now, setNow] = useState(0);
@@ -147,6 +168,9 @@ export default function ProjectsClient({ initialTasks, projects, agents, custome
     const [archiveProjectArmed, setArchiveProjectArmed] = useState<string | null>(null);
     const [archivingTaskId, setArchivingTaskId] = useState<string | null>(null);
     const [blockDialog, setBlockDialog] = useState<{ task: any } | null>(null);
+    /** Tasks waiting on the "Archive N tasks?" confirmation (a lane's "Archive all" or the list selection). */
+    const [bulkArchiveIds, setBulkArchiveIds] = useState<string[] | null>(null);
+    const [listSelection, setListSelection] = useState<ReadonlySet<string>>(() => new Set());
     const [blockReasonDraft, setBlockReasonDraft] = useState("");
     const [hideCompletedProjects, setHideCompletedProjects] = useState(true);
     const [completingProject, setCompletingProject] = useState<string | null>(null);
@@ -347,6 +371,15 @@ export default function ProjectsClient({ initialTasks, projects, agents, custome
                 emptyText: "No recurring work.",
             }] : []),
         ];
+
+    if (canEdit) {
+        for (const lane of lanes) {
+            if (laneIsBulkArchivable({ key: lane.key, tasks: lane.views.map((view) => view.task), hasDefinitions: (lane.definitions?.length ?? 0) > 0 })) {
+                const ids = lane.views.map((view) => view.task.id);
+                lane.onArchiveAll = () => { setMutationError(null); setBulkArchiveIds(ids); };
+            }
+        }
+    }
 
     // Phones show one lane at a time; default to where the work is.
     const activePhoneLane = lanes.find((lane) => lane.key === phoneLane)
@@ -624,6 +657,63 @@ export default function ProjectsClient({ initialTasks, projects, agents, custome
         }
     };
 
+    const restoreTasks = async (ids: string[], snapshot: any[]) => {
+        try {
+            const { changed } = await bulkTaskRequest("/api/tasks/unarchive", ids, "restored");
+            const back = new Set(changed);
+            setTasks((prev) => {
+                const present = new Set(prev.map((task) => task.id));
+                return [...snapshot.filter((task) => back.has(task.id) && !present.has(task.id)).map((task) => ({ ...task, deletedAt: null })), ...prev];
+            });
+            if (changed.length < ids.length) toast.warning(`Restored ${taskCount(changed.length)}. ${taskCount(ids.length - changed.length)} could not be restored.`);
+            else toast.success(`Restored ${taskCount(changed.length)}`);
+            router.refresh();
+        } catch (error) {
+            toast.error(error instanceof Error ? error.message : "Could not restore the tasks");
+        }
+    };
+
+    const archiveTasks = async (ids: string[]) => {
+        setIsMutating(true);
+        setMutationError(null);
+        try {
+            const { changed, skipped } = await bulkTaskRequest("/api/tasks/archive", ids, "archived");
+            const gone = new Set(changed);
+            const snapshot = tasks.filter((task) => gone.has(task.id));
+            setTasks((prev) => prev.filter((task) => !gone.has(task.id)));
+            setListSelection((prev) => new Set([...prev].filter((id) => !gone.has(id))));
+            if (selectedTaskId && gone.has(selectedTaskId)) setSelectedTaskId(null);
+            setBulkArchiveIds(null);
+            toast.success(`Archived ${taskCount(changed.length)}`, {
+                description: skipped > 0 ? `${taskCount(skipped)} skipped: you cannot archive ${skipped === 1 ? "it" : "them"}, or ${skipped === 1 ? "it was" : "they were"} already gone.` : undefined,
+                duration: UNDO_TOAST_MS,
+                action: changed.length > 0 ? { label: "Undo", onClick: () => void restoreTasks(changed, snapshot) } : undefined,
+            });
+            router.refresh();
+        } catch (error) {
+            setMutationError(error instanceof Error ? error.message : "Could not archive the tasks");
+        } finally {
+            setIsMutating(false);
+        }
+    };
+
+    // List-view selection only ever holds tasks the current filters show.
+    const visibleIds = useMemo(() => new Set(filteredTasks.map((task) => task.id)), [filteredTasks]);
+    const selectedVisibleIds = [...listSelection].filter((id) => visibleIds.has(id));
+    const rowSelection: RowSelection | undefined = canEdit && viewMode === "list" ? {
+        ids: listSelection,
+        toggle: (taskId) => setListSelection((prev) => {
+            const next = new Set(prev);
+            if (next.has(taskId)) next.delete(taskId); else next.add(taskId);
+            return next;
+        }),
+        setMany: (taskIds, selected) => setListSelection((prev) => {
+            const next = new Set(prev);
+            for (const id of taskIds) { if (selected) next.add(id); else next.delete(id); }
+            return next;
+        }),
+    } : undefined;
+
     // ─── Drag and drop ──────────────────────────────────────────────────────
     const handleDragStart = (event: DragStartEvent) => setDraggingTaskId(String(event.active.id));
     const handleDragEnd = (event: DragEndEvent) => {
@@ -819,7 +909,7 @@ export default function ProjectsClient({ initialTasks, projects, agents, custome
                 </p>
             )}
 
-            {mutationError && !projectDialogMode && !taskDialogMode && !blockDialog && !archivingTaskId && (
+            {mutationError && !projectDialogMode && !taskDialogMode && !blockDialog && !archivingTaskId && !bulkArchiveIds && (
                 <div role="alert" className="flex items-start gap-3 rounded-lg border border-rose-500/30 bg-rose-500/10 px-4 py-3 text-sm text-rose-200">
                     <span className="flex-1">{mutationError}</span>
                     <button type="button" onClick={() => setMutationError(null)} aria-label="Dismiss" className="text-rose-300 hover:text-rose-100"><IconX className="h-4 w-4" aria-hidden="true" /></button>
@@ -858,7 +948,14 @@ export default function ProjectsClient({ initialTasks, projects, agents, custome
                     {/* Desktop list */}
                     {viewMode === "list" && (
                         <div className="hidden md:block">
-                            <LaneList lanes={lanes} handlers={handlers} />
+                            {rowSelection && selectedVisibleIds.length > 0 && (
+                                <div role="region" aria-label="Selected tasks" className="sticky top-0 z-10 mb-3 flex items-center gap-3 rounded-xl border border-zinc-800 bg-zinc-950/95 px-3 py-2 text-sm text-zinc-300 shadow-lg shadow-black/30 backdrop-blur">
+                                    <span><span className="tabular-nums text-zinc-100">{selectedVisibleIds.length}</span> selected</span>
+                                    <button type="button" onClick={() => { setMutationError(null); setBulkArchiveIds(selectedVisibleIds); }} className="ml-auto inline-flex h-8 items-center gap-1.5 rounded-lg bg-rose-500/15 px-3 text-sm font-medium text-rose-100 ring-1 ring-inset ring-rose-400/30 hover:bg-rose-500/25">Archive selected</button>
+                                    <button type="button" onClick={() => setListSelection(new Set())} className="inline-flex h-8 items-center rounded-lg px-2 text-sm text-zinc-400 hover:text-zinc-200">Clear</button>
+                                </div>
+                            )}
+                            <LaneList lanes={lanes} handlers={handlers} selection={rowSelection} />
                         </div>
                     )}
                     {/* Phones: one state at a time */}
@@ -913,6 +1010,14 @@ export default function ProjectsClient({ initialTasks, projects, agents, custome
                 error={archivingTaskId ? mutationError : null}
                 onCancel={() => setArchivingTaskId(null)}
                 onConfirm={() => { const task = tasks.find((item) => item.id === archivingTaskId); if (task) void archiveTask(task); }}
+            />
+            <ConfirmArchiveTasksDialog
+                open={Boolean(bulkArchiveIds)}
+                count={bulkArchiveIds?.length ?? 0}
+                busy={isMutating}
+                error={bulkArchiveIds ? mutationError : null}
+                onCancel={() => setBulkArchiveIds(null)}
+                onConfirm={() => { if (bulkArchiveIds) void archiveTasks(bulkArchiveIds); }}
             />
             <BlockTaskDialog
                 open={Boolean(blockDialog)}

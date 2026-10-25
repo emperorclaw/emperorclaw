@@ -51,6 +51,21 @@ export const OVERDUE_REVIEW_MS = 24 * 60 * 60 * 1000;
 export const isRecurringTask = (task: BoardTask | null | undefined) => task?.taskKind === "recurring" || task?.taskKind === "recurrent";
 export const isExceptionTask = (task: BoardTask) => task.state === "failed" || task.state === "dead_letter";
 
+/** Finished work that a whole-column "Archive all" may clear. */
+export const BULK_ARCHIVE_STATES: ReadonlySet<string> = new Set(["done"]);
+/** Lanes that hold live work never offer "Archive all", whatever is in them. */
+const NEVER_BULK_ARCHIVE_LANES: ReadonlySet<string> = new Set(["inbox", "in_progress"]);
+
+/**
+ * A lane offers "Archive all" when it holds at least one task, no recurring
+ * definitions, and every task in it is finished (the Done column, or any
+ * other lane that happens to hold only finished work).
+ */
+export function laneIsBulkArchivable(lane: { key: string; tasks: readonly BoardTask[]; hasDefinitions?: boolean }): boolean {
+    if (NEVER_BULK_ARCHIVE_LANES.has(lane.key) || lane.hasDefinitions || lane.tasks.length === 0) return false;
+    return lane.tasks.every((task) => BULK_ARCHIVE_STATES.has(task.state ?? ""));
+}
+
 function input(task: BoardTask): Record<string, unknown> {
     return task.inputJson && typeof task.inputJson === "object" ? task.inputJson as Record<string, unknown> : {};
 }

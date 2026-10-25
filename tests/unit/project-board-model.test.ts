@@ -6,6 +6,7 @@ import {
     formatAge,
     groupBoardTasks,
     initialsOf,
+    laneIsBulkArchivable,
     priorityLevel,
     sentenceCase,
     taskBriefMarkdown,
@@ -104,4 +105,16 @@ test("the brief folds structured fields into one Markdown document", () => {
 test("agent HTML is tidied: details become a bold heading, scripts disappear, code fences are untouched", () => {
     const out = tidyAgentMarkdown("Done.\n\n<details><summary>Details</summary>Retried twice.</details>\n\n<script>alert(1)</script>\n\n```html\n<script>keep()</script>\n```");
     assert.equal(out, "Done.\n\n**Details**\n\nRetried twice.\n\n```html\n<script>keep()</script>\n```");
+});
+
+test("only lanes of finished work offer Archive all", () => {
+    const done = task({ state: "done" });
+    assert.equal(laneIsBulkArchivable({ key: "done", tasks: [done, task({ id: "t2", state: "done" })] }), true);
+    assert.equal(laneIsBulkArchivable({ key: "done", tasks: [] }), false, "an empty lane has nothing to archive");
+    assert.equal(laneIsBulkArchivable({ key: "review", tasks: [done] }), true, "any lane holding only finished work qualifies");
+    assert.equal(laneIsBulkArchivable({ key: "review", tasks: [done, task({ id: "t3", state: "review" })] }), false);
+    assert.equal(laneIsBulkArchivable({ key: "in_progress", tasks: [done] }), false, "live-work lanes never offer it");
+    assert.equal(laneIsBulkArchivable({ key: "inbox", tasks: [done] }), false);
+    assert.equal(laneIsBulkArchivable({ key: "recurring", tasks: [done], hasDefinitions: true }), false);
+    assert.equal(laneIsBulkArchivable({ key: "failed", tasks: [task({ state: "failed" })] }), false, "failed work needs a person, not a sweep");
 });

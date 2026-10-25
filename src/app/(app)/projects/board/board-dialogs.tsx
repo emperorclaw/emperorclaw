@@ -232,6 +232,23 @@ export function ConfirmArchiveTaskDialog({ open, title, busy, error, onCancel, o
     );
 }
 
+export function ConfirmArchiveTasksDialog({ open, count, busy, error, onCancel, onConfirm }: { open: boolean; count: number; busy: boolean; error: string | null; onCancel: () => void; onConfirm: () => void }) {
+    const noun = count === 1 ? "task" : "tasks";
+    return (
+        <Dialog open={open} onOpenChange={(next) => { if (!next && !busy) onCancel(); }}>
+            <DialogContent className="bg-background text-foreground sm:max-w-md" showCloseButton={!busy}>
+                <DialogHeader><DialogTitle>Archive {count} {noun}?</DialogTitle></DialogHeader>
+                <p className="text-sm text-muted-foreground">{count === 1 ? "It" : "They"} will disappear from the board. History and files stay saved, and you can undo for a few seconds afterwards.</p>
+                {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
+                <div className="flex justify-end gap-2">
+                    <button disabled={busy} onClick={onCancel} className="min-h-11 rounded-md border px-4 text-sm">Cancel</button>
+                    <button disabled={busy || count === 0} onClick={onConfirm} className="min-h-11 rounded-md bg-destructive px-4 text-sm text-white disabled:opacity-50">{busy ? "Archiving…" : `Archive ${count} ${noun}`}</button>
+                </div>
+            </DialogContent>
+        </Dialog>
+    );
+}
+
 export function BlockTaskDialog({ open, title, reason, setReason, busy, error, onCancel, onConfirm }: { open: boolean; title: string; reason: string; setReason: (value: string) => void; busy: boolean; error: string | null; onCancel: () => void; onConfirm: () => void }) {
     return (
         <Dialog open={open} onOpenChange={(next) => { if (!next && !busy) onCancel(); }}>

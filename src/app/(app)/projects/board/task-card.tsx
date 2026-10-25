@@ -274,7 +274,7 @@ export function TaskCard({ view, canEdit, onOpen, onSetPriority, onSetState, onA
 }
 
 /** A compact row for the list view and phones. Tapping opens the task. */
-export function TaskRow({ view, canEdit, onOpen, onSetPriority, onSetState, onArchive, selected }: {
+export function TaskRow({ view, canEdit, onOpen, onSetPriority, onSetState, onArchive, selected, selection }: {
     view: TaskView;
     canEdit: boolean;
     onOpen: () => void;
@@ -282,16 +282,28 @@ export function TaskRow({ view, canEdit, onOpen, onSetPriority, onSetState, onAr
     onSetState?: (state: string) => void;
     onArchive?: () => void;
     selected?: boolean;
+    /** List-view multi-select: a checkbox before the row. */
+    selection?: { checked: boolean; onToggle: () => void };
 }) {
     const [menuOpen, setMenuOpen] = useState(false);
     return (
         <li className="group/card relative">
+            {selection && (
+                <input
+                    type="checkbox"
+                    aria-label={`Select ${view.title}`}
+                    checked={selection.checked}
+                    onChange={selection.onToggle}
+                    className="absolute left-3 top-1/2 z-10 h-4 w-4 -translate-y-1/2 cursor-pointer accent-cyan-500"
+                />
+            )}
             <button
                 type="button"
                 onClick={onOpen}
                 onContextMenu={canEdit ? (event) => { event.preventDefault(); setMenuOpen(true); } : undefined}
                 className={cn(
                     "flex min-h-14 w-full min-w-0 items-center gap-3 rounded-lg px-3 py-2.5 pr-10 text-left outline-none transition-colors",
+                    selection && "pl-10",
                     "hover:bg-zinc-900/70 focus-visible:bg-zinc-900/70 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-cyan-400/50",
                     selected && "bg-zinc-900/80",
                 )}

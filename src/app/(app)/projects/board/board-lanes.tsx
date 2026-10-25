@@ -5,14 +5,17 @@ import type { ReactNode } from "react";
 import { useDroppable } from "@dnd-kit/core";
 import {
     IconAlertTriangle,
+    IconArchive,
     IconCircleCheck,
     IconCircleDashed,
     IconCircleX,
+    IconDots,
     IconEye,
     IconInbox,
     IconLoader,
     IconRepeat,
 } from "@tabler/icons-react";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import type { BoardColumnKey } from "@/lib/project-board-model";
 import { cn } from "@/lib/utils";
 import { RecurringCard, TaskCard, TaskRow, type TaskView } from "./task-card";
@@ -35,6 +38,15 @@ export type Lane = {
     /** Extra controls under the lane header (review sub-buckets). */
     header?: ReactNode;
     count?: number;
+    /** Set when every task in the lane is finished and the person may archive: "Archive all" in the lane menu. */
+    onArchiveAll?: () => void;
+};
+
+/** List-view multi-select (desktop list only). */
+export type RowSelection = {
+    ids: ReadonlySet<string>;
+    toggle: (taskId: string) => void;
+    setMany: (taskIds: string[], selected: boolean) => void;
 };
 
 const ICONS = {
@@ -67,6 +79,27 @@ export type CardHandlers = {
 
 export function laneCount(lane: Lane) {
     return lane.count ?? lane.views.length + (lane.definitions?.length ?? 0);
+}
+
+/** The lane "..." menu. Only rendered when the lane offers an action. */
+function LaneMenu({ lane }: { lane: Lane }) {
+    if (!lane.onArchiveAll) return null;
+    return (
+        <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+                <button
+                    type="button"
+                    aria-label={`Actions for ${lane.title}`}
+                    className="-mr-1 inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-zinc-500 transition-colors hover:bg-zinc-800 hover:text-zinc-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400/60 data-[state=open]:bg-zinc-800 data-[state=open]:text-zinc-200"
+                >
+                    <IconDots className="h-4 w-4" aria-hidden="true" />
+                </button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-48 border-zinc-800 bg-zinc-950 text-zinc-100">
+                <DropdownMenuItem variant="destructive" onSelect={lane.onArchiveAll}><IconArchive className="mr-2 h-4 w-4" />Archive all {lane.views.length}</DropdownMenuItem>
+            </DropdownMenuContent>
+        </DropdownMenu>
+    );
 }
 
 function LaneIcon({ lane, className }: { lane: Lane; className?: string }) {
@@ -113,6 +146,7 @@ export function BoardLane({ lane, handlers, dragging }: { lane: Lane; handlers: 
                 <LaneIcon lane={lane} />
                 <h3 id={`lane-${lane.key}`} className="min-w-0 truncate text-sm font-medium text-zinc-200">{lane.title}</h3>
                 <span className="ml-auto rounded-md bg-zinc-800/60 px-1.5 py-0.5 text-[11px] tabular-nums text-zinc-400">{count}</span>
+                <LaneMenu lane={lane} />
             </header>
             {lane.header && <div className="px-3 pb-2">{lane.header}</div>}
             <div className="custom-scrollbar min-h-0 flex-1 space-y-2 overflow-y-auto px-2 pb-2">
@@ -172,20 +206,39 @@ export function LaneSwitcher({ lanes, active, onChange }: { lanes: Lane[]; activ
 }
 
 /** Rows of one lane, or every lane as a section (dense desktop list). */
-export function LaneList({ lanes, handlers }: { lanes: Lane[]; handlers: CardHandlers }) {
+export function LaneList({ lanes, handlers, selection }: { lanes: Lane[]; handlers: CardHandlers; selection?: RowSelection }) {
     return (
         <div className="space-y-5">
             {lanes.map((lane) => {
                 const count = laneCount(lane);
+                const laneIds = lane.views.map((view) => view.task.id);
+                const selectedInLane = selection ? laneIds.filter((id) => selection.ids.has(id)).length : 0;
+                const allSelected = laneIds.length > 0 && selectedInLane === laneIds.length;
                 return (
                     <section key={lane.key} aria-labelledby={`list-${lane.key}`} className="min-w-0">
-                        {lanes.length > 1 && (
-                            <h3 id={`list-${lane.key}`} className="mb-1 flex items-center gap-2 px-3 text-xs font-medium text-zinc-400">
-                                <LaneIcon lane={lane} className="h-3.5 w-3.5" />
-                                {lane.title}
-                                <span className="tabular-nums text-zinc-500">{count}</span>
-                            </h3>
-                        )}
+                        {lanes.length > 1 ? (
+                            <div className="mb-1 flex min-h-6 items-center gap-2 px-3">
+                                {selection && laneIds.length > 0 && (
+                                    <input
+                                        type="checkbox"
+                                        aria-label={`Select all in ${lane.title}`}
+                                        checked={allSelected}
+                                        ref={(node) => { if (node) node.indeterminate = selectedInLane > 0 && !allSelected; }}
+                                        onChange={(event) => selection.setMany(laneIds, event.target.checked)}
+                                        className="h-4 w-4 cursor-pointer accent-cyan-500"
+                                    />
+                                )}
+                                <h3 id={`list-${lane.key}`} className="flex min-w-0 items-center gap-2 text-xs font-medium text-zinc-400">
+                                    <LaneIcon lane={lane} className="h-3.5 w-3.5" />
+                                    {lane.title}
+                                    <span className="tabular-nums text-zinc-500">{count}</span>
+                                </h3>
+                                <span className="ml-auto" />
+                                <LaneMenu lane={lane} />
+                            </div>
+                        ) : lane.onArchiveAll ? (
+                            <div className="mb-1 flex justify-end px-1"><LaneMenu lane={lane} /></div>
+                        ) : null}
                         {lane.header && <div className="mb-2 px-1">{lane.header}</div>}
                         {count === 0 ? (
                             <p className="rounded-lg border border-dashed border-zinc-800 px-3 py-6 text-center text-sm text-zinc-500">{lane.emptyText}</p>
@@ -204,6 +257,7 @@ export function LaneList({ lanes, handlers }: { lanes: Lane[]; handlers: CardHan
                                         onSetPriority={(priority) => handlers.onSetPriority(view.task, priority)}
                                         onSetState={(state) => handlers.onSetState(view.task, state)}
                                         onArchive={view.task.state === "done" ? () => handlers.onArchive(view.task) : undefined}
+                                        selection={selection ? { checked: selection.ids.has(view.task.id), onToggle: () => selection.toggle(view.task.id) } : undefined}
                                     />
                                 ))}
                             </ul>
