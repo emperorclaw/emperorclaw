@@ -13,8 +13,9 @@ const MIN_MS = Date.UTC(2000, 0, 1);
 const MAX_AHEAD_MS = 366 * DAY_MS;
 
 function parseMs(value: string | null): number | null {
-    if (!value || !/^\d{1,16}$/.test(value)) return null;
-    const n = Number(value);
+    // Whole epoch milliseconds; a fractional part (from a zoomed range) is dropped.
+    if (!value || !/^\d{1,16}(\.\d{1,6})?$/.test(value)) return null;
+    const n = Math.floor(Number(value));
     return Number.isFinite(n) ? n : null;
 }
 

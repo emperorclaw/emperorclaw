@@ -149,6 +149,9 @@ maybe("the route rejects a window wider than 31 days", async () => {
         assert.equal(over.status, 400);
         const fine = await call(route.GET as never, `/api/timeline?from=${t.now - 7 * DAY}&to=${t.now}`);
         assert.equal(fine.status, 200);
+        // A zoomed range carries fractional milliseconds; it must not fail.
+        const zoomed = await call(route.GET as never, `/api/timeline?from=${t.now - 7 * DAY + 0.5}&to=${t.now + 0.25}`);
+        assert.equal(zoomed.status, 200, "fractional epoch milliseconds are accepted");
         const body = fine.json as { spans?: unknown[]; actors?: { kind: string }[] };
         assert.ok(Array.isArray(body.spans) && body.spans.length > 0);
         assert.ok(Array.isArray(body.actors) && body.actors.every((a) => a.kind === "agent"), "the route never returns a person row");

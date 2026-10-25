@@ -193,7 +193,8 @@ export function TimelineClient({ initial, initialFilter, agents, projects, custo
     const [selected, setSelected] = useState<TimelineSpan | null>(null);
 
     const query = useMemo(() => {
-        const params = new URLSearchParams({ from: String(range.fromMs), to: String(range.toMs) });
+        // Zoom and minimap drags produce fractional milliseconds; the API takes whole ones.
+        const params = new URLSearchParams({ from: String(Math.floor(range.fromMs)), to: String(Math.ceil(range.toMs)) });
         if (filters.agentId) params.set("agentId", filters.agentId);
         if (filters.projectId) params.set("projectId", filters.projectId);
         if (filters.customerId) params.set("customerId", filters.customerId);
