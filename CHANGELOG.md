@@ -9,6 +9,15 @@ tagged (e.g. `## [1.2.0] — 2026-07-22`). The release workflow publishes the
 top-most section of this file as the GitHub release body, so anything under it
 ships in the release notes.
 
+## [0.12.2] — 2026-10-25
+
+### Added
+- **Where the time went.** The Timeline can show one row per project (bars coloured by agent, chat without a task greyed in its own row), and a panel ranks the tasks and projects that took the most hours and cost, with the agents involved.
+- **Runs know their task.** Every agent run is attributed to the task it worked on: the task named by its assignment notice, or the task the agent acted on most during the run (only tasks in the agent's scope). Chat runs without a task are shown muted. `scripts/backfill-run-tasks.ts` applies the same rules to past runs (dry run by default).
+
+### Security
+- Agents can no longer set task ids in message metadata, and a task id sent with a run start is checked against the agent's scope.
+
 ## [0.12.1] — 2026-10-25
 
 ### Changed
