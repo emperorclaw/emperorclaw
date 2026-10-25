@@ -7,6 +7,7 @@ import {
     approvals,
     artifacts,
     companyMembers,
+    customers,
     projects,
     taskEvents,
     tasks,
@@ -61,8 +62,14 @@ import {
  * task story uses. A run on the viewer's own private thread does. A run with
  * no task (a chat run) only appears as a "Chat" bar when the viewer may read
  * that thread. The task title/outcome a bar carries never leaks a private
- * thread's transcript. Task-level markers follow the same rule (see
- * `privateOnlyTaskIds`).
+ * thread's transcript.
+ *
+ * Task-level markers (notes, assignments, approvals, files, handoffs) follow
+ * TASK visibility — the viewer's member scope, exactly like the task page
+ * (task-story-reads.ts) — not the privacy of the threads its runs ran in. A
+ * board task worked on from someone's private chat therefore keeps its
+ * markers for everyone who can see the task, while that private run's bar
+ * (and anything from the private thread: id, label, reply text) stays hidden.
  */
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -104,6 +111,7 @@ interface TaskInfo {
     projectId: string;
     projectName: string;
     customerId: string | null;
+    customerName: string | null;
 }
 
 function field(inputJson: unknown, key: string): string | null {
@@ -264,14 +272,7 @@ export async function loadWorkTimeline(companyId: string, viewer: TaskViewer, qu
     ]);
 
     // ── Threads + trigger messages (privacy + edges) ──────────────────────
-    // Thread linkage of every task a marker names (any time, not just this
-    // window), for the private-only rule below.
-    const markerTaskIds = [...new Set([...eventRows, ...approvalRows, ...artifactRows].map((r) => r.taskId).filter((id): id is string => Boolean(id)))];
-    const markerTaskRuns = markerTaskIds.length === 0 ? [] : await db.selectDistinct({ taskId: agentRuns.taskId, threadId: agentRuns.threadId })
-        .from(agentRuns)
-        .where(and(eq(agentRuns.companyId, companyId), inArray(agentRuns.taskId, markerTaskIds)));
-
-    const threadIds = [...new Set([...visibleRunRows, ...markerTaskRuns].map((r) => r.threadId).filter((id): id is string => Boolean(id && UUID_RE.test(id))))];
+    const threadIds = [...new Set(visibleRunRows.map((r) => r.threadId).filter((id): id is string => Boolean(id && UUID_RE.test(id))))];
     const triggerMessageIds = [...new Set(visibleRunRows.map((r) => r.triggerMessageId).filter((id): id is string => Boolean(id && UUID_RE.test(id))))];
     const [threadRows, triggerMessages] = await Promise.all([
         threadIds.length === 0 ? Promise.resolve([] as ThreadInfo[]) : db.select({
@@ -312,31 +313,6 @@ export async function loadWorkTimeline(companyId: string, viewer: TaskViewer, qu
         return true;
     });
 
-    // Private-only tasks. Tasks carry no thread of their own, so a task asked
-    // for in someone's private direct chat is recognisable only by its runs.
-    // Rule: a task with at least one run on a private direct thread the viewer
-    // does not own, and NO run anywhere else (another thread, or no thread),
-    // is that other person's private work — its notes, assignments, approvals,
-    // files and handoffs are dropped, exactly like its bars. A task with any
-    // run the viewer could see, or with no runs at all (board work), keeps its
-    // markers: it is visible on the board and the task page anyway.
-    const privateOnlyTaskIds = new Set<string>();
-    {
-        const linkage = new Map<string, { hidden: boolean; open: boolean }>();
-        for (const run of [...markerTaskRuns, ...visibleRunRows]) {
-            if (!run.taskId) continue;
-            const entry = linkage.get(run.taskId) ?? { hidden: false, open: false };
-            const thread = run.threadId ? threadById.get(run.threadId) : undefined;
-            if (runThreadHidden(thread)) entry.hidden = true;
-            else entry.open = true;
-            linkage.set(run.taskId, entry);
-        }
-        for (const [taskId, entry] of linkage) {
-            if (entry.hidden && !entry.open) privateOnlyTaskIds.add(taskId);
-        }
-    }
-    const markerVisible = (taskId: string | null) => Boolean(taskId) && !privateOnlyTaskIds.has(taskId as string);
-
     // ── Task info (title, project short name) for bars and events ─────────
     const taskIds = [...new Set(keptRunRows.map((r) => r.taskId).filter((id): id is string => Boolean(id)))];
     const taskInfoRows = taskIds.length === 0 ? [] : await db.select({
@@ -346,10 +322,14 @@ export async function loadWorkTimeline(companyId: string, viewer: TaskViewer, qu
         inputJson: tasks.inputJson,
         goal: projects.goal,
         customerId: projects.customerId,
-    }).from(tasks).leftJoin(projects, eq(projects.id, tasks.projectId)).where(and(eq(tasks.companyId, companyId), inArray(tasks.id, taskIds), isNull(tasks.deletedAt)));
+        customerName: customers.name,
+    }).from(tasks)
+        .leftJoin(projects, eq(projects.id, tasks.projectId))
+        .leftJoin(customers, and(eq(customers.id, projects.customerId), eq(customers.companyId, companyId), isNull(customers.deletedAt)))
+        .where(and(eq(tasks.companyId, companyId), inArray(tasks.id, taskIds), isNull(tasks.deletedAt)));
     const taskInfo = new Map<string, TaskInfo>();
     for (const t of taskInfoRows) {
-        taskInfo.set(t.id, { title: taskTitle(t.inputJson, t.taskType), projectId: t.projectId, projectName: splitProjectTitle(t.goal).name || "Project", customerId: t.customerId });
+        taskInfo.set(t.id, { title: taskTitle(t.inputJson, t.taskType), projectId: t.projectId, projectName: splitProjectTitle(t.goal).name || "Project", customerId: t.customerId, customerName: t.customerName?.trim() || null });
     }
 
     // ── Pending approvals for runOutcome (needs_you) ───────────────────────
@@ -374,7 +354,7 @@ export async function loadWorkTimeline(companyId: string, viewer: TaskViewer, qu
     const ASSIGNMENT_EVENTS = new Set(["task_generated", "task_assigned", "task_reassigned"]);
 
     for (const row of eventRows) {
-        if (!markerVisible(row.taskId)) continue;
+        if (!row.taskId) continue;
         const kind = eventKindFor(row.eventType);
         if (!kind) continue;
         const atMs = row.createdAt.getTime();
@@ -403,7 +383,7 @@ export async function loadWorkTimeline(companyId: string, viewer: TaskViewer, qu
     }
 
     for (const row of approvalRows) {
-        if (!markerVisible(row.taskId)) continue;
+        if (!row.taskId) continue;
         // Both markers sit on the requesting agent's row; without one, there is nowhere to draw.
         const requester = agentCanonical(row.requesterAgentId);
         if (!requester) continue;
@@ -417,7 +397,7 @@ export async function loadWorkTimeline(companyId: string, viewer: TaskViewer, qu
     }
 
     for (const row of artifactRows) {
-        if (!row.taskId || !markerVisible(row.taskId)) continue;
+        if (!row.taskId) continue;
         const actorId = agentCanonical(row.agentId);
         if (!actorId) continue;
         events.push({ id: `art:${row.id}`, actorId, taskId: row.taskId, kind: "file", atMs: row.createdAt.getTime() });
@@ -457,6 +437,7 @@ export async function loadWorkTimeline(companyId: string, viewer: TaskViewer, qu
             taskTitle: run.taskId ? (info?.title ?? null) : null,
             projectName: run.taskId ? (info?.projectName ?? null) : null,
             projectId: run.taskId ? (info?.projectId ?? null) : null,
+            customerName: run.taskId ? (info?.customerName ?? null) : null,
             threadLabel: run.taskId ? null : threadLabel(thread, (id) => agentName.get(id ?? "") ?? null),
             href: run.taskId ? taskHref(run.taskId) : threadHref(thread),
             status: run.status,

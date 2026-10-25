@@ -9,8 +9,9 @@ import { actAs, call, seedHuman } from "./_access-helper";
  * task events, approvals and artifacts. A restricted member only sees work
  * inside their scope, including the agents named by events, approvals,
  * artifacts and handoffs; a run in another person's private direct thread never
- * appears (not even as a bar), while the viewer's own does, and neither do the
- * markers of a task whose only run lives there; deleted tasks and projects
+ * appears (not even as a bar), while the viewer's own does; task-level
+ * markers follow task visibility, so a task worked there keeps its markers for
+ * whoever can see the task, with nothing from the private chat; deleted tasks and projects
  * never appear; rows are agents only, and a person's action is a marker on the
  * receiving agent's row that names them by display name, never by email;
  * cross-company data never leaks; malformed or over-wide queries are rejected
@@ -270,21 +271,35 @@ maybe("a person's assignment and approval are markers on the receiving agent's r
     assert.ok(scoped.events.some((e) => e.label === "Approved by Other Person" && e.actorId === `agent:${t.atlas.id}`));
 });
 
-maybe("a task whose only run is in another person's private thread leaves no markers", async () => {
+maybe("a board task worked in another person's private chat: no bar, but its markers follow task visibility", async () => {
     const t = await seedTimeline();
     const db = await getDb();
     const s = await getSchema();
     const at = new Date(t.now - 4 * MIN);
     const [privateTask] = await db.insert(s.tasks).values({ companyId: t.companyId, projectId: t.project.id, taskType: "work", assignedAgentId: t.atlas.id, inputJson: { title: "Private ask" } }).returning();
-    await db.insert(s.agentRuns).values({ id: randomUUID(), companyId: t.companyId, agentId: t.atlas.id, threadId: t.otherThread.id, taskId: privateTask.id, triggerKind: "task", status: "succeeded", startedAt: new Date(t.now - 5 * MIN), endedAt: at });
+    // The ask and the agent's reply live in the other person's private chat.
+    const [ask] = await db.insert(s.threadMessages).values({ companyId: t.companyId, threadId: t.otherThread.id, senderType: "human", senderId: t.otherUserId, text: "PRIVATE-ASK-TEXT please look at this" }).returning();
+    const [reply] = await db.insert(s.threadMessages).values({ companyId: t.companyId, threadId: t.otherThread.id, senderType: "agent", senderId: t.atlas.id, text: "PRIVATE-REPLY-TEXT here is the answer" }).returning();
+    const [privateRun] = await db.insert(s.agentRuns).values({ id: randomUUID(), companyId: t.companyId, agentId: t.atlas.id, threadId: t.otherThread.id, taskId: privateTask.id, triggerKind: "message", triggerMessageId: ask.id, replyMessageId: reply.id, status: "succeeded", startedAt: new Date(t.now - 5 * MIN), endedAt: at }).returning();
     await seedMarkers(t.companyId, t.project.id, privateTask.id, t.atlas.id, at, { type: "human", id: t.otherUserId });
 
     const { loadWorkTimeline } = await import("@/lib/work-timeline-reads");
     const { loadTaskViewer } = await import("@/lib/task-story-reads");
-    const tl = await loadWorkTimeline(t.companyId, t.owner, window(t.now));
-    assert.ok(!JSON.stringify(tl).includes(privateTask.id), "no bar, marker or edge for the private task");
+    // Both the owner and the restricted member can see the task (its customer is in scope).
+    for (const viewer of [t.owner, t.scoped]) {
+        const tl = await loadWorkTimeline(t.companyId, viewer, window(t.now));
+        const json = JSON.stringify(tl);
+        assert.ok(!tl.spans.some((sp) => sp.id === privateRun.id), "the private run's bar is absent");
+        assert.ok(!tl.spans.some((sp) => sp.taskId === privateTask.id), "no bar for the task from that run");
+        const kinds = new Set<string>(tl.events.filter((e) => e.taskId === privateTask.id).map((e) => e.kind));
+        for (const kind of ["note", "approval_requested", "file"]) assert.ok(kinds.has(kind), `the task's ${kind} marker is present`);
+        assert.ok(!json.includes(t.otherThread.id), "the private thread id appears nowhere");
+        assert.ok(!json.includes(privateRun.id), "the private run id appears nowhere");
+        assert.ok(!json.includes("PRIVATE-ASK-TEXT") && !json.includes("PRIVATE-REPLY-TEXT"), "no private chat text");
+        assert.ok(!json.includes(ask.id) && !json.includes(reply.id), "no private message ids");
+    }
 
-    // The person who owns that thread still sees it.
+    // The person who owns that thread still sees the run itself.
     const mine = await loadWorkTimeline(t.companyId, await loadTaskViewer(t.companyId, t.otherUserId), window(t.now));
     assert.ok(mine.spans.some((sp) => sp.taskId === privateTask.id));
     assert.ok(mine.events.some((e) => e.taskId === privateTask.id && e.kind === "note"));

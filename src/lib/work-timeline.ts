@@ -13,7 +13,7 @@
 // alongside so a tooltip can show the true times. A running span (no end)
 // draws to `nowMs`, clipped to the window.
 
-import { runOutcome, type RunOutcome } from "@/lib/task-story";
+import { runOutcome, taskHref, type RunOutcome } from "@/lib/task-story";
 
 /** The route rejects a window wider than this (whole days). */
 export const MAX_WINDOW_DAYS = 31;
@@ -52,6 +52,8 @@ export interface TimelineSpan {
     taskTitle: string | null;
     /** Short project label; null for chat runs. */
     projectName: string | null;
+    /** The project's customer name; null for chat runs and internal projects. */
+    customerName: string | null;
     kind: "task" | "chat";
     threadLabel: string | null;
     /** Deep link: the task page or the chat thread. */
@@ -525,6 +527,8 @@ export interface BuildRunSource {
     taskTitle: string | null;
     projectName: string | null;
     projectId: string | null;
+    /** The project's customer name (null for internal projects); optional for older callers. */
+    customerName?: string | null;
     threadLabel: string | null;
     href: string | null;
     status: string;
@@ -611,6 +615,7 @@ export function buildWorkTimeline(input: BuildTimelineInput): WorkTimeline {
             taskId: run.taskId,
             taskTitle: run.taskTitle,
             projectName: run.projectName,
+            customerName: run.taskId ? (run.customerName ?? null) : null,
             kind: run.taskId ? "task" : "chat",
             threadLabel: run.threadLabel,
             href: run.href,
@@ -693,4 +698,211 @@ export function buildWorkTimeline(input: BuildTimelineInput): WorkTimeline {
         allEdges.length > TIMELINE_EDGE_CAP;
 
     return { actors, spans, events, edges, totals, from: fromMs, to: toMs, now: nowMs, capped, scoped: input.scoped };
+}
+
+// ─── Rows by project ────────────────────────────────────────────────────────
+
+/** The id of the final "Chat (no task)" row in the Projects view. */
+export const CHAT_ROW_ID = "chat";
+
+export interface TimelineProjectRow {
+    /** "project:<id>", or CHAT_ROW_ID for the chat runs. */
+    id: string;
+    kind: "project" | "chat";
+    projectId: string | null;
+    name: string;
+    customerName: string | null;
+    spans: TimelineSpan[];
+    /** Markers on this project's tasks (only tasks that have a bar in the window). */
+    events: TimelineEvent[];
+    runCount: number;
+    busyMs: number;
+    costCents: number;
+    /** Actor ids that worked on the project, busiest first. */
+    actorIds: string[];
+}
+
+function rankedActorIds(busyByActor: Map<string, number>): string[] {
+    return [...busyByActor.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0])).map(([id]) => id);
+}
+
+/**
+ * Re-group an (already scoped and privacy-filtered) timeline into one row per
+ * project, busiest first, with every chat run (no task) in one final
+ * "Chat (no task)" row. It only regroups what the builder returned, so it can
+ * never show a run, project or marker the Agents view would not.
+ */
+export function groupTimelineByProject(timeline: Pick<WorkTimeline, "spans" | "events">): TimelineProjectRow[] {
+    const rows = new Map<string, TimelineProjectRow & { busyByActor: Map<string, number> }>();
+    const taskRow = new Map<string, string>();
+    for (const span of timeline.spans) {
+        const isProject = span.kind === "task" && span.projectId != null;
+        const id = isProject ? `project:${span.projectId}` : CHAT_ROW_ID;
+        let row = rows.get(id);
+        if (!row) {
+            row = {
+                id,
+                kind: isProject ? "project" : "chat",
+                projectId: isProject ? span.projectId : null,
+                name: isProject ? (span.projectName ?? "Project") : "Chat (no task)",
+                customerName: isProject ? span.customerName : null,
+                spans: [],
+                events: [],
+                runCount: 0,
+                busyMs: 0,
+                costCents: 0,
+                actorIds: [],
+                busyByActor: new Map(),
+            };
+            rows.set(id, row);
+        }
+        const busy = Math.max(0, span.end - span.start);
+        row.spans.push(span);
+        row.runCount += 1;
+        row.busyMs += busy;
+        row.costCents += span.costCents;
+        row.busyByActor.set(span.actorId, (row.busyByActor.get(span.actorId) ?? 0) + busy);
+        if (isProject && span.taskId) taskRow.set(span.taskId, id);
+    }
+    for (const event of timeline.events) {
+        const id = taskRow.get(event.taskId);
+        if (id) rows.get(id)!.events.push(event);
+    }
+    const out: TimelineProjectRow[] = [...rows.values()].map(({ busyByActor, ...row }) => ({ ...row, actorIds: rankedActorIds(busyByActor) }));
+    return out.sort((a, b) => {
+        if (a.kind !== b.kind) return a.kind === "chat" ? 1 : -1;
+        return b.busyMs - a.busyMs || a.name.localeCompare(b.name) || a.id.localeCompare(b.id);
+    });
+}
+
+// ─── Where the time went ────────────────────────────────────────────────────
+
+export interface TimeSpentTask {
+    taskId: string;
+    title: string;
+    href: string;
+    projectId: string | null;
+    projectName: string | null;
+    busyMs: number;
+    costCents: number;
+    runs: number;
+    /** Agent names, busiest first. */
+    agentNames: string[];
+}
+
+export interface TimeSpentProject {
+    projectId: string;
+    name: string;
+    customerName: string | null;
+    busyMs: number;
+    costCents: number;
+    runs: number;
+    agentNames: string[];
+    /** The project's tasks, busiest first. */
+    tasks: TimeSpentTask[];
+}
+
+export interface TimeSpent {
+    /** The busiest tasks across all projects (at most `topTasks`). */
+    tasks: TimeSpentTask[];
+    /** Every project with work in range, busiest first. */
+    projects: TimeSpentProject[];
+    /** All chat runs (no task) folded into one line. */
+    chat: { runs: number; busyMs: number; costCents: number };
+    busyMs: number;
+}
+
+export const TIME_SPENT_TOP_TASKS = 8;
+
+/**
+ * "Where the time went": busy time (clipped to the window, like the bars),
+ * cost and agents per task and per project, plus one total for chat. Busy time
+ * is summed per run, so two agents on one task for an hour count two hours.
+ * Cost is each run's full cost (runs are not split at the window edge). Built
+ * only from the timeline's own spans, so it inherits every scope and privacy
+ * filter.
+ */
+export function summarizeTimeSpent(
+    timeline: Pick<WorkTimeline, "spans" | "actors">,
+    options: { topTasks?: number } = {},
+): TimeSpent {
+    const topTasks = options.topTasks ?? TIME_SPENT_TOP_TASKS;
+    const actorName = new Map(timeline.actors.map((a) => [a.id, a.name]));
+    const nameOf = (id: string) => actorName.get(id) ?? "Agent";
+    type Acc = { busyMs: number; costCents: number; runs: number; byActor: Map<string, number> };
+    const acc = (): Acc => ({ busyMs: 0, costCents: 0, runs: 0, byActor: new Map() });
+    const add = (a: Acc, span: TimelineSpan, busy: number) => {
+        a.busyMs += busy;
+        a.costCents += span.costCents;
+        a.runs += 1;
+        a.byActor.set(span.actorId, (a.byActor.get(span.actorId) ?? 0) + busy);
+    };
+
+    const tasks = new Map<string, { span: TimelineSpan; acc: Acc }>();
+    const projects = new Map<string, { span: TimelineSpan; acc: Acc; taskIds: Set<string> }>();
+    const chat = acc();
+    let busyTotal = 0;
+    for (const span of timeline.spans) {
+        const busy = Math.max(0, span.end - span.start);
+        busyTotal += busy;
+        if (span.kind !== "task" || !span.taskId) {
+            add(chat, span, busy);
+            continue;
+        }
+        const task = tasks.get(span.taskId) ?? { span, acc: acc() };
+        add(task.acc, span, busy);
+        tasks.set(span.taskId, task);
+        if (span.projectId) {
+            const project = projects.get(span.projectId) ?? { span, acc: acc(), taskIds: new Set<string>() };
+            add(project.acc, span, busy);
+            project.taskIds.add(span.taskId);
+            projects.set(span.projectId, project);
+        }
+    }
+
+    const byBusy = <T extends { busyMs: number; costCents: number }>(key: (x: T) => string) => (a: T, b: T) =>
+        b.busyMs - a.busyMs || b.costCents - a.costCents || key(a).localeCompare(key(b));
+    const taskList: TimeSpentTask[] = [...tasks.entries()].map(([taskId, { span, acc: a }]) => ({
+        taskId,
+        title: span.taskTitle ?? "Task",
+        href: taskHref(taskId),
+        projectId: span.projectId,
+        projectName: span.projectName,
+        busyMs: a.busyMs,
+        costCents: a.costCents,
+        runs: a.runs,
+        agentNames: rankedActorIds(a.byActor).map(nameOf),
+    })).sort(byBusy((t) => t.taskId));
+    const taskById = new Map(taskList.map((t) => [t.taskId, t]));
+    const projectList: TimeSpentProject[] = [...projects.entries()].map(([projectId, { span, acc: a, taskIds }]) => ({
+        projectId,
+        name: span.projectName ?? "Project",
+        customerName: span.customerName,
+        busyMs: a.busyMs,
+        costCents: a.costCents,
+        runs: a.runs,
+        agentNames: rankedActorIds(a.byActor).map(nameOf),
+        tasks: [...taskIds].map((id) => taskById.get(id)!).sort(byBusy((t) => t.taskId)),
+    })).sort(byBusy((p) => p.projectId));
+
+    return {
+        tasks: taskList.slice(0, Math.max(0, topTasks)),
+        projects: projectList,
+        chat: { runs: chat.runs, busyMs: chat.busyMs, costCents: chat.costCents },
+        busyMs: busyTotal,
+    };
+}
+
+/** Busy time as hours for the panel: "3.2 h", "0.4 h", "<0.1 h", "0 h". */
+export function formatHours(ms: number): string {
+    if (!(ms > 0)) return "0 h";
+    const hours = ms / 3_600_000;
+    if (hours < 0.05) return "<0.1 h";
+    return `${hours.toFixed(1)} h`;
+}
+
+/** "Builder", "Builder + QA", "Builder + QA + Atlas", "Builder + QA + 2 more". */
+export function joinAgentNames(names: readonly string[], max = 3): string {
+    if (names.length <= max) return names.join(" + ");
+    return `${names.slice(0, max - 1).join(" + ")} + ${names.length - (max - 1)} more`;
 }

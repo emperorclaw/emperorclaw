@@ -348,6 +348,7 @@ function span(overrides: Partial<TimelineSpan> & { id: string; start: number; en
         taskId: "t1",
         taskTitle: null,
         projectName: null,
+        customerName: null,
         projectId: null,
         kind: "task",
         threadLabel: null,

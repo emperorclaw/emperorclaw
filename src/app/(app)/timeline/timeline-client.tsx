@@ -22,13 +22,20 @@ import {
     autoFitTodayRange,
     clusterSpans,
     EDGE_KIND_LABEL,
+    formatHours,
+    groupTimelineByProject,
+    joinAgentNames,
     projectHue,
+    summarizeTimeSpent,
     timeTicks,
+    type TimeSpent,
+    type TimeSpentProject,
     type TimelineActor,
     type TimelineCluster,
     type TimelineEdge,
     type TimelineEvent,
     type TimelineEventKind,
+    type TimelineProjectRow,
     type TimelineRowItem,
     type TimelineSource,
     type TimelineSpan,
@@ -51,6 +58,26 @@ const LIVE_TOPICS = ["agents", "projects"] as const;
 
 type FilterOption = { value: string; label: string; description?: string | null };
 type ColourBy = "outcome" | "source" | "project";
+/** How a bar is filled: a colour-by mode, or (Projects view) the agent's own colour. */
+type PillMode = ColourBy | "agent";
+type RowsMode = "agents" | "projects";
+
+/** One chart row: an agent (Agents view), or a project / the chat row (Projects view). */
+interface ChartRow {
+    id: string;
+    kind: "agent" | "project" | "chat";
+    label: string;
+    sub: string;
+    spans: TimelineSpan[];
+    events: TimelineEvent[];
+    actor?: TimelineActor;
+    /** Projects view: who worked on it, busiest first. */
+    actorIds?: string[];
+}
+
+/** Chat runs (no task) recede so task work stands out. */
+const CHAT_MUTED = "opacity-30 hover:opacity-80";
+const CHAT_PILL = { fill: "rgba(113,113,122,0.55)", stroke: "rgba(161,161,170,0.7)" };
 type Focus =
     | { type: "task"; taskId: string }
     | { type: "agent"; actorId: string }
@@ -155,6 +182,7 @@ export function TimelineClient({ initial, initialFilter, agents, projects, custo
     });
     const [zoom, setZoom] = useState(DEFAULT_ZOOM);
     const [colourBy, setColourBy] = useState<ColourBy>("outcome");
+    const [rowsMode, setRowsMode] = useState<RowsMode>("agents");
     const [showEvents, setShowEvents] = useState(false);
     const [data, setData] = useState<WorkTimeline>(initial);
     const [loading, setLoading] = useState(false);
@@ -277,6 +305,13 @@ export function TimelineClient({ initial, initialFilter, agents, projects, custo
 
     // Rows are agents only, so every span's actor is an agent.
     const agentsActive = useMemo(() => new Set(data.spans.map((s) => s.actorId)).size, [data.spans]);
+    const projectRows = useMemo(() => groupTimelineByProject(data), [data]);
+    const timeSpent = useMemo(() => summarizeTimeSpent(data), [data]);
+    const pillMode: PillMode = rowsMode === "projects" ? "agent" : colourBy;
+    const legendActors = useMemo(() => {
+        const ids = new Set(data.spans.map((s) => s.actorId));
+        return data.actors.filter((a) => ids.has(a.id));
+    }, [data.actors, data.spans]);
     const taskTitleById = useMemo(() => {
         const map = new Map<string, string>();
         for (const s of data.spans) if (s.taskId && s.taskTitle) map.set(s.taskId, s.taskTitle);
@@ -288,7 +323,9 @@ export function TimelineClient({ initial, initialFilter, agents, projects, custo
             <PageHeader
                 eyebrow="Timeline"
                 title="Who worked on what"
-                description="One row per agent: when it was busy, on what, and which agent handed work to which. People's actions show as markers on the agent they reached."
+                description={rowsMode === "agents"
+                    ? "One row per agent: when it was busy, on what, and which agent handed work to which. People's actions show as markers on the agent they reached."
+                    : "One row per project: which agents worked on it and when. Chat with no task is the last, greyed row."}
             />
 
             {/* KPI row */}
@@ -321,7 +358,17 @@ export function TimelineClient({ initial, initialFilter, agents, projects, custo
                 </div>
                 <span className="hidden text-xs text-zinc-500 xl:inline">{formatRange(range.fromMs)} – {formatRange(range.toMs)}</span>
 
-                <div role="toolbar" aria-label="Colour by" className="flex items-center gap-0.5 rounded-xl border border-zinc-800 bg-zinc-950/40 p-1">
+                <div role="toolbar" aria-label="Rows" className="flex items-center gap-0.5 rounded-xl border border-zinc-800 bg-zinc-950/40 p-1">
+                    <span className="px-1.5 text-[11px] font-medium uppercase tracking-wide text-zinc-600">Rows</span>
+                    {(["agents", "projects"] as RowsMode[]).map((mode) => (
+                        <button key={mode} type="button" aria-pressed={rowsMode === mode} onClick={() => { setRowsMode(mode); clear(); }}
+                            className={cn("rounded-lg px-2.5 py-1.5 text-xs font-medium transition-colors",
+                                rowsMode === mode ? "bg-zinc-800 text-zinc-100" : "text-zinc-400 hover:text-zinc-200")}>
+                            {mode === "agents" ? "Agents" : "Projects"}
+                        </button>
+                    ))}
+                </div>
+                {rowsMode === "agents" && <div role="toolbar" aria-label="Colour by" className="flex items-center gap-0.5 rounded-xl border border-zinc-800 bg-zinc-950/40 p-1">
                     {(["outcome", "source", "project"] as ColourBy[]).map((mode) => (
                         <button key={mode} type="button" aria-pressed={colourBy === mode} onClick={() => setColourBy(mode)}
                             className={cn("rounded-lg px-2.5 py-1.5 text-xs font-medium capitalize transition-colors",
@@ -329,7 +376,7 @@ export function TimelineClient({ initial, initialFilter, agents, projects, custo
                             {mode === "outcome" ? "Outcome" : mode}
                         </button>
                     ))}
-                </div>
+                </div>}
                 <button type="button" aria-pressed={showEvents} onClick={() => setShowEvents((v) => !v)}
                     className={cn("rounded-xl border px-3 py-2 text-xs font-medium transition-colors",
                         showEvents ? "border-cyan-500/50 bg-cyan-500/10 text-cyan-200" : "border-zinc-800 bg-zinc-950/40 text-zinc-400 hover:text-zinc-200")}>
@@ -370,7 +417,10 @@ export function TimelineClient({ initial, initialFilter, agents, projects, custo
                     fromMs={range.fromMs}
                     toMs={range.toMs}
                     zoom={zoom}
-                    colourBy={colourBy}
+                    rowsMode={rowsMode}
+                    projectRows={projectRows}
+                    actorById={actorById}
+                    pillMode={pillMode}
                     showEvents={showEvents}
                     focus={activeFocus}
                     spanById={spanById}
@@ -386,27 +436,42 @@ export function TimelineClient({ initial, initialFilter, agents, projects, custo
 
             {/* Phone: per-actor list */}
             <div className="md:hidden">
-                <PhoneList data={data} colourBy={colourBy} onOpen={openSpan} />
+                <PhoneList data={data} rowsMode={rowsMode} projectRows={projectRows} actorById={actorById} pillMode={pillMode} onOpen={openSpan} />
             </div>
 
             {/* Legend follows the colour mode */}
             <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-xs text-zinc-500">
                 <span className="font-semibold uppercase tracking-wide text-zinc-600">Legend</span>
-                {colourBy === "outcome" && (["done", "needs_you", "failed", "stopped", "running"] as RunOutcome[]).map((o) => (
+                {rowsMode === "projects" && legendActors.map((a) => (
+                    <span key={a.id} className="inline-flex items-center gap-1.5">
+                        <span className="h-2.5 w-2.5 rounded-sm" style={{ backgroundColor: a.colour }} />
+                        {a.name}
+                    </span>
+                ))}
+                {rowsMode === "projects" && (
+                    <span className="inline-flex items-center gap-1.5">
+                        <span className="h-2.5 w-2.5 rounded-sm" style={{ backgroundColor: CHAT_PILL.fill }} />
+                        Chat (no task)
+                    </span>
+                )}
+                {rowsMode === "agents" && colourBy === "outcome" && (["done", "needs_you", "failed", "stopped", "running"] as RunOutcome[]).map((o) => (
                     <span key={o} className="inline-flex items-center gap-1.5">
                         <span className="h-2.5 w-2.5 rounded-sm" style={{ backgroundColor: OUTCOME_PILL[o] }} />
                         {RUN_OUTCOME_LABEL[o]}
                     </span>
                 ))}
-                {colourBy === "source" && (["delegated", "automation"] as TimelineSource[]).map((s) => (
+                {rowsMode === "agents" && colourBy === "source" && (["delegated", "automation"] as TimelineSource[]).map((s) => (
                     <span key={s} className="inline-flex items-center gap-1.5">
                         <span className="h-2.5 w-2.5 rounded-sm" style={{ backgroundColor: SOURCE_PILL[s].fill }} />
                         {SOURCE_LABEL[s]}
                     </span>
                 ))}
-                {colourBy === "project" && <span>Each colour is a project; chat runs are grey.</span>}
+                {rowsMode === "agents" && colourBy === "project" && <span>Each colour is a project; chat runs are grey.</span>}
+                {rowsMode === "agents" && <span className="inline-flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-sm opacity-40" style={{ backgroundColor: CHAT_PILL.fill }} />Faded bars are chat (no task)</span>}
                 <span className="ml-auto hidden items-center gap-1.5 lg:inline-flex"><kbd className="rounded border border-zinc-700 px-1 font-mono text-[10px]">Enter</kbd> opens a run · <kbd className="rounded border border-zinc-700 px-1 font-mono text-[10px]">Esc</kbd> clears</span>
             </div>
+
+            <TimeSpentPanel summary={timeSpent} />
 
             {/* Detail panel */}
             {selected && (
@@ -438,12 +503,15 @@ function Total({ label, value }: { label: string; value: string }) {
 
 // ─── Gantt ──────────────────────────────────────────────────────────────────
 
-function GanttChart({ data, fromMs, toMs, zoom, colourBy, showEvents, focus, spanById, taskTitleById, onOpenSpan, onZoomCluster, onRangeChange, onHoverActor, onClear, setTooltip }: {
+function GanttChart({ data, fromMs, toMs, zoom, rowsMode, projectRows, actorById, pillMode, showEvents, focus, spanById, taskTitleById, onOpenSpan, onZoomCluster, onRangeChange, onHoverActor, onClear, setTooltip }: {
     data: WorkTimeline;
     fromMs: number;
     toMs: number;
     zoom: number;
-    colourBy: ColourBy;
+    rowsMode: RowsMode;
+    projectRows: TimelineProjectRow[];
+    actorById: Map<string, TimelineActor>;
+    pillMode: PillMode;
     showEvents: boolean;
     focus: Focus | null;
     spanById: Map<string, TimelineSpan>;
@@ -504,21 +572,43 @@ function GanttChart({ data, fromMs, toMs, zoom, colourBy, showEvents, focus, spa
         return { active, idle };
     }, [data.actors, spansByActor, eventsByActor]);
 
-    const rows = useMemo(() => (idleOpen ? [...active, ...idle] : active), [active, idle, idleOpen]);
-    const rowIndex = useMemo(() => new Map(rows.map((a, i) => [a.id, i])), [rows]);
+    const rows: ChartRow[] = useMemo(() => {
+        if (rowsMode === "projects") {
+            return projectRows.map((r) => ({
+                id: r.id,
+                kind: r.kind,
+                label: r.name,
+                sub: [r.customerName, `${r.runCount} ${r.runCount === 1 ? "run" : "runs"}`, formatHours(r.busyMs)].filter(Boolean).join(" · "),
+                spans: r.spans,
+                events: r.events,
+                actorIds: r.actorIds,
+            }));
+        }
+        return (idleOpen ? [...active, ...idle] : active).map((a) => ({
+            id: a.id,
+            kind: "agent" as const,
+            label: a.name,
+            sub: `${a.runCount} runs · ${Math.round((a.busyMs / Math.max(1, windowMs)) * 100)}% busy`,
+            spans: spansByActor.get(a.id) ?? [],
+            events: eventsByActor.get(a.id) ?? [],
+            actor: a,
+        }));
+    }, [rowsMode, projectRows, active, idle, idleOpen, spansByActor, eventsByActor, windowMs]);
+    const rowIndex = useMemo(() => new Map(rows.map((r, i) => [r.id, i])), [rows]);
 
-    const itemsByActor = useMemo(() => {
+    const itemsByRow = useMemo(() => {
         const map = new Map<string, TimelineRowItem[]>();
-        for (const [actorId, spans] of spansByActor) map.set(actorId, clusterSpans(spans, pxPerMs));
+        for (const row of rows) map.set(row.id, clusterSpans(row.spans, pxPerMs));
         return map;
-    }, [spansByActor, pxPerMs]);
+    }, [rows, pxPerMs]);
 
     const visibleEdges = useMemo(() => {
-        if (!focus) return [];
+        // Handoffs join agent rows; the Projects view has none.
+        if (!focus || rowsMode !== "agents") return [];
         if (focus.type === "task") return data.edges.filter((e) => e.taskId === focus.taskId);
         if (focus.type === "agent") return data.edges.filter((e) => e.from === focus.actorId || e.to === focus.actorId);
         return [];
-    }, [focus, data.edges]);
+    }, [focus, data.edges, rowsMode]);
 
     const ticks = useMemo(() => timeTicks(fromMs, toMs, chartWidth), [fromMs, toMs, chartWidth]);
     const nowX = xFor(data.now);
@@ -551,7 +641,7 @@ function GanttChart({ data, fromMs, toMs, zoom, colourBy, showEvents, focus, spa
                     .tl-running { animation: tl-shimmer 2.6s ease-in-out infinite; }
                 }
             `}</style>
-            {data.actors.length === 0 ? (
+            {data.actors.length === 0 || (rowsMode === "projects" && rows.length === 0) ? (
                 <div className="px-5 py-14 text-center">
                     <IconChartLine className="mx-auto h-8 w-8 text-zinc-600" />
                     <p className="mt-3 text-sm text-zinc-300">Nothing happened in this window.</p>
@@ -582,28 +672,29 @@ function GanttChart({ data, fromMs, toMs, zoom, colourBy, showEvents, focus, spa
                             </div>
 
                             {/* Rows */}
-                            {rows.map((actor) => (
-                                <div key={actor.id} className="group/row flex" style={{ height: ROW_H }}>
+                            {rows.map((row) => (
+                                <div key={row.id} className="group/row flex" style={{ height: ROW_H }}>
                                     <div
                                         className="sticky left-0 z-20 flex shrink-0 items-center gap-2 border-b border-r border-zinc-800/80 bg-zinc-950 px-3 transition-colors group-hover/row:bg-zinc-900/60"
                                         style={{ width: LABEL_W }}
-                                        onMouseEnter={() => onHoverActor(actor.id)}
-                                        onMouseLeave={() => onHoverActor(null)}
+                                        onMouseEnter={row.actor ? () => onHoverActor(row.id) : undefined}
+                                        onMouseLeave={row.actor ? () => onHoverActor(null) : undefined}
+                                        title={row.actor ? undefined : row.label}
                                     >
-                                        <ActorAvatar actor={actor} />
+                                        {row.actor ? <ActorAvatar actor={row.actor} /> : <ProjectMark row={row} actorById={actorById} />}
                                         <div className="min-w-0 flex-1">
-                                            <div className="truncate text-sm font-medium text-zinc-100">{actor.name}</div>
-                                            <div className="truncate text-[11px] text-zinc-500">{actor.runCount} runs · {Math.round((actor.busyMs / Math.max(1, windowMs)) * 100)}% busy</div>
+                                            <div className={cn("truncate text-sm font-medium", row.kind === "chat" ? "text-zinc-500" : "text-zinc-100")}>{row.label}</div>
+                                            <div className="truncate text-[11px] text-zinc-500">{row.sub}</div>
                                         </div>
                                     </div>
-                                    <div className="relative shrink-0 border-b border-zinc-800/50 transition-colors group-hover/row:bg-zinc-900/30" style={{ width: chartWidth }}>
+                                    <div className={cn("relative shrink-0 border-b border-zinc-800/50 transition-colors group-hover/row:bg-zinc-900/30", row.kind === "chat" && "bg-zinc-900/20")} style={{ width: chartWidth }}>
                                         <svg width={chartWidth} height={ROW_H} className="block" role="presentation" onClick={onClear}>
                                             <RowContent
-                                                actor={actor}
-                                                items={itemsByActor.get(actor.id) ?? []}
-                                                events={showEvents ? (eventsByActor.get(actor.id) ?? []) : []}
+                                                actorById={actorById}
+                                                items={itemsByRow.get(row.id) ?? []}
+                                                events={showEvents ? row.events : []}
                                                 xFor={xFor}
-                                                colourBy={colourBy}
+                                                pillMode={pillMode}
                                                 focus={focus}
                                                 spanById={spanById}
                                                 taskTitleById={taskTitleById}
@@ -617,7 +708,7 @@ function GanttChart({ data, fromMs, toMs, zoom, colourBy, showEvents, focus, spa
                             ))}
 
                             {/* Collapsed idle agents */}
-                            {idle.length > 0 && (
+                            {rowsMode === "agents" && idle.length > 0 && (
                                 <div className="flex" style={{ height: ROW_H }}>
                                     <button
                                         type="button"
@@ -684,7 +775,27 @@ function ActorAvatar({ actor }: { actor: TimelineActor }) {
     );
 }
 
-function pillStyle(span: TimelineSpan, colourBy: ColourBy): { fill: string; stroke: string; hollow: boolean } {
+/** A project row's mark: the colours of the agents that worked on it (up to three). */
+function ProjectMark({ row, actorById }: { row: ChartRow; actorById: Map<string, TimelineActor> }) {
+    const colours = (row.actorIds ?? []).slice(0, 3).map((id) => actorById.get(id)?.colour ?? CHAT_PILL.fill);
+    return (
+        <span className={cn("grid h-7 w-7 shrink-0 place-items-center rounded-lg ring-1 ring-zinc-700", row.kind === "chat" ? "bg-zinc-900" : "bg-zinc-900/80")} aria-hidden>
+            <span className="flex -space-x-1">
+                {colours.map((c, i) => (
+                    <span key={i} className={cn("h-2.5 w-2.5 rounded-full ring-1 ring-zinc-950", row.kind === "chat" && "opacity-40")} style={{ backgroundColor: c }} />
+                ))}
+            </span>
+        </span>
+    );
+}
+
+function pillStyle(span: TimelineSpan, colourBy: PillMode, actorById?: Map<string, TimelineActor>): { fill: string; stroke: string; hollow: boolean } {
+    if (colourBy === "agent") {
+        if (span.kind === "chat") return { ...CHAT_PILL, hollow: false };
+        const colour = actorById?.get(span.actorId)?.colour;
+        if (!colour) return { ...CHAT_PILL, hollow: false };
+        return { fill: colour, stroke: colour, hollow: false };
+    }
     if (colourBy === "source") {
         const c = SOURCE_PILL[span.source];
         return { fill: c.fill, stroke: c.stroke, hollow: false };
@@ -709,12 +820,12 @@ function HitRect({ x, width }: { x: number; width: number }) {
     return <rect x={x + width / 2 - w / 2} y={HIT_INSET_Y} width={w} height={ROW_H - 2 * HIT_INSET_Y} fill="transparent" pointerEvents="all" />;
 }
 
-function RowContent({ actor, items, events, xFor, colourBy, focus, spanById, taskTitleById, onOpenSpan, onZoomCluster, setTooltip }: {
-    actor: TimelineActor;
+function RowContent({ actorById, items, events, xFor, pillMode, focus, spanById, taskTitleById, onOpenSpan, onZoomCluster, setTooltip }: {
+    actorById: Map<string, TimelineActor>;
     items: TimelineRowItem[];
     events: TimelineEvent[];
     xFor: (ms: number) => number;
-    colourBy: ColourBy;
+    pillMode: PillMode;
     focus: Focus | null;
     spanById: Map<string, TimelineSpan>;
     taskTitleById: Map<string, string>;
@@ -756,8 +867,14 @@ function RowContent({ actor, items, events, xFor, colourBy, focus, spanById, tas
                 const span = item.span;
                 const x = xFor(span.start);
                 const width = Math.max(4, xFor(span.end) - xFor(span.start));
-                const style = pillStyle(span, colourBy);
-                const dimmed = !matchesFocus(span, focus) ? "opacity-20" : span.outcome === "running" && colourBy === "outcome" ? "tl-running" : "opacity-70 hover:opacity-100";
+                const style = pillStyle(span, pillMode, actorById);
+                const actorName = actorById.get(span.actorId)?.name ?? "Agent";
+                // Chat runs recede (Agents view, and the greyed chat row) so task work stands out.
+                const dimmed = !matchesFocus(span, focus)
+                    ? "opacity-20"
+                    : span.kind === "chat"
+                        ? CHAT_MUTED
+                        : span.outcome === "running" && pillMode === "outcome" ? "tl-running" : "opacity-70 hover:opacity-100";
                 const rect = (
                     <>
                         <HitRect x={x} width={width} />
@@ -766,13 +883,13 @@ function RowContent({ actor, items, events, xFor, colourBy, focus, spanById, tas
                         />
                     </>
                 );
-                const label = `${span.taskTitle ?? "Chat"}: ${RUN_OUTCOME_LABEL[span.outcome]}`;
+                const label = `${span.kind === "chat" ? `Chat${span.threadLabel ? ` (${span.threadLabel})` : ""}` : (span.taskTitle ?? "Task")}: ${RUN_OUTCOME_LABEL[span.outcome]}`;
                 const handlers = {
                     onClick: (e: React.MouseEvent) => { e.preventDefault(); e.stopPropagation(); onOpenSpan(span); },
                     onKeyDown: (e: React.KeyboardEvent) => { if (e.key === "Enter") { e.preventDefault(); e.stopPropagation(); onOpenSpan(span); } },
-                    onMouseEnter: (e: React.MouseEvent) => showTooltip(e, <SpanTooltip span={span} actorName={actor.name} />),
+                    onMouseEnter: (e: React.MouseEvent) => showTooltip(e, <SpanTooltip span={span} actorName={actorName} />),
                     onMouseLeave: () => setTooltip(null),
-                    onFocus: (e: React.FocusEvent) => showTooltip(e, <SpanTooltip span={span} actorName={actor.name} />),
+                    onFocus: (e: React.FocusEvent) => showTooltip(e, <SpanTooltip span={span} actorName={actorName} />),
                     onBlur: () => setTooltip(null),
                 };
                 return span.href ? (
@@ -944,12 +1061,13 @@ function SpanTooltip({ span, actorName }: { span: TimelineSpan; actorName: strin
     return (
         <div className="space-y-0.5">
             <div className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wide text-zinc-500">
+                {span.kind === "chat" && <><span>Chat</span><span>·</span></>}
                 <span>{RUN_OUTCOME_LABEL[span.outcome]}</span>
                 <span>·</span>
                 <span>{actorName}</span>
             </div>
             <div className="text-sm font-medium text-zinc-100">{span.taskTitle ?? (span.threadLabel ?? "Chat")}</div>
-            {span.projectName && <div className="text-xs text-zinc-400">{span.projectName}</div>}
+            {span.projectName && <div className="text-xs text-zinc-400">{[span.projectName, span.customerName].filter(Boolean).join(" · ")}</div>}
             <div className="text-xs text-zinc-400">
                 {formatClock(span.startedAtMs)} – {span.endedAtMs ? formatClock(span.endedAtMs) : "now"}
             </div>
@@ -964,14 +1082,16 @@ function DetailPanel({ span, actor, onClose }: { span: TimelineSpan; actor: Time
         <aside className="fixed inset-x-0 bottom-0 z-50 max-h-[85vh] overflow-y-auto rounded-t-2xl border-t border-zinc-800 bg-zinc-950 shadow-2xl md:inset-x-auto md:inset-y-0 md:right-0 md:max-h-none md:w-[360px] md:rounded-none md:border-l md:border-t-0">
             <div className="flex items-start justify-between gap-3 border-b border-zinc-800/80 px-5 py-4">
                 <div className="min-w-0">
-                    <p className="text-[11px] font-semibold uppercase tracking-wide text-zinc-500">Run</p>
+                    <p className="text-[11px] font-semibold uppercase tracking-wide text-zinc-500">{span.kind === "chat" ? "Chat run" : "Task run"}</p>
                     <h2 className="mt-1 break-words text-sm font-semibold leading-snug text-zinc-100">{span.taskTitle ?? span.threadLabel ?? "Chat"}</h2>
                 </div>
                 <button type="button" onClick={onClose} aria-label="Close" className="rounded-lg p-1.5 text-zinc-400 hover:bg-zinc-800 hover:text-zinc-200"><IconX className="h-4 w-4" /></button>
             </div>
             <div className="space-y-3 px-5 py-4 text-sm">
                 <Field label="Agent">{actor ? actor.name : "—"}</Field>
+                <Field label="Kind">{span.kind === "chat" ? "Chat (no task)" : "Task"}</Field>
                 <Field label="Project">{span.projectName ?? "—"}</Field>
+                {span.customerName && <Field label="Customer">{span.customerName}</Field>}
                 <Field label="Outcome">
                     <span className="inline-flex items-center gap-1.5">
                         <span className="h-2.5 w-2.5 rounded-sm" style={{ backgroundColor: OUTCOME_PILL[span.outcome] }} />
@@ -1004,46 +1124,70 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
     );
 }
 
-function PhoneList({ data, colourBy, onOpen }: {
+function PhoneList({ data, rowsMode, projectRows, actorById, pillMode, onOpen }: {
     data: WorkTimeline;
-    colourBy: ColourBy;
+    rowsMode: RowsMode;
+    projectRows: TimelineProjectRow[];
+    actorById: Map<string, TimelineActor>;
+    pillMode: PillMode;
     onOpen: (span: TimelineSpan) => void;
 }) {
-    const spansByActor = useMemo(() => {
-        const map = new Map<string, TimelineSpan[]>();
-        for (const s of data.spans) {
-            const list = map.get(s.actorId);
-            if (list) list.push(s);
-            else map.set(s.actorId, [s]);
+    const sections = useMemo(() => {
+        if (rowsMode === "projects") {
+            return projectRows.map((r) => ({
+                id: r.id,
+                title: r.name,
+                sub: `${r.runCount} ${r.runCount === 1 ? "run" : "runs"}`,
+                lead: <ProjectMark row={{ id: r.id, kind: r.kind, label: r.name, sub: "", spans: r.spans, events: r.events, actorIds: r.actorIds }} actorById={actorById} />,
+                muted: r.kind === "chat",
+                spans: r.spans,
+            }));
         }
-        return map;
-    }, [data.spans]);
-    if (data.actors.length === 0) {
+        const byActor = new Map<string, TimelineSpan[]>();
+        for (const s of data.spans) {
+            const list = byActor.get(s.actorId);
+            if (list) list.push(s);
+            else byActor.set(s.actorId, [s]);
+        }
+        return data.actors.map((actor) => ({
+            id: actor.id,
+            title: actor.name,
+            sub: `${actor.runCount} runs`,
+            lead: <ActorAvatar actor={actor} />,
+            muted: false,
+            spans: byActor.get(actor.id) ?? [],
+        }));
+    }, [rowsMode, projectRows, actorById, data.spans, data.actors]);
+    if (data.actors.length === 0 || sections.every((s) => s.spans.length === 0)) {
         return <div className="rounded-2xl border border-zinc-800/80 bg-zinc-950/40 px-5 py-12 text-center text-sm text-zinc-400">Nothing happened in this window.</div>;
     }
     return (
         <div className="space-y-5">
-            {data.actors.map((actor) => {
-                const spans = (spansByActor.get(actor.id) ?? []).slice().sort((a, b) => b.start - a.start);
+            {sections.map((section) => {
+                const spans = section.spans.slice().sort((a, b) => b.start - a.start);
                 if (spans.length === 0) return null;
                 return (
-                    <section key={actor.id} aria-label={actor.name}>
+                    <section key={section.id} aria-label={section.title}>
                         <header className="mb-2 flex items-center gap-2 px-1">
-                            <ActorAvatar actor={actor} />
-                            <span className="text-sm font-semibold text-zinc-100">{actor.name}</span>
-                            <span className="ml-auto text-xs text-zinc-500">{actor.runCount} runs</span>
+                            {section.lead}
+                            <span className={cn("truncate text-sm font-semibold", section.muted ? "text-zinc-500" : "text-zinc-100")}>{section.title}</span>
+                            <span className="ml-auto shrink-0 text-xs text-zinc-500">{section.sub}</span>
                         </header>
                         <ul className="space-y-2">
                             {spans.map((span) => {
-                                const style = pillStyle(span, colourBy);
+                                const style = pillStyle(span, pillMode, actorById);
+                                const chat = span.kind === "chat";
                                 return (
                                     <li key={span.id}>
                                         <button type="button" onClick={() => onOpen(span)}
-                                            className="flex w-full items-center gap-3 rounded-xl border border-zinc-800/80 bg-zinc-950/40 px-3 py-2 text-left transition-colors hover:border-zinc-700">
+                                            className={cn("flex w-full items-center gap-3 rounded-xl border border-zinc-800/80 bg-zinc-950/40 px-3 py-2 text-left transition-colors hover:border-zinc-700", chat && "opacity-60")}>
                                             <span className="h-4 w-1.5 shrink-0 rounded-full" style={{ backgroundColor: style.hollow ? style.stroke : style.fill, outline: style.hollow ? `1px solid ${style.stroke}` : undefined }} />
                                             <span className="min-w-0 flex-1">
-                                                <span className="block truncate text-sm text-zinc-100">{span.taskTitle ?? span.threadLabel ?? "Chat"}</span>
-                                                <span className="block truncate text-xs text-zinc-500">{formatClock(span.startedAtMs)} – {span.endedAtMs ? formatClock(span.endedAtMs) : "now"} · {RUN_OUTCOME_LABEL[span.outcome]}</span>
+                                                <span className={cn("block truncate text-sm", chat ? "text-zinc-400" : "text-zinc-100")}>{chat ? `Chat${span.threadLabel ? ` · ${span.threadLabel}` : ""}` : (span.taskTitle ?? "Task")}</span>
+                                                <span className="block truncate text-xs text-zinc-500">
+                                                    {rowsMode === "projects" ? `${actorById.get(span.actorId)?.name ?? "Agent"} · ` : ""}
+                                                    {formatClock(span.startedAtMs)} – {span.endedAtMs ? formatClock(span.endedAtMs) : "now"} · {RUN_OUTCOME_LABEL[span.outcome]}
+                                                </span>
                                             </span>
                                             <IconChevronRight className="h-4 w-4 shrink-0 text-zinc-600" />
                                         </button>
@@ -1055,5 +1199,87 @@ function PhoneList({ data, colourBy, onOpen }: {
                 );
             })}
         </div>
+    );
+}
+
+// ─── Where the time went ────────────────────────────────────────────────────
+
+/** "3.2 h · $1.40 · Builder + QA" — the cost part only when there is one. */
+function timeSpentMeta(item: { busyMs: number; costCents: number; agentNames: string[] }): string {
+    const cost = item.costCents > 0 ? formatCost(item.costCents) : null;
+    return [formatHours(item.busyMs), cost, item.agentNames.length > 0 ? joinAgentNames(item.agentNames) : null].filter(Boolean).join(" · ");
+}
+
+function TimeSpentPanel({ summary }: { summary: TimeSpent }) {
+    const hasWork = summary.tasks.length > 0 || summary.chat.runs > 0;
+    return (
+        <section aria-labelledby="time-spent-title" className="rounded-2xl border border-zinc-800/80 bg-zinc-950/40">
+            <header className="flex flex-wrap items-baseline justify-between gap-2 border-b border-zinc-800/80 px-5 py-3">
+                <h2 id="time-spent-title" className="text-sm font-semibold text-zinc-100">Where the time went</h2>
+                <span className="text-xs text-zinc-500">Busy hours in this range, summed per run · {formatHours(summary.busyMs)} total</span>
+            </header>
+            {!hasWork ? (
+                <p className="px-5 py-6 text-sm text-zinc-500">No runs in this range.</p>
+            ) : (
+                <div className="grid gap-6 px-5 py-4 lg:grid-cols-2">
+                    <div className="min-w-0">
+                        <h3 className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-zinc-500">Top tasks</h3>
+                        {summary.tasks.length === 0 ? (
+                            <p className="text-sm text-zinc-500">No task work in this range.</p>
+                        ) : (
+                            <ol className="space-y-1.5">
+                                {summary.tasks.map((task) => (
+                                    <li key={task.taskId} className="flex min-w-0 items-baseline gap-2 text-sm">
+                                        <Link href={task.href} className="min-w-0 truncate font-medium text-zinc-100 hover:text-cyan-200 hover:underline">{task.title}</Link>
+                                        <span className="shrink-0 truncate text-xs tabular-nums text-zinc-500">· {timeSpentMeta(task)}</span>
+                                    </li>
+                                ))}
+                            </ol>
+                        )}
+                    </div>
+                    <div className="min-w-0">
+                        <h3 className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-zinc-500">Projects</h3>
+                        <ul className="space-y-1">
+                            {summary.projects.map((project) => <TimeSpentProjectRow key={project.projectId} project={project} />)}
+                            {summary.chat.runs > 0 && (
+                                <li className="flex min-w-0 items-baseline gap-2 py-1 pl-6 text-sm text-zinc-500">
+                                    <span className="truncate">Chat (no task)</span>
+                                    <span className="shrink-0 text-xs tabular-nums">
+                                        · {[formatHours(summary.chat.busyMs), summary.chat.costCents > 0 ? formatCost(summary.chat.costCents) : null, `${summary.chat.runs} ${summary.chat.runs === 1 ? "run" : "runs"}`].filter(Boolean).join(" · ")}
+                                    </span>
+                                </li>
+                            )}
+                        </ul>
+                    </div>
+                </div>
+            )}
+        </section>
+    );
+}
+
+function TimeSpentProjectRow({ project }: { project: TimeSpentProject }) {
+    const [open, setOpen] = useState(false);
+    return (
+        <li>
+            <button type="button" onClick={() => setOpen((v) => !v)} aria-expanded={open}
+                className="flex w-full min-w-0 items-baseline gap-2 rounded-lg py-1 text-left text-sm hover:bg-zinc-900/50">
+                <IconChevronRight className={cn("h-4 w-4 shrink-0 self-center text-zinc-600 transition-transform", open && "rotate-90")} />
+                <span className="min-w-0 truncate font-medium text-zinc-100">
+                    {project.name}
+                    {project.customerName && <span className="font-normal text-zinc-500"> · {project.customerName}</span>}
+                </span>
+                <span className="shrink-0 truncate text-xs tabular-nums text-zinc-500">· {timeSpentMeta(project)}</span>
+            </button>
+            {open && (
+                <ul className="mb-1 ml-6 space-y-1 border-l border-zinc-800 pl-3">
+                    {project.tasks.map((task) => (
+                        <li key={task.taskId} className="flex min-w-0 items-baseline gap-2 text-sm">
+                            <Link href={task.href} className="min-w-0 truncate text-zinc-200 hover:text-cyan-200 hover:underline">{task.title}</Link>
+                            <span className="shrink-0 truncate text-xs tabular-nums text-zinc-500">· {timeSpentMeta(task)}</span>
+                        </li>
+                    ))}
+                </ul>
+            )}
+        </li>
     );
 }
