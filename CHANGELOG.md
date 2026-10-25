@@ -9,6 +9,11 @@ tagged (e.g. `## [1.2.0] — 2026-07-22`). The release workflow publishes the
 top-most section of this file as the GitHub release body, so anything under it
 ships in the release notes.
 
+## [0.12.4] — 2026-10-25
+
+### Fixed
+- The Timeline no longer shows "from and to are required" after zooming or dragging the mini-map.
+
 ## [0.12.3] — 2026-10-25
 
 ### Fixed
