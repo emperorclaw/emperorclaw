@@ -97,7 +97,8 @@ class AgentRuntime:
                                    config=CompactionConfig(after_tokens=cfg.compact_after_tokens), logger=self.log)
         self.context = ContextBuilder.for_agent(self.client, cfg, agent_id, logger=self.log)
         self.budget = BudgetGate(self.client.request, agent_id, logger=self.log)
-        self.ledger = RunLedger(self.client.request, capabilities=lambda: self.context.capabilities, logger=self.log)
+        self.ledger = RunLedger(self.client.request, capabilities=lambda: self.context.capabilities, logger=self.log,
+                                agent_id=agent_id)
         self.objectives = Objectives(
             request=self.client.request, data=data, save=self.state.save, agent_id=agent_id, logger=self.log,
             native=NativeGoals(python=cfg.hermes_python, checkout=cfg.hermes_checkout, profile_home=cfg.profile_home),

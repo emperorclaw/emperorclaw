@@ -170,7 +170,10 @@ class EmperorClient:
         if run_header:
             body["run"] = dict(run_header)
         try:
-            return await self.request("POST", f"/agents/runs/{run_id}/events", body, timeout=15) or {}
+            # agentId on every batch, not just the one carrying the `run` header: a company-wide
+            # token acts as the agent it names, which a run in a private direct thread needs.
+            return await self.request("POST", f"/agents/runs/{run_id}/events", body,
+                                      self._agent_query() if self.agent_id else None, timeout=15) or {}
         except ApiError as exc:
             if exc.status_code == 409 and "run_not_found" in exc.body:
                 raise RunNotFound(str(exc)) from exc

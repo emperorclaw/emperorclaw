@@ -877,6 +877,8 @@ def emperor_get_thread_messages(args: Dict[str, Any], **_: Any) -> str:
     query = {
         "limit": _bounded_int(args.get("limit"), 30, 100),
         "since": args.get("since"),
+        # A company-wide token reads a person's private chat only as the agent it names.
+        "agentId": _agent_ref(),
     }
     result = _request("GET", f"/threads/{urllib.parse.quote(thread_id)}/messages", query=query)
     data = result.get("data") if isinstance(result, dict) else None

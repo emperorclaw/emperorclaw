@@ -153,9 +153,13 @@ class RunLedger:
     """Best-effort start/finish reporting for one agent. Never raises."""
 
     def __init__(self, request: Request, *, capabilities: Callable[[], frozenset[str]],
-                 logger: Optional[logging.Logger] = None, breaker: Optional[LedgerBreaker] = None) -> None:
+                 logger: Optional[logging.Logger] = None, breaker: Optional[LedgerBreaker] = None,
+                 agent_id: str = "") -> None:
         self._request = request
         self._capabilities = capabilities
+        # Named on every finish: a company-wide token acts as this agent, which a run in a
+        # person's private direct thread needs for its replyMessageId to be accepted.
+        self._query = {"agentId": agent_id} if agent_id else None
         self._log = logger or logging.getLogger("emperor_bridge.ledger")
         self.breaker = breaker or LedgerBreaker(logger=self._log)
         self._pending: dict[str, Mapping[str, Any]] = {}
@@ -196,7 +200,8 @@ class RunLedger:
         if not self.enabled or self.breaker.should_skip():
             return False
         try:
-            await self._request("PATCH", f"/agents/runs/{run_id}", dict(payload), timeout=LEDGER_TIMEOUT_S)
+            await self._request("PATCH", f"/agents/runs/{run_id}", dict(payload), self._query,
+                                timeout=LEDGER_TIMEOUT_S)
         except Exception as exc:
             self._failed("finish", exc)
             if _retryable(exc):
@@ -213,7 +218,8 @@ class RunLedger:
             if self.breaker.should_skip():
                 return
             try:
-                await self._request("PATCH", f"/agents/runs/{run_id}", dict(payload), timeout=LEDGER_TIMEOUT_S)
+                await self._request("PATCH", f"/agents/runs/{run_id}", dict(payload), self._query,
+                                    timeout=LEDGER_TIMEOUT_S)
                 self._ok()
             except Exception as exc:
                 self._failed("finish retry", exc)

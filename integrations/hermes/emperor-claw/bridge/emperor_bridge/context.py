@@ -527,7 +527,8 @@ class ContextBuilder:
 
     async def seed(self, thread_id: str, exclude: set[str]) -> str:
         try:
-            payload = await self._request("GET", f"/threads/{thread_id}/messages", query={"limit": SEED_MESSAGES},
+            payload = await self._request("GET", f"/threads/{thread_id}/messages",
+                                          query={"limit": SEED_MESSAGES, "agentId": self.agent_id},
                                           timeout=10)
         except Exception as exc:
             self._log.info("continuity seed for %s unavailable: %s", thread_id, exc)
