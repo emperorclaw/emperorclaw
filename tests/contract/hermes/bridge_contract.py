@@ -444,7 +444,10 @@ def s_identify(entry: dict) -> None:
     reg = entry["evidence"]["register"][-1]
     check(entry, str(reg.get("hermesVersion")) == PINNED_VERSION, "register reports hermesVersion == identify.code_version")
     check(entry, reg.get("gatewayTopology") == "standalone", "register reports gatewayTopology standalone")
-    check(entry, str(reg.get("bridgeVersion", "")).startswith("0.9"), "register reports bridge 0.9.x")
+    # The bridge version follows the release tag; compare with the packaged one, not a fixed series.
+    packaged = subprocess.run([HERMES_PY, "-c", "from emperor_bridge.version import BRIDGE_VERSION as v; print(v)"],
+                              capture_output=True, text=True, timeout=30).stdout.strip()
+    check(entry, bool(packaged) and str(reg.get("bridgeVersion", "")) == packaged, "register reports the packaged bridge version")
     r = turn(profiles[0], "hello")
     check(entry, r["replies"][0]["text"].startswith("pong: hello"), "first turn answered through the gateway")
     hc = subprocess.run([HERMES_PY, "-m", "emperor_bridge", "healthcheck"], capture_output=True, text=True, timeout=30,
