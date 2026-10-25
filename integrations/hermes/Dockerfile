@@ -13,7 +13,7 @@ FROM python:3.11-slim
 # Hermes is pinned by tag AND commit: the build fails on any other checkout.
 ARG HERMES_REF=v0.22.4
 ARG HERMES_SHA=4d04303818b61bf3aa09278af48356315515965b
-ARG BRIDGE_VERSION=0.9.3
+ARG BRIDGE_VERSION=0.12.1
 
 RUN groupadd --gid 1001 hermes && useradd --uid 1001 --gid hermes --create-home hermes
 

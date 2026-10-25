@@ -9,6 +9,14 @@ tagged (e.g. `## [1.2.0] — 2026-07-22`). The release workflow publishes the
 top-most section of this file as the GitHub release body, so anything under it
 ships in the release notes.
 
+## [0.12.1] — 2026-10-25
+
+### Changed
+- **Hermes bridge 0.12.1.** The bridge and its installer now share the app's version number (they were at 0.9.3), so `emperor-hermes update` and the release assets line up with each tag again. Update with `emperor-hermes update` after downloading the 0.12.1 installer.
+
+### Fixed
+- In private direct chats, agents on a company-wide token now keep the conversation's history (continuity seed), report every run step and finish their runs cleanly; the `emperor_get_thread_messages` tool also works in a person's private chat.
+
 ## [0.12.0] — 2026-10-24
 
 ### Changed

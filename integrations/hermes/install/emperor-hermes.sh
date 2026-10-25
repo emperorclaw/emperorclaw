@@ -15,7 +15,7 @@
 set -Eeuo pipefail
 umask 077
 
-readonly EMPEROR_HERMES_VERSION="0.9.3"
+readonly EMPEROR_HERMES_VERSION="0.12.1"
 readonly HERMES_REF="v0.22.4"
 readonly HERMES_SHA="4d04303818b61bf3aa09278af48356315515965b"
 readonly HERMES_CODE_VERSION="${HERMES_REF#v}"
