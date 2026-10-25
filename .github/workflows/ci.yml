@@ -211,17 +211,24 @@ jobs:
           bridge=$(sed -nE "s/^BRIDGE_VERSION[[:space:]]*(:[^=]*)?=[[:space:]]*[\"']([^\"']+)[\"'].*/\2/p" \
             integrations/hermes/emperor-claw/bridge/emperor_bridge/version.py | head -n 1)
           echo "tag=$tag installer=$installer bridge=$bridge"
-          if [ "$tag" != "$installer" ] || [ "$tag" != "$bridge" ]; then
-            echo "::error::version mismatch: tag v$tag, installer $installer, bridge $bridge"
+          if [ "$installer" != "$bridge" ]; then
+            echo "::error::installer $installer and bridge $bridge disagree"
             exit 1
+          fi
+          # An app-only release (the bridge did not change) publishes no bridge assets.
+          if [ "$tag" != "$bridge" ]; then
+            echo "::notice::tag v$tag is an app-only release; bridge assets stay at v$bridge"
+            exit 0
           fi
           echo "version=$tag" >> "$GITHUB_OUTPUT"
 
       - name: Package the bridge bundle
+        if: steps.ver.outputs.version != ''
         run: bash scripts/package-hermes-bridge.sh --version "${{ steps.ver.outputs.version }}" --out dist/hermes-bridge
 
       # A CRLF script or unit breaks on the Pi (bash: $'\r': command not found).
       - name: Refuse CRLF in packaged text files
+        if: steps.ver.outputs.version != ''
         run: |
           set -euo pipefail
           check=$(mktemp -d)
@@ -234,6 +241,7 @@ jobs:
           (cd dist/hermes-bridge && sha256sum -c ./*.sha256)
 
       - name: Upload to the GitHub release
+        if: steps.ver.outputs.version != ''
         env:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ github.ref_name }}
