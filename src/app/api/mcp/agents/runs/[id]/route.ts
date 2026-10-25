@@ -5,10 +5,29 @@ import { agentRuns } from "@/db/schema";
 import { resolveBoundAgentId, verifyMcpToken } from "@/lib/mcp";
 import { mcpActingAgentId, mcpTokenMayUseMessageId } from "@/lib/thread-access";
 import { consumeRateLimit } from "@/lib/rate-limit";
+import { attributeFinishedRun } from "@/lib/run-task-attribution-store";
 import { clampRunTimestamp, computeRunDurationMs, finishRunSchema, finishUsageColumns, payloadTooLarge, truncateRunError } from "@/lib/run-ledger";
 
 const RUNS_PER_MINUTE = 2_000;
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+type RunRow = typeof agentRuns.$inferSelect;
+
+/**
+ * Rule (c) of run-task-attribution: a run that finished with no task gets the
+ * task its agent acted on during the run. Best-effort — attribution never
+ * fails a finish — and never overwrites a task already set.
+ */
+async function withFinishAttribution(run: RunRow): Promise<RunRow> {
+    if (run.taskId || !run.agentId || !run.endedAt) return run;
+    try {
+        const taskId = await attributeFinishedRun(run);
+        return taskId ? { ...run, taskId } : run;
+    } catch (err) {
+        console.warn("run finish task attribution failed:", err);
+        return run;
+    }
+}
 
 /**
  * PATCH /api/mcp/agents/runs/[id] — finish a run.
@@ -107,7 +126,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
                 ...(boundAgentId ? [eq(agentRuns.agentId, boundAgentId)] : []),
             ))
             .returning();
-        if (updated) return NextResponse.json({ run: updated });
+        if (updated) return NextResponse.json({ run: await withFinishAttribution(updated) });
 
         // Unknown id (start lost): create the row from what the finish carries.
         const startedAt = new Date(endedAt.getTime() - (input.durationMs ?? 0));
@@ -133,7 +152,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
             })
             .onConflictDoNothing({ target: agentRuns.id })
             .returning();
-        if (inserted) return NextResponse.json({ run: inserted });
+        if (inserted) return NextResponse.json({ run: await withFinishAttribution(inserted) });
 
         // Lost the race with a concurrent start/finish. The row now exists:
         // return it (terminal no-op) or report a cross-company id collision.

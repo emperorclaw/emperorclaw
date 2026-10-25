@@ -62,9 +62,11 @@ export const DEFAULT_AGENT_PAIR_LOOP_MAX_TURNS = 30;
  * Message-metadata keys that only server code may set. A caller-supplied value
  * for any of these is stripped before a message is persisted (see the MCP
  * message-post route) so a runtime cannot forge a task wake, a stall nudge, or
- * otherwise bypass the loop guard.
+ * otherwise bypass the loop guard. `taskId` / `taskIds` name the task a
+ * server notice is about (task wake, stall sweep, onboarding brief) and feed
+ * run → task attribution, so a runtime may not stamp them on its own posts.
  */
-export const RESERVED_MESSAGE_METADATA_KEYS = ["taskAssigned", "stallNudge", "stallEscalation", "agentWake", "loopGuardResume", "__objectiveStatus", "ack", "idempotencyKey", "unreachableMentions"] as const;
+export const RESERVED_MESSAGE_METADATA_KEYS = ["taskAssigned", "stallNudge", "stallEscalation", "agentWake", "loopGuardResume", "__objectiveStatus", "ack", "idempotencyKey", "unreachableMentions", "taskId", "taskIds"] as const;
 
 /**
  * A "Resume" marker resets the loop streak. It is a system message with this

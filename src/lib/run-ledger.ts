@@ -4,6 +4,7 @@ import { db } from "@/db";
 import { agentRunDaily, agentRuns, messageRoutes, threadMessages } from "@/db/schema";
 import { redactSensitive } from "@/lib/live-feed-v2";
 import type { RouteReason } from "@/lib/message-routing";
+import { validatedExplicitRunTask, validatedTriggerTask } from "@/lib/run-task-attribution-store";
 
 /**
  * The run ledger (PR 2): one row per agent turn, written by the runtime that
@@ -138,10 +139,30 @@ export async function insertRunStart(companyId: string, agentId: string, input: 
     // caller-supplied threadId, so a run is never filed under (and judged
     // visible by) the wrong thread.
     let threadId = input.threadId ?? null;
+    // A task id the runtime sent is stored only when it is a live task of this
+    // company inside the agent's scope; otherwise it is dropped (and logged),
+    // never failing the start, and rule (a) below may still attribute one.
+    let taskId = await validatedExplicitRunTask(companyId, agentId, input.taskId);
     if (input.triggerMessageId) {
-        const [trigger] = await db.select({ threadId: threadMessages.threadId }).from(threadMessages)
+        const [trigger] = await db.select({
+            threadId: threadMessages.threadId,
+            companyId: threadMessages.companyId,
+            senderType: threadMessages.senderType,
+            targetAgentId: threadMessages.targetAgentId,
+            metadataJson: threadMessages.metadataJson,
+        }).from(threadMessages)
             .where(and(eq(threadMessages.id, input.triggerMessageId), eq(threadMessages.companyId, companyId))).limit(1);
         if (trigger) threadId = trigger.threadId;
+        // Rule (a) of run-task-attribution: a run woken by a system "New task
+        // assigned to you" notice names that task. Best-effort — attribution
+        // never fails a start.
+        if (!taskId && trigger) {
+            try {
+                taskId = await validatedTriggerTask(companyId, agentId, trigger);
+            } catch (err) {
+                console.warn("run start task attribution failed:", err);
+            }
+        }
     }
     await db
         .insert(agentRuns)
@@ -155,7 +176,7 @@ export async function insertRunStart(companyId: string, agentId: string, input: 
             triggerKind: input.triggerKind ?? "other",
             triggerMessageId: input.triggerMessageId ?? null,
             threadId,
-            taskId: input.taskId ?? null,
+            taskId,
             status: "running",
             // Clamped to [now − 48h, now + 5min]; an out-of-range start falls back to now.
             startedAt: clampRunTimestamp(input.startedAt),
