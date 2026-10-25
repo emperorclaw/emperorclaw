@@ -9,6 +9,11 @@ tagged (e.g. `## [1.2.0] — 2026-07-22`). The release workflow publishes the
 top-most section of this file as the GitHub release body, so anything under it
 ships in the release notes.
 
+## [0.12.3] — 2026-10-25
+
+### Fixed
+- Timeline clusters ("12 runs") take the colour of the runs inside them (their agent in the Projects view, their outcome, source or project in the Agents view) instead of grey; clusters of chat only stay muted.
+
 ## [0.12.2] — 2026-10-25
 
 ### Added
