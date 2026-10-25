@@ -9,6 +9,14 @@ tagged (e.g. `## [1.2.0] — 2026-07-22`). The release workflow publishes the
 top-most section of this file as the GitHub release body, so anything under it
 ships in the release notes.
 
+## [0.12.5] — 2026-10-25
+
+### Added
+- **Clear finished work in one go.** The Done column's "⋯" menu archives every visible done task after a confirmation, and the list view lets you select tasks and archive them together. "Undo" in the toast brings them back.
+
+### Fixed
+- Dropdowns on the Projects board (and everywhere else) open above the cards instead of behind them.
+
 ## [0.12.4] — 2026-10-25
 
 ### Fixed
