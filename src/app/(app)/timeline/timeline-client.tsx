@@ -845,8 +845,12 @@ function RowContent({ actorById, items, events, xFor, pillMode, focus, spanById,
                     const c = item.cluster;
                     const x = xFor(c.start);
                     const width = Math.max(4, xFor(c.end) - xFor(c.start));
-                    const dimmed = focus && !clusterMatchesFocus(c, spanById, focus) ? "opacity-20" : "opacity-70 hover:opacity-100";
+                    const look = clusterLook(c, spanById, pillMode, actorById);
+                    const dimmed = focus && !clusterMatchesFocus(c, spanById, focus) ? "opacity-20" : look.allChat ? CHAT_MUTED : "opacity-70 hover:opacity-100";
                     const cx = x + width / 2;
+                    const mostly = pillMode === "agent"
+                        ? (look.span ? actorById.get(look.span.actorId)?.name ?? "Agent" : "Chat")
+                        : RUN_OUTCOME_LABEL[dominantOutcome(c)];
                     return (
                         <g key={`c:${c.spanIds[0]}`}
                             role="button"
@@ -854,12 +858,12 @@ function RowContent({ actorById, items, events, xFor, pillMode, focus, spanById,
                             className={cn("cursor-zoom-in transition-opacity", dimmed)}
                             onClick={(e) => { e.stopPropagation(); onZoomCluster(c); }}
                             onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); e.stopPropagation(); onZoomCluster(c); } }}
-                            onMouseEnter={(e) => showTooltip(e, <span className="text-xs text-zinc-200">{c.count} runs · {RUN_OUTCOME_LABEL[dominantOutcome(c)]}</span>)}
+                            onMouseEnter={(e) => showTooltip(e, <span className="text-xs text-zinc-200">{c.count} runs · mostly {mostly}</span>)}
                             onMouseLeave={() => setTooltip(null)}
                             aria-label={`${c.count} runs, zoom to expand`}
                         >
                             <HitRect x={x} width={width} />
-                            <rect x={x} y={y} width={width} height={BAR_H} rx={Math.min(BAR_H / 2, width / 2)} fill="rgba(148,163,184,0.4)" stroke="rgba(148,163,184,0.7)" strokeWidth={1} />
+                            <rect x={x} y={y} width={width} height={BAR_H} rx={Math.min(BAR_H / 2, width / 2)} fill={look.style.fill} stroke={look.style.stroke} strokeWidth={1} />
                             {width >= 26 && <text x={cx} y={y + BAR_H / 2 + 3} textAnchor="middle" fontSize={8} fill="#e4e4e7" fontWeight={600}>{c.count}</text>}
                         </g>
                     );
@@ -911,6 +915,31 @@ function RowContent({ actorById, items, events, xFor, pillMode, focus, spanById,
             ))}
         </>
     );
+}
+
+/**
+ * A cluster takes the colour most of its runs share in the current colour
+ * mode (task work wins over chat when both are folded in), so a cluster reads
+ * like the runs inside it instead of a grey block.
+ */
+function clusterLook(cluster: TimelineCluster, spanById: Map<string, TimelineSpan>, pillMode: PillMode, actorById: Map<string, TimelineActor>): { style: { fill: string; stroke: string }; span: TimelineSpan | null; allChat: boolean } {
+    const spans = cluster.spanIds.map((id) => spanById.get(id)).filter((s): s is TimelineSpan => Boolean(s));
+    const work = spans.filter((s) => s.kind !== "chat");
+    const pool = work.length > 0 ? work : spans;
+    const tally = new Map<string, { n: number; span: TimelineSpan; style: { fill: string; stroke: string } }>();
+    for (const span of pool) {
+        const style = pillStyle(span, pillMode, actorById);
+        const entry = tally.get(style.fill);
+        if (entry) entry.n += 1;
+        else tally.set(style.fill, { n: 1, span, style: { fill: style.fill, stroke: style.stroke } });
+    }
+    let best: { n: number; span: TimelineSpan; style: { fill: string; stroke: string } } | null = null;
+    for (const entry of tally.values()) if (!best || entry.n > best.n) best = entry;
+    return {
+        style: best?.style ?? { fill: "rgba(148,163,184,0.4)", stroke: "rgba(148,163,184,0.7)" },
+        span: work.length > 0 ? best?.span ?? null : null,
+        allChat: spans.length > 0 && work.length === 0,
+    };
 }
 
 function dominantOutcome(cluster: TimelineCluster): RunOutcome {
