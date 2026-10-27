@@ -3,12 +3,14 @@
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useId, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from "react";
 import {
-    IconArrowRight, IconBuildingStore, IconCommand, IconFolder, IconInbox, IconKeyboard, IconListCheck, IconMessagePlus, IconPlus, IconRobot, IconSearch, IconUserPlus,
+    IconArrowRight, IconBook, IconBuildingStore, IconCommand, IconFileText, IconFolder, IconInbox, IconKeyboard, IconListCheck, IconMessage, IconMessagePlus, IconPlus, IconRobot,
+    IconSearch, IconUserPlus,
 } from "@tabler/icons-react";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
 import { CHORD_TIMEOUT_MS, GO_CHORDS, isPlainKey, isTypingTarget, matchesQuery } from "@/lib/keyboard-shortcuts";
 import { navSections, type NavAccess } from "@/lib/navigation";
 import type { PaletteData } from "@/lib/palette";
+import { SEARCH_TYPE_LABELS, snippetParts, type SearchResult, type SearchType } from "@/lib/search-query";
 import { cn } from "@/lib/utils";
 
 const OPEN_EVENT = "emperor:open-palette";
@@ -31,6 +33,18 @@ type Option = {
     href: string;
     icon: typeof IconSearch;
     keywords?: string;
+    /** Full-text matches: the matched passage, highlighted as text nodes. */
+    snippet?: { text: string; highlights: [number, number][] };
+};
+
+const MATCH_ICON: Record<SearchType, typeof IconSearch> = {
+    task: IconListCheck,
+    message: IconMessage,
+    knowledge: IconBook,
+    file: IconFileText,
+    project: IconFolder,
+    customer: IconBuildingStore,
+    agent: IconRobot,
 };
 
 const EMPTY: PaletteData = { agents: [], projects: [], customers: [], tasks: [] };
@@ -46,8 +60,8 @@ export function CommandPalette({ access, canAct }: { access: NavAccess; canAct: 
     const [sheetOpen, setSheetOpen] = useState(false);
     const [query, setQuery] = useState("");
     const [data, setData] = useState<PaletteData>(EMPTY);
-    // Server task matches for the current query (stale ones are ignored).
-    const [found, setFound] = useState<{ q: string; tasks: PaletteData["tasks"] } | null>(null);
+    // Server task and full-text matches for the current query (stale ones are ignored).
+    const [found, setFound] = useState<{ q: string; tasks: PaletteData["tasks"]; matches: SearchResult[] } | null>(null);
     const [loading, setLoading] = useState(false);
     const [active, setActive] = useState(0);
     const listId = useId();
@@ -122,7 +136,10 @@ export function CommandPalette({ access, canAct }: { access: NavAccess; canAct: 
         const timer = window.setTimeout(async () => {
             try {
                 const res = await fetch(`/api/ui/palette?q=${encodeURIComponent(q)}`, { signal: controller.signal, cache: "no-store" });
-                if (res.ok) setFound({ q, tasks: (await res.json() as PaletteData).tasks });
+                if (res.ok) {
+                    const body = await res.json() as PaletteData;
+                    setFound({ q, tasks: body.tasks, matches: body.matches ?? [] });
+                }
             } catch {
                 // Aborted by the next keystroke.
             }
@@ -166,7 +183,17 @@ export function CommandPalette({ access, canAct }: { access: NavAccess; canAct: 
             });
         };
         // Tasks were already matched on the server.
-        return limit([...actions.filter(hit), ...pages.filter(hit), ...records.filter(hit), ...taskOptions]);
+        const listed = limit([...actions.filter(hit), ...pages.filter(hit), ...records.filter(hit), ...taskOptions]);
+        // Full-text hits (tasks, notes, messages, knowledge, files…), minus what is already listed.
+        const listedIds = new Set(listed.map((o) => o.id));
+        const matches: Option[] = (found?.q === q ? found.matches : [])
+            .filter((m) => !listedIds.has(`${m.type}:${m.id}`))
+            .map((m) => ({
+                id: `match:${m.type}:${m.id}`, group: "Matches", label: m.title, hint: SEARCH_TYPE_LABELS[m.type], href: m.href, icon: MATCH_ICON[m.type],
+                snippet: m.snippet && m.highlights.length ? { text: m.snippet, highlights: m.highlights } : undefined,
+            }));
+        const searchRow: Option = { id: "search:all", group: "Search", label: `Search for “${q}”`, href: `/search?q=${encodeURIComponent(q)}`, icon: IconSearch };
+        return [...listed, ...matches, searchRow];
     }, [query, data, found, access, canAct]);
 
     const groups = useMemo(() => {
@@ -227,11 +254,11 @@ export function CommandPalette({ access, canAct }: { access: NavAccess; canAct: 
                             aria-controls={listId}
                             aria-autocomplete="list"
                             aria-activedescendant={activeOption ? optionId(activeIndex) : undefined}
-                            aria-label="Search pages, agents, projects, customers and tasks"
+                            aria-label="Search pages, agents, projects, customers, tasks and messages"
                             value={query}
                             onChange={(e) => { setQuery(e.target.value); setActive(0); }}
                             onKeyDown={onInputKey}
-                            placeholder="Jump to a page, agent, project or task"
+                            placeholder="Jump to a page, or search everything"
                             className="h-14 min-w-0 flex-1 bg-transparent text-base text-foreground outline-none placeholder:text-muted-foreground sm:text-[15px]"
                         />
                         <kbd className="hidden rounded-md border border-border px-1.5 py-0.5 font-mono text-[11px] text-muted-foreground sm:inline">Esc</kbd>
@@ -255,8 +282,20 @@ export function CommandPalette({ access, canAct }: { access: NavAccess; canAct: 
                                             className={cn("flex min-h-11 cursor-pointer items-center gap-3 rounded-xl px-3 text-sm sm:min-h-9", selected ? "bg-primary/10 text-foreground ring-1 ring-inset ring-primary/25" : "text-foreground/90")}
                                         >
                                             <option.icon className={cn("h-4 w-4 shrink-0", selected ? "text-primary" : "text-muted-foreground")} />
-                                            <span className="min-w-0 flex-1 truncate">{option.label}</span>
+                                            {option.snippet ? (
+                                                <span className="min-w-0 flex-1 py-1.5">
+                                                    <span className="block truncate">{option.label}</span>
+                                                    <span className="block truncate text-xs text-muted-foreground">
+                                                        {snippetParts(option.snippet.text, option.snippet.highlights).map((part, i) => part.match
+                                                            ? <mark key={i} className="rounded-[3px] bg-primary/15 px-0.5 text-foreground">{part.text}</mark>
+                                                            : <span key={i}>{part.text}</span>)}
+                                                    </span>
+                                                </span>
+                                            ) : (
+                                                <span className="min-w-0 flex-1 truncate">{option.label}</span>
+                                            )}
                                             {option.hint && <span className="hidden max-w-[45%] truncate text-xs text-muted-foreground sm:inline">{option.hint}</span>}
+                                            {option.id === "search:all" && <IconArrowRight className="h-4 w-4 shrink-0 text-muted-foreground" />}
                                             {selected && <kbd className="hidden rounded-md border border-border px-1.5 font-mono text-[11px] text-muted-foreground sm:inline">↵</kbd>}
                                         </div>
                                     );

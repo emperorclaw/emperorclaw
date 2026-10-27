@@ -9,6 +9,7 @@ import { and, desc, eq, ilike, inArray, isNull, or, sql } from "drizzle-orm";
 import { db } from "@/db";
 import { agents, customers, projects, tasks } from "@/db/schema";
 import type { AttentionScope } from "@/lib/attention-rules";
+import type { SearchResult } from "@/lib/search-query";
 import { VISIBLE_OPEN_TASK_STATES } from "@/lib/task-state";
 
 export interface PaletteData {
@@ -16,6 +17,8 @@ export interface PaletteData {
     projects: { id: string; name: string; customerName: string | null }[];
     customers: { id: string; name: string }[];
     tasks: { id: string; title: string; projectId: string; projectName: string | null; state: string }[];
+    /** Top full-text hits for the typed query (GET /api/ui/palette?q= only; lib/search.ts). */
+    matches?: SearchResult[];
 }
 
 export const PALETTE_TASK_LIMIT = 20;
