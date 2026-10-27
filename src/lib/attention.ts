@@ -28,7 +28,8 @@ import { classifyIncident, filterPausedNotices, isIncidentStale, type AttentionE
 import { loadStallSignals } from "@/lib/stall-signal-reads";
 import { stallLabel } from "@/lib/stall-signal";
 import { taskHref as taskPageHref } from "@/lib/task-story";
-import { applyAttentionScope, attentionCounts, latestFailedRuns, plainText, workingNowAgentIds, runFailureReason, sortAttention, type AttentionCounts, type AttentionScope } from "@/lib/attention-rules";
+import { describeFailure, fixAudience, type FailureView } from "@/lib/failure-cause";
+import { applyAttentionScope, attentionCounts, latestFailedRuns, plainText, workingNowAgentIds, sortAttention, type AttentionCounts, type AttentionScope } from "@/lib/attention-rules";
 
 export * from "@/lib/attention-rules";
 
@@ -109,6 +110,16 @@ function excerpt(text: string, max = 60): string {
 
 const humanize = (value: string) => value.replace(/_/g, " ");
 
+/** The reason line for a failure: its plain cause, plus the short raw text when the cause is unknown. */
+function failureReason(failure: FailureView): string {
+    return failure.detail ? `${failure.headline}: ${failure.detail}` : failure.headline;
+}
+
+function blockedReasonOf(inputJson: unknown): string | null {
+    const input = inputJson && typeof inputJson === "object" ? inputJson as Record<string, unknown> : {};
+    return typeof input.blockedReason === "string" && input.blockedReason.trim() ? input.blockedReason.trim() : null;
+}
+
 /** A short human reason for a "stuck" incident, from its structured code. */
 function shortReason(reasonCode: string): string {
     const code = reasonCode.replace(/_/g, " ").trim();
@@ -134,6 +145,8 @@ async function tolerateMissingSchema<T>(promise: Promise<T>, fallback: T): Promi
 export async function buildAttention(companyId: string, access: AttentionAccess, preload: AttentionPreload = {}): Promise<AttentionResult> {
     const now = preload.now ?? new Date();
     const dayAgo = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+    // Failure fixes are filtered for the viewer here: viewers get none, admin-only fixes need an owner or admin.
+    const audience = fixAudience(access);
 
     const scopedAgentIds = access.scope?.agentIds;
     const [agentRows, members, projectRows, customerRows, inProgress, decisions, openIncidents, typing, health, openRuns, recentRuns, blockedTasks, requestRows, mine, stalls] = await Promise.all([
@@ -205,7 +218,10 @@ export async function buildAttention(companyId: string, access: AttentionAccess,
     // runs in private direct chats belong to the chat's owner only.
     const messageIds = health.attention.map((item) => item.messageId);
     const runThreadIds = [...new Set([...recentRuns, ...stalls].flatMap((r) => r.threadId ? [r.threadId] : []))];
-    const stallTaskIds = [...new Set(stalls.flatMap((r) => r.taskId ? [r.taskId] : []))];
+    // Tasks behind stalled and failed runs: their current assignee is who a
+    // Nudge or Retry goes to (the task may have moved since the run).
+    const failedRuns = latestFailedRuns(recentRuns);
+    const stallTaskIds = [...new Set([...stalls, ...failedRuns].flatMap((r) => r.taskId ? [r.taskId] : []))];
 
     const [assignmentEvents, pausedNoticeRows, messageThreadRows, runThreadRows, stallTasks] = await Promise.all([
         incidentTaskIds.length
@@ -218,7 +234,7 @@ export async function buildAttention(companyId: string, access: AttentionAccess,
             .where(and(eq(threadMessages.companyId, companyId), eq(threadMessages.senderType, "system"), sql`${threadMessages.metadataJson}->>'loopGuard' = 'true'`, gte(threadMessages.createdAt, dayAgo)))
             .orderBy(desc(threadMessages.createdAt)).limit(10),
         messageIds.length
-            ? db.select({ messageId: threadMessages.id, threadId: messageThreads.id, type: messageThreads.type, ownerUserId: messageThreads.ownerUserId, isPrivate: messageThreads.isPrivate, directAgentId: messageThreads.directAgentId })
+            ? db.select({ messageId: threadMessages.id, threadId: messageThreads.id, type: messageThreads.type, ownerUserId: messageThreads.ownerUserId, isPrivate: messageThreads.isPrivate, directAgentId: messageThreads.directAgentId, senderType: threadMessages.senderType, senderId: threadMessages.senderId, metadataJson: threadMessages.metadataJson })
                 .from(threadMessages).innerJoin(messageThreads, eq(messageThreads.id, threadMessages.threadId))
                 .where(and(eq(threadMessages.companyId, companyId), inArray(threadMessages.id, messageIds)))
             : Promise.resolve([]),
@@ -227,7 +243,7 @@ export async function buildAttention(companyId: string, access: AttentionAccess,
                 .from(messageThreads).where(and(eq(messageThreads.companyId, companyId), inArray(messageThreads.id, runThreadIds)))
             : Promise.resolve([]),
         stallTaskIds.length
-            ? db.select({ id: tasks.id, projectId: tasks.projectId, inputJson: tasks.inputJson, taskType: tasks.taskType, deletedAt: tasks.deletedAt })
+            ? db.select({ id: tasks.id, projectId: tasks.projectId, inputJson: tasks.inputJson, taskType: tasks.taskType, deletedAt: tasks.deletedAt, assignedAgentId: tasks.assignedAgentId })
                 .from(tasks).where(and(eq(tasks.companyId, companyId), inArray(tasks.id, stallTaskIds)))
             : Promise.resolve([]),
     ]);
@@ -277,18 +293,32 @@ export async function buildAttention(companyId: string, access: AttentionAccess,
             id: `incident:${i.id}`, title, memberKey: key, memberName: memberName(key), at: i.createdAt.toISOString(),
             actionLabel: "Open task", href: taskHref(i.projectId, i.taskId), taskId: i.taskId, ...context(i.projectId),
         };
-        if (cls === "problem") entries.push({ ...base, kind: "incident", reason: shortReason(i.reasonCode) });
+        if (cls === "problem") {
+            // A known cause (credits, key, scope...) replaces the watchdog's code; an unknown one keeps it (and Reassign).
+            const failure = describeFailure({ texts: [i.summary, i.reasonCode] }, { audience, agentId: i.assignedAgentId ?? null, taskId: i.taskId });
+            entries.push(failure.cause === "unknown"
+                ? { ...base, kind: "incident", reason: shortReason(i.reasonCode) }
+                : { ...base, kind: "incident", reason: failure.headline, failure, agentId: i.assignedAgentId ?? null });
+        }
         else if (cls === "late") entries.push({ ...base, kind: "late" });
         else entries.push({ ...base, kind: "not_started", actionRequired: !key });
     }
 
     // Offline agents with work waiting: unanswered messages (health "down") or
     // in-progress tasks they hold but cannot be working on.
+    // A paused budget blocks every turn, so it is listed even while connected.
     const holdsInProgress = new Set(inProgress.flatMap((t) => t.assignedAgentId ? [t.assignedAgentId] : []));
     for (const a of health.agents.filter((h) => !typingAgents.has(h.id)
-        && (h.status === "down" || (!h.online && !agentsWithOpenRun.has(h.id) && holdsInProgress.has(h.id))))) {
+        && (h.status === "down" || h.budgetStatus === "paused" || (!h.online && !agentsWithOpenRun.has(h.id) && holdsInProgress.has(h.id))))) {
+        const offline = !a.online && !agentsWithOpenRun.has(a.id);
+        const failure = describeFailure(
+            { texts: [a.providerIssue], budgetStatus: a.budgetStatus, offline },
+            { audience, agentId: a.id, canRestartRuntime: canRestart(a.id) },
+        );
         entries.push({
-            id: `agent:${a.id}`, kind: "agent", title: a.status === "down" ? `${a.name} has no recent connection with work waiting` : `${a.name} is offline with work in progress`,
+            id: `agent:${a.id}`, kind: "agent",
+            title: failure.cause !== "runtime_offline" ? `${a.name} is blocked` : a.status === "down" ? `${a.name} has no recent connection with work waiting` : `${a.name} is offline with work in progress`,
+            reason: failure.headline, failure,
             memberKey: `agent:${a.id}`, memberName: a.name, area: a.role, at: a.lastSeenAt ?? now.toISOString(),
             actionLabel: "Inspect connection", href: `/agents?agent=${a.id}`, agentId: a.id, canRestartRuntime: canRestart(a.id),
         });
@@ -328,9 +358,20 @@ export async function buildAttention(companyId: string, access: AttentionAccess,
         const thread = threadByMessage.get(item.messageId);
         if (thread && !userMayUseThread(thread, access.userId)) continue;
         const href = thread?.type === "direct" ? directThreadLink(thread.threadId, item.agentId) : item.link;
+        let failure: FailureView | null = null;
+        if (item.kind === "failed") {
+            const runtimeFailure = ((thread?.metadataJson as Record<string, unknown> | null)?.runtimeFailure ?? {}) as { reason?: unknown; at?: unknown };
+            // Only the sender may retry a message (src/lib/direct-message-queue.ts).
+            const ownMessage = thread?.senderType === "human" && Boolean(access.userId) && thread.senderId === access.userId;
+            failure = describeFailure(
+                { texts: [typeof runtimeFailure.reason === "string" ? runtimeFailure.reason : null] },
+                { audience, agentId: item.agentId, retryMessageId: ownMessage ? item.messageId : null, canRestartRuntime: canRestart(item.agentId), failedAt: typeof runtimeFailure.at === "string" ? runtimeFailure.at : item.since },
+            );
+        }
         entries.push({
             id: `message:${item.messageId}`, kind: "message",
             title: item.kind === "failed" ? `Message failed: “${excerpt(item.text, 40)}”` : `Awaiting agent response: “${excerpt(item.text, 36)}”`,
+            ...(failure ? { reason: failureReason(failure), failure } : {}),
             memberKey: `agent:${item.agentId}`, memberName: item.agentName, area: "Messages", at: item.since,
             actionLabel: item.kind === "failed" ? "Inspect delivery" : "Open chat", href, threadId: thread?.threadId ?? null,
             actionRequired: item.kind === "failed",
@@ -348,7 +389,8 @@ export async function buildAttention(companyId: string, access: AttentionAccess,
     // Failed runs: the latest per agent, while it is still the latest.
     const runThreadById = new Map(runThreadRows.map((t) => [t.id, t]));
     const healthById = new Map(health.agents.map((a) => [a.id, a]));
-    for (const run of latestFailedRuns(recentRuns)) {
+    const runTaskById = new Map(stallTasks.map((t) => [t.id, t]));
+    for (const run of failedRuns) {
         if (!run.agentId) continue;
         const thread = run.threadId ? runThreadById.get(run.threadId) : undefined;
         if (thread && !userMayUseThread(thread, access.userId)) continue;
@@ -358,9 +400,17 @@ export async function buildAttention(companyId: string, access: AttentionAccess,
         if (run.taskId && coveredTasks.has(run.taskId)) continue;
         if (run.taskId) coveredTasks.add(run.taskId);
         const name = healthById.get(run.agentId)?.name ?? agentRows.find((a) => a.id === run.agentId)?.name ?? "Agent";
+        const failure = describeFailure(
+            { texts: [run.error, run.exitReason], runStatus: run.status, budgetStatus: healthById.get(run.agentId)?.budgetStatus },
+            {
+                audience, agentId: run.agentId, taskId: run.taskId,
+                taskAssigneeId: run.taskId ? runTaskById.get(run.taskId)?.assignedAgentId ?? null : null,
+                canRestartRuntime: canRestart(run.agentId), failedAt: (run.endedAt ?? run.startedAt).toISOString(),
+            },
+        );
         entries.push({
             id: `run:${run.id}`, kind: "run_failed", title: `${name}'s last run ${run.status === "timeout" ? "timed out" : run.status === "lost" ? "was lost" : "failed"}`,
-            reason: runFailureReason(run), memberKey: `agent:${run.agentId}`, memberName: name, area: healthById.get(run.agentId)?.role ?? null,
+            reason: failureReason(failure), failure, memberKey: `agent:${run.agentId}`, memberName: name, area: healthById.get(run.agentId)?.role ?? null,
             at: (run.endedAt ?? run.startedAt).toISOString(), actionLabel: "Open runs", href: `/agents?agent=${run.agentId}`,
             agentId: run.agentId, runId: run.id, canRestartRuntime: canRestart(run.agentId),
         });
@@ -375,10 +425,16 @@ export async function buildAttention(companyId: string, access: AttentionAccess,
         const key = assigneeKey(t);
         const request = requestByTask.get(t.id);
         const state = t.state === TASK_STATES.blocked ? "Blocked" : t.state === TASK_STATES.deadLetter ? "Gave up after retries" : "Failed";
+        // A blocked reason naming a known cause (out of credits, outside scope...) gets its fix; anything else keeps Reassign.
+        const blockedReason = blockedReasonOf(t.inputJson);
+        const failure = blockedReason ? describeFailure({ texts: [blockedReason] }, { audience, agentId: t.assignedAgentId, taskId: t.id }) : null;
+        const known = failure && failure.cause !== "unknown" ? failure : null;
+        const stateLine = known ? `${state}: ${known.headline}` : state;
         entries.push({
             id: request ? `request:${request.id}` : `task:${t.id}`, kind: request ? "request" : "task_blocked",
             title: taskTitle(t.inputJson, t.taskType),
-            reason: request ? `${state}. Requested from ${request.requestedBy ? `${request.requestedBy} via ` : ""}${request.source}` : state,
+            reason: request ? `${stateLine}. Requested from ${request.requestedBy ? `${request.requestedBy} via ` : ""}${request.source}` : stateLine,
+            ...(known ? { failure: known } : {}),
             memberKey: key, memberName: memberName(key), at: t.updatedAt.toISOString(),
             actionLabel: "Open task", href: taskHref(t.projectId, t.id), taskId: t.id, ...context(t.projectId),
         });
@@ -399,10 +455,11 @@ export async function buildAttention(companyId: string, access: AttentionAccess,
         if (task && coveredTasks.has(task.id)) continue;
         if (task) coveredTasks.add(task.id);
         const name = healthById.get(stall.agentId)?.name ?? agentRows.find((a) => a.id === stall.agentId)?.name ?? "Agent";
+        const stallFailure = describeFailure({ stalled: true, idleMs: stall.idleMs }, { audience, agentId: stall.agentId, taskId: task?.id ?? null, taskAssigneeId: task?.assignedAgentId ?? null });
         entries.push({
             id: `stall:${stall.runId}`, kind: "stalled",
             title: task ? taskTitle(task.inputJson, task.taskType) : `${name} is running with no progress`,
-            reason: stallLabel(stall), memberKey: `agent:${stall.agentId}`, memberName: name,
+            reason: stallLabel(stall), failure: { ...stallFailure, headline: stallLabel(stall) }, memberKey: `agent:${stall.agentId}`, memberName: name,
             at: stall.lastUsefulAt, actionLabel: task ? "Open task" : "Open agent",
             href: task ? taskPageHref(task.id, stall.runId) : `/agents?agent=${stall.agentId}`,
             agentId: stall.agentId, runId: stall.runId, taskId: task?.id ?? null, canRestartRuntime: canRestart(stall.agentId),

@@ -6,6 +6,7 @@
 
 import { deriveAppearance, hashString, type CharacterAppearance } from "@/lib/character/model";
 import type { CharacterExpression } from "@/lib/character/draw";
+import type { FailureView } from "@/lib/failure-cause";
 
 export { hashString };
 
@@ -107,6 +108,8 @@ export interface AttentionEntry {
     runId?: string | null;
     /** Rationale or failure detail shown under the title on the inbox. */
     detail?: string | null;
+    /** A failure's one plain cause and its one fix (src/lib/failure-cause.ts); the fix is already filtered for the viewer's role. */
+    failure?: FailureView | null;
 }
 
 export interface CollaborationEvent {

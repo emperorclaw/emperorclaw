@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useRef } from "react";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import {
     IconRobot,
     IconPlugConnected,
@@ -113,6 +114,9 @@ export function AgentDetailPanel({ agentId, agentName, runtime = null }: {
     /** The agent's Hermes runtime (bridge version badge, shared gateway chip), from the activity poll. */
     runtime?: AgentRuntimeInfo | null;
 }) {
+    // `?tab=scope` (a failure's "Open agent scope" fix) opens that tab.
+    const requestedTab = useSearchParams().get("tab");
+    const initialTab = requestedTab && ["memory", "instructions", "scope", "chat", "threads", "runs"].includes(requestedTab) ? requestedTab : "memory";
     const [data, setData] = useState<AgentDetailData | null>(null);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
@@ -515,7 +519,7 @@ export function AgentDetailPanel({ agentId, agentName, runtime = null }: {
             </div>
 
             {/* Tabs */}
-            <Tabs defaultValue="memory" className="p-4 sm:p-5">
+            <Tabs key={initialTab} defaultValue={initialTab} className="p-4 sm:p-5">
                 {/* Six tabs outgrow a phone: the strip scrolls sideways instead of overflowing the panel. */}
                 <div className="-mx-1 max-w-full overflow-x-auto px-1 pb-1">
                     <TabsList className="w-max bg-zinc-900 border border-zinc-800">

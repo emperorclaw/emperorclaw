@@ -104,7 +104,7 @@ maybe("attention: merged kinds, per-viewer privacy, member scope and palette sco
     assert.ok(owner.entries.some((e) => e.kind === "incident" && e.taskId === stuckTask.id), "the stuck task's incident");
     assert.equal(owner.entries.filter((e) => e.taskId === stuckTask.id).length, 1, "the incident covers its task: no duplicate blocked-task row");
     assert.ok(owner.entries.some((e) => e.kind === "task_blocked" && e.taskId === blockedTask.id && e.reason === "Blocked"));
-    assert.ok(owner.entries.some((e) => e.kind === "run_failed" && e.agentId === bob.id && e.reason === "turn limit"), "Bob's timed-out run");
+    assert.ok(owner.entries.some((e) => e.kind === "run_failed" && e.agentId === bob.id && e.reason === "No progress before it timed out" && e.failure?.cause === "stalled"), "Bob's timed-out run, with its cause");
     assert.ok(!owner.entries.some((e) => e.kind === "run_failed" && e.agentId === ada.id), "a later success clears Ada's failure");
     assert.ok(!owner.entries.some((e) => e.kind === "run_failed" && e.agentId === cy.id), "a run in someone else's private chat stays private");
     assert.ok(!kinds(owner).some((k) => /salary/i.test(k)), "nothing from Ana's private chat");

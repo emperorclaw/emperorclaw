@@ -1,6 +1,6 @@
 import { notFound, redirect } from "next/navigation";
 import { requireRole } from "@/lib/roles";
-import { canWrite } from "@/lib/role-matrix";
+import { canAdmin, canWrite } from "@/lib/role-matrix";
 import { loadTaskStory, taskViewerFromGuard } from "@/lib/task-story-reads";
 import { TaskPageClient } from "./task-page-client";
 
@@ -20,5 +20,5 @@ export default async function TaskPage({ params }: { params: Promise<{ id: strin
     const viewer = await taskViewerFromGuard(guard);
     const story = await loadTaskStory(guard.companyId, id, viewer);
     if (!story) notFound();
-    return <TaskPageClient story={story} canEdit={canWrite(guard.role)} />;
+    return <TaskPageClient story={story} canEdit={canWrite(guard.role)} canAdmin={canAdmin(guard.role)} />;
 }

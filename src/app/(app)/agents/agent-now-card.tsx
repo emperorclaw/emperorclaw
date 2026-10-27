@@ -9,6 +9,9 @@ import { RunTimelineList } from "@/components/run-timeline";
 import { bridgeBadgeCopy, cacheHitPercent, HERMES_MIGRATION_DOC_HREF, isTimedStepKind, liveUsageLine } from "@/lib/live-activity";
 import { formatTokenCount } from "@/lib/run-ledger-copy";
 import { taskHref } from "@/lib/task-story";
+import { describeFailure, fixAudience } from "@/lib/failure-cause";
+import { useViewerPermissions } from "@/lib/use-viewer-permissions";
+import { FailureFixButton } from "@/components/failure-fix";
 
 const STATE_PILL: Record<AgentNow["state"], { label: string; className: string }> = {
     working: { label: "Working", className: "border-cyan-500/30 bg-cyan-500/10 text-cyan-300" },
@@ -120,7 +123,7 @@ export function AgentNowCard({ now }: { now: AgentNow | undefined }) {
                         {now.lastRun.toolCalls != null && <span>{now.lastRun.toolCalls} {now.lastRun.toolCalls === 1 ? "tool" : "tools"}</span>}
                         {now.lastRun.model && <span className="max-w-full truncate">{now.lastRun.model}</span>}
                     </div>
-                    {now.lastRun.error && <p className="text-xs text-rose-400 line-clamp-2">{now.lastRun.error}</p>}
+                    {["failed", "timeout", "lost"].includes(now.lastRun.status) && <LastRunFailure agentId={now.agentId} lastRun={now.lastRun} />}
                 </div>
             )}
 
@@ -140,6 +143,25 @@ export function AgentNowCard({ now }: { now: AgentNow | undefined }) {
                 </Link>
             </div>
         </section>
+    );
+}
+
+/** A failed last run: one plain cause and, for those allowed, one fix. */
+function LastRunFailure({ agentId, lastRun }: { agentId: string; lastRun: NonNullable<AgentNow["lastRun"]> }) {
+    const permissions = useViewerPermissions();
+    const failure = describeFailure(
+        { texts: [lastRun.error, lastRun.exitReason], runStatus: lastRun.status },
+        { audience: fixAudience({ canAct: permissions.canWrite, isOwnerOrAdmin: permissions.canAdmin }), agentId, failedAt: lastRun.endedAt ?? lastRun.startedAt },
+    );
+    return (
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
+            <p className="min-w-0 flex-1 text-xs text-rose-400 line-clamp-2">
+                {failure.headline}{failure.detail && <span className="text-rose-400/70">: {failure.detail}</span>}
+            </p>
+            {failure.fix && (
+                <FailureFixButton fix={failure.fix} className="inline-flex h-11 shrink-0 items-center gap-1.5 rounded-lg border border-cyan-400/30 bg-cyan-400/10 px-3 text-xs font-medium text-cyan-100 transition-colors hover:bg-cyan-400/20 disabled:cursor-not-allowed disabled:opacity-50 sm:h-8" />
+            )}
+        </div>
     );
 }
 

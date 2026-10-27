@@ -22,6 +22,8 @@ import {
 import { cn } from "@/lib/utils";
 import { RunTimeline } from "@/components/run-timeline";
 import { RichText } from "@/components/rich-text";
+import { FailureFixButton } from "@/components/failure-fix";
+import { describeFailure, type FixAudience } from "@/lib/failure-cause";
 import { formatRunDuration, formatTokenCount } from "@/lib/run-ledger-copy";
 import {
     formatCost,
@@ -221,12 +223,44 @@ function MessageRow({ entry, timeZone }: { entry: StoryMessageEntry; timeZone: s
     );
 }
 
+/** Who is looking and which task, so a failed run can offer its fix. */
+export interface RunFixContext {
+    audience: FixAudience;
+    taskId: string;
+    /** The task's current agent assignee: Nudge/Retry go to it, else to the run's agent. */
+    taskAssigneeId: string | null;
+}
+
+const FIX_BUTTON = "inline-flex h-8 shrink-0 items-center gap-1.5 rounded-lg bg-cyan-400/10 px-3 text-xs font-medium text-cyan-100 transition-colors hover:bg-cyan-400/20 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50";
+
+/** A failed run's one plain cause and, on the task's latest run, its one fix. */
+function RunFailure({ run, fixContext }: { run: StoryRun; fixContext: RunFixContext | null }) {
+    const failure = describeFailure(
+        { texts: [run.error, run.exitReason], runStatus: run.status },
+        {
+            audience: fixContext?.audience ?? "viewer", agentId: run.agentId, taskId: fixContext?.taskId ?? null,
+            taskAssigneeId: fixContext?.taskAssigneeId ?? null, failedAt: run.endedAt ?? run.startedAt,
+        },
+    );
+    return (
+        <div className="flex min-w-0 flex-col gap-2 border-t border-rose-500/15 bg-rose-500/[0.04] px-3 py-2 sm:flex-row sm:items-center">
+            <p className="min-w-0 flex-1 text-xs leading-relaxed text-rose-200">
+                <IconAlertTriangle className="mr-1.5 inline h-3.5 w-3.5 -translate-y-px text-rose-300" aria-hidden="true" />
+                {failure.headline}
+                {failure.detail && <span className="text-rose-200/70">: {failure.detail}</span>}
+            </p>
+            {failure.fix && <FailureFixButton fix={failure.fix} className={FIX_BUTTON} />}
+        </div>
+    );
+}
+
 /**
  * A finished run as a collapsible block: outcome, agent, duration, tools,
  * tokens, cost and model in the header; expanding mounts the run's steps
- * (loaded on demand). The reply it produced is linked under it.
+ * (loaded on demand). The reply it produced is linked under it. A failed run
+ * says why in one line; `fixContext` (the task's latest run only) adds the fix.
  */
-export const RunBlock = memo(function RunBlock({ run, timeZone, defaultOpen = false }: { run: StoryRun; timeZone: string; defaultOpen?: boolean }) {
+export const RunBlock = memo(function RunBlock({ run, timeZone, defaultOpen = false, fixContext = null }: { run: StoryRun; timeZone: string; defaultOpen?: boolean; fixContext?: RunFixContext | null }) {
     const [open, setOpen] = useState(defaultOpen);
     const stats = runStats(run);
     const model = run.model?.trim();
@@ -264,6 +298,8 @@ export const RunBlock = memo(function RunBlock({ run, timeZone, defaultOpen = fa
                     </span>
                 </button>
 
+                {run.outcome === "failed" && <RunFailure run={run} fixContext={fixContext} />}
+
                 {run.reply && (
                     <div className="flex min-w-0 items-start gap-2 border-t border-zinc-800/80 px-3 py-2">
                         <IconCornerDownRight className="mt-0.5 h-3.5 w-3.5 shrink-0 text-zinc-500" aria-hidden="true" />
@@ -291,7 +327,7 @@ export const RunBlock = memo(function RunBlock({ run, timeZone, defaultOpen = fa
     );
 });
 
-function EntryRow({ entry, timeZone, focusRunId }: { entry: StoryEntry; timeZone: string; focusRunId: string | null }) {
+function EntryRow({ entry, timeZone, focusRunId, fixContext }: { entry: StoryEntry; timeZone: string; focusRunId: string | null; fixContext: RunFixContext | null }) {
     switch (entry.kind) {
         case "event": return <EventRow entry={entry} timeZone={timeZone} />;
         case "approval": return <ApprovalRow entry={entry} timeZone={timeZone} />;
@@ -300,7 +336,7 @@ function EntryRow({ entry, timeZone, focusRunId }: { entry: StoryEntry; timeZone
         case "run": {
             // Keyed on focus so a #run-<id> link arriving after mount opens it.
             const focused = focusRunId === entry.run.id;
-            return <RunBlock key={focused ? "focused" : "plain"} run={entry.run} timeZone={timeZone} defaultOpen={focused} />;
+            return <RunBlock key={focused ? "focused" : "plain"} run={entry.run} timeZone={timeZone} defaultOpen={focused} fixContext={fixContext} />;
         }
     }
 }
@@ -325,9 +361,11 @@ function useFocusRunId(): string | null {
     return runId;
 }
 
-export function TaskStoryTimeline({ entries, timeZone, nowIso }: { entries: readonly StoryEntry[]; timeZone: string; nowIso: string }) {
+export function TaskStoryTimeline({ entries, timeZone, nowIso, fixContext = null }: { entries: readonly StoryEntry[]; timeZone: string; nowIso: string; fixContext?: RunFixContext | null }) {
     const focusRunId = useFocusRunId();
     const days = useMemo(() => groupStoryByDay(entries, { now: new Date(nowIso), timeZone }), [entries, nowIso, timeZone]);
+    // Only the newest run can still be fixed; older failures keep their cause line without a button.
+    const latestRunId = useMemo(() => entries.find((entry) => entry.kind === "run")?.id ?? null, [entries]);
     if (entries.length === 0) {
         return (
             <div className="rounded-2xl border border-dashed border-zinc-800 px-5 py-10 text-center">
@@ -345,7 +383,7 @@ export function TaskStoryTimeline({ entries, timeZone, nowIso }: { entries: read
                         <span className="h-px flex-1 bg-zinc-800" aria-hidden="true" />
                     </h3>
                     <ol className="space-y-0">
-                        {day.entries.map((entry) => <EntryRow key={`${entry.kind}:${entry.id}`} entry={entry} timeZone={timeZone} focusRunId={focusRunId} />)}
+                        {day.entries.map((entry) => <EntryRow key={`${entry.kind}:${entry.id}`} entry={entry} timeZone={timeZone} focusRunId={focusRunId} fixContext={entry.kind === "run" && entry.id === latestRunId ? fixContext : null} />)}
                     </ol>
                 </section>
             ))}

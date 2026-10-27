@@ -20,6 +20,7 @@ import { RichText } from "@/components/rich-text";
 import { projectTitle } from "@/lib/project-title";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
 import { stallLabel } from "@/lib/stall-signal";
+import { fixAudience } from "@/lib/failure-cause";
 import { taskStateLabel, type StoryEntry } from "@/lib/task-story";
 import type { TaskStoryView } from "@/lib/task-story-reads";
 import { LiveRunBlock, strongestStall, useNow, useTaskLive, useTimeZone } from "./task-live";
@@ -221,7 +222,7 @@ function TaskActions({ story, onDone }: { story: Story; onDone?: () => void }) {
     );
 }
 
-export function TaskPageClient({ story, canEdit }: { story: Story; canEdit: boolean }) {
+export function TaskPageClient({ story, canEdit, canAdmin = false }: { story: Story; canEdit: boolean; canAdmin?: boolean }) {
     const { task } = story;
     const timeZone = useTimeZone();
     const nowMs = useNow();
@@ -330,7 +331,7 @@ ${project.description}` : project.name;
 
                     <section aria-labelledby="timeline-heading" className="space-y-4">
                         <h2 id="timeline-heading" className="sr-only">Timeline</h2>
-                        <TaskStoryTimeline entries={entries} timeZone={timeZone} nowIso={story.live.serverNow} />
+                        <TaskStoryTimeline entries={entries} timeZone={timeZone} nowIso={story.live.serverNow} fixContext={{ audience: fixAudience({ canAct: canEdit, isOwnerOrAdmin: canAdmin }), taskId: task.id, taskAssigneeId: task.owner?.type === "agent" ? task.owner.id : null }} />
                         {olderPages.hasMore && (
                             <div className="pl-[3.25rem] sm:pl-[5rem]">
                                 <button type="button" onClick={() => void loadOlder()} disabled={loadingOlder} className="inline-flex h-10 items-center gap-2 rounded-lg border border-zinc-800 px-4 text-sm text-zinc-300 transition-colors hover:border-zinc-700 hover:bg-zinc-900 disabled:opacity-60">

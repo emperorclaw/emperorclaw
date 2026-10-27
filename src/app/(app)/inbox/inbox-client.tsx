@@ -8,6 +8,7 @@ import {
     IconArchive, IconArrowRight, IconBuildingStore, IconCheck, IconChecks, IconClock, IconFolder, IconHistory, IconInbox, IconMessage,
     IconPlayerPlay, IconRefresh, IconRobot, IconUser, IconX,
 } from "@tabler/icons-react";
+import { FailureFixButton } from "@/components/failure-fix";
 import { PageHeader } from "@/components/page-header";
 import { KIND_STYLE } from "@/components/team-dashboard/needs-attention";
 import { refreshNavBadges } from "@/components/use-nav-badges";
@@ -431,6 +432,9 @@ function RowActions({ entry, busy, disabled, agents, onReject, onDecide, onResum
 }) {
     const [confirmDays, setConfirmDays] = useState<number | null>(null);
     const open = <Link href={entry.href} className={cn(BTN, NEUTRAL)}>{entry.actionLabel || "Open"}<IconArrowRight className="h-3.5 w-3.5" /></Link>;
+    // A failure's one fix (already filtered for this viewer's role) leads; the rest step back.
+    const fix = entry.failure?.fix ?? null;
+    const fixButton = fix ? <FailureFixButton fix={fix} disabled={disabled} onDone={() => void refreshNavBadges()} className={cn(BTN, PRIMARY)} /> : null;
 
     switch (entry.kind) {
         case "approval": {
@@ -470,6 +474,7 @@ function RowActions({ entry, busy, disabled, agents, onReject, onDecide, onResum
             return <button type="button" disabled={disabled || !entry.threadId} onClick={() => onResume(entry)} className={cn(BTN, PRIMARY)}><IconPlayerPlay className="h-3.5 w-3.5" />Resume</button>;
         case "agent":
         case "run_failed":
+            if (entry.failure) return <>{fixButton}{open}</>;
             return (
                 <>
                     {entry.canRestartRuntime && entry.agentId && (
@@ -489,10 +494,11 @@ function RowActions({ entry, busy, disabled, agents, onReject, onDecide, onResum
             const pickable = agents.filter((a) => a.key !== entry.memberKey);
             return (
                 <>
+                    {fixButton}
                     {entry.taskId && pickable.length > 0 && (
                         <DropdownMenu>
                             <DropdownMenuTrigger asChild>
-                                <button type="button" disabled={disabled} className={cn(BTN, PRIMARY)}>{busy ? <IconRefresh className="h-3.5 w-3.5 animate-spin" /> : <IconRobot className="h-3.5 w-3.5" />}Reassign</button>
+                                <button type="button" disabled={disabled} className={cn(BTN, fixButton ? NEUTRAL : PRIMARY)}>{busy ? <IconRefresh className="h-3.5 w-3.5 animate-spin" /> : <IconRobot className="h-3.5 w-3.5" />}Reassign</button>
                             </DropdownMenuTrigger>
                             <DropdownMenuContent align="end" className="max-h-72 w-56 overflow-y-auto">
                                 {pickable.map((a) => (
@@ -521,6 +527,6 @@ function RowActions({ entry, busy, disabled, agents, onReject, onDecide, onResum
                 </>
             );
         default:
-            return open;
+            return <>{fixButton}{open}</>;
     }
 }

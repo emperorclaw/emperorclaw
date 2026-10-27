@@ -2,6 +2,7 @@ import { createHash } from "crypto";
 import type { CharacterAppearance } from "@/lib/character/model";
 import type { CharacterExpression } from "@/lib/character/draw";
 import { mentionedAgentIds, type RosterAgent } from "@/lib/message-routing";
+import { redactSensitive } from "@/lib/redact-sensitive";
 import {
     activityText, assignIdleRoutines, classifyIncident, deriveBehavior, expressionForActivity, isIncidentStale, sceneStatus,
     type AttentionEntry, type DashboardMember, type DashboardTask, type SceneActivity,
@@ -145,64 +146,9 @@ export function isLiveProblemIncident(i: { reasonCode: string; summary: string; 
 
 // ─── Redaction + thoughts ──────────────────────────────────────────────────
 
-const REDACTIONS: [RegExp, string][] = [
-    // URLs (any scheme) and bare www. hosts.
-    [/\b[a-z][a-z0-9+.-]{1,15}:\/\/[^\s<>"'`)\]]+/gi, "[link]"],
-    [/\bwww\.[^\s<>"'`)\]]+/gi, "[link]"],
-    // Emails.
-    [/[a-z0-9._%+-]+@[a-z0-9-]+(?:\.[a-z0-9-]+)+/gi, "[email]"],
-    // PEM blocks and bearer credentials.
-    [/-----BEGIN [A-Z ]+-----[\s\S]*?(?:-----END [A-Z ]+-----|$)/g, "[secret]"],
-    [/\b(bearer|basic)\s+[A-Za-z0-9._~+/=-]{8,}/gi, "$1 [secret]"],
-    // key=value / key: value credentials.
-    [/\b(password|passwd|pwd|secret|token|api[_-]?key|access[_-]?key|client[_-]?secret|auth)\b(["']?\s*[:=]\s*)["']?[^\s"',;]+/gi, "$1$2[secret]"],
-    // "password hunter2", "token abc123xyz": a keyword followed by a value that
-    // is not a plain word (it has a digit or a symbol), so prose like "the key
-    // insight" survives. Placeholders from earlier rules ("[link]") are kept.
-    [/\b(password|passwd|pwd|secret|token|key)(\s+)(?=[^\s"',;]{6,})(?![a-z]+\b)(?!\[)["']?[^\s"',;]+/gi, "$1$2[secret]"],
-    // Known token prefixes: Emperor Claw, GitHub, OpenAI/Anthropic, Slack, Stripe, AWS, Google, JWTs.
-    [/\b(?:ec|ghp|gho|ghu|ghs|ghr|glpat|xox[abposr]|sk|pk|rk|whsec)[_-][A-Za-z0-9_-]{6,}/g, "[secret]"],
-    [/\bgithub_pat_[A-Za-z0-9_]{10,}/g, "[secret]"],
-    [/\bsk-[A-Za-z0-9_-]{6,}/g, "[secret]"],
-    [/\b(?:AKIA|ASIA)[A-Z0-9]{12,}/g, "[secret]"],
-    [/\bAIza[A-Za-z0-9_-]{20,}/g, "[secret]"],
-    [/\beyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}(?:\.[A-Za-z0-9_-]+)?/g, "[secret]"],
-    // Home-directory and system paths (POSIX, macOS, ~) and any Windows drive path.
-    [/(?<![\w.])\/(?:home|Users|root|var|etc|opt|srv)(?:\/[^\s"'`<>|]*)?/g, "[path]"],
-    [/\b[A-Za-z]:[\\/][^\s"'`<>|]*/g, "[path]"],
-    [/(?<![\w~])~[\\/][^\s"'`<>|]*/g, "[path]"],
-];
-
-/**
- * A long run of hex, or of base64/url-safe chars containing both letters and
- * digits (keys, ids, hashes). "/" is not part of a run so ordinary relative
- * paths survive; real base64 keys rarely split into short pieces.
- */
-const OPAQUE_RUN_RE = /[A-Za-z0-9+=_-]{24,}/g;
-
-/**
- * Is a long run a key, hash or id rather than a word? Hex (dashes allowed:
- * uuids), anything mixing upper case, lower case and digits, or an unbroken
- * letters+digits run with no kebab/snake separators. Identifiers such as
- * `thread_message_reasoning_v2_index` or `live-feed-budget-check-24` are kept.
- */
-export function isOpaqueRun(run: string): boolean {
-    if (/^[0-9a-f-]{24,}$/i.test(run) && /[0-9]/.test(run) && run.replace(/-/g, "").length >= 24) return true;
-    const upper = /[A-Z]/.test(run), lower = /[a-z]/.test(run), digit = /[0-9]/.test(run);
-    if (upper && lower && digit) return true;
-    return !/[_-]/.test(run) && digit && (upper || lower);
-}
-
-function redactOpaqueRuns(text: string): string {
-    return text.replace(OPAQUE_RUN_RE, (run) => (isOpaqueRun(run) ? "[secret]" : run));
-}
-
-/** Remove URLs, emails, credentials, tokens, opaque ids/keys and home paths. */
-export function redactSensitive(input: string): string {
-    let text = input;
-    for (const [re, replacement] of REDACTIONS) text = text.replace(re, replacement);
-    return redactOpaqueRuns(text);
-}
+// The redactor lives in its own pure module so client components (failure
+// copy) can use the exact same rules; re-exported here for existing callers.
+export { isOpaqueRun, redactSensitive } from "@/lib/redact-sensitive";
 
 /** Collapse whitespace, redact, then truncate by code point with an ASCII "...". */
 export function cleanSnippet(input: string, max: number): string {
