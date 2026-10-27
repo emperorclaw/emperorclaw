@@ -10,6 +10,7 @@ import { PageHeader } from "@/components/page-header";
 import { ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuTrigger } from "@/components/ui/context-menu";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
+import { useIsDarkTheme } from "@/lib/use-is-dark-theme";
 import { toast } from "sonner";
 
 const ForceGraph2D = dynamic(() => import("react-force-graph-2d"), { ssr: false });
@@ -706,7 +707,7 @@ export default function ResourcesClient({
               </div>
               <div className="min-w-0 truncate text-xs text-zinc-500">
                 <span>Knowledge & Rules</span>
-                {selectedResource && <span className="text-zinc-700"> / </span>}
+                {selectedResource && <span className="text-muted-foreground/50"> / </span>}
                 {selectedResource && <span className="text-zinc-300">{draftTitle || "Untitled note"}</span>}
               </div>
             </div>
@@ -723,7 +724,7 @@ export default function ResourcesClient({
           <div className="hidden h-11 items-center border-zinc-800 px-4 xl:flex">
             <div className="min-w-0 truncate text-xs text-zinc-500">
               Knowledge graph
-              {selectedResource && <span className="text-zinc-700"> / </span>}
+              {selectedResource && <span className="text-muted-foreground/50"> / </span>}
               {selectedResource && <span className="text-zinc-300">Graph of {draftTitle || "Untitled note"}</span>}
             </div>
           </div>
@@ -771,7 +772,7 @@ export default function ResourcesClient({
                             >
                               <IconFolderPlus className="h-3.5 w-3.5" />
                             </button>
-                            <span className="text-zinc-700">{group.notes.length}</span>
+                            <span className="text-muted-foreground/60">{group.notes.length}</span>
                           </div>
                         </ContextMenuTrigger>
                         <ContextMenuContent className="w-52 border-zinc-800 bg-zinc-950 text-zinc-100">
@@ -1102,11 +1103,32 @@ function useContainerSize<T extends HTMLElement>() {
   return { ref, size };
 }
 
+/** Canvas colours per theme: the graph is drawn on a canvas, so CSS variables can't reach it. */
+const GRAPH_PALETTE = {
+  dark: {
+    island: "bg-[radial-gradient(circle_at_50%_35%,rgba(99,102,241,0.16),transparent_32%),#09090b]",
+    link: "rgba(129,140,248,0.65)", linkDim: "rgba(129,140,248,0.18)",
+    unresolvedLink: "rgba(245,158,11,0.75)", unresolvedLinkDim: "rgba(245,158,11,0.25)",
+    particle: "#a5b4fc", unresolvedParticle: "#fbbf24",
+    nodeSelected: "#a78bfa", nodeUnresolved: "#f59e0b", nodeShared: "#818cf8", node: "#a1a1aa",
+    labelSelected: "#e9d5ff", labelUnresolved: "#fde68a", label: "#d4d4d8",
+  },
+  light: {
+    island: "bg-[radial-gradient(circle_at_50%_35%,rgba(99,102,241,0.10),transparent_32%),var(--card)]",
+    link: "rgba(79,70,229,0.55)", linkDim: "rgba(79,70,229,0.14)",
+    unresolvedLink: "rgba(217,119,6,0.75)", unresolvedLinkDim: "rgba(217,119,6,0.22)",
+    particle: "#4f46e5", unresolvedParticle: "#d97706",
+    nodeSelected: "#7c3aed", nodeUnresolved: "#d97706", nodeShared: "#4f46e5", node: "#71717a",
+    labelSelected: "#5b21b6", labelUnresolved: "#92400e", label: "#27272a",
+  },
+};
+
 function LocalGraph({ graph, selectedId, showLabels = false }: { graph: { nodes: GraphNode[]; edges: GraphEdge[] }; selectedId: string; showLabels?: boolean }) {
   const { ref: containerRef, size } = useContainerSize<HTMLDivElement>();
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const graphRef = useRef<any>(null);
   const [hoveredNodeId, setHoveredNodeId] = useState<string | null>(null);
+  const palette = GRAPH_PALETTE[useIsDarkTheme() ? "dark" : "light"];
 
   // Memoized against graph/selectedId only: node/link *objects* must stay
   // referentially stable across renders (d3-force mutates them in place with
@@ -1167,7 +1189,7 @@ function LocalGraph({ graph, selectedId, showLabels = false }: { graph: { nodes:
   const highlightNodes = hoveredNodeId ? new Set([hoveredNodeId, ...(neighborMap.get(hoveredNodeId) || [])]) : null;
 
   return (
-    <div ref={containerRef} className="relative h-full min-h-[360px] overflow-hidden bg-[radial-gradient(circle_at_50%_35%,rgba(99,102,241,0.16),transparent_32%),#09090b]">
+    <div ref={containerRef} className={cn("relative h-full min-h-[360px] overflow-hidden", palette.island)}>
       {size.width > 0 && size.height > 0 && (
         <ForceGraph2D
           ref={graphRef}
@@ -1181,8 +1203,8 @@ function LocalGraph({ graph, selectedId, showLabels = false }: { graph: { nodes:
           linkColor={(raw: unknown) => {
             const link = raw as ForceLink;
             const dimmed = highlightNodes && !(highlightNodes.has(link.source as unknown as string) && highlightNodes.has(link.target as unknown as string));
-            if (link.unresolved) return dimmed ? "rgba(245,158,11,0.25)" : "rgba(245,158,11,0.75)";
-            return dimmed ? "rgba(129,140,248,0.18)" : "rgba(129,140,248,0.65)";
+            if (link.unresolved) return dimmed ? palette.unresolvedLinkDim : palette.unresolvedLink;
+            return dimmed ? palette.linkDim : palette.link;
           }}
           linkWidth={1.4}
           linkDirectionalArrowLength={5}
@@ -1190,13 +1212,13 @@ function LocalGraph({ graph, selectedId, showLabels = false }: { graph: { nodes:
           linkDirectionalParticles={2}
           linkDirectionalParticleWidth={2}
           linkDirectionalParticleSpeed={0.006}
-          linkDirectionalParticleColor={(raw: unknown) => ((raw as ForceLink).unresolved ? "#fbbf24" : "#a5b4fc")}
+          linkDirectionalParticleColor={(raw: unknown) => ((raw as ForceLink).unresolved ? palette.unresolvedParticle : palette.particle)}
           cooldownTicks={120}
           d3VelocityDecay={0.35}
           nodeCanvasObject={(raw: unknown, ctx: CanvasRenderingContext2D, globalScale: number) => {
             const node = raw as ForceNode;
             const isHighlighted = !highlightNodes || highlightNodes.has(node.id);
-            const color = node.selected ? "#a78bfa" : node.unresolved ? "#f59e0b" : node.isShared ? "#818cf8" : "#a1a1aa";
+            const color = node.selected ? palette.nodeSelected : node.unresolved ? palette.nodeUnresolved : node.isShared ? palette.nodeShared : palette.node;
             const radius = node.val;
             ctx.save();
             ctx.globalAlpha = isHighlighted ? 1 : 0.25;
@@ -1214,7 +1236,7 @@ function LocalGraph({ graph, selectedId, showLabels = false }: { graph: { nodes:
               ctx.font = `${node.selected ? "700" : "500"} ${fontSize}px Inter, sans-serif`;
               ctx.textAlign = "left";
               ctx.textBaseline = "middle";
-              ctx.fillStyle = node.selected ? "#e9d5ff" : node.unresolved ? "#fde68a" : "#d4d4d8";
+              ctx.fillStyle = node.selected ? palette.labelSelected : node.unresolved ? palette.labelUnresolved : palette.label;
               ctx.fillText(node.label.slice(0, 30), (node.x || 0) + radius + 3, node.y || 0);
             }
             ctx.restore();

@@ -204,7 +204,7 @@ export default function CustomersClient({ initialData: customerData }: { initial
                                     <ul className="mt-3 space-y-1.5">
                                         {selectedCustomer.attention.map((item: { kind: string; label: string; href: string }, index: number) => (
                                             <li key={`${item.kind}-${index}`}>
-                                                <Link href={item.href} className="flex items-center gap-2 rounded-lg px-2 py-1.5 text-sm text-zinc-200 hover:bg-white/[0.04]">
+                                                <Link href={item.href} className="flex items-center gap-2 rounded-lg px-2 py-1.5 text-sm text-zinc-200 hover:bg-black/[0.04] dark:hover:bg-white/[0.04]">
                                                     <span className={cn("shrink-0 rounded px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wider", ATTENTION_STYLE[item.kind] ?? ATTENTION_STYLE.review)}>{ATTENTION_LABEL[item.kind] ?? item.kind}</span>
                                                     <span className="truncate">{item.label}</span>
                                                 </Link>

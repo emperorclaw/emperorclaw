@@ -18,7 +18,6 @@ import {
 import ELK from "elkjs/lib/elk.bundled.js";
 import { IconRobot, IconCircleCheck, IconClock, IconCopy, IconDatabase, IconFileText, IconStack2, IconArrowsMaximize, IconArrowsMinimize, IconPlayerPlay, IconRepeat, IconSearch, IconSparkles, IconTrash, IconArrowsSplit } from "@tabler/icons-react";
 import { toast } from "sonner";
-import { useTheme } from "next-themes";
 import { PageHeader } from "@/components/page-header";
 
 type PipelineStep = {
@@ -341,7 +340,6 @@ function PipelineFlowMap({ pipeline, runs, agentsMap }: { pipeline: PipelineRow;
   const graph = useMemo(() => buildPipelineGraph(pipeline, runs), [pipeline, runs]);
   const { nodes, edges } = useElkLayout(graph.nodes, graph.edges);
   const [expanded, setExpanded] = useState(false);
-  const { resolvedTheme } = useTheme();
 
   const steps = parseSteps(pipeline.stepsJson);
   const latestRun = runs.find((run) => run.pipelineId === pipeline.id);
@@ -365,8 +363,8 @@ function PipelineFlowMap({ pipeline, runs, agentsMap }: { pipeline: PipelineRow;
       <div
         className={
           expanded
-            ? "fixed inset-4 z-50 flex flex-col overflow-hidden rounded-3xl border border-zinc-800/80 bg-[radial-gradient(circle_at_25%_10%,rgba(34,211,238,0.14),transparent_30%),radial-gradient(circle_at_75%_20%,rgba(168,85,247,0.12),transparent_32%),#050507] shadow-2xl shadow-black/60"
-            : "relative flex h-[70vh] min-h-[520px] flex-col overflow-hidden rounded-3xl border border-zinc-800/80 bg-[radial-gradient(circle_at_25%_10%,rgba(34,211,238,0.14),transparent_30%),radial-gradient(circle_at_75%_20%,rgba(168,85,247,0.12),transparent_32%),#050507]"
+            ? "fixed inset-4 z-50 flex flex-col overflow-hidden rounded-3xl border border-zinc-800/80 bg-[radial-gradient(circle_at_25%_10%,rgba(34,211,238,0.14),transparent_30%),radial-gradient(circle_at_75%_20%,rgba(168,85,247,0.12),transparent_32%),#050507] shadow-2xl shadow-black/60 force-dark"
+            : "relative flex h-[70vh] min-h-[520px] flex-col overflow-hidden rounded-3xl border border-zinc-800/80 bg-[radial-gradient(circle_at_25%_10%,rgba(34,211,238,0.14),transparent_30%),radial-gradient(circle_at_75%_20%,rgba(168,85,247,0.12),transparent_32%),#050507] force-dark"
         }
       >
       <button
@@ -383,7 +381,7 @@ function PipelineFlowMap({ pipeline, runs, agentsMap }: { pipeline: PipelineRow;
           edges={edges}
           nodeTypes={nodeTypes}
           edgeTypes={edgeTypes}
-          colorMode={resolvedTheme === "dark" ? "dark" : "light"}
+          colorMode="dark"
           fitView
           minZoom={0.15}
           maxZoom={1.75}

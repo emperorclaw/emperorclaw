@@ -264,7 +264,7 @@ export function OfficeScene({ layout, links, selectedKey, hoveredKey, isActive, 
             onPointerDown={onPointerDown} onPointerMove={onPointerMove} onPointerUp={onPointerUp} onPointerCancel={onPointerUp}
             onClickCapture={(e) => { if (movedRef.current) { e.preventDefault(); e.stopPropagation(); } }}
             className={cn(
-                "office-scene @container relative overflow-hidden rounded-xl bg-[radial-gradient(ellipse_at_50%_35%,#10213a_0%,#070d18_60%,#04070e_100%)] outline-none focus-visible:ring-2 focus-visible:ring-cyan-400/60 [touch-action:pan-y] md:[touch-action:none]",
+                "office-scene force-dark @container relative overflow-hidden rounded-xl bg-[radial-gradient(ellipse_at_50%_35%,#10213a_0%,#070d18_60%,#04070e_100%)] outline-none focus-visible:ring-2 focus-visible:ring-cyan-400/60 [touch-action:pan-y] md:[touch-action:none]",
                 dragging ? "cursor-grabbing" : "cursor-grab",
                 (paused || reducedMotion) && "office-paused", lite && "office-lite",
             )}

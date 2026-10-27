@@ -232,7 +232,7 @@ export function TeamObservatory({ agents, teams, communications, thoughts, liveE
                 </button>
             </div>
         </div>
-        <div className="observatory-stage relative isolate overflow-hidden rounded-2xl border border-cyan-400/20 px-2 pb-16 pt-2 sm:px-4 sm:pb-4">
+        <div className="observatory-stage force-dark relative isolate overflow-hidden rounded-2xl border border-cyan-400/20 px-2 pb-16 pt-2 sm:px-4 sm:pb-4">
             <div className="observatory-stars pointer-events-none absolute inset-0" aria-hidden="true" />
             <div className="living-floor-glow pointer-events-none absolute inset-x-0 bottom-0 top-24" aria-hidden="true" />
             <div className="relative flex justify-center"><Throne pending={pendingActions} onOpen={onOpenInbox} still={still} leader={leader} leaderAgent={leaderAgent} actionKeys={actionKeys} ghost={leaderGhost} selected={Boolean(leaderKey && selectedKey === leaderKey)} onSelectLeader={onSelect} /></div>

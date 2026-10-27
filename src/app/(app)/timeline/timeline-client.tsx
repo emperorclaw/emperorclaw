@@ -18,6 +18,7 @@ import { formatCost, RUN_OUTCOME_LABEL, type RunOutcome } from "@/lib/task-story
 import { formatRunDuration, formatTokenCount } from "@/lib/run-ledger-copy";
 import { useLivePoll, type LivePollRun } from "@/lib/use-realtime";
 import { cn } from "@/lib/utils";
+import { useIsDarkTheme } from "@/lib/use-is-dark-theme";
 import {
     autoFitTodayRange,
     clusterSpans,
@@ -106,15 +107,39 @@ const SOURCE_LABEL: Record<TimelineSource, string> = {
     automation: "Automation",
 };
 
-const EVENT_COLOUR: Record<TimelineEventKind, string> = {
-    created: "#22d3ee",
-    assigned: "#a78bfa",
-    status: "#94a3b8",
-    note: "#e2e8f0",
-    approval_requested: "#fbbf24",
-    approval_decided: "#34d399",
-    file: "#38bdf8",
+/** SVG colours per theme: attributes can't follow the CSS variables. */
+const CHART_COLOURS = {
+    dark: {
+        event: {
+            created: "#22d3ee",
+            assigned: "#a78bfa",
+            status: "#94a3b8",
+            note: "#e2e8f0",
+            approval_requested: "#fbbf24",
+            approval_decided: "#34d399",
+            file: "#38bdf8",
+        } satisfies Record<TimelineEventKind, string>,
+        clusterCount: "#e4e4e7",
+        gridLine: "rgba(255,255,255,0.04)",
+    },
+    light: {
+        event: {
+            created: "#0891b2",
+            assigned: "#7c3aed",
+            status: "#64748b",
+            note: "#334155",
+            approval_requested: "#d97706",
+            approval_decided: "#059669",
+            file: "#0284c7",
+        } satisfies Record<TimelineEventKind, string>,
+        clusterCount: "#18181b",
+        gridLine: "rgba(0,0,0,0.06)",
+    },
 };
+
+function useChartColours() {
+    return CHART_COLOURS[useIsDarkTheme() ? "dark" : "light"];
+}
 
 function formatBusy(ms: number): string {
     if (ms <= 0) return "0m";
@@ -524,6 +549,7 @@ function GanttChart({ data, fromMs, toMs, zoom, rowsMode, projectRows, actorById
     onClear: () => void;
     setTooltip: (t: { x: number; y: number; node: React.ReactNode } | null) => void;
 }) {
+    const colours = useChartColours();
     const rootRef = useRef<HTMLDivElement>(null);
     const scrollRef = useRef<HTMLDivElement>(null);
     const [containerWidth, setContainerWidth] = useState(0);
@@ -727,7 +753,7 @@ function GanttChart({ data, fromMs, toMs, zoom, rowsMode, projectRows, actorById
                             <div className="pointer-events-none absolute" style={{ left: LABEL_W, top: AXIS_H, width: chartWidth, height: contentHeight }}>
                                 <svg width={chartWidth} height={contentHeight} className="block">
                                     {ticks.major.map((t) => (
-                                        <line key={t.ms} x1={xFor(t.ms)} x2={xFor(t.ms)} y1={0} y2={contentHeight} stroke="rgba(255,255,255,0.04)" strokeWidth={1} />
+                                        <line key={t.ms} x1={xFor(t.ms)} x2={xFor(t.ms)} y1={0} y2={contentHeight} stroke={colours.gridLine} strokeWidth={1} />
                                     ))}
                                     {data.now >= fromMs && data.now <= toMs && (
                                         <g>
@@ -834,6 +860,7 @@ function RowContent({ actorById, items, events, xFor, pillMode, focus, spanById,
     onZoomCluster: (cluster: TimelineCluster) => void;
     setTooltip: (t: { x: number; y: number; node: React.ReactNode } | null) => void;
 }) {
+    const colours = useChartColours();
     const y = (ROW_H - BAR_H) / 2;
     const showTooltip = (e: { currentTarget: Element }, node: React.ReactNode) => {
         const rect = e.currentTarget.getBoundingClientRect();
@@ -865,7 +892,7 @@ function RowContent({ actorById, items, events, xFor, pillMode, focus, spanById,
                         >
                             <HitRect x={x} width={width} />
                             <rect x={x} y={y} width={width} height={BAR_H} rx={Math.min(BAR_H / 2, width / 2)} fill={look.style.fill} stroke={look.style.stroke} strokeWidth={1} />
-                            {width >= 26 && <text x={cx} y={y + BAR_H / 2 + 3} textAnchor="middle" fontSize={8} fill="#e4e4e7" fontWeight={600}>{c.count}</text>}
+                            {width >= 26 && <text x={cx} y={y + BAR_H / 2 + 3} textAnchor="middle" fontSize={8} fill={colours.clusterCount} fontWeight={600}>{c.count}</text>}
                         </g>
                     );
                 }
@@ -959,12 +986,13 @@ function EventTick({ event, cx, taskTitle, onEnter, onLeave }: {
     onEnter: (e: React.MouseEvent) => void;
     onLeave: () => void;
 }) {
+    const colours = useChartColours();
     // A person's action is drawn a little taller so it reads apart from the agent's own markers.
     const top = event.byName ? ROW_H - 12 : ROW_H - 9;
     return (
         <g onMouseEnter={onEnter} onMouseLeave={onLeave} onClick={(e) => e.stopPropagation()} aria-label={taskTitle ? `${event.label}: ${taskTitle}` : event.label}>
             <rect x={cx - HIT_MIN_W / 2} y={ROW_H - 14} width={HIT_MIN_W} height={13} fill="transparent" pointerEvents="all" />
-            <line x1={cx} x2={cx} y1={top} y2={ROW_H - 3} stroke={EVENT_COLOUR[event.kind]} strokeWidth={1.5} />
+            <line x1={cx} x2={cx} y1={top} y2={ROW_H - 3} stroke={colours.event[event.kind]} strokeWidth={1.5} />
         </g>
     );
 }

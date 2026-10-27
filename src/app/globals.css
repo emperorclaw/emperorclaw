@@ -3,7 +3,8 @@
 @import "tw-animate-css";
 @import "shadcn/tailwind.css";
 
-@custom-variant dark (&:is(.dark *));
+/* `.force-dark` scopes (always-dark overlays/stages) count as dark too. */
+@custom-variant dark (&:is(.dark *, .force-dark *));
 
 @theme inline {
   --color-background: var(--background);
@@ -91,6 +92,31 @@
   --color-fuchsia-200: var(--fuchsia-200);
   --color-fuchsia-300: var(--fuchsia-300);
   --color-fuchsia-400: var(--fuchsia-400);
+  --color-sky-50: var(--sky-50);
+  --color-sky-100: var(--sky-100);
+  --color-sky-200: var(--sky-200);
+  --color-sky-300: var(--sky-300);
+  --color-sky-400: var(--sky-400);
+  --color-blue-50: var(--blue-50);
+  --color-blue-100: var(--blue-100);
+  --color-blue-200: var(--blue-200);
+  --color-blue-300: var(--blue-300);
+  --color-blue-400: var(--blue-400);
+  --color-orange-50: var(--orange-50);
+  --color-orange-100: var(--orange-100);
+  --color-orange-200: var(--orange-200);
+  --color-orange-300: var(--orange-300);
+  --color-orange-400: var(--orange-400);
+  --color-teal-50: var(--teal-50);
+  --color-teal-100: var(--teal-100);
+  --color-teal-200: var(--teal-200);
+  --color-teal-300: var(--teal-300);
+  --color-teal-400: var(--teal-400);
+  --color-lime-50: var(--lime-50);
+  --color-lime-100: var(--lime-100);
+  --color-lime-200: var(--lime-200);
+  --color-lime-300: var(--lime-300);
+  --color-lime-400: var(--lime-400);
   --radius-sm: calc(var(--radius) - 4px);
   --radius-md: calc(var(--radius) - 2px);
   --radius-lg: var(--radius);
@@ -193,12 +219,40 @@
   --fuchsia-200: oklch(0.37 0.11 320);
   --fuchsia-300: oklch(0.45 0.14 320);
   --fuchsia-400: oklch(0.54 0.16 320);
+  --sky-50: oklch(0.24 0.06 236);
+  --sky-100: oklch(0.3 0.08 236);
+  --sky-200: oklch(0.37 0.11 236);
+  --sky-300: oklch(0.45 0.14 236);
+  --sky-400: oklch(0.54 0.16 236);
+  --blue-50: oklch(0.24 0.06 258);
+  --blue-100: oklch(0.3 0.08 258);
+  --blue-200: oklch(0.37 0.11 258);
+  --blue-300: oklch(0.45 0.14 258);
+  --blue-400: oklch(0.54 0.16 258);
+  --orange-50: oklch(0.24 0.06 50);
+  --orange-100: oklch(0.3 0.08 50);
+  --orange-200: oklch(0.37 0.11 50);
+  --orange-300: oklch(0.45 0.14 50);
+  --orange-400: oklch(0.54 0.16 50);
+  --teal-50: oklch(0.24 0.06 182);
+  --teal-100: oklch(0.3 0.08 182);
+  --teal-200: oklch(0.37 0.11 182);
+  --teal-300: oklch(0.45 0.14 182);
+  --teal-400: oklch(0.54 0.16 182);
+  --lime-50: oklch(0.24 0.06 130);
+  --lime-100: oklch(0.3 0.08 130);
+  --lime-200: oklch(0.37 0.11 130);
+  --lime-300: oklch(0.45 0.14 130);
+  --lime-400: oklch(0.54 0.16 130);
 
   --chat-gradient-start: rgba(255, 255, 255, 0.55);
   --chat-gradient-end: rgba(244, 244, 245, 0.95);
 }
 
-.dark {
+/* `.force-dark` gets the full dark palette (tokens AND scales) so anything
+   inside renders exactly as it does in dark mode, whatever the page theme. */
+.dark,
+.force-dark {
   --background: oklch(0.105 0.004 286);
   --foreground: oklch(0.985 0.002 286);
   --card: oklch(0.155 0.006 286);
@@ -288,6 +342,31 @@
   --fuchsia-200: oklch(0.903 0.076 319.62);
   --fuchsia-300: oklch(0.833 0.145 321.434);
   --fuchsia-400: oklch(0.74 0.238 322.16);
+  --sky-50: oklch(0.977 0.013 236.62);
+  --sky-100: oklch(0.951 0.026 236.824);
+  --sky-200: oklch(0.901 0.058 230.902);
+  --sky-300: oklch(0.828 0.111 230.318);
+  --sky-400: oklch(0.746 0.16 232.661);
+  --blue-50: oklch(0.97 0.014 254.604);
+  --blue-100: oklch(0.932 0.032 255.585);
+  --blue-200: oklch(0.882 0.059 254.128);
+  --blue-300: oklch(0.809 0.105 251.813);
+  --blue-400: oklch(0.707 0.165 254.624);
+  --orange-50: oklch(0.98 0.016 73.684);
+  --orange-100: oklch(0.954 0.038 75.164);
+  --orange-200: oklch(0.901 0.076 70.697);
+  --orange-300: oklch(0.837 0.128 66.29);
+  --orange-400: oklch(0.75 0.183 55.934);
+  --teal-50: oklch(0.984 0.014 180.72);
+  --teal-100: oklch(0.953 0.051 180.801);
+  --teal-200: oklch(0.91 0.096 180.426);
+  --teal-300: oklch(0.855 0.138 181.071);
+  --teal-400: oklch(0.777 0.152 181.912);
+  --lime-50: oklch(0.986 0.031 120.757);
+  --lime-100: oklch(0.967 0.067 122.328);
+  --lime-200: oklch(0.938 0.127 124.321);
+  --lime-300: oklch(0.897 0.196 126.665);
+  --lime-400: oklch(0.841 0.238 128.85);
 
   --chat-gradient-start: rgba(24, 24, 27, 0.55);
   --chat-gradient-end: rgba(9, 9, 11, 0.95);
@@ -371,10 +450,11 @@
 
   ::selection {
     background: rgba(34, 211, 238, 0.28);
-    color: white;
+    color: var(--foreground);
   }
 
-  .dark ::selection {
+  .dark ::selection,
+  .force-dark ::selection {
     background: rgba(34, 211, 238, 0.28);
     color: white;
   }
@@ -386,7 +466,8 @@
     color-scheme: light;
   }
 
-  .dark select {
+  .dark select,
+  .force-dark select {
     color-scheme: dark;
   }
 
@@ -401,7 +482,7 @@
   }
 
   :focus-visible {
-    outline: 2px solid rgba(34, 211, 238, 0.7);
+    outline: 2px solid var(--ring);
     outline-offset: 2px;
   }
 
@@ -706,25 +787,17 @@
 }
 
 /* ─── Force-dark container for overlay components ────────── */
+/* Variables come from the shared `.dark, .force-dark` block above. Text colour
+   is reset here (in base, so utilities still win) because it otherwise
+   inherits the light page's computed foreground. */
 .force-dark {
-  --background: oklch(0.105 0.004 286);
-  --foreground: oklch(0.985 0.002 286);
-  --card: oklch(0.155 0.006 286);
-  --card-foreground: oklch(0.985 0.002 286);
-  --popover: oklch(0.145 0.006 286);
-  --popover-foreground: oklch(0.985 0.002 286);
-  --primary: oklch(0.72 0.15 232);
-  --primary-foreground: oklch(0.115 0.006 286);
-  --secondary: oklch(0.205 0.012 286);
-  --secondary-foreground: oklch(0.94 0.006 286);
-  --muted: oklch(0.205 0.012 286);
-  --muted-foreground: oklch(0.72 0.014 286);
-  --accent: oklch(0.24 0.04 286);
-  --accent-foreground: oklch(0.985 0.002 286);
-  --border: oklch(1 0 0 / 12%);
-  --input: oklch(1 0 0 / 14%);
-  --ring: oklch(0.72 0.15 232);
   color-scheme: dark;
+}
+
+@layer base {
+  .force-dark {
+    color: var(--foreground);
+  }
 }
 
 /* ─── Premium login page keyframes ──────────────────────── */

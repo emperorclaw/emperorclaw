@@ -148,7 +148,7 @@ export default function ArtifactOfficeEditor({ artifactId }: { artifactId: strin
     const FileIcon = kind === "xlsx" ? IconFileSpreadsheet : IconFileText;
 
     return (
-        <section className="flex min-h-[680px] h-[calc(100vh-2.5rem)] flex-col overflow-hidden rounded-2xl border border-border bg-[#101114] shadow-2xl shadow-black/30">
+        <section className="flex min-h-[680px] h-[calc(100vh-2.5rem)] flex-col overflow-hidden rounded-2xl border border-border bg-[#101114] shadow-2xl shadow-black/30 force-dark">
             <header className="flex min-h-16 items-center gap-3 border-b border-border bg-[#111216] px-3 sm:px-4">
                 <Button asChild variant="ghost" size="icon-sm" className="shrink-0 text-zinc-400 hover:text-zinc-50"><Link href="/artifacts" aria-label="Back to Storage"><IconArrowLeft /></Link></Button>
                 <div className="flex size-9 shrink-0 items-center justify-center rounded-xl border border-border bg-white/5">

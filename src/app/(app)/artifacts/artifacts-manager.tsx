@@ -3439,7 +3439,7 @@ function PreviewPanel({ preview }: { preview: PreviewState }) {
                         </a>
                     </Button>
                 </div>
-                <div className="h-[32rem] overflow-auto rounded-xl border border-zinc-800 bg-[#1e1e22] p-4 text-zinc-100">
+                <div className="h-[32rem] overflow-auto rounded-xl border border-zinc-800 bg-[#1e1e22] p-4 text-zinc-100 force-dark">
                     <ReactDocxViewer
                         file={preview.bytes}
                         className="h-full w-full"

@@ -497,7 +497,7 @@ export function DisplaysTab({
                             </div>
                             {flash && (
                                 <div>
-                                    <div className="h-2 overflow-hidden rounded-full bg-white/[0.06]" role="progressbar" aria-valuenow={flash.percent} aria-valuemin={0} aria-valuemax={100}>
+                                    <div className="h-2 overflow-hidden rounded-full bg-black/[0.08] dark:bg-white/[0.06]" role="progressbar" aria-valuenow={flash.percent} aria-valuemin={0} aria-valuemax={100}>
                                         <div className="h-full rounded-full bg-cyan-400 transition-[width] duration-300" style={{ width: `${flash.percent}%` }} />
                                     </div>
                                     <p className="mt-2 text-xs text-muted-foreground">{flash.label} · {flash.percent}%</p>
@@ -528,19 +528,19 @@ export function DisplaysTab({
                                     <IconRefresh className={cn("h-4 w-4", scanning && "animate-spin")} /> {scanning ? "Scanning" : "Scan again"}
                                 </Button>
                             </div>
-                            <div className="max-h-72 divide-y divide-white/10 overflow-y-auto rounded-xl border border-border" role="radiogroup" aria-label="Wi-Fi networks">
+                            <div className="max-h-72 divide-y divide-border overflow-y-auto rounded-xl border border-border" role="radiogroup" aria-label="Wi-Fi networks">
                                 {networks.length === 0 && (
                                     <div className="p-4 text-sm text-muted-foreground">{scanning ? "The display is looking for networks..." : "No networks found."}</div>
                                 )}
                                 {networks.map((n) => (
-                                    <label key={n.ssid} className={cn("flex cursor-pointer items-center gap-3 px-3 py-2.5 text-sm", ssidChoice === n.ssid ? "bg-cyan-400/[0.07]" : "hover:bg-white/[0.03]")}>
+                                    <label key={n.ssid} className={cn("flex cursor-pointer items-center gap-3 px-3 py-2.5 text-sm", ssidChoice === n.ssid ? "bg-cyan-400/[0.07]" : "hover:bg-black/[0.04] dark:hover:bg-white/[0.03]")}>
                                         <input type="radio" name="display-ssid" className="accent-cyan-400" checked={ssidChoice === n.ssid} onChange={() => setSsidChoice(n.ssid)} />
                                         <span className="min-w-0 flex-1 truncate text-foreground">{n.ssid}</span>
                                         {n.secure && <IconLock className="h-3.5 w-3.5 text-muted-foreground" aria-label="Password protected" />}
                                         <SignalBars rssi={n.rssi} />
                                     </label>
                                 ))}
-                                <label className={cn("flex cursor-pointer items-center gap-3 px-3 py-2.5 text-sm", ssidChoice === OTHER ? "bg-cyan-400/[0.07]" : "hover:bg-white/[0.03]")}>
+                                <label className={cn("flex cursor-pointer items-center gap-3 px-3 py-2.5 text-sm", ssidChoice === OTHER ? "bg-cyan-400/[0.07]" : "hover:bg-black/[0.04] dark:hover:bg-white/[0.03]")}>
                                     <input type="radio" name="display-ssid" className="accent-cyan-400" checked={ssidChoice === OTHER} onChange={() => setSsidChoice(OTHER)} />
                                     <span className="text-foreground">Other network (hidden, or not listed)</span>
                                 </label>
@@ -584,14 +584,14 @@ export function DisplaysTab({
                                 <Input value={displayName} onChange={(e) => setDisplayName(e.target.value)} maxLength={80} />
                                 <span className="block text-xs text-muted-foreground">Shown in the list of displays below, so you can revoke the right one later.</span>
                             </label>
-                            <label className="flex items-start gap-3 rounded-xl border border-border bg-white/[0.02] p-3">
+                            <label className="flex items-start gap-3 rounded-xl border border-border bg-black/[0.03] dark:bg-white/[0.02] p-3">
                                 <input type="checkbox" className="mt-0.5 h-4 w-4 accent-cyan-400" checked={privateChats} onChange={(e) => setPrivateChats(e.target.checked)} />
                                 <span className="space-y-1">
                                     <span className="block text-sm font-medium text-foreground">Include my private chats</span>
                                     <span className="block text-xs leading-5 text-muted-foreground">{PRIVATE_CHATS_HELP}</span>
                                 </span>
                             </label>
-                            <label className="flex items-start gap-3 rounded-xl border border-border bg-white/[0.02] p-3">
+                            <label className="flex items-start gap-3 rounded-xl border border-border bg-black/[0.03] dark:bg-white/[0.02] p-3">
                                 <input type="checkbox" className="mt-0.5 h-4 w-4 accent-cyan-400" checked={agentThoughts} onChange={(e) => setAgentThoughts(e.target.checked)} />
                                 <span className="space-y-1">
                                     <span className="block text-sm font-medium text-foreground">Show agent thoughts</span>
@@ -654,7 +654,7 @@ export function DisplaysTab({
                     <h2 className="text-lg font-semibold text-foreground">Your displays</h2>
                     <p className="mt-1 text-sm text-muted-foreground">Each display has its own read-only key. Revoke it when a display leaves your desk.</p>
                 </div>
-                <div className="divide-y divide-white/10">
+                <div className="divide-y divide-border">
                     {displayTokens.length === 0 ? (
                         <div className="p-8 text-center text-sm text-muted-foreground">No displays yet.</div>
                     ) : (
@@ -684,7 +684,7 @@ function SignalBars({ rssi }: { rssi: number }) {
     return (
         <span className="flex items-end gap-0.5" aria-label={`Signal ${bars} of 4`} title={`${rssi} dBm`}>
             {[1, 2, 3, 4].map((b) => (
-                <span key={b} className={cn("w-1 rounded-sm", b <= bars ? "bg-cyan-300" : "bg-white/15")} style={{ height: `${b * 3 + 2}px` }} />
+                <span key={b} className={cn("w-1 rounded-sm", b <= bars ? "bg-cyan-300" : "bg-black/15 dark:bg-white/15")} style={{ height: `${b * 3 + 2}px` }} />
             ))}
         </span>
     );

@@ -197,7 +197,7 @@ function Actions({ entry, busy, agents, onApprove, onReject, onDismiss, onResume
     const btn = "relative z-10 inline-flex min-h-11 items-center gap-1 rounded-lg px-2.5 text-xs font-semibold ring-1 ring-inset transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400 disabled:cursor-not-allowed disabled:opacity-50";
     const primary = "bg-cyan-500/15 text-cyan-700 ring-cyan-500/40 hover:bg-cyan-500/25 dark:text-cyan-200";
     const danger = "bg-rose-500/10 text-rose-600 ring-rose-500/30 hover:bg-rose-500/20 dark:text-rose-300";
-    const neutral = "bg-zinc-500/10 text-zinc-600 ring-zinc-500/30 hover:bg-zinc-500/20 dark:text-zinc-300";
+    const neutral = "bg-transparent text-muted-foreground ring-border hover:bg-muted hover:text-foreground";
     const requestedAtMs = new Date(entry.at).getTime();
     // The clock is read in the click handler, never during render (React purity).
     const approveClick = () => {

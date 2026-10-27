@@ -855,7 +855,7 @@ export function AgentDirectChat({
                                                                     controls
                                                                     src={`/api/ui/artifacts/${att.id}/download?disposition=inline`}
                                                                     className="w-full max-w-[220px] h-8"
-                                                                    style={{ colorScheme: "dark", accentColor: isHuman ? "#6ee7b7" : "#6366f1" }}
+                                                                    style={{ accentColor: isHuman ? "#6ee7b7" : "#6366f1" }}
                                                                 />
                                                             ) : (
                                                                 <AttachmentChip
@@ -1059,7 +1059,7 @@ export function AgentDirectChat({
                 {/* State: preview before sending */}
                 {!isRecording && audioPreviewUrl && (
                     <div className="flex items-center gap-2">
-                        <audio controls src={audioPreviewUrl} className="flex-1 h-9 min-w-0" style={{ colorScheme: "dark" }} />
+                        <audio controls src={audioPreviewUrl} className="flex-1 h-9 min-w-0" />
                         <button
                             type="button"
                             onClick={discardVoice}
@@ -1263,7 +1263,7 @@ function MessageContent({ text, isHuman }: { text: string; isHuman: boolean }) {
                 controls
                 src={audioSrc}
                 className="w-full max-w-[220px] h-8"
-                style={{ colorScheme: "dark", accentColor: isHuman ? "#6ee7b7" : "#6366f1" }}
+                style={{ accentColor: isHuman ? "#6ee7b7" : "#6366f1" }}
             />
         </div>
     );

@@ -268,7 +268,7 @@ export default function ApprovalsClient({ items }: { items: ApprovalItem[] }) {
                 <h2 className="text-sm font-semibold text-zinc-300">Waiting on you <span className="ml-1 rounded-full bg-zinc-800 px-2 py-0.5 text-xs tabular-nums text-zinc-400">{pending.length}</span></h2>
                 {pending.length === 0 ? (
                     <div className="emperor-panel rounded-2xl p-10 text-center text-sm text-zinc-500">
-                        <IconRosetteDiscountCheck className="mx-auto mb-3 h-10 w-10 text-zinc-700" />
+                        <IconRosetteDiscountCheck className="mx-auto mb-3 h-10 w-10 text-muted-foreground/50" />
                         Nothing is waiting on you.
                     </div>
                 ) : pending.map((item) => <PendingCard key={item.key} item={item} onDecide={decide} busy={busyKey === item.key} />)}

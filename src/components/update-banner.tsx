@@ -109,7 +109,7 @@ export function UpdateBanner() {
             <button
                 type="button"
                 onClick={handleDismiss}
-                className="grid h-7 w-7 shrink-0 place-items-center rounded-lg text-cyan-300/50 transition-colors hover:bg-white/5 hover:text-cyan-200"
+                className="grid h-7 w-7 shrink-0 place-items-center rounded-lg text-cyan-300/50 transition-colors hover:bg-black/[0.04] dark:hover:bg-white/5 hover:text-cyan-200"
                 aria-label="Dismiss update notification"
             >
                 <IconX className="h-4 w-4" />

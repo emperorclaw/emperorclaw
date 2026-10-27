@@ -468,7 +468,7 @@ Walk me through step by step.`}</pre>
                                 </label>
                             )}
                             {newTokenScope === "read_only" && (
-                                <label className="flex items-start gap-3 rounded-xl border border-border bg-white/[0.02] p-3">
+                                <label className="flex items-start gap-3 rounded-xl border border-border bg-black/[0.03] dark:bg-white/[0.02] p-3">
                                     <input
                                         type="checkbox"
                                         className="mt-0.5 h-4 w-4 accent-cyan-400"
@@ -497,7 +497,7 @@ Walk me through step by step.`}</pre>
                                 </div>
                                 <div className="mt-4 flex overflow-hidden rounded-xl border border-border bg-muted/30">
                                     <code className="flex-1 overflow-x-auto px-4 py-3 font-mono text-sm text-foreground">{activeSecret.secret}</code>
-                                    <button onClick={copyToClipboard} className="cursor-pointer border-l border-border px-4 text-muted-foreground transition-colors hover:bg-white/[0.045] hover:text-foreground">
+                                    <button onClick={copyToClipboard} className="cursor-pointer border-l border-border px-4 text-muted-foreground transition-colors hover:bg-black/[0.04] dark:hover:bg-white/[0.045] hover:text-foreground">
                                         {copied ? <IconCircleCheck className="h-4 w-4 text-emerald-300" /> : <IconCopy className="h-4 w-4" />}
                                     </button>
                                 </div>
@@ -510,12 +510,12 @@ Walk me through step by step.`}</pre>
                             <h2 className="text-lg font-semibold text-foreground">Active tokens</h2>
                             <p className="mt-1 text-sm text-muted-foreground">Revoke anything that is no longer attached to a real runtime.</p>
                         </div>
-                        <div className="divide-y divide-white/10">
+                        <div className="divide-y divide-border">
                             {tokens.length === 0 ? (
                                 <div className="p-8 text-center text-sm text-muted-foreground">No access tokens active. Create one to connect an agent runtime.</div>
                             ) : (
                                 tokens.map((token) => (
-                                    <div key={token.id} className="flex flex-col gap-3 sm:gap-4 p-4 sm:p-5 transition-colors hover:bg-white/[0.025] sm:flex-row sm:items-center sm:justify-between">
+                                    <div key={token.id} className="flex flex-col gap-3 sm:gap-4 p-4 sm:p-5 transition-colors hover:bg-black/[0.04] dark:hover:bg-white/[0.025] sm:flex-row sm:items-center sm:justify-between">
                                         <div className="min-w-0">
                                             <div className="flex flex-wrap items-center gap-2">
                                                 <h3 className="font-medium text-foreground">{token.name}</h3>
