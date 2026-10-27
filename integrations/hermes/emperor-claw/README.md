@@ -38,7 +38,7 @@ Requirements: Linux with systemd user units, `curl`, `git`, `tar`, `python3`, li
 
 ```bash
 mkdir -p ~/.local/bin
-curl -fsSL https://github.com/emperorclaw/emperorclaw/releases/download/v0.12.1/emperor-hermes.sh -o ~/.local/bin/emperor-hermes
+curl -fsSL https://github.com/emperorclaw/emperorclaw/releases/download/v0.13.0/emperor-hermes.sh -o ~/.local/bin/emperor-hermes
 chmod +x ~/.local/bin/emperor-hermes
 
 emperor-hermes doctor --plan --profiles viktor,katarina   # does the host fit?
@@ -114,7 +114,8 @@ The operating guide (`operating-guide.md`) is part of each agent's session instr
 | Task list or task details | `emperor_list_tasks`, or `emperor_request` with `GET /tasks/{id}` |
 | Task progress, blockers, notes, handoffs | `emperor_request` with `GET /tasks/{id}/notes` |
 | Project memory, assumptions, decisions | `emperor_request` with `GET /projects/{id}/memory` |
-| Knowledge & Rules | `emperor_request` with `GET /resources/context`, `GET /resources`, or `POST /resources` |
+| Knowledge & Rules | `emperor_request` with `GET /resources/context`, `GET /resources`, or `POST /resources` (with `folder`) |
+| Knowledge folders | `emperor_list_knowledge_folders` (`GET /knowledge/folders`) |
 | Storage files, deliverables, reports, evidence | `emperor_request` with `GET /artifacts` |
 | External APIs or websites | terminal/curl, web, or a dedicated plugin; not `emperor_request` |
 

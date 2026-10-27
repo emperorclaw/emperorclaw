@@ -380,7 +380,7 @@ class RegistrationTests(unittest.TestCase):
 
     def test_manifest_matches(self):
         manifest = (PLUGIN_DIR / "plugin.yaml").read_text(encoding="utf-8")
-        self.assertIn("version: 0.12.1", manifest)
+        self.assertIn("version: 0.13.0", manifest)
         self.assertNotIn("provides_hooks", manifest)
         self.assertNotIn("pre_llm_call", manifest)
         ctx = self.Context()

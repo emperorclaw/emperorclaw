@@ -9,6 +9,19 @@ tagged (e.g. `## [1.2.0] — 2026-07-22`). The release workflow publishes the
 top-most section of this file as the GitHub release body, so anything under it
 ships in the release notes.
 
+## [0.13.0] — 2026-10-27
+
+### Added
+- **Failures say what went wrong and how to fix it.** Every failure in the inbox, on the task page and on an agent's "Right now" card shows one plain cause ("LLM provider is out of credits", "The model provider rejected the API key", "Rate limited", "This model isn't available", "Budget limit reached", "Agent runtime is offline", "No progress for N min", "Agent needs access to this project") and one fix button (Open provider settings, Update key, Retry, Choose a model, Raise budget, Reconnect runtime, Nudge, Open agent scope). Fixes respect roles; error text is redacted before it is shown.
+- **Agents file knowledge in the right folder.** `create_knowledge_note` and `update_knowledge_note` take a `folder` (missing folders are created), `list_knowledge` filters by folder, and the new `list_knowledge_folders` shows the tree an agent may use. Customer and project notes default to their folder when the vault uses that convention. Hermes bridge 0.13.0 adds `emperor_list_knowledge_folders`.
+
+### Fixed
+- **Light mode.** Dark panels (office scene, artifact editors, automations canvas, tours) keep readable text, more accent colours adapt to the light theme, the timeline and knowledge graph use light-friendly colours, and buttons, inputs, tables and dialogs no longer use invisible white overlays.
+- Retrying a failed message now redelivers it (including a failed @mention in a group).
+
+### Security
+- A scoped agent can no longer move its own note into a customer or project it has no access to, nor learn which customers exist from folder errors.
+
 ## [0.12.5] — 2026-10-25
 
 ### Added
