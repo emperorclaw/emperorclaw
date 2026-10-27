@@ -42,7 +42,7 @@ test("admin rows only for admins; Admin starts collapsed", () => {
     const admin = navSections({ isCompanyAdmin: true, isPlatformAdmin: true });
     const adminSection = admin.find((s) => s.id === "admin");
     assert.equal(adminSection?.defaultCollapsed, true);
-    assert.deepEqual(adminSection?.items.map((i) => i.href), ["/budgets", "/ops"]);
+    assert.deepEqual(adminSection?.items.map((i) => i.href), ["/costs", "/activity", "/ops"]);
 });
 
 test("mobile tabs: Home, Inbox, Messages, Projects, Agents", () => {
@@ -56,9 +56,11 @@ test("one active item, the most specific match", () => {
     assert.equal(activeNavHref("/agents/123", items), "/agents");
     assert.equal(activeNavHref("/settings/members", items), "/settings/members");
     assert.equal(activeNavHref("/approvals", items), "/inbox", "approvals is the inbox's filter");
-    assert.equal(activeNavHref("/budgets", items), "/budgets");
+    assert.equal(activeNavHref("/costs", items), "/costs");
+    assert.equal(activeNavHref("/budgets", items), "/costs", "the old budgets route is Costs");
+    assert.equal(activeNavHref("/activity", items), "/activity");
     const memberItems = navSections({ isCompanyAdmin: false, isPlatformAdmin: false }).flatMap((s) => s.items);
-    assert.equal(activeNavHref("/budgets", memberItems), "/agents", "members reach Costs from Agents");
+    assert.equal(activeNavHref("/costs", memberItems), "/agents", "members reach Costs from Agents");
     assert.equal(activeNavHref("/docs", items), null);
 });
 

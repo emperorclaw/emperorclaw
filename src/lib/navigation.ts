@@ -38,7 +38,10 @@ export const NAV_SECTIONS_STORAGE_KEY = "emperor-sidebar-sections";
 
 export function navSections({ isCompanyAdmin, isPlatformAdmin }: NavAccess): NavSection[] {
     const admin: NavItem[] = [
-        ...(isCompanyAdmin ? [{ id: "costs", name: "Costs", href: "/budgets", keywords: "budgets spend money tokens" }] : []),
+        ...(isCompanyAdmin ? [
+            { id: "costs", name: "Costs", href: "/costs", activeFor: ["/budgets"], keywords: "budgets spend money tokens clients models" },
+            { id: "activity", name: "Activity", href: "/activity", keywords: "audit log history who changed" },
+        ] : []),
         ...(isPlatformAdmin ? [{ id: "ops", name: "Operations", href: "/ops", keywords: "platform runtimes companies users storage errors" }] : []),
     ];
     const sections: NavSection[] = [
@@ -66,7 +69,7 @@ export function navSections({ isCompanyAdmin, isPlatformAdmin }: NavAccess): Nav
         {
             title: "Team", id: "team", collapsible: true, items: [
                 // Costs is an Admin row for admins; everyone else reaches it from Agents.
-                { id: "agents", name: "Agents", href: "/agents", activeFor: isCompanyAdmin ? [] : ["/budgets"], keywords: "hire workers bots" },
+                { id: "agents", name: "Agents", href: "/agents", activeFor: isCompanyAdmin ? [] : ["/budgets", "/costs"], keywords: "hire workers bots" },
                 { id: "org", name: "Org chart", href: "/agents/organization", keywords: "organization structure reports" },
                 ...(isCompanyAdmin ? [{ id: "people", name: "People", href: "/settings/members", keywords: "members invite users roles" }] : []),
             ],
@@ -87,7 +90,7 @@ export const MOBILE_TABS: NavItem[] = [
     { id: "inbox", name: "Inbox", href: "/inbox", badge: "inbox", activeFor: ["/approvals"] },
     { id: "messages", name: "Messages", href: "/messages", badge: "messages" },
     { id: "projects", name: "Projects", href: "/projects" },
-    { id: "agents", name: "Agents", href: "/agents", activeFor: ["/budgets"] },
+    { id: "agents", name: "Agents", href: "/agents", activeFor: ["/budgets", "/costs"] },
 ];
 
 export function pathMatches(pathname: string, href: string): boolean {
