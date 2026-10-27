@@ -220,7 +220,9 @@ export function useRealtimeTopics(topics: readonly string[], onInvalidate: () =>
 
 /** Connection status only, for surfaces that just need to slow their fallback timer. */
 export function useRealtimeStatus(): { status: RealtimeStatus } {
-    const [state, setState] = useState<RealtimeStatus>(() => getRealtimeStatus());
+    // Start as the server renders (no socket there: "closed") so hydration
+    // matches; the subscription reports the real status right after mount.
+    const [state, setState] = useState<RealtimeStatus>("closed");
     useEffect(() => {
         ensureStarted();
         return subscribeStatus(setState);
