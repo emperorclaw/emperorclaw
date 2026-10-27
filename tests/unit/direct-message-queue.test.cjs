@@ -20,7 +20,8 @@ test("direct chat exposes a per-message queue instead of only a global stop", ()
 test("queue mutations are sender-scoped and state-guarded", () => {
     const service = read("src/lib/direct-message-queue.ts");
     assert.match(service, /eq\(threadMessages\.senderId, input\.userId\)/);
-    assert.match(service, /inArray\(threadMessages\.deliveryState, fromStates\)/);
+    assert.match(service, /inArray\(threadMessages\.deliveryState, CANCELLABLE_STATES\)/);
+    assert.match(service, /inArray\(threadMessages\.deliveryState, RETRYABLE_STATES\)/);
     assert.match(service, /"cancelled"/);
     assert.match(service, /"queued"/);
 });
