@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { requireRole } from "@/lib/roles";
 import { revokeInvitation, resendInvitation } from "@/lib/invitations";
 import { isSelfHosted } from "@/lib/instance";
+import { humanActor, recordAudit } from "@/lib/audit";
 
 // ── DELETE: Revoke invitation (admin+) ────────────────────────────────────
 
@@ -11,7 +12,7 @@ export async function DELETE(
 ) {
     try {
         const guard = requireRole("admin");
-        await guard();
+        const ctx = await guard();
 
         if (!isSelfHosted()) {
             return NextResponse.json(
@@ -21,7 +22,9 @@ export async function DELETE(
         }
 
         const { id } = await params;
-        await revokeInvitation(id);
+        const revoked = await revokeInvitation(ctx.companyId, id);
+        if (!revoked) return NextResponse.json({ error: "Invitation not found." }, { status: 404 });
+        await recordAudit({ companyId: ctx.companyId, actor: humanActor(ctx.userId), action: "invitation.revoked", target: { type: "invitation", id: revoked.id }, before: { email: revoked.email, role: revoked.role }, meta: { label: revoked.email } });
         return NextResponse.json({ success: true }, { status: 200 });
     } catch (err: any) {
         if (err?.statusCode) {
@@ -40,7 +43,7 @@ export async function POST(
 ) {
     try {
         const guard = requireRole("admin");
-        await guard();
+        const ctx = await guard();
 
         if (!isSelfHosted()) {
             return NextResponse.json(
@@ -50,7 +53,7 @@ export async function POST(
         }
 
         const { id } = await params;
-        const invitation = await resendInvitation(id);
+        const invitation = await resendInvitation(ctx.companyId, id);
 
         if (!invitation) {
             return NextResponse.json(

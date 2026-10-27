@@ -13,6 +13,7 @@ import { recordOpsError } from "@/lib/ops-events";
 import { db } from "@/db";
 import { companies } from "@/db/schema";
 import { eq } from "drizzle-orm";
+import { humanActor, recordAudit } from "@/lib/audit";
 
 // ── POST: Create invitation (admin+) ──────────────────────────────────────
 
@@ -62,6 +63,7 @@ export const POST = withRoleApi("admin")(async (req, ctx) => {
             companyId: ctx.companyId,
             createdByUserId: ctx.userId,
         });
+        await recordAudit({ companyId: ctx.companyId, actor: humanActor(ctx.userId), action: "member.invited", target: { type: "invitation", id: result.id }, after: { email: result.email, role: result.role }, meta: { label: result.email } });
 
         const appUrl = getAppUrl(req);
         const inviteUrl = `${appUrl}/signup?invite=${result.rawToken}&email=${encodeURIComponent(result.email)}`;

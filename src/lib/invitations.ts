@@ -306,16 +306,19 @@ export async function getInvitations(companyId: string): Promise<InvitationRow[]
 
 // ── Revoke invitation (soft-delete) ───────────────────────────────────────
 
-export async function revokeInvitation(invitationId: string): Promise<void> {
-    await db
+/** Revokes an invitation of this company only; another company's id is "not found". */
+export async function revokeInvitation(companyId: string, invitationId: string) {
+    const [revoked] = await db
         .update(invitations)
         .set({ deletedAt: new Date() })
-        .where(eq(invitations.id, invitationId));
+        .where(and(eq(invitations.id, invitationId), eq(invitations.companyId, companyId), isNull(invitations.deletedAt)))
+        .returning({ id: invitations.id, companyId: invitations.companyId, email: invitations.email, role: invitations.role });
+    return revoked ?? null;
 }
 
 // ── Resend invitation (returns existing data without regenerating token) ──
 
-export async function resendInvitation(invitationId: string): Promise<{
+export async function resendInvitation(companyId: string, invitationId: string): Promise<{
     id: string;
     email: string;
     role: string;
@@ -327,6 +330,7 @@ export async function resendInvitation(invitationId: string): Promise<{
         .where(
             and(
                 eq(invitations.id, invitationId),
+                eq(invitations.companyId, companyId),
                 isNull(invitations.deletedAt)
             )
         )
