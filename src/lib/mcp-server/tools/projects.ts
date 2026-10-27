@@ -3,8 +3,9 @@ import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { listProjectsForCompany, getProjectForCompany, createProjectForCompany, updateProjectForCompany } from "@/lib/projects-crud";
 import { jsonResult, errorResult } from "../result";
 import { assertMcpMayReachAgent, mcpAccessForAgent, mcpMayUseCustomer, mcpMayUseProject } from "@/lib/mcp-access";
+import { mcpActor } from "@/lib/audit";
 
-export function registerProjectTools(server: McpServer, companyId: string, callerAgentId?: string | null) {
+export function registerProjectTools(server: McpServer, companyId: string, callerAgentId?: string | null, tokenId: string | null = null) {
     // Every project tool runs under the bound agent's data scope (lib/mcp-access.ts).
     const access = () => mcpAccessForAgent(companyId, callerAgentId ?? null);
     const requireProject = async (projectId: string) => {
@@ -57,7 +58,7 @@ export function registerProjectTools(server: McpServer, companyId: string, calle
         try {
             if (customerId && !mcpMayUseCustomer(await access(), customerId)) throw new Error(`Customer ${customerId} not found`);
             await assertMcpMayReachAgent(companyId, await access(), leadAgentId);
-            const project = await createProjectForCompany({ companyId, goal, description, createdByAgentId: callerAgentId ?? null, customerId, leadAgentId, requireApprovalForDone, maxActiveAgents });
+            const project = await createProjectForCompany({ companyId, goal, description, createdByAgentId: callerAgentId ?? null, customerId, leadAgentId, requireApprovalForDone, maxActiveAgents, actor: mcpActor(callerAgentId, tokenId) });
             return jsonResult({ message: "Project created", project });
         } catch (e) {
             return errorResult(e);
@@ -78,7 +79,7 @@ export function registerProjectTools(server: McpServer, companyId: string, calle
         try {
             await requireProject(projectId);
             await assertMcpMayReachAgent(companyId, await access(), leadAgentId);
-            const project = await updateProjectForCompany({ companyId, projectId, goal, description, createdByAgentId: callerAgentId ?? null, status, leadAgentId });
+            const project = await updateProjectForCompany({ companyId, projectId, goal, description, createdByAgentId: callerAgentId ?? null, status, leadAgentId, actor: mcpActor(callerAgentId, tokenId) });
             return jsonResult({ message: "Project updated", project });
         } catch (e) {
             return errorResult(e);

@@ -449,6 +449,20 @@
       "when": 1792769674927,
       "tag": "0063_private-direct-flag",
       "breakpoints": true
+    },
+    {
+      "idx": 64,
+      "version": "7",
+      "when": 1793130888695,
+      "tag": "0064_global-search",
+      "breakpoints": true
+    },
+    {
+      "idx": 65,
+      "version": "7",
+      "when": 1793131768121,
+      "tag": "0065_activity-index",
+      "breakpoints": true
     }
   ]
 }

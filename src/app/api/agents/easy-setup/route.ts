@@ -12,6 +12,7 @@ import { encryptSecretPayload } from "@/lib/secrets";
 import { mintAgentSetupToken, provisionHermesContainer, type SetupOutput } from "@/lib/hermes-provisioning";
 import { hermesSafeName } from "@/lib/hermes-names";
 import { resolveAgentModelConfiguration } from "@/lib/agent-model-config";
+import { humanActor, recordAudit } from "@/lib/audit";
 
 export const dynamic = "force-dynamic";
 
@@ -105,7 +106,7 @@ export async function POST(req: NextRequest) {
         const results: AgentBatchResult[] = [];
         for (const spec of specs) {
             try {
-                results.push(await hireHermesAgent({ companyId, name: spec.name, role: spec.role, sourceAgentId: body.sourceAgentId, doctrineJson: spec.doctrineJson, requestId: spec.requestId }));
+                results.push(await hireHermesAgent({ companyId, name: spec.name, role: spec.role, sourceAgentId: body.sourceAgentId, doctrineJson: spec.doctrineJson, requestId: spec.requestId, actor: humanActor(ctx.userId) }));
             } catch (err) {
                 results.push({ name: spec.name, agentId: null, success: false, message: err instanceof HermesHiringError ? err.message : "Could not create this agent profile. Retry provisioning.", outputs: [] });
             }
@@ -168,6 +169,7 @@ export async function POST(req: NextRequest) {
             const { agent } = reserved;
             agentId = agent.id;
             if (!reserved.created) { results.push(retainedHermesHiringResult(agent)); continue; }
+            await recordAudit({ companyId, actor: humanActor(ctx.userId), action: "agent.created", target: { type: "agent", id: agent.id }, after: agent });
 
             const safeName = hermesSafeName(name);
             const { rawToken } = await mintAgentSetupToken(companyId, safeName, agentId);

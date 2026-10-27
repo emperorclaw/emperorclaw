@@ -5,7 +5,7 @@ import { companies } from "@/db/schema";
 import { AuthError, requireRole } from "@/lib/roles";
 import { getDirectChatMode } from "@/lib/control-plane";
 import { isDirectChatMode } from "@/lib/direct-chat-mode";
-import { logAudit } from "@/lib/mcp";
+import { humanActor, recordAudit } from "@/lib/audit";
 
 export const dynamic = "force-dynamic";
 
@@ -40,7 +40,7 @@ export async function PUT(req: NextRequest) {
         const previous = await getDirectChatMode(companyId);
         if (previous !== body.mode) {
             await db.update(companies).set({ directChatMode: body.mode }).where(eq(companies.id, companyId));
-            await logAudit(companyId, "human", userId, "company.direct_chat_mode_changed", "company", companyId, { from: previous, to: body.mode });
+            await recordAudit({ companyId, actor: humanActor(userId), action: "company.settings_changed", target: { type: "company", id: companyId }, before: { directChatMode: previous }, after: { directChatMode: body.mode }, meta: { setting: "directChatMode" } });
         }
         return NextResponse.json({ ok: true, mode: body.mode });
     } catch (error) {

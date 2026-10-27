@@ -1,6 +1,7 @@
 ﻿import { NextRequest, NextResponse } from "next/server";
 import { verifyMcpToken, resolveAgentId } from "@/lib/mcp";
 import { createScopedResource, toPublicResource } from "@/lib/resources";
+import { lengthError, NAME_MAX } from "@/lib/input-limits";
 import { mcpMayWriteResourceScope, mcpRouteAccess } from "@/lib/mcp-access";
 
 function slugify(value: string) {
@@ -21,6 +22,8 @@ export async function POST(req: NextRequest) {
   if (!body.title || typeof body.title !== "string") {
     return NextResponse.json({ error: "title is required" }, { status: 400 });
   }
+  const titleError = lengthError("title", body.title, NAME_MAX);
+  if (titleError) return NextResponse.json({ error: titleError }, { status: 400 });
 
   const scopeType = typeof body.scopeType === "string" ? body.scopeType : "company";
   const scopeId = scopeType === "agent" && body.scopeId ? await resolveAgentId(companyId, body.scopeId) : body.scopeId || null;

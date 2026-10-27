@@ -6,6 +6,7 @@ import { getCompanyId } from "@/lib/auth";
 import { companyRouteAccess } from "@/lib/company-access";
 import { memberMaySeeProject } from "@/lib/member-scope";
 import { prepareProjectGoal, saveProjectPurposeNote } from "@/lib/projects-crud";
+import { humanActor, recordProjectAudit } from "@/lib/audit";
 
 const validStatuses = new Set(["active", "paused", "killed", "completed"]);
 
@@ -69,6 +70,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ pr
             updatedAt: new Date(),
         }).where(eq(projects.id, projectId)).returning();
         await saveProjectPurposeNote({ companyId, projectId, purpose: prepared?.purpose ?? null });
+        await recordProjectAudit(companyId, humanActor(access.ctx.userId), "project.updated", project, existing);
 
         return NextResponse.json({ project });
     } catch (error) {
@@ -98,6 +100,7 @@ export async function DELETE(_req: NextRequest, { params }: { params: Promise<{ 
             deletedAt: new Date(),
             updatedAt: new Date(),
         }).where(eq(projects.id, projectId)).returning();
+        await recordProjectAudit(companyId, humanActor(access.ctx.userId), "project.archived", existing);
 
         return NextResponse.json({ project });
     } catch (error) {

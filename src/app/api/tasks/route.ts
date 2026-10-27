@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createTaskForProject, updateTaskForCompany } from "@/lib/openclaw/tasks";
 import { serializeTaskWithAssignee } from "@/lib/task-assignee";
 import { companyRouteAccess } from "@/lib/company-access";
+import { lengthError, TASK_TITLE_MAX } from "@/lib/input-limits";
 import { memberMayAssignAgents, memberMaySeeProjectId } from "@/lib/member-scope";
 
 function splitLines(value: unknown) {
@@ -35,6 +36,8 @@ export async function POST(req: NextRequest) {
         if (!title) {
             return NextResponse.json({ error: "title is required" }, { status: 400 });
         }
+        const titleTooLong = lengthError("title", title, TASK_TITLE_MAX);
+        if (titleTooLong) return NextResponse.json({ error: titleTooLong }, { status: 400 });
 
         const inputJson = {
             title,

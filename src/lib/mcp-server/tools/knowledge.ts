@@ -6,11 +6,13 @@ import { jsonResult, errorResult } from "../result";
 import { getScopedResource } from "@/lib/resources";
 import { mcpAccessForAgent, mcpMayUseResource, mcpMayWriteResourceScope, type McpAgentAccess } from "@/lib/mcp-access";
 import { agentMayUseKnowledgeFolder, filterNotesInUsableFolders, listKnowledgeFolders, parseKnowledgeFolder, resolveMovedKnowledgeNoteFolder, resolveNewKnowledgeNoteFolder } from "@/lib/knowledge-folders";
+import { mcpActor } from "@/lib/audit";
+import { NAME_MAX } from "@/lib/input-limits";
 
 /** Shared wording so every knowledge tool teaches the same filing rule. */
 const FOLDER_DESCRIPTION = 'Folder path to file the note in, e.g. "Customers/Harbor Dental/Meetings"; missing folders are created. Call list_knowledge_folders first when unsure and reuse the existing convention (Company, Agents, Projects/<project>, Customers/<customer>). "" or "/" is the vault root.';
 
-export function registerKnowledgeTools(server: McpServer, companyId: string, callerAgentId?: string | null) {
+export function registerKnowledgeTools(server: McpServer, companyId: string, callerAgentId?: string | null, tokenId: string | null = null) {
     server.registerTool("get_knowledge_context", {
         title: "Get Knowledge Context",
         description: "Get this company's resolved Knowledge & Rules context — operating doctrine, SOPs, and business rules, ranked by relevance to the given scope. For the lean model prefer the knowledge index (list_knowledge / search_knowledge) and load a body with get_knowledge_note; use this only when you want the ranked auto-injected bodies in one call.",
@@ -95,7 +97,7 @@ export function registerKnowledgeTools(server: McpServer, companyId: string, cal
         title: "Create Knowledge & Rules Note",
         description: "Create a new Knowledge & Rules note — reusable doctrine, an SOP, or a business rule. Use an Obsidian-style markdown note with frontmatter (scope/type/status/owner/tags) as content. Pick the smallest correct scope, then the right folder (call list_knowledge_folders when unsure). Without a folder, a customer/project note goes to that customer's/project's folder when the vault uses Customers/ or Projects/, otherwise the vault root. Do not create a note for one-off facts.",
         inputSchema: {
-            name: z.string().min(1).describe("Short unique note name"),
+            name: z.string().min(1).max(NAME_MAX).describe("Short unique note name"),
             content: z.string().describe("Markdown content, ideally with frontmatter (scope/type/status/owner/tags)"),
             scopeType: z.enum(["company", "customer", "project", "agent"]).default("company"),
             scopeId: z.string().optional().describe("Required unless scopeType is 'company'"),
@@ -114,6 +116,7 @@ export function registerKnowledgeTools(server: McpServer, companyId: string, cal
                 companyId, name, scopeType, scopeId, path,
                 provider: "knowledge", resourceType: "knowledge_base",
                 configText: content, isShared, status,
+                actor: mcpActor(callerAgentId, tokenId),
             });
             return jsonResult({ message: "Knowledge note created", resource: toPublicResource(resource) });
         } catch (e) {
@@ -127,7 +130,7 @@ export function registerKnowledgeTools(server: McpServer, companyId: string, cal
         inputSchema: {
             resourceId: z.string(),
             content: z.string().optional(),
-            name: z.string().optional(),
+            name: z.string().max(NAME_MAX).optional(),
             status: z.enum(["active", "draft"]).optional().describe("Publication state: established facts active, uncertain proposals draft; frontmatter alone does not set this"),
             isShared: z.boolean().optional(),
             folder: z.string().optional().describe(`Move the note here. ${FOLDER_DESCRIPTION}`),
@@ -144,6 +147,7 @@ export function registerKnowledgeTools(server: McpServer, companyId: string, cal
             const resource = await updateScopedResource({
                 companyId, resourceId,
                 patch: { configText: content, name, isShared, status, path },
+                actor: mcpActor(callerAgentId, tokenId),
             });
             return jsonResult({ message: "Knowledge note updated", resource: resource ? toPublicResource(resource) : resource });
         } catch (e) {

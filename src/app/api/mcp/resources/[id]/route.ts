@@ -1,8 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { verifyMcpToken, resolveAgentId } from "@/lib/mcp";
-import { archiveScopedResource, getScopedResource, resolveResourceScope, toPublicResource, updateScopedResource, type PublicResource } from "@/lib/resources";
+import { archiveScopedResource, getScopedResource, resolveResourceScope, resourceNameError, toPublicResource, updateScopedResource, type PublicResource } from "@/lib/resources";
 import { mcpMayUseResource, mcpMayWriteResourceScope, mcpRouteAccess, resolveMcpAgentAccess } from "@/lib/mcp-access";
 import { KNOWLEDGE_RESOURCE_TYPE, KnowledgeFolderError, resolveMovedKnowledgeNoteFolder } from "@/lib/knowledge-folders";
+import { mcpRequestActor } from "@/lib/audit";
 
 function sanitizeResource(resource: PublicResource) {
   return {
@@ -64,6 +65,8 @@ export async function PATCH(
     const { id } = await params;
     const body = await req.json();
     const patch = { ...body } as Record<string, unknown>;
+    const nameError = resourceNameError(patch);
+    if (nameError) return NextResponse.json({ error: nameError }, { status: 400 });
 
     const existing = await getScopedResource(companyId, id);
     if (existing && await isResourceOutOfScope(companyId, auth.companyToken!, patch.agentId, existing)) {
@@ -101,6 +104,7 @@ export async function PATCH(
         configText: (patch.configJson || patch.configText) as string,
         secretText: (patch.secretJson || patch.secretText) as string,
       } as any,
+      actor: await mcpRequestActor(companyId, auth.companyToken!, patch.agentId),
     });
 
     if (!resource) {
@@ -138,7 +142,7 @@ export async function DELETE(
     return NextResponse.json({ error: "Resource is outside this agent's scope" }, { status: 403 });
   }
 
-  const resource = await archiveScopedResource(companyId, id);
+  const resource = await archiveScopedResource(companyId, id, await mcpRequestActor(companyId, auth.companyToken!, req.nextUrl.searchParams.get("agentId")));
 
   if (!resource) {
     return NextResponse.json({ error: "Resource not found" }, { status: 404 });

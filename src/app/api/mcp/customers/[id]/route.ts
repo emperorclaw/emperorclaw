@@ -4,6 +4,8 @@ import { db } from "@/db";
 import { customers } from "@/db/schema";
 import { eq, and, isNull } from "drizzle-orm";
 import { mcpAccessErrorResponse, mcpMayUseCustomer, resolveMcpAgentAccess } from "@/lib/mcp-access";
+import { mcpRequestActor, recordAudit } from "@/lib/audit";
+import { lengthError, NAME_MAX } from "@/lib/input-limits";
 
 async function resolveScopedAgent(companyId: string, token: { agentId?: string | null }, agentIdParam: unknown): Promise<
     { ok: true; access: Awaited<ReturnType<typeof resolveMcpAgentAccess>> } | { ok: false; response: NextResponse }
@@ -40,6 +42,11 @@ export async function PATCH(
         if (name === undefined && notes === undefined) {
             return NextResponse.json({ error: "At least one field (name, notes) to update must be provided" }, { status: 400 });
         }
+        if (name !== undefined && (typeof name !== "string" || !name.trim())) {
+            return NextResponse.json({ error: "name must be a non-empty string" }, { status: 400 });
+        }
+        const tooLong = lengthError("name", name, NAME_MAX);
+        if (tooLong) return NextResponse.json({ error: tooLong }, { status: 400 });
 
         const [existing] = await db.select().from(customers).where(
             and(eq(customers.id, customerId), eq(customers.companyId, companyId), isNull(customers.deletedAt))
@@ -60,6 +67,7 @@ export async function PATCH(
         if (notes !== undefined) updateData.notes = notes;
 
         const [updatedCustomer] = await db.update(customers).set(updateData).where(eq(customers.id, customerId)).returning();
+        await recordAudit({ companyId, actor: await mcpRequestActor(companyId, auth.companyToken!, agentId), action: "customer.updated", target: { type: "customer", id: customerId }, before: { name: existing.name }, after: { name: updatedCustomer.name }, meta: { label: updatedCustomer.name } });
 
         const res = { message: `Customer ${customerId} updated successfully`, customer: updatedCustomer };
         await saveIdempotencyResponse(companyId, endpoint, requestHash!, res);
@@ -112,6 +120,7 @@ export async function DELETE(
         const [deletedItem] = await db.update(customers).set({
             deletedAt: new Date(),
         }).where(eq(customers.id, customerId)).returning();
+        await recordAudit({ companyId, actor: await mcpRequestActor(companyId, auth.companyToken!, agentId), action: "customer.deleted", target: { type: "customer", id: customerId }, before: { name: existing.name } });
 
         const res = { message: `Customer ${customerId} archived successfully`, customer: deletedItem };
         await saveIdempotencyResponse(companyId, endpoint, requestHash!, res);

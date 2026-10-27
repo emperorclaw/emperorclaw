@@ -3,6 +3,7 @@ import { verifyMcpToken, checkIdempotency, saveIdempotencyResponse } from "@/lib
 import { assignTaskToAgent } from "@/lib/openclaw/tasks";
 import { serializeTaskWithAssignee } from "@/lib/task-assignee";
 import { assertMcpMayAssign, mcpAccessErrorResponse, mcpMayUseTask, mcpRouteAccess } from "@/lib/mcp-access";
+import { mcpActor } from "@/lib/audit";
 
 export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const auth = await verifyMcpToken(req);
@@ -38,7 +39,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     const actor = await mcpRouteAccess(companyId, auth.companyToken!, null);
     if (actor.response) return actor.response;
     await assertMcpMayAssign(companyId, actor.access, { agentId });
-    const result = await assignTaskToAgent({ companyId, taskId, agentId, mode, actorAgentId: auth.companyToken!.agentId ?? null });
+    const result = await assignTaskToAgent({ companyId, taskId, agentId, mode, actorAgentId: auth.companyToken!.agentId ?? null, actor: mode === "claim" ? undefined : mcpActor(auth.companyToken!.agentId, auth.companyToken!.id) });
     if ("error" in result) {
       return NextResponse.json({ error: result.error }, { status: result.status });
     }

@@ -2,7 +2,7 @@ import { z } from "zod";
 import { and, eq, lt, sql, type SQL } from "drizzle-orm";
 import { db } from "@/db";
 import { agentRunDaily, agentRuns, messageRoutes, threadMessages } from "@/db/schema";
-import { redactSensitive } from "@/lib/live-feed-v2";
+import { clipForRedaction, redactSensitive } from "@/lib/redact-sensitive";
 import type { RouteReason } from "@/lib/message-routing";
 import { validatedExplicitRunTask, validatedTriggerTask } from "@/lib/run-task-attribution-store";
 
@@ -198,7 +198,7 @@ export function payloadTooLarge(raw: string, max: number = RUN_PAYLOAD_MAX_BYTES
 /** Redact secrets, collapse whitespace, then truncate to the storage cap. */
 export function truncateRunError(raw: string | null | undefined): string | null {
     if (raw == null) return null;
-    const redacted = redactSensitive(raw).replace(/\s+/g, " ").trim();
+    const redacted = redactSensitive(clipForRedaction(raw, RUN_ERROR_MAX_CHARS * 4)).replace(/\s+/g, " ").trim();
     if (!redacted) return null;
     const chars = Array.from(redacted);
     if (chars.length <= RUN_ERROR_MAX_CHARS) return redacted;

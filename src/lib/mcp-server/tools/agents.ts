@@ -5,8 +5,10 @@ import { listAgentsForCompany, getAgentForCompany, createAgentForCompany, update
 import { jsonResult, errorResult } from "../result";
 import { mcpAccessForAgent, mcpAgentUpdateDenial, mcpMayReachAgent } from "@/lib/mcp-access";
 import { computeCompanyHealth } from "@/lib/agent-health";
+import { mcpActor } from "@/lib/audit";
+import { NAME_MAX } from "@/lib/input-limits";
 
-export function registerAgentTools(server: McpServer, companyId: string, callerAgentId?: string | null) {
+export function registerAgentTools(server: McpServer, companyId: string, callerAgentId?: string | null, tokenId: string | null = null) {
     server.registerTool("get_agent_health", {
         title: "Get Agent Health",
         description: "Health of every agent over the last 7 days: unanswered and failed messages, median response time, retries, open/overdue/done tasks, cost, and a status (healthy, attention, down, idle) with reasons. Includes the messages that need attention. Use it to check on the team before reporting status or reassigning work.",
@@ -62,7 +64,7 @@ export function registerAgentTools(server: McpServer, companyId: string, callerA
             deploymentMode: z.enum(["remote", "local"]).optional(),
             sourceAgentId: z.string().uuid().optional().describe("Hermes agent whose stored LLM configuration to reuse for local hiring; credentials stay server-side"),
             doctrineJson: z.record(z.string(), z.string()).optional(),
-            name: z.string().min(1).describe("Agent display name"),
+            name: z.string().min(1).max(NAME_MAX).describe("Agent display name"),
             role: z.string().optional().describe("Agent role, e.g. 'operator', 'QA', 'Growth'"),
             skillsJson: z.array(z.unknown()).optional().describe("List of skill identifiers this agent has"),
             llmProvider: z.string().optional().describe("LLM provider, e.g. 'openai', 'anthropic'"),
@@ -75,9 +77,9 @@ export function registerAgentTools(server: McpServer, companyId: string, callerA
             if (deploymentMode === "local") {
                 sourceAgentId = callerAgentId || sourceAgentId;
                 if (!sourceAgentId) throw new Error("sourceAgentId is required for local Hermes hiring");
-                return jsonResult(await hireHermesAgent({ companyId, name, role, sourceAgentId, doctrineJson }));
+                return jsonResult(await hireHermesAgent({ companyId, name, role, sourceAgentId, doctrineJson, actor: mcpActor(callerAgentId, tokenId) }));
             }
-            const agent = await createAgentForCompany({ companyId, name, role, skillsJson, llmProvider, llmModel, actorType: "mcp" });
+            const agent = await createAgentForCompany({ companyId, name, role, skillsJson, llmProvider, llmModel, actorType: "mcp", actor: mcpActor(callerAgentId, tokenId) });
             return jsonResult({ message: "Agent registered", agent });
         } catch (e) {
             return errorResult(e);
@@ -89,7 +91,7 @@ export function registerAgentTools(server: McpServer, companyId: string, callerA
         description: "Update an existing agent's role, skills, or LLM configuration. Provide only the fields you want to change.",
         inputSchema: {
             agentId: z.string().describe("The agent's UUID"),
-            name: z.string().optional(),
+            name: z.string().max(NAME_MAX).optional(),
             role: z.string().optional(),
             skillsJson: z.array(z.unknown()).optional(),
             llmProvider: z.string().optional(),
@@ -100,7 +102,7 @@ export function registerAgentTools(server: McpServer, companyId: string, callerA
             // A bound connection may only update its own agent, and never its model.
             const denial = await mcpAgentUpdateDenial(companyId, { agentId: callerAgentId ?? null }, agentId, { llmProvider, llmModel });
             if (denial) throw new Error(denial);
-            const agent = await updateAgentForCompany({ companyId, agentId, name, role, skillsJson, llmProvider, llmModel });
+            const agent = await updateAgentForCompany({ companyId, agentId, name, role, skillsJson, llmProvider, llmModel, actor: mcpActor(callerAgentId, tokenId) });
             return jsonResult({ message: "Agent updated", agent });
         } catch (e) {
             return errorResult(e);

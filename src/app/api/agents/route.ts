@@ -7,6 +7,8 @@ import { resolveAgentModelConfiguration } from "@/lib/agent-model-config";
 import { encryptSecretPayload } from "@/lib/secrets";
 import { legacyAvatarToAppearance, normalizeAppearance, resolveAvatarPhoto } from "@/lib/character/model";
 import { companyRouteAccess } from "@/lib/company-access";
+import { humanActor, recordAudit } from "@/lib/audit";
+import { lengthError, NAME_MAX } from "@/lib/input-limits";
 import { memberAgentCondition } from "@/lib/member-scope";
 
 export const dynamic = "force-dynamic";
@@ -73,6 +75,8 @@ export async function POST(req: NextRequest) {
         if (!name) {
             return NextResponse.json({ error: "name is required" }, { status: 400 });
         }
+        const nameTooLong = lengthError("name", name, NAME_MAX);
+        if (nameTooLong) return NextResponse.json({ error: nameTooLong }, { status: 400 });
 
         const llmApiKey = typeof body.llmApiKey === "string" ? body.llmApiKey.trim() : "";
         let llmApiKeyEncrypted: string | null = null;
@@ -125,6 +129,7 @@ export async function POST(req: NextRequest) {
             llmApiKeyVersion,
         }).returning();
 
+        await recordAudit({ companyId, actor: humanActor(access.ctx.userId), action: "agent.created", target: { type: "agent", id: agent.id }, after: agent });
         if (memory) {
             await writeAgentMemory({
                 companyId,

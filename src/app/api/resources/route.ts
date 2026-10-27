@@ -1,9 +1,10 @@
 export const dynamic = "force-dynamic";
 
 import { NextResponse } from "next/server";
-import { buildResourceFolderTree, createScopedResource, listScopedResources, resolveResourceScope } from "@/lib/resources";
+import { buildResourceFolderTree, createScopedResource, listScopedResources, resolveResourceScope, resourceNameError } from "@/lib/resources";
 import { companyRouteAccess } from "@/lib/company-access";
 import { filterResourcesForMember, memberMaySeeResource } from "@/lib/member-scope";
+import { humanActor } from "@/lib/audit";
 
 
 export async function GET() {
@@ -45,6 +46,8 @@ export async function POST(request: Request) {
     if (!name) {
       return NextResponse.json({ error: "Resource name is required" }, { status: 400 });
     }
+    const nameError = resourceNameError({ name, displayName: body.displayName });
+    if (nameError) return NextResponse.json({ error: nameError }, { status: 400 });
 
     const targetScope = {
       scopeType: typeof body.scopeType === "string" ? body.scopeType : "company",
@@ -73,6 +76,7 @@ export async function POST(request: Request) {
       changeSummary: typeof body.changeSummary === "string" ? body.changeSummary : "Operator created Company Brain note",
       createdByType: "user",
       createdById: membership.userId,
+      actor: humanActor(membership.userId),
     });
 
     return NextResponse.json({

@@ -17,7 +17,7 @@
  * ledger use, because a provider error can quote a key, a bearer token or a
  * signed URL back.
  */
-import { redactSensitive } from "@/lib/redact-sensitive";
+import { clipForRedaction, redactSensitive } from "@/lib/redact-sensitive";
 
 export type FailureCause =
     | "provider_credits"
@@ -74,7 +74,7 @@ const DETAIL_MAX = 90;
 // Same classification as the bridge's ledger.is_credits_failure and
 // agent-health providerIssueFromReason, plus the providers' own wording.
 const CREDITS_RE = /insufficient[ _](?:credits|balance|funds|quota)|out of credits|credits? (?:are |is )?exhausted|credits_exhausted|billing or credits|credit balance is too low|requires more credits|exceeded your current quota|payment required|\bHTTP 402\b|error code: 402\b|status(?:=| |: ?)402\b|\b402 (?:payment|-)/i;
-const AUTH_RE = /invalid[ _-]?(?:x-)?api[ _-]?key|incorrect api key|api key not valid|no auth credentials|authentication[ _]?(?:error|failed)|unauthori[sz]ed|\b(?:HTTP|error code:?|status(?:=| |: ?))\s*40[13]\b|permission[ _]denied.*key|\bkey (?:revoked|expired)/i;
+const AUTH_RE = /invalid[ _-]?(?:x-)?api[ _-]?key|incorrect api key|api key not valid|no auth credentials|authentication[ _]?(?:error|failed)|unauthori[sz]ed|\b(?:HTTP|error code:?|status(?:=| |: ?))\s*40[13]\b|permission[ _]denied.{0,120}key|\bkey (?:revoked|expired)/i;
 const MODEL_RE = /model[ _]not[ _]found|unknown model|unsupported model|model .{0,80}(?:does not exist|not found|is not (?:supported|available))|not a valid model|no endpoints found|invalid model|model pricing required/i;
 const RATE_RE = /rate[ _-]?limit|too many requests|\b(?:HTTP|error code:?|status(?:=| |: ?))\s*429\b|ratelimiterror|overloaded/i;
 const BUDGET_RE = /budget (?:exhausted|exceeded|unavailable|check denied|limit)|budget_(?:exhausted|exceeded|paused)|over budget|budget is paused/i;
@@ -84,7 +84,7 @@ const TIMEOUT_RE = /idle[ _]timeout|timed out|\btimeout\b|no progress/i;
 
 /** One short, redacted line of the raw failure text, for the unknown cause. */
 export function shortFailureText(text: string | null | undefined, max = DETAIL_MAX): string | null {
-    const clean = redactSensitive((text ?? "").replace(/\s+/g, " ").trim()).replace(/\s+/g, " ").trim();
+    const clean = redactSensitive(clipForRedaction(text ?? "", max * 4).replace(/\s+/g, " ").trim()).replace(/\s+/g, " ").trim();
     if (!clean) return null;
     return clean.length > max ? `${clean.slice(0, max - 1)}…` : clean;
 }

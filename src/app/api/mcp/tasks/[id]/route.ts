@@ -8,6 +8,7 @@ import { updateTaskForCompany } from "@/lib/openclaw/tasks";
 import { getTaskDetailForCompany } from "@/lib/openclaw/task-context";
 import { serializeTaskWithAssignee } from "@/lib/task-assignee";
 import { assertMcpMayAssign, mcpAccessErrorResponse, mcpMayUseProject, mcpRouteAccess } from "@/lib/mcp-access";
+import { auditTaskTitle, mcpRequestActor, recordAudit } from "@/lib/audit";
 
 /** Resolves the acting agent (token binding first) and checks it against the task's project scope. */
 async function checkTaskScope(
@@ -108,6 +109,7 @@ export async function PATCH(
             assignedAgentId: body.assignedAgentId !== undefined ? body.assignedAgentId : undefined,
             state: body.state,
             inputJson: body.inputJson && typeof body.inputJson === "object" ? body.inputJson : undefined,
+            actor: await mcpRequestActor(companyId, auth.companyToken!, body.agentId),
         });
 
         if ("error" in result) {
@@ -163,6 +165,7 @@ export async function DELETE(
             deletedAt: new Date(),
         }).where(eq(tasks.id, taskId)).returning();
 
+        await recordAudit({ companyId, actor: await mcpRequestActor(companyId, auth.companyToken!, agentId), action: "task.archived", target: { type: "task", id: taskId }, after: { archived: true }, meta: { label: auditTaskTitle(existing), projectId: existing.projectId } });
         await broadcastMcpEvent(companyId, { type: "task_updated", task: deletedTask });
 
         const res = { message: `Task ${taskId} archived successfully`, task: deletedTask };

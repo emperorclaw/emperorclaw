@@ -4,6 +4,7 @@ import { db } from "@/db";
 import { companies } from "@/db/schema";
 import { eq } from "drizzle-orm";
 import { broadcastMcpEvent } from "@/lib/pubsub";
+import { humanActor, recordAudit } from "@/lib/audit";
 
 export async function PATCH(req: NextRequest) {
     try {
@@ -19,6 +20,7 @@ export async function PATCH(req: NextRequest) {
             .set({ contextNotes })
             .where(eq(companies.id, ctx.companyId))
             .returning();
+        await recordAudit({ companyId: ctx.companyId, actor: humanActor(userId), action: "company.settings_changed", target: { type: "company", id: ctx.companyId }, meta: { setting: "contextNotes" } });
 
         await broadcastMcpEvent(ctx.companyId, {
             type: "company_context_updated",

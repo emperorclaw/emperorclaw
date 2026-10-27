@@ -23,6 +23,7 @@ import { legacyAvatarToAppearance, normalizeAppearance } from "@/lib/character/m
 import { companyRouteAccess } from "@/lib/company-access";
 import { memberMaySeeAgent } from "@/lib/member-scope";
 import { canAdmin } from "@/lib/role-matrix";
+import { humanActor, recordAgentChange } from "@/lib/audit";
 
 function redactAgent<T extends { llmApiKeyEncrypted?: unknown; llmApiKeyVersion?: unknown }>(agent: T) {
     const { llmApiKeyEncrypted: _e, llmApiKeyVersion: _v, ...safe } = agent;
@@ -173,12 +174,14 @@ export async function PATCH(
         return NextResponse.json({ error: "No valid fields to update" }, { status: 400 });
     }
 
+    const [before] = await db.select().from(agents).where(and(eq(agents.id, id), eq(agents.companyId, companyId), isNull(agents.deletedAt))).limit(1);
     const [updated] = await db.update(agents)
         .set(updates)
         .where(and(eq(agents.id, id), eq(agents.companyId, companyId)))
         .returning();
 
     if (!updated) return NextResponse.json({ error: "Agent not found" }, { status: 404 });
+    if (before) await recordAgentChange(companyId, humanActor(access.ctx.userId), before, updated);
 
     return NextResponse.json({ agent: redactAgent(updated) });
 }

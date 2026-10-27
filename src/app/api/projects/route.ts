@@ -7,6 +7,7 @@ import { getCompanyId } from "@/lib/auth";
 import { companyRouteAccess } from "@/lib/company-access";
 import { memberCustomerCondition, memberMaySeeAgent, memberMaySeeCustomer } from "@/lib/member-scope";
 import { prepareProjectGoal, saveProjectPurposeNote } from "@/lib/projects-crud";
+import { humanActor, recordProjectAudit } from "@/lib/audit";
 
 async function validateScopedRelation(companyId: string, table: typeof customers | typeof agents, id?: unknown) {
     if (!id) return true;
@@ -69,6 +70,7 @@ export async function POST(req: NextRequest) {
             maxActiveAgents: Math.max(1, Number(body.maxActiveAgents) || 3),
         }).returning();
         await saveProjectPurposeNote({ companyId, projectId: project.id, purpose: prepared.purpose });
+        await recordProjectAudit(companyId, humanActor(access.ctx.userId), "project.created", project);
 
         return NextResponse.json({ project }, { status: 201 });
     } catch (error) {

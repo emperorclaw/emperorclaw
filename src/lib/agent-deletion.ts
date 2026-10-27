@@ -25,7 +25,7 @@ import {
     threadMessages,
     threadParticipants,
 } from "@/db/schema";
-import { logAudit } from "@/lib/mcp";
+import { recordAudit } from "@/lib/audit";
 import { removeContainer, stopContainer, dockerVolumeRemove } from "@/lib/docker";
 import { hermesSafeName, hermesVolumeName } from "@/lib/hermes-names";
 
@@ -149,10 +149,7 @@ export async function deleteAgentAndData(input: {
         }).where(and(eq(agents.id, agentId), eq(agents.companyId, companyId)));
     });
 
-    await logAudit(companyId, actorType, actorId, "delete_agent", "agent", agentId, {
-        name: existing.name,
-        role: existing.role,
-    });
+    await recordAudit({ companyId, actor: { type: actorType, id: actorId }, action: "agent.deleted", target: { type: "agent", id: agentId }, before: existing });
 
     // Docker teardown isn't transactional with Postgres, so it runs post-commit
     // and best-effort: a Docker hiccup must never block the DB-level deletion

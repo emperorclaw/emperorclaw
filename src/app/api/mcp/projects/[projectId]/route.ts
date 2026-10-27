@@ -5,6 +5,7 @@ import { projects } from "@/db/schema";
 import { eq, and, isNull } from "drizzle-orm";
 import { updateProjectForCompany } from "@/lib/projects-crud";
 import { assertMcpMayReachAgent, mcpAccessErrorResponse, mcpMayUseProject, mcpRouteAccess } from "@/lib/mcp-access";
+import { mcpRequestActor, recordProjectAudit } from "@/lib/audit";
 
 async function checkAgentScopeOrForbidden(companyId: string, token: { agentId?: string | null }, agentId: unknown, projectId: string, leadAgentId?: unknown): Promise<NextResponse | null> {
     const scoped = await mcpRouteAccess(companyId, token, agentId);
@@ -84,6 +85,7 @@ export async function PATCH(
                 blockStatusChangesWithPendingApproval,
                 onlyLeadCanChangeStatus,
                 maxActiveAgents,
+                actor: await mcpRequestActor(companyId, auth.companyToken!, agentId),
             });
         } catch (e) {
             if (e instanceof Error && e.message.startsWith("INVALID_STATUS")) {
@@ -140,6 +142,7 @@ export async function DELETE(
         const [deleted] = await db.update(projects).set({
             deletedAt: new Date(),
         }).where(eq(projects.id, projectId)).returning();
+        await recordProjectAudit(companyId, await mcpRequestActor(companyId, auth.companyToken!, agentId), "project.archived", existing);
 
         const res = { message: `Project ${projectId} soft-deleted successfully`, project: deleted };
         await saveIdempotencyResponse(companyId, endpoint, requestHash!, res);

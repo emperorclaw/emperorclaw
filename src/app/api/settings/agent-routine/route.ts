@@ -4,6 +4,8 @@ import { db } from "@/db";
 import { companies } from "@/db/schema";
 import { AuthError, requireRole } from "@/lib/roles";
 import { localClock, normalizeRoutine, reviewCompany } from "@/lib/agent-routines";
+import { humanActor, recordAudit } from "@/lib/audit";
+import { changedFields } from "@/lib/audit-format";
 
 export const dynamic = "force-dynamic";
 
@@ -27,7 +29,7 @@ export async function GET() {
 /** Admins change it: { enabled?, time?, timezone?, weekdaysOnly? }. */
 export async function PUT(req: NextRequest) {
     try {
-        const { companyId } = await requireRole("admin")();
+        const { companyId, userId } = await requireRole("admin")();
         const body = await req.json().catch(() => ({}));
         const [row] = await db.select({ routine: companies.agentRoutineJson }).from(companies).where(eq(companies.id, companyId)).limit(1);
         const routine = normalizeRoutine({ ...normalizeRoutine(row?.routine), ...body });
@@ -36,6 +38,9 @@ export async function PUT(req: NextRequest) {
         const today = localClock(new Date(), routine.timezone);
         const lastRunOn = today.time >= routine.time ? today.date : undefined;
         await db.update(companies).set({ agentRoutineJson: routine, ...(lastRunOn ? { agentRoutineLastRunOn: lastRunOn } : {}) }).where(eq(companies.id, companyId));
+        const fields = (r: ReturnType<typeof normalizeRoutine>) => ({ agentRoutineEnabled: r.enabled, routineTime: r.time, timezone: r.timezone, weekdaysOnly: r.weekdaysOnly, stallRemindersEnabled: r.stallRemindersEnabled });
+        const diff = changedFields(fields(normalizeRoutine(row?.routine)), fields(routine));
+        if (Object.keys(diff.after).length > 0) await recordAudit({ companyId, actor: humanActor(userId), action: "company.settings_changed", target: { type: "company", id: companyId }, ...diff, meta: { setting: "agentRoutine" } });
         return NextResponse.json({ ok: true, routine });
     } catch (error) {
         return failure(error);

@@ -20,6 +20,8 @@ import { getTaskAssignee, resolveTaskAssignee } from "@/lib/task-assignee";
 import { getAgentScope, getAllowedProjectIds, isProjectAllowed, scopeCondition } from "@/lib/agent-scope";
 import { notifyTaskAssigned } from "@/lib/notifications";
 import { wakeAgentOnTaskAssignment } from "@/lib/task-wake";
+import { recordTaskChange, SYSTEM_ACTOR, type AuditActor } from "@/lib/audit";
+import { lengthError, TASK_TITLE_MAX } from "@/lib/input-limits";
 
 type ClaimTaskInput = {
   companyId: string;
@@ -71,6 +73,8 @@ type AssignTaskInput = {
   taskId: string;
   agentId: string;
   mode?: "assign" | "claim";
+  /** Who assigned it, for the activity log (default: the claiming or acting agent). */
+  actor?: AuditActor;
   /** Authenticated caller, distinct from the target agent. */
   actorAgentId?: string | null;
 };
@@ -89,6 +93,8 @@ type UpdateTaskInput = {
   blockedReason?: string | null;
   actorType?: "agent" | "human" | "system";
   actorId?: string | null;
+  /** Overrides actorType/actorId in the activity log (an MCP token id). */
+  actor?: AuditActor;
 };
 
 export async function claimNextTaskForAgent(input: ClaimTaskInput) {
@@ -184,7 +190,10 @@ export async function claimNextTaskForAgent(input: ClaimTaskInput) {
     return { message: "No tasks available", task: null };
   }
 
-  const task = result.rows[0];
+  // RETURNING * also carries the SQL-only search_vector column (migration
+  // 0064); it is an index, never part of the task the agent sees.
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const { search_vector: _searchVector, ...task } = result.rows[0] as Record<string, unknown>;
   await db.insert(taskEvents).values({
     companyId: input.companyId,
     taskId: String(task.id),
@@ -192,6 +201,7 @@ export async function claimNextTaskForAgent(input: ClaimTaskInput) {
     actorType: "agent",
     actorId: internalAgentId,
   });
+  await recordTaskChange(input.companyId, { type: "agent", id: internalAgentId }, { id: String(task.id), assignedAgentId: internalAgentId }, { id: String(task.id), projectId: task.project_id as string, taskType: task.task_type as string, state: task.state as string, assignedAgentId: internalAgentId, inputJson: task.input_json });
 
   await broadcastMcpEvent(input.companyId, { type: "task_updated", task });
   return { message: "Task claimed successfully", task };
@@ -254,6 +264,7 @@ export async function assignTaskToAgent(input: AssignTaskInput) {
       nextState: task.state,
     },
   });
+  await recordTaskChange(input.companyId, input.actor ?? (mode === "claim" ? { type: "agent", id: internalAgentId } : input.actorAgentId ? { type: "agent", id: input.actorAgentId } : SYSTEM_ACTOR), existingTask, task);
 
   await broadcastMcpEvent(input.companyId, { type: "task_updated", task });
   // "claim" is the claiming agent taking it for itself (no wake); an explicit
@@ -337,6 +348,12 @@ export async function updateTaskForCompany(input: UpdateTaskInput) {
     goal: input.goal,
     inputJson: mergedInputJson,
   });
+  // Only a new title is checked, so an older over-long one can still be edited around.
+  const nextTitle = (normalizedSpec.inputJson as Record<string, unknown>).title;
+  const titleError = nextTitle !== currentInput.title ? lengthError("title", nextTitle, TASK_TITLE_MAX) : null;
+  if (titleError) {
+    return { status: 400 as const, error: titleError };
+  }
 
   const previousAssignee = getTaskAssignee(existingTask);
   const nextAssignee = getTaskAssignee({
@@ -382,6 +399,7 @@ export async function updateTaskForCompany(input: UpdateTaskInput) {
       missingFields: normalizedSpec.missingFields,
     },
   });
+  await recordTaskChange(input.companyId, input.actor ?? { type: input.actorType || "system", id: input.actorId || null }, existingTask, task);
 
   await broadcastMcpEvent(input.companyId, { type: "task_updated", task });
   await notifyTaskAssigned(input.companyId, task, existingTask.assignedMemberId);
@@ -417,6 +435,8 @@ export async function createTaskForProject(input: CreateTaskInput) {
     taskType: input.taskType,
     inputJson: input.inputJson || {},
   });
+  const titleError = lengthError("title", (normalizedSpec.inputJson as Record<string, unknown>).title, TASK_TITLE_MAX);
+  if (titleError) throw new Error(titleError);
 
   const [task] = await db.insert(tasks).values({
     id: randomUUID(),
@@ -554,6 +574,7 @@ export async function finalizeTaskForAgent(input: FinalizeTaskInput) {
       comment: input.comment || null,
     },
   });
+  await recordTaskChange(input.companyId, { type: "agent", id: internalAgentId }, existingTask, task);
 
   await broadcastMcpEvent(input.companyId, { type: "task_updated", task });
   return { status: 200 as const, task };

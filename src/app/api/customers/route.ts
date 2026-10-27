@@ -5,6 +5,8 @@ import { db } from "@/db";
 import { customers } from "@/db/schema";
 import { companyRouteAccess } from "@/lib/company-access";
 import { memberCustomerCondition, memberMaySeeCustomer } from "@/lib/member-scope";
+import { humanActor, recordAudit } from "@/lib/audit";
+import { lengthError, NAME_MAX } from "@/lib/input-limits";
 
 export async function GET() {
     const access = await companyRouteAccess("viewer");
@@ -30,6 +32,8 @@ export async function POST(req: NextRequest) {
         if (!name || typeof name !== "string") {
             return NextResponse.json({ error: "name is required" }, { status: 400 });
         }
+        const tooLong = lengthError("name", name, NAME_MAX);
+        if (tooLong) return NextResponse.json({ error: tooLong }, { status: 400 });
 
         const [existing] = await db.select().from(customers).where(and(
             eq(customers.companyId, companyId),
@@ -51,6 +55,7 @@ export async function POST(req: NextRequest) {
             name: name.trim(),
             notes: typeof notes === "string" ? notes : null,
         }).returning();
+        await recordAudit({ companyId, actor: humanActor(access.ctx.userId), action: "customer.created", target: { type: "customer", id: customer.id }, after: { name: customer.name } });
 
         return NextResponse.json({ customer }, { status: 201 });
     } catch (error) {

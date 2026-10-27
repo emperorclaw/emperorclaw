@@ -1,10 +1,11 @@
 export const dynamic = "force-dynamic";
 
 import { NextResponse } from "next/server";
-import { archiveScopedResource, resolveResourceScope, updateScopedResource } from "@/lib/resources";
+import { archiveScopedResource, resolveResourceScope, resourceNameError, updateScopedResource } from "@/lib/resources";
 import { companyRouteAccess } from "@/lib/company-access";
 import { memberResourceDenied } from "../_shared";
 import { memberMaySeeResource } from "@/lib/member-scope";
+import { humanActor } from "@/lib/audit";
 
 
 export async function DELETE(
@@ -19,7 +20,7 @@ export async function DELETE(
     const { id } = await params;
     const denied = await memberResourceDenied(membership, id);
     if (denied) return denied;
-    const archived = await archiveScopedResource(membership.companyId, id);
+    const archived = await archiveScopedResource(membership.companyId, id, humanActor(membership.userId));
     if (!archived) {
       return NextResponse.json({ error: "Resource not found" }, { status: 404 });
     }
@@ -79,6 +80,8 @@ export async function PATCH(
     if (body.scopeType !== undefined) patch.scopeType = typeof body.scopeType === "string" ? body.scopeType : "company";
     if (body.scopeId !== undefined) patch.scopeId = typeof body.scopeId === "string" && body.scopeId.trim() ? body.scopeId.trim() : null;
     if (body.changeSummary !== undefined && typeof body.changeSummary === "string") patch.changeSummary = body.changeSummary.trim();
+    const nameError = resourceNameError(patch);
+    if (nameError) return NextResponse.json({ error: nameError }, { status: 400 });
     if ((patch.scopeType !== undefined || patch.scopeId !== undefined)
       && !(await memberMaySeeResource(membership.companyId, membership.scope, { scopeType: patch.scopeType ?? "company", scopeId: patch.scopeId ?? null }))) {
       return NextResponse.json({ error: "That scope is outside your access" }, { status: 403 });
@@ -89,7 +92,8 @@ export async function PATCH(
     const updated = await updateScopedResource({
       companyId: membership.companyId,
       resourceId: id,
-      patch
+      patch,
+      actor: humanActor(membership.userId),
     });
 
     if (!updated) {

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { verifyMcpToken } from "@/lib/mcp";
-import { createScopedResource, listScopedResources, resolveResourceScope, toPublicResource, type PublicResource } from "@/lib/resources";
+import { createScopedResource, listScopedResources, resolveResourceScope, resourceNameError, toPublicResource, type PublicResource } from "@/lib/resources";
 import { requireProjectInScope } from "@/lib/agent-scope";
 import { mcpMayUseProject, mcpRouteAccess } from "@/lib/mcp-access";
 
@@ -67,6 +67,8 @@ export async function POST(
     if (!body.name || !body.resourceType || !body.provider) {
       return NextResponse.json({ error: "name, resourceType, and provider are required" }, { status: 400 });
     }
+    const nameError = resourceNameError(body);
+    if (nameError) return NextResponse.json({ error: nameError }, { status: 400 });
 
     const scoped = await mcpRouteAccess(companyId, auth.companyToken!, body.agentId);
     if (scoped.response) return scoped.response;

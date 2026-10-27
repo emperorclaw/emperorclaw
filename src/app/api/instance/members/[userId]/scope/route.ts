@@ -4,6 +4,8 @@ import { companyMembers } from "@/db/schema";
 import { and, eq } from "drizzle-orm";
 import { requireRole, AuthError } from "@/lib/roles";
 import { normalizeMemberScope } from "@/lib/member-scope";
+import { humanActor, recordMemberAudit } from "@/lib/audit";
+import { changedFields, scopeAuditFields } from "@/lib/audit-format";
 
 // Authorization is resolved from the DB via requireRole (not the stale JWT
 // companyRole claim), and every query is scoped to the caller's company so a
@@ -54,6 +56,8 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ user
     // Store only the known shape: { mode: "all" } or the normalized restricted lists.
     const scopeJson = normalizeMemberScope(raw) ?? { mode: "all" };
 
+    const [previous] = await db.select({ scopeJson: companyMembers.scopeJson }).from(companyMembers)
+        .where(and(eq(companyMembers.userId, userId), eq(companyMembers.companyId, ctx.companyId))).limit(1);
     const [updated] = await db.update(companyMembers)
         .set({ scopeJson })
         .where(and(
@@ -66,5 +70,7 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ user
         return NextResponse.json({ error: "Member not found" }, { status: 404 });
     }
 
+    const scopeDiff = changedFields(scopeAuditFields(previous?.scopeJson), scopeAuditFields(scopeJson));
+    if (Object.keys(scopeDiff.after).length > 0) await recordMemberAudit(ctx.companyId, humanActor(ctx.userId), "member.scope_changed", userId, scopeDiff.before, scopeDiff.after);
     return NextResponse.json({ ok: true, scope: scopeJson });
 }

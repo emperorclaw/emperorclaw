@@ -14,6 +14,7 @@ import {
   resolutionTaskState,
   selectPendingDecisions,
 } from "./approval-status";
+import { auditTaskTitle, humanActor, recordAudits, taskChangeEntries } from "@/lib/audit";
 
 export async function createApprovalRequest(input: {
   companyId: string;
@@ -140,6 +141,10 @@ export async function resolveApproval(input: {
     }
   }
 
+  await recordAudits([
+    { companyId: input.companyId, actor: humanActor(input.resolverUserId), action: `approval.${input.status}`, target: { type: "approval", id: approval.id }, before: { status: "pending" }, after: { status: input.status, actionType: approval.actionType, taskIds }, meta: { label: linkedTaskRows[0] ? auditTaskTitle(linkedTaskRows[0].task) : null, count: taskIds.length, projectId: approval.projectId } },
+    ...(nextState ? linkedTaskRows.flatMap((row) => taskChangeEntries(input.companyId, humanActor(input.resolverUserId), row.task, { ...row.task, state: nextState })) : []),
+  ]);
   await broadcastMcpEvent(input.companyId, {
     type: "approval_updated",
     approval,
@@ -384,11 +389,13 @@ export async function requestApprovalForTasks(input: {
   });
 
   // Waiting on a person is the review state.
-  await db.update(tasks).set({ state: TASK_STATES.review, updatedAt: new Date() }).where(and(
+  const moved = await db.update(tasks).set({ state: TASK_STATES.review, updatedAt: new Date() }).where(and(
     eq(tasks.companyId, input.companyId),
     inArray(tasks.id, taskIds),
     ne(tasks.state, TASK_STATES.done),
-  ));
+  )).returning();
+  const actor = input.requesterAgentId ? { type: "agent" as const, id: input.requesterAgentId } : humanActor(null);
+  await recordAudits(moved.flatMap((task) => taskChangeEntries(input.companyId, actor, { ...task, state: rows.find((r) => r.id === task.id)?.state ?? null }, task)));
   return approval;
 }
 

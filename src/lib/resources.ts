@@ -38,6 +38,14 @@ import {
   resourcePathAncestors,
   type ResourceFolderNode,
 } from "@/lib/resource-paths";
+import { recordAudit, type AuditActor } from "@/lib/audit";
+import { lengthError, NAME_MAX } from "@/lib/input-limits";
+
+/** Knowledge notes (title + folder only) are activity; other resources are not. */
+function auditKnowledgeNote(actor: AuditActor | undefined, companyId: string, action: string, note: { id: string; resourceType: string; name: string; displayName?: string | null; path?: string | null }, before?: { path?: string | null }) {
+  if (!actor || note.resourceType !== "knowledge_base") return Promise.resolve();
+  return recordAudit({ companyId, actor, action, target: { type: "knowledge_note", id: note.id }, before: before ? { path: before.path ?? "" } : null, after: { title: note.displayName || note.name, path: note.path ?? "" } });
+}
 
 // Path helpers live in a db-free module so client components can share them.
 export {
@@ -492,6 +500,11 @@ export async function deleteResourceFolder(input: {
   return affected.length;
 }
 
+/** The 400 message for an over-long resource/note name or display name, else null. */
+export function resourceNameError(input: { name?: unknown; displayName?: unknown }): string | null {
+  return lengthError("name", input.name, NAME_MAX) ?? lengthError("displayName", input.displayName, NAME_MAX);
+}
+
 export async function createScopedResource(input: {
   companyId: string;
   scopeType: string;
@@ -513,7 +526,11 @@ export async function createScopedResource(input: {
   changeSummary?: string | null;
   createdByType?: string | null;
   createdById?: string | null;
+  /** Who did it, for the activity log (knowledge notes only). */
+  actor?: AuditActor;
 }) {
+  const nameError = resourceNameError(input);
+  if (nameError) throw new Error(nameError);
   const inject: KnowledgeInjectMode = input.inject
     ? normalizeKnowledgeInjectMode(input.inject)
     : injectModeFromIsShared(input.isShared ?? false);
@@ -551,6 +568,7 @@ export async function createScopedResource(input: {
     createdById: input.createdById || null,
   });
   await syncResourceBrainMetadata(input.companyId, resource);
+  await auditKnowledgeNote(input.actor, input.companyId, "knowledge_note.created", resource);
 
   return resource;
 }
@@ -577,7 +595,11 @@ export async function updateScopedResource(input: {
     createdByType: string;
     createdById: string | null;
   }>;
+  /** Who did it, for the activity log (knowledge note moves only). */
+  actor?: AuditActor;
 }) {
+  const nameError = resourceNameError(input.patch);
+  if (nameError) throw new Error(nameError);
   const existing = await getScopedResource(input.companyId, input.resourceId);
   if (!existing) return null;
 
@@ -636,11 +658,12 @@ export async function updateScopedResource(input: {
     });
   }
   await syncResourceBrainMetadata(input.companyId, resource);
+  if ((resource.path ?? "") !== (existing.path ?? "")) await auditKnowledgeNote(input.actor, input.companyId, "knowledge_note.moved", resource, existing);
 
   return resource;
 }
 
-export async function archiveScopedResource(companyId: string, resourceId: string) {
+export async function archiveScopedResource(companyId: string, resourceId: string, actor?: AuditActor) {
   const existing = await getScopedResource(companyId, resourceId);
   if (!existing) return null;
 
@@ -649,6 +672,7 @@ export async function archiveScopedResource(companyId: string, resourceId: strin
     deletedAt: new Date(),
     updatedAt: new Date(),
   }).where(eq(scopedResources.id, existing.id)).returning();
+  await auditKnowledgeNote(actor, companyId, "knowledge_note.deleted", existing);
 
   return resource;
 }

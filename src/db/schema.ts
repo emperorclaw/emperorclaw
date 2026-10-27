@@ -479,6 +479,11 @@ export const recurringTaskDefinitions = pgTable("recurring_task_definitions", {
     deletedAt: timestamp("deleted_at"),
 });
 
+// Global search: tasks, task_events, thread_messages, scoped_resources,
+// artifacts, projects, customers and agents each carry a generated
+// `search_vector` tsvector column with a GIN index (migration 0064). They are
+// deliberately NOT declared here so select()/returning() never ship them; only
+// src/lib/search.ts reads them, by raw SQL.
 export const tasks = pgTable("tasks", {
     id: uuid("id").primaryKey().defaultRandom(),
     companyId: uuid("company_id").notNull().references(() => companies.id, { onDelete: 'cascade' }),
@@ -807,7 +812,10 @@ export const auditLog = pgTable("audit_log", {
     targetId: uuid("target_id").notNull(),
     payloadJson: jsonb("payload_json"),
     createdAt: timestamp("created_at").defaultNow().notNull(),
-});
+}, (table) => ({
+    // The Activity feed pages newest first per company.
+    companyCreatedIdx: index("audit_log_company_created_idx").on(table.companyId, table.createdAt.desc(), table.id.desc()),
+}));
 
 export const opsEvents = pgTable("ops_events", {
     id: uuid("id").primaryKey().defaultRandom(),
@@ -1224,6 +1232,8 @@ export const agentRuns = pgTable("agent_runs", {
     runningIdx: index("agent_runs_running_idx").on(table.status).where(sql`${table.status} = 'running'`),
     // Chat reads a thread's live and recent runs (liveRuns).
     threadStartedIdx: index("agent_runs_thread_started_idx").on(table.threadId, table.startedAt.desc()),
+    // The Costs page reads a company's runs over a date range, across agents.
+    companyStartedIdx: index("agent_runs_company_started_idx").on(table.companyId, table.startedAt),
 }));
 
 // ─── Run events (0.9) ───────────────────────────────────────────────────────

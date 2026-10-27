@@ -6,7 +6,7 @@ import { agents } from "@/db/schema";
 import { DOCKER_SOCKET, isDocker } from "@/lib/docker";
 import { mintAgentSetupToken, provisionHermesContainer, revokeAgentSetupTokens } from "@/lib/hermes-provisioning";
 import { hermesSafeName } from "@/lib/hermes-names";
-import { logAudit } from "@/lib/mcp";
+import { recordAudit, SYSTEM_ACTOR, type AuditActor } from "@/lib/audit";
 
 /** Hire an isolated worker without exposing the source worker's credentials. */
 export async function hireHermesAgent(input: {
@@ -16,6 +16,8 @@ export async function hireHermesAgent(input: {
     sourceAgentId: string;
     doctrineJson?: Record<string, string>;
     requestId?: string;
+    /** Who hired it, for the activity log. */
+    actor?: AuditActor;
 }) {
     if (!isDocker() || !fs.existsSync(DOCKER_SOCKET)) throw new HermesHiringError("Local Hermes hiring requires Docker with its socket mounted");
     const name = input.name.trim();
@@ -45,7 +47,7 @@ export async function hireHermesAgent(input: {
             // No container holds this token; a retry from Agents mints a new one.
             await revokeAgentSetupTokens(agent.id, { onlyTokenHash: tokenHash }).catch(() => 0);
         }
-        await logAudit(input.companyId, "agent", source.id, "hire_hermes_agent", "agent", agent.id, { success: result.success });
+        await recordAudit({ companyId: input.companyId, actor: input.actor ?? SYSTEM_ACTOR, action: "agent.created", target: { type: "agent", id: agent.id }, after: agent });
         return { agentId: agent.id, name, success: result.success, message: result.message, outputs: result.outputs };
     } catch (error) {
         return { agentId: agent.id, name, success: false, message: error instanceof HermesHiringError ? error.message : "Profile created, but runtime setup could not finish. Retry this runtime from Agents.", outputs: [] };

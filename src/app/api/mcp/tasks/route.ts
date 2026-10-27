@@ -8,6 +8,7 @@ import { parseJsonBody, optionalString } from "@/lib/validation";
 import { serializeTaskWithAssignee } from "@/lib/task-assignee";
 import { loadAgentScopeContext, isProjectAllowed } from "@/lib/agent-scope";
 import { assertMcpMayAssign, mcpAccessErrorResponse, mcpAccessForAgent, mcpRouteAccess } from "@/lib/mcp-access";
+import { lengthError, TASK_TITLE_MAX } from "@/lib/input-limits";
 
 const createTaskSchema = z.object({
     projectId: z.string().min(1, "projectId is required"),
@@ -189,6 +190,9 @@ export async function POST(req: NextRequest) {
         ...(goal ? { goal } : {}),
         ...(ownerRole ? { ownerRole } : {}),
     };
+
+    const titleTooLong = lengthError("title", inputPayload.title, TASK_TITLE_MAX);
+    if (titleTooLong) return NextResponse.json({ error: titleTooLong }, { status: 400 });
 
     if (!allowUnderspecified) {
         const validationErrors = getTaskSpecValidationErrors({

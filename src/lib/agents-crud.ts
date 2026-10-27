@@ -3,7 +3,7 @@ import { agents, llmPricing } from "@/db/schema";
 import { inArray, and, desc, eq, isNull } from "drizzle-orm";
 import { writeAgentMemory } from "@/lib/control-plane";
 import { resolveAgentModelConfiguration } from "@/lib/agent-model-config";
-import { logAudit } from "@/lib/mcp";
+import { recordAgentChange, recordAudit, SYSTEM_ACTOR, type AuditActor } from "@/lib/audit";
 import { broadcastMcpEvent } from "@/lib/pubsub";
 import { legacyAvatarToAppearance, normalizeAppearance, resolveAvatarPhoto } from "@/lib/character/model";
 
@@ -54,6 +54,8 @@ export type CreateAgentInput = {
     llmProvider?: string | null;
     llmModel?: string | null;
     actorType?: string;
+    /** Who created it, for the activity log. */
+    actor?: AuditActor;
 };
 
 export async function createAgentForCompany(input: CreateAgentInput) {
@@ -90,7 +92,7 @@ export async function createAgentForCompany(input: CreateAgentInput) {
         llmModel: llmConfiguration.llmModel,
     }).returning();
 
-    await logAudit(input.companyId, input.actorType || "system", null, "register_agent", "agent", agent.id, { name: input.name, role: input.role });
+    await recordAudit({ companyId: input.companyId, actor: input.actor ?? SYSTEM_ACTOR, action: "agent.created", target: { type: "agent", id: agent.id }, after: agent });
 
     if (input.memory) {
         await writeAgentMemory({
@@ -124,6 +126,8 @@ export type UpdateAgentInput = {
     budgetStatus?: "active" | "warning" | "paused";
     llmProvider?: string;
     llmModel?: string;
+    /** Who made the change, for the activity log. */
+    actor?: AuditActor;
 };
 
 export async function updateAgentForCompany(input: UpdateAgentInput) {
@@ -187,6 +191,7 @@ export async function updateAgentForCompany(input: UpdateAgentInput) {
         });
     }
 
+    await recordAgentChange(input.companyId, input.actor ?? SYSTEM_ACTOR, existing, updated);
     await broadcastMcpEvent(input.companyId, { type: "agent_updated", agent: updated });
     return redactAgent(updated);
 }

@@ -6,12 +6,14 @@ import { mcpRouteAccess } from "@/lib/mcp-access";
 import { parseJsonBody, optionalString } from "@/lib/validation";
 import { listAgentsForCompany, createAgentForCompany } from "@/lib/agents-crud";
 import { normalizeAppearance } from "@/lib/character/model";
+import { mcpActor } from "@/lib/audit";
+import { NAME_MAX } from "@/lib/input-limits";
 
 const registerAgentSchema = z.object({
     deploymentMode: z.enum(["remote", "local"]).optional(),
     sourceAgentId: z.string().optional(),
     doctrineJson: z.record(z.string(), z.string()).optional(),
-    name: z.string().min(1, "name is required"),
+    name: z.string().min(1, "name is required").max(NAME_MAX, `name must be at most ${NAME_MAX} characters`),
     role: optionalString,
     avatarUrl: optionalString,
     // null clears the drawn override; anything else must be a valid appearance.
@@ -75,7 +77,7 @@ export async function POST(req: NextRequest) {
         if (parsed.data.deploymentMode === "local") {
             const sourceAgentId = companyToken.agentId || parsed.data.sourceAgentId;
             if (!sourceAgentId) return NextResponse.json({ error: "sourceAgentId is required" }, { status: 400 });
-            const result = await hireHermesAgent({ companyId, name: parsed.data.name, role: parsed.data.role ?? undefined, sourceAgentId, doctrineJson: parsed.data.doctrineJson });
+            const result = await hireHermesAgent({ companyId, name: parsed.data.name, role: parsed.data.role ?? undefined, sourceAgentId, doctrineJson: parsed.data.doctrineJson, actor: mcpActor(companyToken.agentId, companyToken.id) });
             await saveIdempotencyResponse(companyId, "/api/mcp/agents", requestHash, result);
             return NextResponse.json(result, { status: 201 });
         }
@@ -93,6 +95,7 @@ export async function POST(req: NextRequest) {
             llmProvider,
             llmModel,
             actorType: "agent",
+            actor: mcpActor(companyToken.agentId, companyToken.id),
         });
 
         const responseObj = { message: "Agent registered", agent };

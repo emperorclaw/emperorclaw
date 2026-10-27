@@ -5,6 +5,7 @@ import { companyMembers, companyTokens, sessions, tasks, users } from "@/db/sche
 import { and, eq, isNull, ne } from "drizzle-orm";
 import { isSelfHosted } from "@/lib/instance";
 import { archivePrivateThreadsOf } from "@/lib/control-plane";
+import { humanActor, recordMemberAudit } from "@/lib/audit";
 
 /** How many owners the company has besides `exceptUserId`. */
 async function otherOwnerCount(companyId: string, exceptUserId: string): Promise<number> {
@@ -145,6 +146,7 @@ export async function PUT(
                 .set({ instanceRole })
                 .where(eq(users.id, userId));
         }
+        if ((role && role !== target.role) || instanceRole) await recordMemberAudit(ctx.companyId, humanActor(ctx.userId), "member.role_changed", userId, { role: target.role }, { role: role || target.role, instanceRole: instanceRole || undefined });
 
         // Update profile fields
         const profileUpdates: Record<string, any> = {};
@@ -269,6 +271,7 @@ export async function DELETE(
             // reaching company data after removal.
             await tx.delete(sessions).where(eq(sessions.userId, userId));
         });
+        await recordMemberAudit(ctx.companyId, humanActor(ctx.userId), "member.removed", userId, { role: targetMembership.role }, null);
 
         return NextResponse.json({ success: true }, { status: 200 });
     } catch (err) {

@@ -8,10 +8,12 @@ import { eq, and, isNull } from "drizzle-orm";
 import { parseJsonBody, optionalString } from "@/lib/validation";
 import { readAgentBudget } from "@/lib/agent-budget";
 import { updateAgentForCompany } from "@/lib/agents-crud";
+import { mcpActor, recordAudit } from "@/lib/audit";
 import { normalizeAppearance } from "@/lib/character/model";
+import { NAME_MAX } from "@/lib/input-limits";
 
 const updateAgentSchema = z.object({
-    name: z.string().min(1).optional(),
+    name: z.string().min(1).max(NAME_MAX, `name must be at most ${NAME_MAX} characters`).optional(),
     role: optionalString.optional(),
     avatarUrl: optionalString.optional(),
     // null clears the drawn override; anything else must be a valid appearance.
@@ -110,6 +112,7 @@ export async function PATCH(
             budgetStatus: typeof body.budgetStatus === "string" ? body.budgetStatus as "active" | "warning" | "paused" : undefined,
             llmProvider: typeof body.llmProvider === "string" ? body.llmProvider : undefined,
             llmModel: typeof body.llmModel === "string" ? body.llmModel : undefined,
+            actor: mcpActor(auth.companyToken!.agentId, auth.companyToken!.id),
         });
 
         const res = { message: `Agent ${agentId} updated successfully`, agent: updatedAgent };
@@ -155,6 +158,7 @@ export async function DELETE(
         const [deletedItem] = await db.update(agents).set({
             deletedAt: new Date(),
         }).where(eq(agents.id, agentId)).returning();
+        await recordAudit({ companyId, actor: mcpActor(null, auth.companyToken!.id), action: "agent.deleted", target: { type: "agent", id: agentId }, before: existing });
 
         const res = { message: `Agent ${agentId} archived successfully`, agent: deletedItem };
         await saveIdempotencyResponse(companyId, endpoint, requestHash!, res);

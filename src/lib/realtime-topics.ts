@@ -86,6 +86,10 @@ export function eventTopicsFor(payload: unknown, subject: RealtimeSubject | null
             topics.add("inbox");
             topics.add("dashboard");
             break;
+        // lib/audit.ts: a new activity entry (the event carries no details).
+        case "audit_recorded":
+            topics.add("activity");
+            break;
         default:
             break;
     }

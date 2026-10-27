@@ -5,6 +5,7 @@ import { and, desc, eq, isNull, sql } from "drizzle-orm";
 import { broadcastMcpEvent } from "@/lib/pubsub";
 import { scopeCondition } from "@/lib/agent-scope";
 import { normalizeProjectInput } from "@/lib/project-title";
+import { recordProjectAudit, SYSTEM_ACTOR, type AuditActor } from "@/lib/audit";
 
 /**
  * Project names are short labels (PROJECT_NAME_MAX). An overlong goal is split
@@ -110,6 +111,8 @@ export type CreateProjectInput = {
     blockStatusChangesWithPendingApproval?: boolean;
     onlyLeadCanChangeStatus?: boolean;
     maxActiveAgents?: number;
+    /** Who did it, for the activity log (default: createdByAgentId, else system). */
+    actor?: AuditActor;
 };
 
 export async function createProjectForCompany(input: CreateProjectInput) {
@@ -134,6 +137,7 @@ export async function createProjectForCompany(input: CreateProjectInput) {
     }).returning();
 
     await saveProjectPurposeNote({ companyId: input.companyId, projectId: project.id, purpose: prepared.purpose, createdByAgentId: input.createdByAgentId });
+    await recordProjectAudit(input.companyId, input.actor ?? (input.createdByAgentId ? { type: "agent", id: input.createdByAgentId } : SYSTEM_ACTOR), "project.created", project);
     await broadcastMcpEvent(input.companyId, { type: "project_created", project });
     return project;
 }
@@ -155,6 +159,8 @@ export type UpdateProjectInput = {
     blockStatusChangesWithPendingApproval?: boolean;
     onlyLeadCanChangeStatus?: boolean;
     maxActiveAgents?: number;
+    /** Who did it, for the activity log (default: createdByAgentId, else system). */
+    actor?: AuditActor;
 };
 
 export async function updateProjectForCompany(input: UpdateProjectInput) {
@@ -191,6 +197,7 @@ export async function updateProjectForCompany(input: UpdateProjectInput) {
     }).where(eq(projects.id, input.projectId)).returning();
 
     await saveProjectPurposeNote({ companyId: input.companyId, projectId: project.id, purpose, createdByAgentId: input.createdByAgentId });
+    await recordProjectAudit(input.companyId, input.actor ?? (input.createdByAgentId ? { type: "agent", id: input.createdByAgentId } : SYSTEM_ACTOR), "project.updated", project, existing);
     await broadcastMcpEvent(input.companyId, { type: "project_updated", project });
     return project;
 }

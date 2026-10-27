@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { requireRole, AuthError } from "@/lib/roles";
 import { canAdmin } from "@/lib/role-matrix";
 import { getInstanceSettings, setInstanceSettingsBatch, isSelfHosted } from "@/lib/instance";
+import { humanActor, recordAudit } from "@/lib/audit";
 
 // ── GET /api/instance/settings — Retrieve all instance settings (any authenticated role) ──
 
@@ -104,6 +105,8 @@ export async function PUT(req: NextRequest) {
         }
 
         await setInstanceSettingsBatch(sanitizedSettings);
+        // Only the registration mode and instance name are kept; SMTP details (password) never are.
+        await recordAudit({ companyId: ctx.companyId, actor: humanActor(ctx.userId), action: "company.settings_changed", target: { type: "company", id: ctx.companyId }, after: { registrationMode: sanitizedSettings.registration_mode, instanceName: sanitizedSettings.instance_name }, meta: { setting: "instance" } });
 
         // Return updated settings (minus smtp_password)
         const updated = await getInstanceSettings();

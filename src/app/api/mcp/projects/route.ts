@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { verifyMcpToken, checkIdempotency, saveIdempotencyResponse } from "@/lib/mcp";
 import { listProjectsForCompany, createProjectForCompany } from "@/lib/projects-crud";
 import { assertMcpMayReachAgent, mcpAccessErrorResponse, mcpMayUseCustomer, mcpRouteAccess } from "@/lib/mcp-access";
+import { mcpRequestActor } from "@/lib/audit";
 
 export async function GET(req: NextRequest) {
     const auth = await verifyMcpToken(req);
@@ -86,6 +87,7 @@ export async function POST(req: NextRequest) {
             blockStatusChangesWithPendingApproval,
             onlyLeadCanChangeStatus,
             maxActiveAgents,
+            actor: await mcpRequestActor(companyId, auth.companyToken!, agentId),
         });
 
         const res = { message: "Project created", project };

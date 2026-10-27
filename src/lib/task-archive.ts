@@ -13,13 +13,25 @@ import { db } from "@/db";
 import { tasks } from "@/db/schema";
 import { memberVisibleProjectIds, type MemberScope } from "@/lib/member-scope";
 import { broadcastMcpEvent } from "@/lib/pubsub";
+import { auditTaskTitle, humanActor, recordAudits } from "@/lib/audit";
+import { randomUUID } from "crypto";
 
 export const BULK_TASK_ARCHIVE_MAX = 200;
 /** Undo only reaches tasks archived this recently. */
 export const TASK_UNARCHIVE_WINDOW_MS = 10 * 60_000;
 
 type TaskRow = typeof tasks.$inferSelect;
-export type ArchiveCaller = { companyId: string; scope: MemberScope | null };
+/** userId: who is archiving, for the activity log. */
+export type ArchiveCaller = { companyId: string; scope: MemberScope | null; userId?: string | null };
+
+/** One activity entry per task; a bulk change shares a batch id so the feed can group it. */
+function auditArchive(caller: ArchiveCaller, action: "task.archived" | "task.unarchived", changed: TaskRow[]) {
+    const batch = changed.length > 1 ? randomUUID() : null;
+    return recordAudits(changed.map((task) => ({
+        companyId: caller.companyId, actor: humanActor(caller.userId), action, target: { type: "task" as const, id: task.id },
+        after: { archived: action === "task.archived" }, meta: { label: auditTaskTitle(task), projectId: task.projectId, batch, count: changed.length },
+    })));
+}
 /** `tasks`: the rows that changed; `skipped`: every requested id that did not. */
 export type TaskArchiveResult = { tasks: TaskRow[]; skipped: string[] };
 
@@ -70,6 +82,7 @@ export async function archiveTasksForCaller(caller: ArchiveCaller, ids: string[]
             isNull(tasks.deletedAt),
         )).returning();
     }
+    await auditArchive(caller, "task.archived", archived);
     for (const task of archived) await broadcastMcpEvent(caller.companyId, { type: "task_updated", task });
     return { tasks: archived, skipped: skippedOf(ids, archived) };
 }
@@ -98,6 +111,7 @@ export async function unarchiveTasksForCaller(caller: ArchiveCaller, ids: string
             isNotNull(tasks.deletedAt),
         )).returning();
     }
+    await auditArchive(caller, "task.unarchived", restored);
     for (const task of restored) await broadcastMcpEvent(caller.companyId, { type: "task_updated", task });
     return { tasks: restored, skipped: skippedOf(ids, restored) };
 }

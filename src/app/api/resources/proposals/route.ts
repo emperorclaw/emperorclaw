@@ -1,5 +1,6 @@
 ﻿import { NextResponse } from "next/server";
 import { createResourceProposal, listResourceProposals } from "@/lib/resources";
+import { lengthError, NAME_MAX } from "@/lib/input-limits";
 import { companyRouteAccess } from "@/lib/company-access";
 import { memberMaySeeProposal } from "../_shared";
 
@@ -24,6 +25,8 @@ export async function POST(request: Request) {
   if (!body.title || typeof body.title !== "string") {
     return NextResponse.json({ error: "title is required" }, { status: 400 });
   }
+  const titleError = lengthError("title", body.title, NAME_MAX);
+  if (titleError) return NextResponse.json({ error: titleError }, { status: 400 });
   const target = { scopeType: body.scopeType || "company", scopeId: body.scopeId || null, targetResourceId: body.targetResourceId || null };
   if (!(await memberMaySeeProposal(membership, target))) {
     return NextResponse.json({ error: "That scope is outside your access" }, { status: 403 });

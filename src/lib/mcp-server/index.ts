@@ -17,10 +17,10 @@ export async function buildMcpServer(companyId: string, callerAgentId?: string |
         { instructions, capabilities: { tools: {} } },
     );
 
-    registerAgentTools(server, companyId, callerAgentId);
-    registerTaskTools(server, companyId, callerAgentId);
-    registerProjectTools(server, companyId, callerAgentId);
-    registerKnowledgeTools(server, companyId, callerAgentId);
+    registerAgentTools(server, companyId, callerAgentId, tokenId ?? null);
+    registerTaskTools(server, companyId, callerAgentId, tokenId ?? null);
+    registerProjectTools(server, companyId, callerAgentId, tokenId ?? null);
+    registerKnowledgeTools(server, companyId, callerAgentId, tokenId ?? null);
     registerStorageTools(server, companyId, callerAgentId);
     registerMessagingTools(server, companyId, callerAgentId);
     registerObjectiveTools(server, companyId, callerAgentId);

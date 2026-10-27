@@ -5,6 +5,8 @@ import { customers } from "@/db/schema";
 import { randomUUID } from "crypto";
 import { eq, and, desc, isNull } from "drizzle-orm";
 import { mcpAccessErrorResponse, mcpCustomerCondition, mcpMayUseCustomer, resolveMcpAgentAccess } from "@/lib/mcp-access";
+import { mcpRequestActor, recordAudit } from "@/lib/audit";
+import { lengthError, NAME_MAX } from "@/lib/input-limits";
 
 export async function GET(req: NextRequest) {
     const auth = await verifyMcpToken(req);
@@ -55,9 +57,11 @@ export async function POST(req: NextRequest) {
         const body = await req.json();
         const { name, notes } = body;
 
-        if (!name) {
+        if (!name || typeof name !== "string") {
             return NextResponse.json({ error: "name is required" }, { status: 400 });
         }
+        const tooLong = lengthError("name", name, NAME_MAX);
+        if (tooLong) return NextResponse.json({ error: tooLong }, { status: 400 });
         const access = await resolveMcpAgentAccess(companyId, auth.companyToken!, body.agentId);
 
         // Check if customer exists by name to avoid duplicates (naive approach for this example)
@@ -83,6 +87,7 @@ export async function POST(req: NextRequest) {
             }).returning();
         }
 
+        await recordAudit({ companyId, actor: await mcpRequestActor(companyId, auth.companyToken!, body.agentId), action: existing ? "customer.updated" : "customer.created", target: { type: "customer", id: customer.id }, after: { name: customer.name } });
         const res = { message: "Customer saved", customer };
         await saveIdempotencyResponse(companyId, endpoint, requestHash!, res);
         return NextResponse.json(res, { status: existing ? 200 : 201 });

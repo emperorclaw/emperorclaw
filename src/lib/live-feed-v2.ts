@@ -2,7 +2,7 @@ import { createHash } from "crypto";
 import type { CharacterAppearance } from "@/lib/character/model";
 import type { CharacterExpression } from "@/lib/character/draw";
 import { mentionedAgentIds, type RosterAgent } from "@/lib/message-routing";
-import { redactSensitive } from "@/lib/redact-sensitive";
+import { clipForRedaction, redactSensitive } from "@/lib/redact-sensitive";
 import {
     activityText, assignIdleRoutines, classifyIncident, deriveBehavior, expressionForActivity, isIncidentStale, sceneStatus,
     type AttentionEntry, type DashboardMember, type DashboardTask, type SceneActivity,
@@ -150,9 +150,9 @@ export function isLiveProblemIncident(i: { reasonCode: string; summary: string; 
 // copy) can use the exact same rules; re-exported here for existing callers.
 export { isOpaqueRun, redactSensitive } from "@/lib/redact-sensitive";
 
-/** Collapse whitespace, redact, then truncate by code point with an ASCII "...". */
+/** Clip, collapse whitespace, redact, then truncate by code point with an ASCII "...". */
 export function cleanSnippet(input: string, max: number): string {
-    const text = redactSensitive(input.replace(/\s+/g, " ").trim()).replace(/\s+/g, " ").trim();
+    const text = redactSensitive(clipForRedaction(input, max * 4).replace(/\s+/g, " ").trim()).replace(/\s+/g, " ").trim();
     const chars = Array.from(text);
     if (chars.length <= max) return text;
     return `${chars.slice(0, Math.max(0, max - 3)).join("").trimEnd()}...`;

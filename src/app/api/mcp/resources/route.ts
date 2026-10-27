@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { verifyMcpToken, resolveAgentId } from "@/lib/mcp";
-import { buildResourceFolderTree, createScopedResource, listScopedResources, resolveResourceScope, toPublicResource, type PublicResource } from "@/lib/resources";
+import { buildResourceFolderTree, createScopedResource, listScopedResources, resolveResourceScope, resourceNameError, toPublicResource, type PublicResource } from "@/lib/resources";
 import { loadAgentScopeContext, isProjectAllowed, isCustomerAllowed } from "@/lib/agent-scope";
 import { mcpAccessForAgent, mcpMayWriteResourceScope, mcpRouteAccess } from "@/lib/mcp-access";
 import {
@@ -11,6 +11,7 @@ import {
   parseKnowledgeFolder,
   resolveNewKnowledgeNoteFolder,
 } from "@/lib/knowledge-folders";
+import { mcpRequestActor } from "@/lib/audit";
 
 function sanitizeResource(resource: PublicResource) {
   return {
@@ -138,6 +139,8 @@ export async function POST(req: NextRequest) {
     if (!name || !resourceType || !provider) {
       return NextResponse.json({ error: "name, resourceType, and provider are required" }, { status: 400 });
     }
+    const nameError = resourceNameError(body);
+    if (nameError) return NextResponse.json({ error: nameError }, { status: 400 });
 
     // Determine scope based on explicit scopeType/scopeId or legacy fields
     let finalScopeType: "company" | "customer" | "project" | "agent";
@@ -204,6 +207,7 @@ export async function POST(req: NextRequest) {
       status: status || "active",
       ownership: leaseMode === "local-runtime" ? "local-runtime" : body.ownership || "managed",
       isShared: typeof isShared === "boolean" ? isShared : undefined,
+      actor: await mcpRequestActor(companyId, auth.companyToken!, agentId),
     });
 
     return NextResponse.json({ resource: sanitizeResource(resource) }, { status: 201 });
