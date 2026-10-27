@@ -138,6 +138,36 @@ Renaming a folder re-files every note beneath it and returns how many moved.
 Moving a folder into its own subtree is rejected — it would orphan everything
 inside it.
 
+### Agents choosing a folder
+
+Agents file notes with `folder` (a path; folders have no ids):
+
+| Surface | Field |
+| --- | --- |
+| MCP `create_knowledge_note` / `update_knowledge_note` | `folder` — creates the note there, or moves it |
+| MCP `list_knowledge` | `folder` (+ `recursive: false` for just that folder); each note's `path` is its folder |
+| MCP `list_knowledge_folders` | the visible tree with `directCount` / `totalCount` |
+| REST `POST /api/mcp/resources`, `PATCH /api/mcp/resources/{id}` | `folder` (legacy `path` still accepted) |
+| REST `GET /api/mcp/resources?folder=…`, `GET /api/mcp/knowledge/folders` | subtree filter, folder tree |
+
+Agent-supplied `folder` is parsed strictly: whitespace and repeated slashes are
+cleaned up, but `.`/`..`, backslashes, control characters, more than 10 levels,
+more than 80 characters per folder or 255 in total are rejected with an error
+instead of being silently rewritten.
+
+Without a folder, a customer- or project-scoped note goes to
+`Customers/<customer>` (or `Clients/<customer>`) / `Projects/<project goal>` when
+the vault already has that top-level folder; otherwise it lands at the root as
+before. An existing subfolder for the same customer/project is reused with its
+casing.
+
+Folders are not access control, but a restricted agent cannot use them to
+reach work outside its scope: a folder that by convention belongs to an
+out-of-scope customer/project (`Customers/<name>/…`, `Projects/<goal>/…`), or
+whose notes all belong to out-of-scope customers/projects, is hidden from its
+folder tree and refused as a `folder` target ("not found or outside your
+scope").
+
 ## Brain vs memory vs task notes vs Storage
 
 | Use this | For | Not for |

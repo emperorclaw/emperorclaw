@@ -28,7 +28,9 @@ Rules, and `storage` before uploading files.
 
 The lean context gives you a knowledge **index** (one line per note), never the
 bodies. Open a note with `emperor_get_knowledge_note(id)`, or find one with
-`emperor_search_knowledge(query, limit?)`.
+`emperor_search_knowledge(query, limit?)`. Before writing a note, check where it
+belongs with `emperor_list_knowledge_folders()` and pass that path as `folder`
+to `POST /resources` (or `PATCH /resources/{id}` to move a misfiled note).
 
 ## Hermes-specific notes
 

@@ -2,7 +2,15 @@ import { NextRequest, NextResponse } from "next/server";
 import { verifyMcpToken, resolveAgentId } from "@/lib/mcp";
 import { buildResourceFolderTree, createScopedResource, listScopedResources, resolveResourceScope, toPublicResource, type PublicResource } from "@/lib/resources";
 import { loadAgentScopeContext, isProjectAllowed, isCustomerAllowed } from "@/lib/agent-scope";
-import { mcpMayWriteResourceScope, mcpRouteAccess } from "@/lib/mcp-access";
+import { mcpAccessForAgent, mcpMayWriteResourceScope, mcpRouteAccess } from "@/lib/mcp-access";
+import {
+  KNOWLEDGE_RESOURCE_TYPE,
+  KnowledgeFolderError,
+  agentMayUseKnowledgeFolder,
+  filterNotesInUsableFolders,
+  parseKnowledgeFolder,
+  resolveNewKnowledgeNoteFolder,
+} from "@/lib/knowledge-folders";
 
 function sanitizeResource(resource: PublicResource) {
   return {
@@ -51,7 +59,26 @@ export async function GET(req: NextRequest) {
       }
     }
 
-    const resources = await listScopedResources({
+    // `path` (exact folder), `pathPrefix` and its agent-facing alias `folder`
+    // ("this folder and its subfolders") are all parsed strictly, so traversal
+    // or an over-long path is a 400 rather than silently rewritten.
+    const rawPath = searchParams.get("path");
+    const rawPrefix = searchParams.get("pathPrefix") ?? searchParams.get("folder");
+    const path = rawPath === null ? null : parseKnowledgeFolder(rawPath);
+    const pathPrefix = rawPrefix === null ? null : parseKnowledgeFolder(rawPrefix);
+
+    // A folder the acting agent may not use matches nothing, exactly like a
+    // folder that does not exist.
+    const access = internalAgentId && (path || pathPrefix) ? await mcpAccessForAgent(companyId, internalAgentId) : null;
+    if (access) {
+      for (const folder of [path, pathPrefix]) {
+        if (folder && !(await agentMayUseKnowledgeFolder(companyId, access, folder))) {
+          return NextResponse.json({ resources: [], folders: [] });
+        }
+      }
+    }
+
+    const matched = await listScopedResources({
       companyId,
       scopeType: internalAgentId ? "agent" : scopeType || (projectId ? "project" : customerId ? "customer" : null),
       scopeId: internalAgentId || projectId || customerId || scopeId,
@@ -62,9 +89,10 @@ export async function GET(req: NextRequest) {
       search: searchParams.get("search") || searchParams.get("q"),
       status,
       isShared,
-      path: searchParams.get("path"),
-      pathPrefix: searchParams.get("pathPrefix"),
+      path,
+      pathPrefix,
     });
+    const resources = access ? await filterNotesInUsableFolders(companyId, access, matched) : matched;
 
     // The folder tree is derived from whatever this query matched, so it stays
     // consistent with the filters the caller actually applied.
@@ -73,6 +101,9 @@ export async function GET(req: NextRequest) {
       folders: buildResourceFolderTree(resources),
     });
   } catch (error) {
+    if (error instanceof KnowledgeFolderError) {
+      return NextResponse.json({ error: error.message }, { status: error.status });
+    }
     const message = error instanceof Error ? error.message : "Internal Server Error";
     const statusCode = message.startsWith("Agent not found") ? 404 : 500;
     return NextResponse.json({ error: message }, { status: statusCode });
@@ -149,13 +180,23 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Scope is outside this agent's scope" }, { status: 403 });
     }
 
+    // Knowledge notes accept `folder` (strict, see list_knowledge_folders) or the
+    // legacy `path`, are scope-checked against the folder too, and default into
+    // the customer's/project's folder when the vault uses that convention.
+    const path = resourceType === KNOWLEDGE_RESOURCE_TYPE
+      ? await resolveNewKnowledgeNoteFolder({
+        companyId, access: scoped.access, folder: body.folder, legacyPath: body.path,
+        scopeType: finalScopeType, scopeId: finalScopeId,
+      })
+      : (body.folder ?? body.path) || null;
+
     const resource = await createScopedResource({
       companyId,
       scopeType: finalScopeType,
       scopeId: finalScopeId,
       name,
       displayName: body.displayName || null,
-      path: body.path || null,
+      path,
       resourceType,
       provider,
       configText: configJson || body.configText || "",
@@ -167,6 +208,9 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json({ resource: sanitizeResource(resource) }, { status: 201 });
   } catch (error) {
+    if (error instanceof KnowledgeFolderError) {
+      return NextResponse.json({ error: error.message }, { status: error.status });
+    }
     const message = error instanceof Error ? error.message : "Internal Server Error";
     const statusCode = message.startsWith("Agent not found") ? 404 : 500;
     return NextResponse.json({ error: message }, { status: statusCode });

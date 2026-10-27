@@ -26,7 +26,9 @@ class HermesHiringTests(unittest.TestCase):
             plugin.emperor_get_manual({"section": "storage"})
             plugin.emperor_get_knowledge_note({"id": "note-1"})
             plugin.emperor_search_knowledge({"query": "invoice", "limit": 5})
+            plugin.emperor_list_knowledge_folders({})
         calls = request.call_args_list
+        self.assertEqual(calls[3].args[:2], ("GET", "/knowledge/folders"))
         self.assertEqual(calls[0].args[:2], ("GET", "/manual"))
         self.assertEqual(calls[0].kwargs["query"], {"section": "storage"})
         self.assertEqual(calls[1].args[:2], ("GET", "/knowledge/note-1"))
@@ -43,8 +45,10 @@ class HermesHiringTests(unittest.TestCase):
             def register_hook(self, *args): pass
         ctx = Context()
         plugin.register(ctx)
-        for name in ("emperor_get_manual", "emperor_get_knowledge_note", "emperor_search_knowledge"):
+        for name in ("emperor_get_manual", "emperor_get_knowledge_note", "emperor_search_knowledge", "emperor_list_knowledge_folders"):
             self.assertIn(name, ctx.tools)
+        self.assertEqual(ctx.tools["emperor_list_knowledge_folders"][0]["parameters"]["required"], [])
+        self.assertIn("folder", ctx.tools["emperor_list_knowledge_folders"][0]["description"])
         self.assertEqual(ctx.tools["emperor_get_manual"][0]["parameters"]["required"], [])
         self.assertEqual(ctx.tools["emperor_get_knowledge_note"][0]["parameters"]["required"], ["id"])
         self.assertEqual(ctx.tools["emperor_search_knowledge"][0]["parameters"]["required"], ["query"])

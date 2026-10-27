@@ -1154,6 +1154,10 @@ def emperor_search_knowledge(args: Dict[str, Any], **_: Any) -> str:
     return _json(_request("GET", "/knowledge/search", query={"q": query, "limit": args.get("limit") or 10}))
 
 
+def emperor_list_knowledge_folders(args: Dict[str, Any], **_: Any) -> str:
+    return _json(_request("GET", "/knowledge/folders"))
+
+
 def emperor_create_agent(args: Dict[str, Any], **kwargs: Any) -> str:
     return _json(_request("POST", "/agents", {
         "name": args.get("name", ""),
@@ -1671,4 +1675,17 @@ def register(ctx: Any) -> None:
         check_fn=_available,
         requires_env=requires,
         description="Search Emperor knowledge notes",
+    )
+    ctx.register_tool(
+        "emperor_list_knowledge_folders",
+        TOOLSET,
+        _schema(
+            "The Knowledge & Rules folder tree you can see, with note counts per folder (directCount) and per subtree (totalCount). Call it before filing a note when unsure where it belongs, then pass that path as folder to POST /resources (or PATCH /resources/{id} to move a note). Follow the existing convention (Company, Agents, Projects/<project>, Customers/<customer>); missing folders are created.",
+            {},
+            [],
+        ),
+        emperor_list_knowledge_folders,
+        check_fn=_available,
+        requires_env=requires,
+        description="List Emperor knowledge folders",
     )

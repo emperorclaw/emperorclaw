@@ -257,7 +257,7 @@ function escapeRegExp(value: string) {
  * Escape LIKE/ILIKE wildcards. A folder literally named "50% Done" must not
  * match every sibling folder because of a stray %.
  */
-function escapeLikePattern(value: string) {
+export function escapeLikePattern(value: string) {
   return value.replace(/[\\%_]/g, "\\$&");
 }
 

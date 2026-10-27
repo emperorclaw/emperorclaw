@@ -4,7 +4,11 @@ import { resolveCompanyBrainContext, listScopedResources, createScopedResource, 
 import { EMPEROR_MANUAL, EMPEROR_MANUAL_VERSION, getEmperorManualSection, listEmperorManualSections } from "@/lib/emperor-manual";
 import { jsonResult, errorResult } from "../result";
 import { getScopedResource } from "@/lib/resources";
-import { mcpAccessForAgent, mcpMayUseResource, mcpMayWriteResourceScope } from "@/lib/mcp-access";
+import { mcpAccessForAgent, mcpMayUseResource, mcpMayWriteResourceScope, type McpAgentAccess } from "@/lib/mcp-access";
+import { agentMayUseKnowledgeFolder, filterNotesInUsableFolders, listKnowledgeFolders, parseKnowledgeFolder, resolveMovedKnowledgeNoteFolder, resolveNewKnowledgeNoteFolder } from "@/lib/knowledge-folders";
+
+/** Shared wording so every knowledge tool teaches the same filing rule. */
+const FOLDER_DESCRIPTION = 'Folder path to file the note in, e.g. "Customers/Harbor Dental/Meetings"; missing folders are created. Call list_knowledge_folders first when unsure and reuse the existing convention (Company, Agents, Projects/<project>, Customers/<customer>). "" or "/" is the vault root.';
 
 export function registerKnowledgeTools(server: McpServer, companyId: string, callerAgentId?: string | null) {
     server.registerTool("get_knowledge_context", {
@@ -29,15 +33,27 @@ export function registerKnowledgeTools(server: McpServer, companyId: string, cal
 
     server.registerTool("list_knowledge", {
         title: "List Knowledge & Rules",
-        description: "List Knowledge & Rules notes for this company, optionally filtered by scope.",
+        description: "List Knowledge & Rules notes for this company, optionally filtered by scope or folder. Each note's `path` is its folder (\"\" = vault root).",
         inputSchema: {
             scopeType: z.enum(["company", "customer", "project", "agent"]).optional(),
             scopeId: z.string().optional(),
             search: z.string().optional().describe("Free-text search over name/content"),
+            folder: z.string().optional().describe('Only notes in this folder, e.g. "Customers/Harbor Dental" (see list_knowledge_folders)'),
+            recursive: z.boolean().optional().describe("With folder: include its subfolders (default true)"),
         },
-    }, async ({ scopeType, scopeId, search }) => {
+    }, async ({ scopeType, scopeId, search, folder, recursive }) => {
         try {
-            const resources = await listScopedResources({ companyId, scopeType, scopeId, search });
+            let folderFilter: { path?: string; pathPrefix?: string } = {};
+            let folderAccess: McpAgentAccess | null = null;
+            if (folder !== undefined) {
+                const path = parseKnowledgeFolder(folder);
+                folderAccess = await mcpAccessForAgent(companyId, callerAgentId ?? null);
+                // An off-limits folder matches nothing, exactly like a missing one.
+                if (!(await agentMayUseKnowledgeFolder(companyId, folderAccess, path))) return jsonResult({ resources: [] });
+                folderFilter = recursive === false ? { path } : { pathPrefix: path };
+            }
+            const matched = await listScopedResources({ companyId, scopeType, scopeId, search, ...folderFilter });
+            const resources = folderAccess ? await filterNotesInUsableFolders(companyId, folderAccess, matched) : matched;
             const access = await loadAgentResourceAccess(companyId, callerAgentId ?? null);
             return jsonResult({
                 resources: resources
@@ -63,9 +79,21 @@ export function registerKnowledgeTools(server: McpServer, companyId: string, cal
         }
     });
 
+    server.registerTool("list_knowledge_folders", {
+        title: "List Knowledge Folders",
+        description: "The Knowledge & Rules folder tree you can see, with note counts per folder (directCount) and per subtree (totalCount). Call it before creating or moving a note when you are unsure where it belongs, and file into the existing folder instead of inventing a parallel one.",
+        inputSchema: {},
+    }, async () => {
+        try {
+            return jsonResult(await listKnowledgeFolders(companyId, await mcpAccessForAgent(companyId, callerAgentId ?? null)));
+        } catch (e) {
+            return errorResult(e);
+        }
+    });
+
     server.registerTool("create_knowledge_note", {
         title: "Create Knowledge & Rules Note",
-        description: "Create a new Knowledge & Rules note — reusable doctrine, an SOP, or a business rule. Use an Obsidian-style markdown note with frontmatter (scope/type/status/owner/tags) as content. Pick the smallest correct scope; do not create a note for one-off facts.",
+        description: "Create a new Knowledge & Rules note — reusable doctrine, an SOP, or a business rule. Use an Obsidian-style markdown note with frontmatter (scope/type/status/owner/tags) as content. Pick the smallest correct scope, then the right folder (call list_knowledge_folders when unsure). Without a folder, a customer/project note goes to that customer's/project's folder when the vault uses Customers/ or Projects/, otherwise the vault root. Do not create a note for one-off facts.",
         inputSchema: {
             name: z.string().min(1).describe("Short unique note name"),
             content: z.string().describe("Markdown content, ideally with frontmatter (scope/type/status/owner/tags)"),
@@ -73,14 +101,17 @@ export function registerKnowledgeTools(server: McpServer, companyId: string, cal
             scopeId: z.string().optional().describe("Required unless scopeType is 'company'"),
             status: z.enum(["active", "draft"]).optional().describe("Publication state: established facts active, uncertain proposals draft; frontmatter alone does not set this"),
             isShared: z.boolean().optional().describe("Auto-inject this active note in matching agent contexts (default false); not an access-control setting"),
+            folder: z.string().optional().describe(FOLDER_DESCRIPTION),
         },
-    }, async ({ name, content, scopeType, scopeId, isShared, status }) => {
+    }, async ({ name, content, scopeType, scopeId, isShared, status, folder }) => {
         try {
-            if (!mcpMayWriteResourceScope(await mcpAccessForAgent(companyId, callerAgentId ?? null), scopeType, scopeId)) {
+            const access = await mcpAccessForAgent(companyId, callerAgentId ?? null);
+            if (!mcpMayWriteResourceScope(access, scopeType, scopeId)) {
                 throw new Error("That scope is outside your scope");
             }
+            const path = await resolveNewKnowledgeNoteFolder({ companyId, access, folder, scopeType, scopeId });
             const resource = await createScopedResource({
-                companyId, name, scopeType, scopeId,
+                companyId, name, scopeType, scopeId, path,
                 provider: "knowledge", resourceType: "knowledge_base",
                 configText: content, isShared, status,
             });
@@ -92,24 +123,27 @@ export function registerKnowledgeTools(server: McpServer, companyId: string, cal
 
     server.registerTool("update_knowledge_note", {
         title: "Update Knowledge & Rules Note",
-        description: "Update an existing Knowledge & Rules note's content, name, or sharing status.",
+        description: "Update an existing Knowledge & Rules note's content, name, sharing status, or folder. Pass folder to move a misfiled note (missing folders are created; \"\" moves it to the vault root).",
         inputSchema: {
             resourceId: z.string(),
             content: z.string().optional(),
             name: z.string().optional(),
             status: z.enum(["active", "draft"]).optional().describe("Publication state: established facts active, uncertain proposals draft; frontmatter alone does not set this"),
             isShared: z.boolean().optional(),
+            folder: z.string().optional().describe(`Move the note here. ${FOLDER_DESCRIPTION}`),
         },
-    }, async ({ resourceId, content, name, isShared, status }) => {
+    }, async ({ resourceId, content, name, isShared, status, folder }) => {
         try {
             // Only notes this agent may read can be edited (same rule as get_knowledge_note).
+            const access = await mcpAccessForAgent(companyId, callerAgentId ?? null);
             const existing = await getScopedResource(companyId, resourceId);
-            if (existing && !mcpMayUseResource(await mcpAccessForAgent(companyId, callerAgentId ?? null), existing)) {
+            if (existing && !mcpMayUseResource(access, existing)) {
                 throw new Error("Knowledge note not found or outside your scope");
             }
+            const path = existing ? await resolveMovedKnowledgeNoteFolder({ companyId, access, folder }) : undefined;
             const resource = await updateScopedResource({
                 companyId, resourceId,
-                patch: { configText: content, name, isShared, status },
+                patch: { configText: content, name, isShared, status, path },
             });
             return jsonResult({ message: "Knowledge note updated", resource: resource ? toPublicResource(resource) : resource });
         } catch (e) {

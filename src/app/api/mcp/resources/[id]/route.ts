@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { verifyMcpToken, resolveAgentId } from "@/lib/mcp";
 import { archiveScopedResource, getScopedResource, resolveResourceScope, toPublicResource, updateScopedResource, type PublicResource } from "@/lib/resources";
-import { mcpMayUseResource, resolveMcpAgentAccess } from "@/lib/mcp-access";
+import { mcpMayUseResource, mcpMayWriteResourceScope, mcpRouteAccess, resolveMcpAgentAccess } from "@/lib/mcp-access";
+import { KNOWLEDGE_RESOURCE_TYPE, KnowledgeFolderError, resolveMovedKnowledgeNoteFolder } from "@/lib/knowledge-folders";
 
 function sanitizeResource(resource: PublicResource) {
   return {
@@ -68,6 +69,26 @@ export async function PATCH(
     if (existing && await isResourceOutOfScope(companyId, auth.companyToken!, patch.agentId, existing)) {
       return NextResponse.json({ error: "Resource is outside this agent's scope" }, { status: 403 });
     }
+    if (existing) {
+      const scoped = await mcpRouteAccess(companyId, auth.companyToken!, patch.agentId);
+      if (scoped.response) return scoped.response;
+      // Re-scoping a note is a write into the new scope: same rule as creating one.
+      if ((patch.scopeType !== undefined || patch.scopeId !== undefined) && !mcpMayWriteResourceScope(
+        scoped.access,
+        (patch.scopeType as string | undefined) ?? existing.scopeType,
+        patch.scopeId === undefined ? existing.scopeId : (patch.scopeId as string | null),
+      )) {
+        return NextResponse.json({ error: "Scope is outside this agent's scope" }, { status: 403 });
+      }
+      // `folder` (strict) or the legacy `path` moves a note; both are scope-checked.
+      if (existing.resourceType === KNOWLEDGE_RESOURCE_TYPE) {
+        const path = await resolveMovedKnowledgeNoteFolder({ companyId, access: scoped.access, folder: patch.folder, legacyPath: patch.path });
+        if (path !== undefined) patch.path = path;
+      } else if (patch.folder !== undefined) {
+        patch.path = patch.folder;
+      }
+      delete patch.folder;
+    }
     if (patch.agentId) {
       patch.agentId = await resolveAgentId(companyId, patch.agentId as string);
     }
@@ -88,6 +109,9 @@ export async function PATCH(
 
     return NextResponse.json({ resource: sanitizeResource(resource) });
   } catch (error) {
+    if (error instanceof KnowledgeFolderError) {
+      return NextResponse.json({ error: error.message }, { status: error.status });
+    }
     const message = error instanceof Error ? error.message : "Internal Server Error";
     const statusCode = message.startsWith("Agent not found") ? 404 : 500;
     return NextResponse.json({ error: message }, { status: statusCode });

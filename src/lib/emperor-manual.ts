@@ -43,6 +43,7 @@ const CHAT_AND_MENTIONS = `- Reply in the current thread. Direct threads are pri
 const KNOWLEDGE = `Knowledge & Rules hold reusable facts, SOPs, policies, templates, and lasting lessons. Chat transcripts, status, task logs, and deliverables belong in threads, task notes, project memory, or Storage. Search first and update the canonical note instead of duplicating.
 
 - Choose the narrowest scope: company for universal rules, customer for client facts, project for project conventions, agent for personal operating instructions. Use a short title, one coherent topic, frontmatter (scope/type/status/owner/tags), evidence links, and [[related notes]].
+- File every note in the right folder: pass folder (e.g. "Customers/Harbor Dental/Meetings") to create_knowledge_note, and to update_knowledge_note to move a misfiled note; missing folders are created. When unsure, call list_knowledge_folders and follow the existing convention (Company, Agents, Projects/<project>, Customers/<customer>) instead of starting a parallel tree. Never encode the folder in the title. A folder is not access control: scope still decides who can read the note.
 - Use status: active for established knowledge; status: draft for uncertain proposals awaiting a decision. Frontmatter alone does not set publication status — the top-level status does.
 - Never store passwords, tokens, or API keys in note content. Cite evidence, state uncertainty, and retire or update stale rules rather than adding contradictory notes.
 - Every note carries an injection mode:
