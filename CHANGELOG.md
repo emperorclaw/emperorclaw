@@ -9,6 +9,21 @@ tagged (e.g. `## [1.2.0] — 2026-07-22`). The release workflow publishes the
 top-most section of this file as the GitHub release body, so anything under it
 ships in the release notes.
 
+## [0.14.0] — 2026-10-27
+
+### Added
+- **Search everything.** Search tasks and their notes, messages, knowledge, files, projects, customers and agents from one box: the new Search page, or ⌘K, which now shows full-text matches. Accents are ignored ("cafe" finds "café") and results only include what you are allowed to open.
+- **Costs by client, project, model and agent.** Budgets becomes Costs: pick a date range, see a daily chart, drill from a client to its projects and tasks, and export CSV. Every figure says whether the runtime reported it, it was estimated from your pricing table, or the model has no price.
+- **Activity.** Admins see who changed what — agents, tasks, approvals, members and roles, scopes, settings, the org chart, projects, customers, knowledge notes and pricing — whether the change came from a person or an agent, with a before/after view. Only names, states and numbers are recorded, never chat text, note bodies or secrets.
+
+### Changed
+- Model pricing applies to the whole instance, so only instance admins can change it.
+- Names and titles have length limits (200 characters for names, 500 for task titles).
+
+### Security
+- An admin can no longer revoke or read another company's invitations.
+- Text redaction can no longer be slowed down by very long input.
+
 ## [0.13.0] — 2026-10-27
 
 ### Added
