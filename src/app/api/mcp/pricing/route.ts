@@ -19,13 +19,13 @@ export async function GET(req: NextRequest) {
  * POST /api/mcp/pricing was removed: llm_pricing is one table shared by every
  * company on the instance, and any company token (even one bound to an agent)
  * could rewrite it, e.g. zero its own model's price to defeat its budget.
- * Pricing is edited by owners/admins in Settings (POST /api/ui/pricing).
+ * Pricing is edited by instance admins on Costs (POST /api/ui/pricing).
  */
 export async function POST(req: NextRequest) {
     const auth = await verifyMcpToken(req);
     if (auth.error) return NextResponse.json({ error: auth.error }, { status: auth.status });
     return NextResponse.json(
-        { error: "LLM pricing is managed by an owner or admin in Settings; it cannot be changed with an MCP token." },
+        { error: "LLM pricing is managed by an instance admin on the Costs page; it cannot be changed with an MCP token." },
         { status: 403 },
     )
 }

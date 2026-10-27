@@ -48,7 +48,7 @@ async function savePricing(patch: {
     if (!response.ok) throw new Error(body.error || "Could not save model pricing");
 }
 
-function BudgetCell({ agentId, value, updateAgent }: { agentId: string; value: number; updateAgent: (id: string, p: Partial<AgentRow>) => void }) {
+function BudgetCell({ agentId, value, updateAgent, canEdit }: { agentId: string; value: number; updateAgent: (id: string, p: Partial<AgentRow>) => void; canEdit: boolean }) {
     const [editing, setEditing] = useState(false);
     const [input, setInput] = useState(value > 0 ? String(value / 100) : "");
     const [saving, setSaving] = useState(false);
@@ -66,6 +66,7 @@ function BudgetCell({ agentId, value, updateAgent }: { agentId: string; value: n
             setSaving(false);
         }
     };
+    if (!canEdit) return <span className="text-foreground/70 font-mono text-xs">{value > 0 ? `$${(value / 100).toFixed(2)}` : <span className="text-muted-foreground">∞</span>}</span>;
     if (!editing) return <button onClick={() => setEditing(true)} className="text-foreground/70 font-mono text-xs hover:text-primary">{value > 0 ? `$${(value / 100).toFixed(2)}` : <span className="text-muted-foreground">∞</span>}</button>;
     return (
         <span className="inline-flex items-center gap-1">
@@ -78,7 +79,7 @@ function BudgetCell({ agentId, value, updateAgent }: { agentId: string; value: n
     );
 }
 
-function ModelCell({ agent, options, updateAgent }: { agent: AgentRow; options: ModelOption[]; updateAgent: (id: string, p: Partial<AgentRow>) => void }) {
+function ModelCell({ agent, options, updateAgent, canEdit }: { agent: AgentRow; options: ModelOption[]; updateAgent: (id: string, p: Partial<AgentRow>) => void; canEdit: boolean }) {
     const [saving, setSaving] = useState(false);
     const [error, setError] = useState<string | null>(null);
 
@@ -107,7 +108,7 @@ function ModelCell({ agent, options, updateAgent }: { agent: AgentRow; options: 
             provider={agent.llmProvider || ""}
             onChange={select}
             saving={saving}
-            disabled={saving}
+            disabled={saving || !canEdit}
             error={error}
             compact
         />
@@ -116,7 +117,7 @@ function ModelCell({ agent, options, updateAgent }: { agent: AgentRow; options: 
 
 /* ============ PRICING TABLE ============ */
 
-function PricingRow({ p, onSaved }: { p: PricingRow; onSaved: () => void }) {
+function PricingRow({ p, onSaved, canEdit }: { p: PricingRow; onSaved: () => void; canEdit: boolean }) {
     const [editing, setEditing] = useState(false);
     const [inP, setInP] = useState(String(p.inputPricePer1k / 100));
     const [outP, setOutP] = useState(String(p.outputPricePer1k / 100));
@@ -141,6 +142,15 @@ function PricingRow({ p, onSaved }: { p: PricingRow; onSaved: () => void }) {
             toast.error(error instanceof Error ? error.message : "Could not update model availability");
         }
     };
+    if (!canEdit) return (
+        <tr className={cn("text-xs", !p.active && "opacity-40")}>
+            <td className="sticky left-0 bg-zinc-950 px-5 py-1.5 text-muted-foreground capitalize">{p.provider}</td>
+            <td className="px-5 py-1.5 text-foreground font-mono">{p.model}</td>
+            <td className="px-5 py-1.5 text-right text-muted-foreground font-mono">${(p.inputPricePer1k / 100).toFixed(2)}</td>
+            <td className="px-5 py-1.5 text-right text-muted-foreground font-mono">${(p.outputPricePer1k / 100).toFixed(2)}</td>
+            <td className="px-3 py-1.5 text-center text-[10px] text-muted-foreground">{p.active ? "✓" : "—"}</td>
+        </tr>
+    );
     if (!editing) return (
         <tr className={cn("text-xs group hover:bg-accent/50", !p.active && "opacity-40")}>
             <td className="sticky left-0 bg-zinc-950 px-5 py-1.5 text-muted-foreground capitalize">{p.provider}</td>
@@ -200,8 +210,12 @@ function AddModelRow({ onSaved }: { onSaved: () => void }) {
 
 /* ============ MAIN ============ */
 
-export function BudgetClient({ initialAgents, initialPricing, initialWeeklyCost }: {
+export function BudgetClient({ initialAgents, initialPricing, initialWeeklyCost, canEdit = true, canEditPricing = true }: {
     initialAgents: AgentRow[]; initialPricing: PricingRow[]; initialWeeklyCost: number;
+    /** member and up: budgets, models, reactivation (viewers only read). */
+    canEdit?: boolean;
+    /** owner/admin: the model pricing table. */
+    canEditPricing?: boolean;
 }) {
     const [agents, setAgents] = useState(initialAgents);
     const [pricing, setPricing] = useState(initialPricing);
@@ -258,11 +272,11 @@ export function BudgetClient({ initialAgents, initialPricing, initialWeeklyCost 
                             const pct = b > 0 ? Math.min(100, (c / b) * 100) : 0;
                             return (<tr key={a.id} className="hover:bg-zinc-900/50 transition-colors">
                                 <td className="sticky left-0 bg-zinc-950 px-5 py-3"><Link href={`/agents?agent=${a.id}`} className="text-zinc-200 hover:text-cyan-300 font-medium">{a.name}</Link><div className="text-xs text-zinc-500">{a.role}</div></td>
-                                <td className="px-5 py-3"><ModelCell agent={a} options={models} updateAgent={updateAgent} /></td>
+                                <td className="px-5 py-3"><ModelCell agent={a} options={models} updateAgent={updateAgent} canEdit={canEdit} /></td>
                                 <td className="px-5 py-3 text-right font-mono text-xs text-zinc-400">{t > 0 ? `${(t / 1000).toFixed(1)}K` : "—"}</td>
                                 <td className="px-5 py-3 text-right"><span className="flex items-center justify-end gap-2">{b > 0 && <div className="w-16 h-1.5 rounded-full bg-zinc-800 overflow-hidden"><div className={cn("h-full rounded-full", a.budgetStatus === "paused" ? "bg-rose-500" : a.budgetStatus === "warning" ? "bg-amber-500" : "bg-emerald-500")} style={{ width: `${pct}%` }} /></div>}<span className="text-zinc-200 font-mono text-xs">${(c / 100).toFixed(4)}</span></span></td>
-                                <td className="px-5 py-3 text-right"><BudgetCell agentId={a.id} value={b} updateAgent={updateAgent} /></td>
-                                <td className="px-5 py-3 text-right">{b <= 0 ? <span className="text-zinc-500 text-xs">—</span> : a.budgetStatus === "paused" ? <button onClick={() => void reactivateAgent(a)} className="text-rose-400 text-xs font-medium bg-rose-500/10 px-2 py-0.5 rounded hover:bg-rose-500/20 cursor-pointer" title="Budget exhausted. Click to reactivate.">⏸ Paused</button> : a.budgetStatus === "warning" ? <button onClick={() => void reactivateAgent(a)} className="text-amber-400 text-xs font-medium bg-amber-500/10 px-2 py-0.5 rounded hover:bg-amber-500/20 cursor-pointer" title="Nearing limit. Click to dismiss.">⚠ {Math.round(pct)}%</button> : <span className="text-emerald-400 text-xs font-medium bg-emerald-500/10 px-2 py-0.5 rounded">{Math.round(pct)}%</span>}</td>
+                                <td className="px-5 py-3 text-right"><BudgetCell agentId={a.id} value={b} updateAgent={updateAgent} canEdit={canEdit} /></td>
+                                <td className="px-5 py-3 text-right">{b <= 0 ? <span className="text-zinc-500 text-xs">—</span> : a.budgetStatus === "paused" ? !canEdit ? <span className="text-rose-400 text-xs font-medium bg-rose-500/10 px-2 py-0.5 rounded">⏸ Paused</span> : <button onClick={() => void reactivateAgent(a)} className="text-rose-400 text-xs font-medium bg-rose-500/10 px-2 py-0.5 rounded hover:bg-rose-500/20 cursor-pointer" title="Budget exhausted. Click to reactivate.">⏸ Paused</button> : a.budgetStatus === "warning" ? !canEdit ? <span className="text-amber-400 text-xs font-medium bg-amber-500/10 px-2 py-0.5 rounded">⚠ {Math.round(pct)}%</span> : <button onClick={() => void reactivateAgent(a)} className="text-amber-400 text-xs font-medium bg-amber-500/10 px-2 py-0.5 rounded hover:bg-amber-500/20 cursor-pointer" title="Nearing limit. Click to dismiss.">⚠ {Math.round(pct)}%</button> : <span className="text-emerald-400 text-xs font-medium bg-emerald-500/10 px-2 py-0.5 rounded">{Math.round(pct)}%</span>}</td>
                             </tr>);
                         })}
                     </tbody></table></div>
@@ -270,12 +284,12 @@ export function BudgetClient({ initialAgents, initialPricing, initialWeeklyCost 
             </div>
 
             <div className="emperor-panel rounded-2xl overflow-hidden">
-                <div className="px-5 py-3 border-b border-zinc-800/80"><h2 className="text-sm font-semibold text-zinc-200">Model Pricing</h2><p className="text-xs text-zinc-500 mt-0.5">Click prices to edit. Toggle ✓ to disable. + to add new.</p></div>
+                <div className="px-5 py-3 border-b border-zinc-800/80"><h2 className="text-sm font-semibold text-zinc-200">Model Pricing</h2><p className="text-xs text-zinc-500 mt-0.5">{canEditPricing ? "Click prices to edit. Toggle ✓ to disable. + to add new." : "Prices used to estimate costs (USD per 1M tokens)."}</p></div>
                 <div className="overflow-x-auto"><table className="w-full text-sm"><thead><tr className="border-b border-zinc-800 text-xs text-zinc-500 uppercase tracking-wider"><th className="sticky left-0 z-10 bg-zinc-950 text-left px-5 py-2 font-medium">Provider</th><th className="text-left px-5 py-2 font-medium">Model ID</th><th className="text-right px-5 py-2 font-medium">Input /1M</th><th className="text-right px-5 py-2 font-medium">Output /1M</th><th className="text-center px-3 py-2 font-medium w-8">On</th></tr></thead>
                     <tbody className="divide-y divide-zinc-800/50">
-                        {pricing.filter(p => p.active).map(p => <PricingRow key={p.id} p={p} onSaved={refreshPricing} />)}
-                        {pricing.filter(p => !p.active).map(p => <PricingRow key={p.id} p={p} onSaved={refreshPricing} />)}
-                        <AddModelRow onSaved={refreshPricing} />
+                        {pricing.filter(p => p.active).map(p => <PricingRow key={p.id} p={p} onSaved={refreshPricing} canEdit={canEditPricing} />)}
+                        {pricing.filter(p => !p.active).map(p => <PricingRow key={p.id} p={p} onSaved={refreshPricing} canEdit={canEditPricing} />)}
+                        {canEditPricing && <AddModelRow onSaved={refreshPricing} />}
                     </tbody></table></div>
             </div>
         </>

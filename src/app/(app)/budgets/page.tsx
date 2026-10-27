@@ -1,44 +1,6 @@
 import { redirect } from "next/navigation";
-import { getCompanyId } from "@/lib/auth";
-import { db } from "@/db";
-import { agents, llmPricing, tokenUsageLog } from "@/db/schema";
-import { and, eq, isNull, sql } from "drizzle-orm";
-import { PageHeader } from "@/components/page-header";
-import { BudgetClient } from "@/components/budget-client";
 
-export const dynamic = "force-dynamic";
-
-export default async function BudgetsPage() {
-    const companyId = await getCompanyId();
-    if (!companyId) redirect("/login");
-
-    const allAgents = await db.select({
-        id: agents.id, name: agents.name, role: agents.role,
-        llmProvider: agents.llmProvider, llmModel: agents.llmModel,
-        status: agents.status,
-        monthlyBudgetCents: agents.monthlyBudgetCents,
-        monthlyTokenUsage: agents.monthlyTokenUsage,
-        monthlyCostCents: agents.monthlyCostCents,
-        budgetStatus: agents.budgetStatus,
-    }).from(agents).where(
-        and(eq(agents.companyId, companyId), isNull(agents.deletedAt))
-    ).orderBy(sql`${agents.monthlyCostCents} DESC`);
-
-    // Include disabled rows so an agent's existing selection remains visible
-    // and can be identified as unavailable instead of appearing unset.
-    const pricing = await db.select().from(llmPricing)
-        .orderBy(llmPricing.provider, llmPricing.model);
-
-    // 7-day spend
-    const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
-    const [weekly] = await db.select({ total: sql<number>`COALESCE(SUM(${tokenUsageLog.costCents}), 0)`.mapWith(Number) })
-        .from(tokenUsageLog).where(and(eq(tokenUsageLog.companyId, companyId), sql`${tokenUsageLog.reportedAt} >= ${sevenDaysAgo}`));
-
-    return (
-        <div className="mx-auto max-w-[1400px] space-y-6 animate-in fade-in duration-500">
-            <PageHeader eyebrow="Finance" title="Budget & Usage"
-                description="Click limit or model to edit inline. Toggle ✓ to disable models. Estimated usage: 80% warning; 100% blocks subsequent Codex/Hermes turns. Running turns can exceed the limit." />
-            <BudgetClient initialAgents={allAgents} initialPricing={pricing} initialWeeklyCost={weekly?.total ?? 0} />
-        </div>
-    );
+/** /budgets became Costs (roadmap 11.2); the budget controls live on its Budgets tab. */
+export default function BudgetsPage() {
+    redirect("/costs?tab=budgets");
 }

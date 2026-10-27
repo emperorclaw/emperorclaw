@@ -35,7 +35,8 @@ function mutations(ctx: { agentId: string; projectId: string; companyId: string 
         { name: "change an agent's data scope", min: "admin" as Role, run: async () => call((await import("@/app/api/agents/[id]/route")).PATCH as never, `/api/agents/${ctx.agentId}`, { method: "PATCH", params: { id: ctx.agentId }, body: { scopeJson: { mode: "all" } } }) },
         { name: "direct-chat mode", min: "admin" as Role, run: async () => call((await import("@/app/api/settings/direct-chats/route")).PUT, "/api/settings/direct-chats", { method: "PUT", body: { mode: "shared" } }) },
         { name: "mint MCP token", min: "admin" as Role, run: async () => call((await import("@/app/api/settings/tokens/route")).POST, "/api/settings/tokens", { method: "POST", body: { name: "t", scope: "mcp_full" } }) },
-        { name: "edit LLM pricing", min: "admin" as Role, run: async () => call((await import("@/app/api/ui/pricing/route")).POST, "/api/ui/pricing", { method: "POST", body: { provider: "deepseek", model: `m-${randomUUID()}`, label: "m", inputPricePer1k: 1, outputPricePer1k: 1 } }) },
+        // LLM pricing is instance-wide: no company role may edit it (tests/integration/costs.test.ts).
+        { name: "edit LLM pricing", min: "nobody" as const, run: async () => call((await import("@/app/api/ui/pricing/route")).POST, "/api/ui/pricing", { method: "POST", body: { provider: "deepseek", model: `m-${randomUUID()}`, label: "m", inputPricePer1k: 1, outputPricePer1k: 1 } }) },
     ];
 }
 
@@ -49,7 +50,7 @@ maybe("role matrix: viewers never mutate; each action needs its minimum role", a
         actAs(user);
         for (const m of mutations({ agentId: agent.id, projectId: work.projectIn.id, companyId })) {
             const res = await m.run();
-            const allowed = RANK[role] >= RANK[m.min];
+            const allowed = m.min !== "nobody" && RANK[role] >= RANK[m.min];
             const denied = res.status === 401 || res.status === 403;
             if (allowed && denied) failures.push(`${role} was refused "${m.name}" (${res.status})`);
             if (!allowed && !denied) failures.push(`${role} was allowed "${m.name}" (${res.status})`);
