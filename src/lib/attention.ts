@@ -312,7 +312,8 @@ export async function buildAttention(companyId: string, access: AttentionAccess,
         && (h.status === "down" || h.budgetStatus === "paused" || (!h.online && !agentsWithOpenRun.has(h.id) && holdsInProgress.has(h.id))))) {
         const offline = !a.online && !agentsWithOpenRun.has(a.id);
         const failure = describeFailure(
-            { texts: [a.providerIssue], budgetStatus: a.budgetStatus, offline },
+            // providerIssue is reported by newer health scoring; the reasons cover older shapes.
+            { texts: [(a as { providerIssue?: string | null }).providerIssue ?? null, ...(a.reasons ?? [])], budgetStatus: a.budgetStatus, offline },
             { audience, agentId: a.id, canRestartRuntime: canRestart(a.id) },
         );
         entries.push({
