@@ -14,6 +14,7 @@ import {
 } from "@tabler/icons-react";
 import { PageHeader } from "@/components/page-header";
 import { SearchableSelect } from "@/components/ui/searchable-select";
+import { EmptyState } from "@/components/ui/empty-state";
 import { formatCost, RUN_OUTCOME_LABEL, type RunOutcome } from "@/lib/task-story";
 import { formatRunDuration, formatTokenCount } from "@/lib/run-ledger-copy";
 import { useLivePoll, type LivePollRun } from "@/lib/use-realtime";
@@ -669,11 +670,12 @@ function GanttChart({ data, fromMs, toMs, zoom, rowsMode, projectRows, actorById
                 }
             `}</style>
             {data.actors.length === 0 || (rowsMode === "projects" && rows.length === 0) ? (
-                <div className="px-5 py-14 text-center">
-                    <IconChartLine className="mx-auto h-8 w-8 text-zinc-600" />
-                    <p className="mt-3 text-sm text-zinc-300">Nothing happened in this window.</p>
-                    <p className="mt-1 text-xs text-zinc-500">Try a wider range, or clear the filters.</p>
-                </div>
+                <EmptyState
+                    bordered={false}
+                    icon={IconChartLine}
+                    title="No work in this time range"
+                    description="No agent or person ran, chatted or moved a task here. Pick a wider range, or clear the filters."
+                />
             ) : (
                 <>
                     <div ref={scrollRef} onScroll={updateScroll} className="timeline-scroll max-h-[62vh] overflow-auto overscroll-x-contain">
@@ -1217,7 +1219,7 @@ function PhoneList({ data, rowsMode, projectRows, actorById, pillMode, onOpen }:
         }));
     }, [rowsMode, projectRows, actorById, data.spans, data.actors]);
     if (data.actors.length === 0 || sections.every((s) => s.spans.length === 0)) {
-        return <div className="rounded-2xl border border-zinc-800/80 bg-zinc-950/40 px-5 py-12 text-center text-sm text-zinc-400">Nothing happened in this window.</div>;
+        return <EmptyState icon={IconChartLine} title="No work in this time range" description="No agent or person ran, chatted or moved a task here. Pick a wider range, or clear the filters." />;
     }
     return (
         <div className="space-y-5">

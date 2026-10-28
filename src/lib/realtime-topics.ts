@@ -86,6 +86,11 @@ export function eventTopicsFor(payload: unknown, subject: RealtimeSubject | null
             topics.add("inbox");
             topics.add("dashboard");
             break;
+        // lib/inbox-state.ts: one person read or archived inbox items (sent to that person only).
+        case "inbox_state_updated":
+            topics.add("inbox");
+            topics.add("dashboard");
+            break;
         // lib/views.ts: a view's layout or a panel's values changed (ids only).
         case "view_updated":
             addId(topics, "view", p.viewId);

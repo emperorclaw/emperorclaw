@@ -23,6 +23,9 @@ import { TeamDashboard } from "@/components/team-dashboard/team-dashboard";
 import { PinnedViewsStrip } from "@/components/views/pinned-views-strip";
 import { loadPinnedViewCards } from "@/lib/views";
 import { RealtimeRefresh } from "@/lib/use-realtime";
+import { PauseAllControl } from "@/components/pause-all-control";
+import { pauseSummary } from "@/lib/pause-all";
+import { canOfferSampleClient, sampleClientStatus } from "@/lib/sample-client";
 import {
     dashboardActivity, buildFeed, DONE_TODAY_MS, skillNames,
     type SceneCommunication, type ActivityEvent, type CollaborationEvent, type CostSummary, type DashboardData, type DashboardMember, type DashboardTask, type FeedEvent, type PairThreadActivity, type ThroughputSummary,
@@ -86,7 +89,7 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
         db.select({ id: companyMembers.id, userId: users.id, displayName: users.displayName, email: users.email, roleTitle: users.roleTitle })
             .from(companyMembers).innerJoin(users, eq(users.id, companyMembers.userId))
             .where(and(eq(companyMembers.companyId, companyId), isNull(users.deletedAt))),
-        db.select({ id: agents.id, name: agents.name, role: agents.role, avatarUrl: agents.avatarUrl, avatarAppearance: agents.avatarAppearance, provider: agents.provider, deploymentMode: agents.deploymentMode, skillsJson: agents.skillsJson, createdAt: agents.createdAt, monthlyBudgetCents: agents.monthlyBudgetCents, monthlyCostCents: agents.monthlyCostCents, lastResetMonth: agents.lastResetMonth })
+        db.select({ id: agents.id, name: agents.name, role: agents.role, avatarUrl: agents.avatarUrl, avatarAppearance: agents.avatarAppearance, provider: agents.provider, deploymentMode: agents.deploymentMode, skillsJson: agents.skillsJson, createdAt: agents.createdAt, monthlyBudgetCents: agents.monthlyBudgetCents, monthlyCostCents: agents.monthlyCostCents, lastResetMonth: agents.lastResetMonth, budgetStatus: agents.budgetStatus })
             .from(agents)
             .where(and(eq(agents.companyId, companyId), isNull(agents.deletedAt), agentScope(agents.id))),
         db.select({ id: tasks.id, projectId: tasks.projectId, state: tasks.state, inputJson: tasks.inputJson, taskType: tasks.taskType, slaDueAt: tasks.slaDueAt, priority: tasks.priority, updatedAt: tasks.updatedAt, processingStartedAt: tasks.processingStartedAt, assignedAgentId: tasks.assignedAgentId, assignedMemberId: tasks.assignedMemberId })
@@ -381,8 +384,13 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
         if (profileComplete && agentRows.length > 0 && await settleOnboardingForEstablishedTeam(userId, companyId, now)) return null;
         // The profile records the kind of company by its label; map it back so the team suggestion survives a reload.
         const businessType = BUSINESS_TYPES.find((t) => company?.contextNotes?.includes(`**Type of business:** ${t.label}`))?.id ?? "";
-        return { companyName: company?.name ?? "", profileComplete, businessType };
+        // "Add a sample client to explore": only while the workspace has no customers.
+        const sample = await sampleClientStatus(companyId).catch(() => null);
+        const offerSampleClient = sample ? canOfferSampleClient({ isAdmin: true, ...sample }) : false;
+        return { companyName: company?.name ?? "", profileComplete, businessType, offerSampleClient };
     })();
+
+    const pauseState = pauseSummary(agentRows);
 
     // Views pinned to Home, limited to what this person may see.
     const pinnedViews = await loadPinnedViewCards(companyId, { kind: "member", userId: guard.userId, scope: memberScope }).catch((error) => {
@@ -395,8 +403,10 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
             {/* First-run setup: owners and admins, until they finish or skip it
                 (an established team settles it; see setup above). */}
             {!currentUser?.onboardingCompletedAt && !currentUser?.onboardingDismissedAt && setup && (
-                <SetupWizard initialCompanyName={setup.companyName} initialBusinessType={setup.businessType} profileComplete={setup.profileComplete} hasAgents={agentRows.length > 0} />
+                <SetupWizard initialCompanyName={setup.companyName} initialBusinessType={setup.businessType} profileComplete={setup.profileComplete} hasAgents={agentRows.length > 0} offerSampleClient={setup.offerSampleClient} />
             )}
+            {/* Pause / Resume all: the banner for everyone when every agent is paused, the buttons for owners and admins. */}
+            <PauseAllControl total={pauseState.total} paused={pauseState.paused} canManage={isOwnerOrAdmin} />
             <PinnedViewsStrip views={pinnedViews} />
             <TeamDashboard data={data} initialView={view} hasAgents={agentRows.length > 0} canAct={canAct} isOwnerOrAdmin={isOwnerOrAdmin} />
             <RealtimeRefresh topics={["dashboard", "views"]} intervalMs={5000} />

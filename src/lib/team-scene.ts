@@ -110,6 +110,12 @@ export interface AttentionEntry {
     detail?: string | null;
     /** A failure's one plain cause and its one fix (src/lib/failure-cause.ts); the fix is already filtered for the viewer's role. */
     failure?: FailureView | null;
+    /** Replaces `at` in the inbox fingerprint when `at` moves without the situation changing (src/lib/inbox-state-rules.ts). */
+    fingerprintSeed?: string;
+    /** Per-viewer inbox state, set by buildAttention: the item's fingerprint and whether this person read or archived it. */
+    fingerprint?: string;
+    read?: boolean;
+    archived?: boolean;
 }
 
 export interface CollaborationEvent {

@@ -17,6 +17,7 @@ import { mentionedAgentIds } from "@/lib/message-routing";
 import { directThreadLink, isPrivateDirectThread } from "@/lib/direct-chat-mode";
 import { decryptSecretPayload } from "@/lib/secrets";
 import { taskHref } from "@/lib/task-story";
+import { richMessagePreview } from "@/lib/rich-preview";
 
 /**
  * Notifications: what a person needs to know without watching the app.
@@ -273,6 +274,8 @@ export async function notifyAgentMessage(companyId: string, message: typeof thre
         const agentName = agent?.name ?? "An agent";
         const where = thread.type === "group" ? ` in ${thread.title || "a group"}` : thread.type === "team" ? " in team chat" : "";
         const link = threadLink(thread, agent?.id ?? null);
+        // Readable text, never a raw ```choices JSON block.
+        const preview = richMessagePreview(text);
         const isPrivate = isPrivateDirectThread(thread);
 
         // A private direct thread is only its owner's: nobody else is told
@@ -289,7 +292,7 @@ export async function notifyAgentMessage(companyId: string, message: typeof thre
                 kind: "mention",
                 title: `${agentName} mentioned you${where}`,
                 privateOutboundTitle: isPrivate ? `${agentName} mentioned a teammate in a private chat` : null,
-                body: text,
+                body: preview,
                 link,
                 sourceType: "message",
                 sourceId: message.id,
@@ -301,7 +304,7 @@ export async function notifyAgentMessage(companyId: string, message: typeof thre
                 kind: "decision",
                 title: `${agentName} is waiting on your decision${where}`,
                 privateOutboundTitle: isPrivate ? `${agentName} needs a decision from a teammate in a private chat` : null,
-                body: text,
+                body: preview,
                 link,
                 sourceType: "message",
                 sourceId: message.id,

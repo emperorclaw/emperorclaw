@@ -12,7 +12,7 @@ const SLOW_POLL_MS = 30000;
 interface NavBadges {
     unreadMessages: number;
     pendingApprovals: number;
-    /** What the /inbox page lists as needing you (src/lib/attention.ts). */
+    /** Unread items the /inbox page lists as needing you (src/lib/attention.ts); archived ones never count. */
     inbox: number;
     /** Something failed: the Inbox badge turns red instead of amber. */
     inboxHasFailures: boolean;

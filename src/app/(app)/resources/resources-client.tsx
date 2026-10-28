@@ -7,6 +7,7 @@ import { IconArchive, IconArrowLeft, IconArrowRight, IconCheck, IconChevronDown,
 import { buildResourceChildPath, buildResourceFolderTree, normalizeResourcePath, resourcePathAncestors, type ResourceFolderNode } from "@/lib/resource-paths";
 import { ExpandablePanel } from "@/components/expandable-panel";
 import { PageHeader } from "@/components/page-header";
+import { EmptyState as SharedEmptyState } from "@/components/ui/empty-state";
 import { ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuTrigger } from "@/components/ui/context-menu";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
@@ -794,7 +795,21 @@ export default function ResourcesClient({
                     </div>
                   );
                 })}
-                {!scopeGroups.length && <EmptyState>No notes yet.</EmptyState>}
+                {filteredResources.length === 0 && (resources.length > 0 ? (
+                  <SharedEmptyState
+                    compact
+                    icon={IconSearch}
+                    title={query.trim() ? "No notes match this search" : `No ${filter === "drafts" ? "draft" : "shared"} notes`}
+                    description={<button type="button" onClick={() => { setQuery(""); setFilter("all"); }} className="text-primary hover:underline">Show all notes</button>}
+                  />
+                ) : (
+                  <SharedEmptyState
+                    compact
+                    icon={IconFileText}
+                    title="No notes yet"
+                    description="Right-click Company to add the first note. Agents also write notes here as they learn how you work."
+                  />
+                ))}
               </div>
             </div>
           </aside>

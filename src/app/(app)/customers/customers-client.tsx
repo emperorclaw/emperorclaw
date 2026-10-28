@@ -8,6 +8,7 @@ import { IconBuilding, IconDeviceFloppy, IconSearch, IconSparkles } from "@table
 import { toast } from "sonner";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { PageHeader } from "@/components/page-header";
+import { EmptyState } from "@/components/ui/empty-state";
 import { cn } from "@/lib/utils";
 import { splitProjectTitle } from "@/lib/project-title";
 
@@ -127,7 +128,7 @@ export default function CustomersClient({ initialData: customerData }: { initial
                                 />
                             </div>
                             <div className="flex justify-end border-t border-zinc-900 pt-2">
-                                <button onClick={() => void handleCreateCustomer()} disabled={!newClientName.trim() || sending} className="flex cursor-pointer items-center rounded-full border border-cyan-400/40 bg-cyan-400/10 px-4 py-2 text-sm font-medium text-cyan-100 disabled:opacity-50 disabled:cursor-not-allowed hover:bg-cyan-400/15">
+                                <button title={!newClientName.trim() ? "Enter the customer's name first" : undefined} onClick={() => void handleCreateCustomer()} disabled={!newClientName.trim() || sending} className="flex cursor-pointer items-center rounded-full border border-cyan-400/40 bg-cyan-400/10 px-4 py-2 text-sm font-medium text-cyan-100 disabled:opacity-50 disabled:cursor-not-allowed hover:bg-cyan-400/15">
                                     {sending ? "Creating..." : "Create Customer"}
                                 </button>
                             </div>
@@ -145,11 +146,12 @@ export default function CustomersClient({ initialData: customerData }: { initial
             </div>
 
             {customerData.length === 0 ? (
-                <div className="emperor-panel rounded-2xl py-12 text-center">
-                    <IconBuilding className="mx-auto mb-4 h-12 w-12 text-zinc-500" />
-                    <h3 className="mb-1 font-medium text-zinc-200">No customers yet</h3>
-                    <p className="text-sm text-zinc-500">Add a customer to define the portfolio and execution context your agents should follow.</p>
-                </div>
+                <EmptyState
+                    icon={IconBuilding}
+                    title="No customers yet"
+                    description="Add a customer to group its projects, files and notes, and to record the context your agents should follow when they work for it."
+                    action={<button type="button" onClick={() => setIsAddClientOpen(true)} className="cursor-pointer rounded-full border border-cyan-400/40 bg-cyan-400/10 px-4 py-2 text-sm font-semibold text-cyan-100 transition-colors hover:bg-cyan-400/15">Add Customer</button>}
+                />
             ) : (
                 <div className="grid gap-6 lg:grid-cols-[320px_minmax(0,1fr)]">
                     <aside className="emperor-panel rounded-2xl p-3 sm:p-4">
@@ -173,7 +175,7 @@ export default function CustomersClient({ initialData: customerData }: { initial
                                     </div>
                                 </button>
                             ))}
-                            {filteredCustomers.length === 0 ? <div className="rounded-xl border border-dashed border-zinc-800 p-6 text-center text-sm text-zinc-500">No customers match that search.</div> : null}
+                            {filteredCustomers.length === 0 ? <EmptyState compact icon={IconSearch} title="No customers match that search" description={<button type="button" onClick={() => setQuery("")} className="text-primary hover:underline">Clear the search</button>} /> : null}
                         </div>
                     </aside>
 

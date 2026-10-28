@@ -10,6 +10,7 @@ import { AgentDetailPanel } from "./agent-detail-panel";
 import { AgentNowCard, BridgeBadge, formatDuration } from "./agent-now-card";
 import { useAgentActivity } from "./use-agent-activity";
 import { PageHeader } from "@/components/page-header";
+import { EmptyState } from "@/components/ui/empty-state";
 import { agentAvatarSrc } from "@/lib/avatar";
 import { cn } from "@/lib/utils";
 import type { AgentNow } from "@/lib/agent-activity";
@@ -148,11 +149,11 @@ export function AgentsClient({ agents }: { agents: AgentDirectoryItem[] }) {
             )}
 
             {agents.length === 0 ? (
-                <div className="emperor-panel rounded-2xl py-12 text-center">
-                    <IconRobot className="mx-auto mb-4 h-12 w-12 text-zinc-500" />
-                    <h3 className="mb-1 font-medium text-zinc-200">No agents yet</h3>
-                    <p className="text-sm text-zinc-500">Click Hire an Agent, choose a role, and connect your LLM provider. Emperor starts Hermes for you.</p>
-                </div>
+                <EmptyState
+                    icon={IconRobot}
+                    title="No agents yet"
+                    description="Nobody is on the team, so no work will run. Use Hire an Agent above: choose a role and connect your AI model, and Emperor starts the agent for you."
+                />
             ) : (
                 <div className="grid grid-cols-1 gap-6 lg:grid-cols-[320px_minmax(0,1fr)]">
                     <aside className={cn("emperor-panel min-w-0 overflow-hidden rounded-2xl p-3 sm:p-4", mobileView === "detail" ? "hidden lg:block" : "")}>
@@ -186,7 +187,14 @@ export function AgentsClient({ agents }: { agents: AgentDirectoryItem[] }) {
                                     <LiveStatusDot agent={agent} now={activity[agent.id]} />
                                 </button>
                             ))}
-                            {filteredAgents.length === 0 ? <div className="rounded-xl border border-dashed border-zinc-800 p-6 text-center text-sm text-zinc-500">No agents match that search.</div> : null}
+                            {filteredAgents.length === 0 ? (
+                                <EmptyState
+                                    compact
+                                    icon={IconSearch}
+                                    title={query.trim() ? "No agents match that search" : `No ${status} agents`}
+                                    description={<button type="button" onClick={() => { setQuery(""); setStatus("all"); }} className="text-primary hover:underline">Show all agents</button>}
+                                />
+                            ) : null}
                         </div>
                     </aside>
 

@@ -30,6 +30,7 @@ import { agentAvatarSrc } from "@/lib/avatar";
 import { workLogThreadTitle } from "@/lib/direct-chat-mode";
 import { EVERYONE_MENTION } from "./mention-textarea";
 import { GroupIcon } from "@/components/group-icon";
+import { EmptyState } from "@/components/ui/empty-state";
 
 type Agent = {
     id: string;
@@ -516,9 +517,23 @@ export function MessagingHub({
                         })}
 
                         {filteredThreads.length === 0 && (
-                            <div className="mt-4 rounded-xl border border-dashed border-zinc-800 bg-zinc-950/70 p-8 text-center">
-                                <div className="text-sm text-zinc-500">No agents found.</div>
-                            </div>
+                            searchQuery.trim() ? (
+                                <EmptyState
+                                    compact
+                                    className="mt-4"
+                                    icon={IconSearch}
+                                    title="No agents match that search"
+                                    description={<button type="button" onClick={() => setSearchQuery("")} className="text-primary hover:underline">Clear the search</button>}
+                                />
+                            ) : (
+                                <EmptyState
+                                    compact
+                                    className="mt-4"
+                                    icon={IconMessages}
+                                    title="No agents to chat with yet"
+                                    description="Each agent gets a direct chat here once it is hired. Hire one from Agents."
+                                />
+                            )
                         )}
                     </div>
                 </div>

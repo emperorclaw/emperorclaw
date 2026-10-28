@@ -12,7 +12,7 @@
 import { and, desc, eq, gte, inArray, isNotNull, isNull, sql } from "drizzle-orm";
 import { db } from "@/db";
 import {
-    agentRequests, agentRuns, agents, companyMembers, customers, incidents, messageThreads, notifications, projects, taskEvents, tasks, threadMessages, threadParticipants, users,
+    agentRequests, agentRuns, agents, companyMembers, customers, inboxItemState, incidents, messageThreads, notifications, projects, taskEvents, tasks, threadMessages, threadParticipants, users,
 } from "@/db/schema";
 import type { SessionWithUserId } from "@/lib/auth";
 import { computeCompanyHealth, OFFLINE_AFTER_MS, type CompanyHealth } from "@/lib/agent-health";
@@ -30,6 +30,7 @@ import { stallLabel } from "@/lib/stall-signal";
 import { taskHref as taskPageHref } from "@/lib/task-story";
 import { describeFailure, fixAudience, type FailureView } from "@/lib/failure-cause";
 import { applyAttentionScope, attentionCounts, latestFailedRuns, plainText, workingNowAgentIds, sortAttention, type AttentionCounts, type AttentionScope } from "@/lib/attention-rules";
+import { splitArchived, withInboxState } from "@/lib/inbox-state-rules";
 
 export * from "@/lib/attention-rules";
 
@@ -79,7 +80,11 @@ export interface AttentionAgent {
 
 export interface AttentionResult {
     generatedAt: string;
+    /** What the viewer's inbox lists: everything they have not archived (or that changed since). */
     entries: AttentionEntry[];
+    /** Archived by this viewer and unchanged since: the inbox's Archived filter. */
+    archived: AttentionEntry[];
+    /** Counts of `entries` only; archived items never count. */
     counts: AttentionCounts;
     /** Agents the viewer may reassign work to (already member-scoped). */
     agents: AttentionAgent[];
@@ -149,7 +154,7 @@ export async function buildAttention(companyId: string, access: AttentionAccess,
     const audience = fixAudience(access);
 
     const scopedAgentIds = access.scope?.agentIds;
-    const [agentRows, members, projectRows, customerRows, inProgress, decisions, openIncidents, typing, health, openRuns, recentRuns, blockedTasks, requestRows, mine, stalls] = await Promise.all([
+    const [agentRows, members, projectRows, customerRows, inProgress, decisions, openIncidents, typing, health, openRuns, recentRuns, blockedTasks, requestRows, mine, stalls, stateRows] = await Promise.all([
         db.select({ id: agents.id, name: agents.name, role: agents.role, provider: agents.provider, deploymentMode: agents.deploymentMode })
             .from(agents).where(and(eq(agents.companyId, companyId), isNull(agents.deletedAt))),
         db.select({ id: companyMembers.id, displayName: users.displayName, email: users.email })
@@ -186,6 +191,11 @@ export async function buildAttention(companyId: string, access: AttentionAccess,
             : Promise.resolve([]),
         // Runs making no progress (src/lib/stall-signal-reads.ts), narrowed to the member's agents.
         scopedAgentIds && scopedAgentIds.length === 0 ? Promise.resolve([]) : loadStallSignals(companyId, { now, onlyStalled: true, agentIds: scopedAgentIds, limit: 50 }),
+        // This viewer's read/archive state (src/lib/inbox-state-rules.ts); none before migration 0067.
+        access.userId
+            ? tolerateMissingSchema(db.select({ itemKey: inboxItemState.itemKey, readAt: inboxItemState.readAt, readFingerprint: inboxItemState.readFingerprint, archivedAt: inboxItemState.archivedAt, archivedFingerprint: inboxItemState.archivedFingerprint })
+                .from(inboxItemState).where(and(eq(inboxItemState.companyId, companyId), eq(inboxItemState.userId, access.userId))), [])
+            : Promise.resolve([]),
     ]);
 
     const projectById = new Map(projectRows.map((p) => [p.id, p]));
@@ -322,6 +332,8 @@ export async function buildAttention(companyId: string, access: AttentionAccess,
             reason: failure.headline, failure,
             memberKey: `agent:${a.id}`, memberName: a.name, area: a.role, at: a.lastSeenAt ?? now.toISOString(),
             actionLabel: "Inspect connection", href: `/agents?agent=${a.id}`, agentId: a.id, canRestartRuntime: canRestart(a.id),
+            // A connected but blocked agent's lastSeenAt moves every heartbeat: only a new offline spell is a new item.
+            fingerprintSeed: offline ? `offline:${a.lastSeenAt ?? "never"}` : "connected",
         });
     }
 
@@ -479,7 +491,7 @@ export async function buildAttention(companyId: string, access: AttentionAccess,
         });
     }
 
-    const visible = sortAttention(applyAttentionScope(entries, access.scope));
+    const { active: visible, archived } = splitArchived(withInboxState(sortAttention(applyAttentionScope(entries, access.scope)), stateRows));
     const scopedAgents = scopedAgentIds ? new Set(scopedAgentIds) : null;
     const workingNow = workingNowAgentIds({
         typing: typingAgents,
@@ -491,6 +503,7 @@ export async function buildAttention(companyId: string, access: AttentionAccess,
     return {
         generatedAt: now.toISOString(),
         entries: visible,
+        archived,
         counts: attentionCounts(visible),
         workingNow,
         agents: agentRows

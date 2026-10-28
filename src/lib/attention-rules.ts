@@ -92,21 +92,24 @@ export function applyAttentionScope(entries: readonly AttentionEntry[], scope: A
 }
 
 export interface AttentionCounts {
-    /** Decisions plus blockers: the Inbox badge. */
+    /** Decisions plus blockers: the inbox header. */
     needsYou: number;
     decide: number;
     blocked: number;
     fyi: number;
     approvals: number;
     hasFailures: boolean;
+    /** Needs-you items this person has not read yet (src/lib/inbox-state-rules.ts): the Inbox badge. */
+    unread: number;
 }
 
 export function attentionCounts(entries: readonly AttentionEntry[]): AttentionCounts {
-    const counts: AttentionCounts = { needsYou: 0, decide: 0, blocked: 0, fyi: 0, approvals: 0, hasFailures: false };
+    const counts: AttentionCounts = { needsYou: 0, decide: 0, blocked: 0, fyi: 0, approvals: 0, hasFailures: false, unread: 0 };
     for (const entry of entries) {
         const group = attentionGroup(entry);
         counts[group] += 1;
         if (group !== "fyi") counts.needsYou += 1;
+        if (group !== "fyi" && entry.read !== true) counts.unread += 1;
         if (entry.kind === "approval") counts.approvals += 1;
         if (isFailure(entry)) counts.hasFailures = true;
     }

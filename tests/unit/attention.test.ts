@@ -66,7 +66,7 @@ test("member scope hides other agents and other customers' projects", () => {
 
 test("counts: the badge is decisions plus blockers; failures turn it red", () => {
     const quiet = attentionCounts([entry("a", "approval", "1"), entry("m", "mention", "1"), entry("l", "late", "1")]);
-    assert.deepEqual(quiet, { needsYou: 1, decide: 1, blocked: 0, fyi: 2, approvals: 1, hasFailures: false });
+    assert.deepEqual(quiet, { needsYou: 1, decide: 1, blocked: 0, fyi: 2, approvals: 1, hasFailures: false, unread: 1 });
     const broken = attentionCounts([entry("r", "run_failed", "1"), entry("m", "message", "1", { actionRequired: true })]);
     assert.equal(broken.needsYou, 2);
     assert.equal(broken.hasFailures, true);

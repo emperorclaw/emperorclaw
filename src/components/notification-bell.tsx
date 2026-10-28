@@ -18,6 +18,8 @@ import {
     DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { cn } from "@/lib/utils";
+import { richMessagePreview } from "@/lib/rich-preview";
+import { EmptyState } from "@/components/ui/empty-state";
 
 type Notification = {
     id: string;
@@ -142,10 +144,7 @@ export function NotificationBell({ collapsed, variant = "sidebar" }: { collapsed
                 </div>
                 <div className="max-h-[60vh] overflow-y-auto p-1">
                     {items.length === 0 && (
-                        <div className="px-4 py-10 text-center text-sm text-zinc-500">
-                            Nothing needs you right now.
-                            <div className="mt-1 text-xs text-zinc-600">Mentions, decisions, approvals, and failures show up here.</div>
-                        </div>
+                        <EmptyState compact bordered={false} icon={IconBell} title="Nothing needs you right now" description="Mentions, decisions, approvals and failures show up here." className="py-8" />
                     )}
                     {items.map((item) => {
                         const Icon = KIND_ICON[item.kind] ?? IconBell;
@@ -167,7 +166,7 @@ export function NotificationBell({ collapsed, variant = "sidebar" }: { collapsed
                                 </span>
                                 <span className="min-w-0 flex-1">
                                     <span className={cn("line-clamp-2 text-sm leading-snug", item.readAt ? "text-zinc-400" : "font-medium text-zinc-100")}>{item.title}</span>
-                                    {item.body && <span className="mt-0.5 line-clamp-2 block text-xs leading-snug text-zinc-500">{item.body}</span>}
+                                    {item.body && <span className="mt-0.5 line-clamp-2 block text-xs leading-snug text-zinc-500">{richMessagePreview(item.body)}</span>}
                                 </span>
                                 <span className="flex shrink-0 flex-col items-end gap-1.5">
                                     <span className="text-[10px] text-zinc-600">{ago(item.createdAt)}</span>

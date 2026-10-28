@@ -6,6 +6,7 @@ import { useState } from "react";
 import { toast } from "sonner";
 import { IconArchive, IconLayoutDashboard, IconMessageCircle, IconPin, IconPlus } from "@tabler/icons-react";
 import { Button } from "@/components/ui/button";
+import { EmptyState } from "@/components/ui/empty-state";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -29,21 +30,22 @@ export function scopeText(view: { scopeType: string; scopeLabel: string | null }
 /** The empty state teaches the one way views get built: ask an agent. */
 export function ViewsEmptyState() {
     return (
-        <div className="rounded-2xl border border-dashed border-border bg-card px-5 py-10 text-center">
-            <IconLayoutDashboard className="mx-auto h-8 w-8 text-muted-foreground" aria-hidden />
-            <h2 className="mt-3 text-base font-semibold text-foreground">No views yet</h2>
-            <p className="mx-auto mt-1 max-w-xl text-sm text-muted-foreground">
-                Views are dashboards your agents build and keep fresh. Ask an agent: &ldquo;Build me a view of &hellip;&rdquo; and it creates the page, fills in the numbers and refreshes them on a schedule.
-            </p>
-            <ul className="mx-auto mt-4 flex max-w-xl flex-col gap-2 text-left text-sm">
+        <EmptyState
+            icon={IconLayoutDashboard}
+            title="No views yet"
+            description={<>Views are dashboards your agents build and keep fresh. Ask an agent: &ldquo;Build me a view of &hellip;&rdquo; and it creates the page, fills in the numbers and refreshes them on a schedule.</>}
+            action={
+                <Link href="/messages" className="inline-flex min-h-9 items-center gap-1.5 rounded-lg border border-border px-3 text-sm text-foreground hover:bg-accent">
+                    <IconMessageCircle className="h-4 w-4" aria-hidden />Open chat
+                </Link>
+            }
+        >
+            <ul className="mx-auto mt-3 flex w-full max-w-xl flex-col gap-2 text-left text-sm">
                 {EXAMPLE_ASKS.map((ask) => (
                     <li key={ask} className="rounded-xl border border-border bg-background px-3 py-2 text-foreground">&ldquo;{ask}&rdquo;</li>
                 ))}
             </ul>
-            <Link href="/messages" className="mt-4 inline-flex min-h-9 items-center gap-1.5 rounded-lg border border-border px-3 text-sm text-foreground hover:bg-accent">
-                <IconMessageCircle className="h-4 w-4" aria-hidden />Open chat
-            </Link>
-        </div>
+        </EmptyState>
     );
 }
 
@@ -52,7 +54,7 @@ export function ViewsList({ views, showArchived }: { views: ViewSummary[]; showA
     if (views.length === 0) {
         return showArchived ? (
             <div className="space-y-3">
-                <p className="rounded-2xl border border-dashed border-border bg-card px-5 py-8 text-center text-sm text-muted-foreground">No archived views.</p>
+                <EmptyState icon={IconArchive} title="No archived views" description="Views you archive move here, so Home and the list stay tidy." />
                 <Link href="/views" className="text-sm text-primary hover:underline">Back to views</Link>
             </div>
         ) : <ViewsEmptyState />;

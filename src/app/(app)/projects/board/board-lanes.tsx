@@ -15,6 +15,7 @@ import {
     IconLoader,
     IconRepeat,
 } from "@tabler/icons-react";
+import { EmptyState } from "@/components/ui/empty-state";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import type { BoardColumnKey } from "@/lib/project-board-model";
 import { cn } from "@/lib/utils";
@@ -151,7 +152,7 @@ export function BoardLane({ lane, handlers, dragging }: { lane: Lane; handlers: 
             {lane.header && <div className="px-3 pb-2">{lane.header}</div>}
             <div className="custom-scrollbar min-h-0 flex-1 space-y-2 overflow-y-auto px-2 pb-2">
                 {count === 0 ? (
-                    <p className="rounded-lg border border-dashed border-zinc-800 px-3 py-5 text-center text-xs text-zinc-500">{lane.emptyText}</p>
+                    <EmptyState compact className="rounded-lg" title={<span className="text-xs font-normal text-muted-foreground">{lane.emptyText}</span>} />
                 ) : (
                     <>
                         {lane.definitions?.map(({ definition, projectName, ownerName }) => (
@@ -241,7 +242,7 @@ export function LaneList({ lanes, handlers, selection }: { lanes: Lane[]; handle
                         ) : null}
                         {lane.header && <div className="mb-2 px-1">{lane.header}</div>}
                         {count === 0 ? (
-                            <p className="rounded-lg border border-dashed border-zinc-800 px-3 py-6 text-center text-sm text-zinc-500">{lane.emptyText}</p>
+                            <EmptyState compact className="rounded-lg" title={<span className="font-normal text-muted-foreground">{lane.emptyText}</span>} />
                         ) : (
                             <ul className="divide-y divide-zinc-800/60 overflow-hidden rounded-xl border border-zinc-800/70 bg-zinc-950/40">
                                 {lane.definitions?.map(({ definition, projectName, ownerName }) => (

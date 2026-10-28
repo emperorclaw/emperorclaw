@@ -25,10 +25,11 @@ export default async function InboxPage({ searchParams }: { searchParams: Promis
             <RealtimeRefresh topics={["inbox"]} />
             <InboxClient
                 entries={result.entries}
+                archived={result.archived}
                 agents={result.agents}
                 generatedAt={result.generatedAt}
                 canAct={access.canAct}
-                filter={parseInboxFilter(params.filter)}
+                filter={params.filter === "archived" ? "archived" : parseInboxFilter(params.filter)}
             />
         </>
     );

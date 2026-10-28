@@ -57,7 +57,7 @@ type Badges = ReturnType<typeof useNavBadges>;
 function badgeFor(key: NavBadgeKey | undefined, badges: Badges): { text: string; tone: "live" | "warn" | "fail" | "unread"; label: string } | null {
     const cap = (n: number) => (n > 99 ? "99+" : String(n));
     if (key === "live" && badges.workingNow > 0) return { text: `${badges.workingNow} working`, tone: "live", label: `${badges.workingNow} agents working now` };
-    if (key === "inbox" && badges.inbox > 0) return { text: cap(badges.inbox), tone: badges.inboxHasFailures ? "fail" : "warn", label: `${badges.inbox} items need you${badges.inboxHasFailures ? ", some failed" : ""}` };
+    if (key === "inbox" && badges.inbox > 0) return { text: cap(badges.inbox), tone: badges.inboxHasFailures ? "fail" : "warn", label: `${badges.inbox} unread ${badges.inbox === 1 ? "item needs" : "items need"} you${badges.inboxHasFailures ? ", some failed" : ""}` };
     if (key === "messages" && badges.unreadMessages > 0) return { text: cap(badges.unreadMessages), tone: "unread", label: `${badges.unreadMessages} unread messages` };
     return null;
 }

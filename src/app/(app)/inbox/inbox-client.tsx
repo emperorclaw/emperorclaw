@@ -5,12 +5,13 @@ import { useRouter } from "next/navigation";
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { toast } from "sonner";
 import {
-    IconArchive, IconArrowRight, IconBuildingStore, IconCheck, IconChecks, IconClock, IconFolder, IconHistory, IconInbox, IconMessage,
-    IconPlayerPlay, IconRefresh, IconRobot, IconUser, IconX,
+    IconArchive, IconArchiveOff, IconArrowRight, IconBuildingStore, IconCheck, IconChecks, IconClock, IconFolder, IconHistory, IconInbox, IconMessage,
+    IconPlayerPlay, IconRefresh, IconRobot, IconSearch, IconUser, IconX,
 } from "@tabler/icons-react";
 import { FailureFixButton } from "@/components/failure-fix";
 import { PageHeader } from "@/components/page-header";
 import { KIND_STYLE } from "@/components/team-dashboard/needs-attention";
+import { useInboxState } from "@/components/use-inbox-state";
 import { refreshNavBadges } from "@/components/use-nav-badges";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import {
@@ -18,12 +19,15 @@ import {
     type AttentionGroup, type InboxFilter,
 } from "@/lib/attention-rules";
 import { approvalAgeDays, isStaleApproval } from "@/lib/approval-status";
+import { matchesInboxSearch } from "@/lib/inbox-state-rules";
 import { isPlainKey, isTypingTarget } from "@/lib/keyboard-shortcuts";
 import { timeAgo, type AttentionEntry } from "@/lib/team-scene";
 import { cn } from "@/lib/utils";
 
 type Agent = { key: string; id: string; name: string; role: string | null };
 type Decision = "approved" | "rejected" | "dismissed";
+/** The filters, plus the person's own archive. */
+type InboxView = InboxFilter | "archived";
 
 // "Decisions" + "Blocked" = "Needs you" (the header and the badge); FYI is counted apart.
 const FILTERS: { id: InboxFilter; label: string; hint: string }[] = [
@@ -45,12 +49,13 @@ const APPROVE = "bg-emerald-500/15 text-emerald-700 ring-emerald-500/40 hover:bg
 const DANGER = "bg-rose-500/10 text-rose-600 ring-rose-500/30 hover:bg-rose-500/20 dark:text-rose-300";
 const NEUTRAL = "bg-transparent text-muted-foreground ring-border hover:bg-muted hover:text-foreground";
 
-export function InboxClient({ entries, agents, generatedAt, canAct, filter }: {
+export function InboxClient({ entries, archived, agents, generatedAt, canAct, filter }: {
     entries: AttentionEntry[];
+    archived: AttentionEntry[];
     agents: Agent[];
     generatedAt: string;
     canAct: boolean;
-    filter: InboxFilter;
+    filter: InboxView;
 }) {
     const router = useRouter();
     const now = useMemo(() => new Date(generatedAt), [generatedAt]);
@@ -59,16 +64,26 @@ export function InboxClient({ entries, agents, generatedAt, canAct, filter }: {
     const [done, setDone] = useState<ReadonlySet<string>>(new Set());
     const [selectedId, setSelectedId] = useState<string | null>(null);
     const [rejectingId, setRejectingId] = useState<string | null>(null);
+    const [query, setQuery] = useState("");
     const listRef = useRef<HTMLDivElement>(null);
+    const inbox = useInboxState(entries, archived);
+    const { markRead: markSeen } = inbox;
+    const showingArchived = filter === "archived";
 
-    const live = useMemo(() => entries.filter((e) => !done.has(e.id)), [entries, done]);
-    const visible = useMemo(() => live.filter((e) => matchesInboxFilter(e, filter)), [live, filter]);
+    const live = useMemo(() => inbox.active.filter((e) => !done.has(e.id)), [inbox.active, done]);
+    const archivedLive = useMemo(() => inbox.archivedList.filter((e) => !done.has(e.id)), [inbox.archivedList, done]);
+    // Search narrows what the current view lists, on this page only.
+    const visible = useMemo(() => (showingArchived ? archivedLive : live.filter((e) => matchesInboxFilter(e, filter as InboxFilter)))
+        .filter((e) => matchesInboxSearch(e, query)), [showingArchived, archivedLive, live, filter, query]);
     const grouped = useMemo(() => ATTENTION_GROUPS.map((group) => ({ group, items: visible.filter((e) => attentionGroup(e) === group) })).filter((g) => g.items.length > 0), [visible]);
     // Keyboard order follows the screen: groups top to bottom.
     const ordered = useMemo(() => grouped.flatMap((g) => g.items), [grouped]);
     // Every number on this page is a count of rows it can list.
     const filterCount = (id: InboxFilter) => live.filter((e) => matchesInboxFilter(e, id)).length;
     const needsYou = filterCount("needs");
+    const unread = live.filter((e) => !inbox.isRead(e)).length;
+    // The badge's number: unread items that need you (FYI never counts).
+    const unreadNeedsYou = live.filter((e) => !inbox.isRead(e) && matchesInboxFilter(e, "needs")).length;
 
     const settle = useCallback(async () => {
         router.refresh();
@@ -147,17 +162,37 @@ export function InboxClient({ entries, agents, generatedAt, canAct, filter }: {
         if (!res.ok) throw new Error("Couldn't mark it read");
     }, "Marked read.");
 
-    const setFilter = (next: InboxFilter) => {
+    const setFilter = (next: InboxView) => {
         router.replace(next === "needs" ? "/inbox" : `/inbox?filter=${next}`, { scroll: false });
     };
 
-    // j/k move, Enter opens (native on the focused link), a/r decide approvals.
+    // Looking at an item (focus, click, j/k) marks it read for you.
+    const select = useCallback((entry: AttentionEntry) => {
+        setSelectedId(entry.id);
+        markSeen(entry);
+    }, [markSeen]);
+
+    const focusRowRef = useRef<(id: string) => void>(() => {});
+    // Archive (or move back) and keep the keyboard on the next row.
+    const toggleArchive = useCallback((entry: AttentionEntry) => {
+        const index = ordered.findIndex((e) => e.id === entry.id);
+        const next = ordered[index + 1] ?? ordered[index - 1] ?? null;
+        if (showingArchived) void inbox.unarchive(entry);
+        else void inbox.archive(entry);
+        if (!next) setSelectedId(null);
+        // The row is gone on the next render: move focus once it is.
+        else requestAnimationFrame(() => focusRowRef.current(next.id));
+    }, [ordered, showingArchived, inbox]);
+
+    // j/k move, Enter opens (native on the focused link), e archives, a/r decide approvals.
     const focusRow = useCallback((id: string) => {
-        setSelectedId(id);
+        const entry = ordered.find((e) => e.id === id);
+        if (entry) select(entry);
         const row = listRef.current?.querySelector<HTMLElement>(`[data-entry-id="${CSS.escape(id)}"]`);
         row?.querySelector<HTMLElement>("[data-entry-link]")?.focus({ preventScroll: true });
         row?.scrollIntoView({ block: "nearest", behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth" });
-    }, []);
+    }, [ordered, select]);
+    useEffect(() => { focusRowRef.current = focusRow; }, [focusRow]);
 
     useEffect(() => {
         const onKey = (event: KeyboardEvent) => {
@@ -170,6 +205,11 @@ export function InboxClient({ entries, agents, generatedAt, canAct, filter }: {
                 event.preventDefault();
                 const next = event.key === "j" ? Math.min(ordered.length - 1, index + 1) : Math.max(0, index < 0 ? 0 : index - 1);
                 focusRow(ordered[next].id);
+                return;
+            }
+            if (event.key === "e" && current) {
+                event.preventDefault();
+                toggleArchive(current);
                 return;
             }
             if (!current || !canAct || current.kind !== "approval" || busyId) return;
@@ -188,18 +228,25 @@ export function InboxClient({ entries, agents, generatedAt, canAct, filter }: {
         };
         window.addEventListener("keydown", onKey);
         return () => window.removeEventListener("keydown", onKey);
-    }, [ordered, selectedId, canAct, busyId, decide, focusRow]);
+    }, [ordered, selectedId, canAct, busyId, decide, focusRow, toggleArchive]);
 
     return (
         <div className="mx-auto max-w-[1100px] space-y-5 pb-20 animate-in fade-in duration-500">
             <PageHeader
                 eyebrow="Inbox"
                 title={needsYou === 0 ? "Nothing needs you" : needsYou === 1 ? "1 thing needs you" : `${needsYou} things need you`}
-                description="Decisions and blockers from your agents, most urgent first. FYI signals are kept apart."
+                description={unreadNeedsYou > 0 ? `${unreadNeedsYou} unread. Decisions and blockers from your agents, most urgent first.` : "Decisions and blockers from your agents, most urgent first. FYI signals are kept apart."}
                 actions={
-                    <Link href="/approvals" className={cn(BTN, NEUTRAL, "text-sm font-medium")}>
-                        <IconHistory className="h-4 w-4" />Approval history
-                    </Link>
+                    <>
+                        {unread > 0 && !showingArchived && (
+                            <button type="button" onClick={() => void inbox.markAllRead()} className={cn(BTN, NEUTRAL, "text-sm font-medium")}>
+                                <IconChecks className="h-4 w-4" />Mark all as read
+                            </button>
+                        )}
+                        <Link href="/approvals" className={cn(BTN, NEUTRAL, "text-sm font-medium")}>
+                            <IconHistory className="h-4 w-4" />Approval history
+                        </Link>
+                    </>
                 }
             />
 
@@ -222,9 +269,31 @@ export function InboxClient({ entries, agents, generatedAt, canAct, filter }: {
                 })}
             </div>
 
+            <div className="flex flex-wrap items-center gap-2">
+                <label className="relative min-w-0 flex-1 sm:max-w-sm">
+                    <span className="sr-only">Search the inbox</span>
+                    <IconSearch aria-hidden className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                    <input
+                        type="search"
+                        value={query}
+                        onChange={(e) => setQuery(e.target.value)}
+                        onKeyDown={(e) => { if (e.key === "Escape") { e.stopPropagation(); setQuery(""); e.currentTarget.blur(); } }}
+                        placeholder="Search by title, agent or project"
+                        className="min-h-11 w-full rounded-lg border border-border bg-background pl-9 pr-3 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-cyan-400/60 md:min-h-9"
+                    />
+                </label>
+                <button type="button" aria-pressed={showingArchived} onClick={() => setFilter(showingArchived ? "needs" : "archived")}
+                    title={showingArchived ? "Back to the inbox" : "Items you archived. They come back on their own when something changes."}
+                    className={cn(BTN, showingArchived ? PRIMARY : NEUTRAL, "text-sm font-medium")}>
+                    {showingArchived ? <IconInbox className="h-4 w-4" /> : <IconArchive className="h-4 w-4" />}
+                    {showingArchived ? "Back to inbox" : "Archived"}
+                    <span className="tabular-nums text-muted-foreground">{archivedLive.length}</span>
+                </button>
+            </div>
+
             <div ref={listRef} className="space-y-6">
                 {grouped.length === 0 ? (
-                    <EmptyState filter={filter} fyiCount={filterCount("fyi")} onShow={setFilter} />
+                    <EmptyState filter={filter} query={query} fyiCount={filterCount("fyi")} onShow={setFilter} onClearSearch={() => setQuery("")} />
                 ) : grouped.map(({ group, items }) => (
                     <section key={group} aria-labelledby={`inbox-${group}`}>
                         <header className="mb-2.5 flex items-baseline gap-2 px-1">
@@ -241,7 +310,10 @@ export function InboxClient({ entries, agents, generatedAt, canAct, filter }: {
                                     entry={entry}
                                     now={now}
                                     selected={selectedId === entry.id}
-                                    onSelect={() => setSelectedId(entry.id)}
+                                    unread={!showingArchived && !inbox.isRead(entry)}
+                                    archivedView={showingArchived}
+                                    onSelect={() => select(entry)}
+                                    onArchive={() => toggleArchive(entry)}
                                     canAct={canAct}
                                     busy={busyId === entry.id}
                                     anyBusy={busyId !== null}
@@ -264,6 +336,7 @@ export function InboxClient({ entries, agents, generatedAt, canAct, filter }: {
                 <p className="hidden items-center gap-4 px-1 text-xs text-muted-foreground md:flex">
                     <Hint keys={["j", "k"]}>move</Hint>
                     <Hint keys={["Enter"]}>open</Hint>
+                    <Hint keys={["e"]}>{showingArchived ? "move back" : "archive"}</Hint>
                     {canAct && <Hint keys={["a"]}>approve</Hint>}
                     {canAct && <Hint keys={["r"]}>reject</Hint>}
                     <span className="ml-auto">Updates every few seconds</span>
@@ -282,15 +355,32 @@ function Hint({ keys, children }: { keys: string[]; children: ReactNode }) {
     );
 }
 
-function EmptyState({ filter, fyiCount, onShow }: { filter: InboxFilter; fyiCount: number; onShow: (filter: InboxFilter) => void }) {
+function EmptyState({ filter, query, fyiCount, onShow, onClearSearch }: { filter: InboxView; query: string; fyiCount: number; onShow: (filter: InboxView) => void; onClearSearch: () => void }) {
     const filtered = filter !== "needs";
+    const search = query.trim();
+    if (search || filter === "archived") {
+        // A search miss or an empty archive is a quiet note, not the celebration below.
+        return (
+            <div className="rounded-2xl border border-dashed border-border px-6 py-10 text-center">
+                <p className="text-sm font-medium text-foreground">{search ? `Nothing matches \u201c${search}\u201d` : "Nothing archived"}</p>
+                <p className="mx-auto mt-1 max-w-sm text-sm text-muted-foreground">
+                    {search ? "Search looks at titles, agents, people, projects and customers in this view." : "Archive an item with its button or the e key. It stays here until something about it changes."}
+                </p>
+                <div className="mt-4 flex justify-center gap-2">
+                    {search
+                        ? <button type="button" onClick={onClearSearch} className={cn(BTN, NEUTRAL, "text-sm font-medium")}>Clear search</button>
+                        : <button type="button" onClick={() => onShow("needs")} className={cn(BTN, PRIMARY, "text-sm")}>Back to the inbox</button>}
+                </div>
+            </div>
+        );
+    }
     return (
         <div className="emperor-panel relative overflow-hidden rounded-2xl px-6 py-14 text-center">
             <div aria-hidden className="pointer-events-none absolute inset-x-0 -top-24 mx-auto h-48 w-72 rounded-full bg-cyan-400/10 blur-3xl" />
             <div className="relative mx-auto grid h-14 w-14 place-items-center rounded-2xl bg-emerald-500/10 text-emerald-600 ring-1 ring-inset ring-emerald-500/25 dark:text-emerald-300">
                 <IconChecks className="h-7 w-7" stroke={1.7} />
             </div>
-            <h2 className="relative mt-4 text-lg font-semibold text-foreground">{filter === "fyi" ? "No FYI signals" : filtered ? "Nothing here" : "You're all caught up"}</h2>
+            <h2 className="relative mt-4 text-lg font-semibold text-foreground">{filter === "fyi" ? "No FYI signals" : filtered ? "Nothing here" : "Inbox zero."}</h2>
             <p className="relative mx-auto mt-1 max-w-sm text-sm leading-6 text-muted-foreground">
                 {filter === "fyi" ? "Slow replies, late work and mentions show up here." : filtered ? "Nothing of this kind is waiting on you." : "No decisions, blockers or failures. When an agent needs you, it lands here first."}
             </p>
@@ -319,11 +409,14 @@ function Meta({ icon: Icon, children, title }: { icon: typeof IconRobot; childre
     );
 }
 
-function InboxRow({ entry, now, selected, onSelect, canAct, busy, anyBusy, agents, rejecting, setRejecting, onDecide, onResume, onRestart, onReassign, onMarkRead }: {
+function InboxRow({ entry, now, selected, unread, archivedView, onSelect, onArchive, canAct, busy, anyBusy, agents, rejecting, setRejecting, onDecide, onResume, onRestart, onReassign, onMarkRead }: {
     entry: AttentionEntry;
     now: Date;
     selected: boolean;
+    unread: boolean;
+    archivedView: boolean;
     onSelect: () => void;
+    onArchive: () => void;
     canAct: boolean;
     busy: boolean;
     anyBusy: boolean;
@@ -340,6 +433,14 @@ function InboxRow({ entry, now, selected, onSelect, canAct, busy, anyBusy, agent
     const group = attentionGroup(entry);
     const isAgentArea = entry.kind === "agent" || entry.kind === "run_failed";
     const project = isAgentArea ? null : entry.area;
+    const archiveButton = (
+        <button type="button" onClick={(e) => { e.stopPropagation(); onArchive(); }} aria-keyshortcuts="e"
+            title={archivedView ? "Move back to the inbox (e)" : "Archive until something changes (e)"} aria-label={archivedView ? "Move back to the inbox" : "Archive"}
+            className={cn(BTN, NEUTRAL, "px-2.5")}>
+            {archivedView ? <IconArchiveOff className="h-3.5 w-3.5" /> : <IconArchive className="h-3.5 w-3.5" />}
+            <span className="sr-only md:not-sr-only">{archivedView ? "Unarchive" : "Archive"}</span>
+        </button>
+    );
     return (
         <li
             data-entry-id={entry.id}
@@ -360,10 +461,12 @@ function InboxRow({ entry, now, selected, onSelect, canAct, busy, anyBusy, agent
                     <div className="flex flex-col gap-3 md:flex-row md:items-start">
                         <div className="min-w-0 flex-1">
                             <div className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+                                {unread && <span aria-hidden className="h-2 w-2 shrink-0 rounded-full bg-cyan-500" />}
                                 <span>{style.verb}</span>
+                                {unread && <span className="sr-only">Unread</span>}
                                 {entry.taskCount && entry.taskCount > 1 ? <span className="rounded-md bg-amber-400/15 px-1.5 py-px normal-case tracking-normal text-amber-700 dark:text-amber-200">Covers {entry.taskCount} tasks</span> : null}
                             </div>
-                            <Link data-entry-link href={entry.href} className="mt-0.5 block break-words text-[15px] font-semibold leading-snug text-foreground hover:text-primary focus-visible:rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400">
+                            <Link data-entry-link href={entry.href} className={cn("mt-0.5 block break-words text-[15px] leading-snug text-foreground hover:text-primary focus-visible:rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400", unread ? "font-bold" : "font-medium")}>
                                 {entry.title}
                             </Link>
                             {entry.reason && (
@@ -381,10 +484,14 @@ function InboxRow({ entry, now, selected, onSelect, canAct, busy, anyBusy, agent
                             <div className="flex shrink-0 flex-wrap items-center gap-1.5 md:justify-end">
                                 <RowActions entry={entry} busy={busy} disabled={anyBusy} agents={agents} onReject={() => setRejecting(true)}
                                     onDecide={onDecide} onResume={onResume} onRestart={onRestart} onReassign={onReassign} onMarkRead={onMarkRead} />
+                                {archiveButton}
                             </div>
                         )}
                         {!canAct && (
-                            <Link href={entry.href} tabIndex={-1} className={cn(BTN, NEUTRAL, "shrink-0 self-start")}>Open<IconArrowRight className="h-3.5 w-3.5" /></Link>
+                            <div className="flex shrink-0 items-center gap-1.5 self-start">
+                                <Link href={entry.href} tabIndex={-1} className={cn(BTN, NEUTRAL)}>Open<IconArrowRight className="h-3.5 w-3.5" /></Link>
+                                {archiveButton}
+                            </div>
                         )}
                     </div>
                     {canAct && rejecting && <RejectForm entry={entry} busy={busy} onCancel={() => setRejecting(false)} onSend={(note) => onDecide(entry, "rejected", note)} />}

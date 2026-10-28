@@ -50,6 +50,7 @@ import {
     DropdownMenuItem,
     DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { EmptyState } from "@/components/ui/empty-state";
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -1853,15 +1854,17 @@ export default function ArtifactsManager({ projects, tasks, customers }: Props) 
                                     </div>
                                 )}
                                 {!loadingFolderId && !isSearchLoading && visibleFolders.length === 0 && visibleArtifacts.length === 0 && visibleDiscoveredEntries.length === 0 && (
-                                    <div className="mx-2 mt-2 rounded-2xl border border-dashed border-zinc-800 bg-zinc-950/80 px-6 py-14 text-center">
-                                        <div className="mx-auto mb-4 flex size-14 items-center justify-center rounded-2xl border border-zinc-800 bg-zinc-900">
-                                            <IconFolderOpen className="size-6 text-zinc-500" />
-                                        </div>
-                                        <h3 className="text-lg font-medium text-zinc-100">Nothing here yet</h3>
-                                        <p className="mt-2 text-sm text-zinc-400">
-                                            Create a folder, upload a file, or broaden the current filters.
-                                        </p>
-                                    </div>
+                                    <EmptyState
+                                        className="mx-2 mt-2"
+                                        icon={isSearchMode ? IconSearch : IconFolderOpen}
+                                        title={isSearchMode ? "No files match these filters" : currentFolderId === ROOT_ID ? "No files yet" : "This folder is empty"}
+                                        description={isSearchMode
+                                            ? "Nothing in storage matches the search or the project, task, client and type filters."
+                                            : currentFolderId === ROOT_ID
+                                                ? "Files your agents save and files you upload land here. Upload one, or create a folder to organize them."
+                                                : "Upload a file here, or move files into this folder."}
+                                        action={hasActiveFilters ? <Button type="button" variant="outline" size="sm" onClick={clearFilters}>Clear filters</Button> : undefined}
+                                    />
                                 )}
                             </div>
                         </ScrollArea>

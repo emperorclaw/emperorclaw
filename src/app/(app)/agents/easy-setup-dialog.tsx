@@ -6,6 +6,7 @@ import { createClientRequestId } from "@/lib/client-request-id";
 import { useRouter } from "next/navigation";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter, DialogTrigger } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
+import { DisabledReason } from "@/components/ui/disabled-reason";
 import { HermesImageProgress } from "@/components/hermes-image-progress";
 import { RoleTemplatePicker } from "./role-template-picker";
 import { SetupOutputLog, type SetupOutputEntry } from "@/components/setup-output-log";
@@ -553,7 +554,9 @@ export function EasySetupDialog({
                         <Button type="button" variant="outline" onClick={() => { setOpen(false); resetForm(); }} className="border-border text-foreground hover:bg-muted">Cancel</Button>
                     )}
                     {step === "count-and-roles" && (
-                        <Button type="button" onClick={() => setStep("provider-key")} disabled={!canContinueRoles} className="min-h-11">Continue</Button>
+                        <DisabledReason reason={canContinueRoles ? null : !specs.every((s) => s.name.trim().length > 0) ? "Give every agent a name to continue." : !teamName.trim() ? "Name the team to continue." : "Choose the team's lead to continue."}>
+                            <Button type="button" onClick={() => setStep("provider-key")} disabled={!canContinueRoles} className="min-h-11">Continue</Button>
+                        </DisabledReason>
                     )}
                     {step === "provider-key" && (
                         <Button type="button" onClick={handleCreate} disabled={submitting || available !== true || !connectionReady} className="min-h-11">

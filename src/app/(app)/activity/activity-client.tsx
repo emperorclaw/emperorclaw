@@ -21,6 +21,8 @@ import {
 } from "@tabler/icons-react";
 import { PageHeader } from "@/components/page-header";
 import { SearchableSelect } from "@/components/ui/searchable-select";
+import { EmptyState } from "@/components/ui/empty-state";
+import { Skeleton } from "@/components/ui/skeleton";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { useRealtimeTopics } from "@/lib/use-realtime";
 import { AUDIT_FIELD_LABELS, formatAuditValue } from "@/lib/audit-format";
@@ -207,13 +209,13 @@ function FeedRow({ entry, names, now }: { entry: FeedEntry; names: Record<string
 
 function FeedSkeleton() {
     return (
-        <div className="overflow-hidden rounded-2xl border border-border bg-card" aria-busy="true" aria-label="Loading activity">
+        <div className="overflow-hidden rounded-2xl border border-border bg-card" role="status" aria-busy="true" aria-label="Loading activity">
             {Array.from({ length: 6 }, (_, i) => (
-                <div key={i} className="flex animate-pulse gap-3 border-b border-border px-4 py-3 last:border-b-0">
-                    <div className="h-8 w-8 rounded-lg bg-muted" />
+                <div key={i} className="flex gap-3 border-b border-border px-4 py-3 last:border-b-0">
+                    <Skeleton className="h-8 w-8 rounded-lg" />
                     <div className="flex-1 space-y-2 py-1">
-                        <div className="h-3 w-2/3 rounded bg-muted" />
-                        <div className="h-2.5 w-20 rounded bg-muted" />
+                        <Skeleton className="h-3 w-2/3" />
+                        <Skeleton className="h-2.5 w-20" />
                     </div>
                 </div>
             ))}
@@ -352,13 +354,12 @@ export function ActivityClient({ initial, people, agents }: { initial: ActivityP
             {error && <p role="alert" className="rounded-xl border border-rose-500/30 bg-rose-500/10 px-4 py-3 text-sm text-rose-500">{error}</p>}
 
             {loading || !now ? <FeedSkeleton /> : items.length === 0 ? (
-                <div className="rounded-2xl border border-dashed border-border bg-card px-6 py-12 text-center">
-                    <IconHistory className="mx-auto h-8 w-8 text-muted-foreground" aria-hidden />
-                    <p className="mt-3 font-medium text-foreground">{hasFilter ? "Nothing matches these filters" : "No activity yet"}</p>
-                    <p className="mt-1 text-sm text-muted-foreground">
-                        {hasFilter ? "Try a wider date range or another person or agent." : "Changes to agents, tasks, approvals, people and settings show up here as they happen."}
-                    </p>
-                </div>
+                <EmptyState
+                    icon={IconHistory}
+                    title={hasFilter ? "No activity matches these filters" : "No activity yet"}
+                    description={hasFilter ? "Nothing was recorded for this person, agent or date range. Try a wider range." : "Changes to agents, tasks, approvals, people and settings show up here as they happen."}
+                    action={hasFilter && <button type="button" onClick={() => setFilters(NO_FILTERS)} className="h-9 rounded-lg border border-border px-3 text-sm text-foreground hover:bg-muted">Clear filters</button>}
+                />
             ) : (
                 <div className="space-y-6">
                     {groups.map((group) => (

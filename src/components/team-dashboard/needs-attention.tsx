@@ -11,6 +11,7 @@ import { timeAgo, type AttentionEntry, type AttentionKind, type DashboardMember 
 import { approvalAgeDays, isStaleApproval } from "@/lib/approval-status";
 import { cn } from "@/lib/utils";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import { useInboxState } from "@/components/use-inbox-state";
 import { useLiveLink } from "./live-link";
 
 export const KIND_STYLE: Record<AttentionKind, { icon: typeof IconFileText; tile: string; verb: string }> = {
@@ -31,7 +32,7 @@ export const KIND_STYLE: Record<AttentionKind, { icon: typeof IconFileText; tile
 
 const VISIBLE = 4;
 
-export function NeedsAttention({ entries, now, onFocusMember, canAct, agents, watchlist = false }: {
+export function NeedsAttention({ entries: listed, now, onFocusMember, canAct, agents, watchlist = false }: {
     entries: AttentionEntry[];
     now: Date;
     onFocusMember: (key: string) => void;
@@ -42,6 +43,9 @@ export function NeedsAttention({ entries, now, onFocusMember, canAct, agents, wa
     const router = useRouter();
     const titleId = watchlist ? "watchlist-title" : "needs-attention-title";
     const [busyId, setBusyId] = useState<string | null>(null);
+    // Same read/archive state as the Inbox (src/lib/inbox-state-rules.ts): archived items are already left out by the server.
+    const inbox = useInboxState(listed);
+    const entries = inbox.active;
     // Action inbox ↔ living office: pointing at an item lights its agent's desk and back.
     const link = useLiveLink();
     const point = (entry: AttentionEntry | null) => { if (!watchlist) link.set(entry?.memberKey ?? null, "inbox"); };
@@ -132,6 +136,7 @@ export function NeedsAttention({ entries, now, onFocusMember, canAct, agents, wa
                     {entries.slice(0, VISIBLE).map((entry) => {
                         const style = KIND_STYLE[entry.kind];
                         const busy = busyId !== null;
+                        const unread = !inbox.isRead(entry);
                         return (
                             <li key={entry.id} onMouseEnter={() => point(entry)} onMouseLeave={() => point(null)} onFocus={() => point(entry)} onBlur={() => point(null)}
                                 className={cn("group relative rounded-xl border border-border/70 bg-muted/30 p-3 transition-colors hover:border-border hover:bg-muted/60 dark:bg-white/[0.02] dark:hover:bg-white/[0.04]",
@@ -140,10 +145,15 @@ export function NeedsAttention({ entries, now, onFocusMember, canAct, agents, wa
                                     <span className={cn("grid h-9 w-9 shrink-0 place-items-center rounded-lg ring-1 ring-inset", style.tile)}><style.icon className="h-[18px] w-[18px]" stroke={1.8} /></span>
                                     <div className="min-w-0 flex-1">
                                         <div className="flex items-start gap-2">
-                                            <Link href={entry.href} className="min-w-0 flex-1 break-words text-sm font-semibold text-foreground after:absolute after:inset-0 after:content-[''] focus-visible:outline-none focus-visible:rounded-lg focus-visible:ring-2 focus-visible:ring-cyan-400">
+                                            <Link href={entry.href} onClick={() => inbox.markRead(entry)} className={cn("min-w-0 flex-1 break-words text-sm text-foreground after:absolute after:inset-0 after:content-[''] focus-visible:outline-none focus-visible:rounded-lg focus-visible:ring-2 focus-visible:ring-cyan-400", unread ? "font-bold" : "font-medium")}>
+                                                {unread && <><span aria-hidden className="mr-1.5 inline-block h-2 w-2 rounded-full bg-cyan-500 align-middle" /><span className="sr-only">Unread: </span></>}
                                                 <span className="mr-1.5 inline-flex items-center rounded bg-muted/70 px-1 py-px text-[10px] font-semibold uppercase tracking-wide text-muted-foreground dark:bg-white/[0.06]">{style.verb}</span>
                                                 {entry.title}
                                             </Link>
+                                            <button type="button" onClick={() => void inbox.archive(entry)} title="Archive until something changes" aria-label={`Archive: ${entry.title}`}
+                                                className="relative z-10 -my-2 -mr-1 grid h-11 w-11 shrink-0 place-items-center rounded-lg text-muted-foreground transition hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400 md:h-8 md:w-8">
+                                                <IconArchive className="h-4 w-4" />
+                                            </button>
                                             <IconChevronRight className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground transition-transform group-hover:translate-x-0.5" />
                                         </div>
                                         <div className="mt-0.5 truncate text-xs text-muted-foreground">

@@ -35,11 +35,14 @@ function CheckboxRow({ label, checked, onChange }: { label: string; checked: boo
     );
 }
 
-function DialogActions({ onCancel, onSubmit, disabled, busy, label }: { onCancel: () => void; onSubmit: () => void; disabled: boolean; busy: boolean; label: string }) {
+function DialogActions({ onCancel, onSubmit, disabled, busy, label, reason }: { onCancel: () => void; onSubmit: () => void; disabled: boolean; busy: boolean; label: string; reason?: string | null }) {
+    // Say why the submit button is off (not while it is just saving).
+    const why = disabled && !busy ? reason : null;
     return (
-        <div className="flex justify-end gap-2">
+        <div className="flex flex-wrap items-center justify-end gap-2">
+            {why && <span className="mr-auto text-xs text-muted-foreground">{why}</span>}
             <button type="button" onClick={onCancel} className="min-h-10 rounded-lg border border-zinc-800 px-4 text-sm text-zinc-300 hover:bg-zinc-900">Cancel</button>
-            <button type="button" onClick={onSubmit} disabled={disabled} className="min-h-10 rounded-lg bg-cyan-400/15 px-4 text-sm font-semibold text-cyan-50 hover:bg-cyan-400/25 disabled:cursor-not-allowed disabled:opacity-50">{busy ? "Saving..." : label}</button>
+            <button type="button" onClick={onSubmit} disabled={disabled} title={why ?? undefined} className="min-h-10 rounded-lg bg-cyan-400/15 px-4 text-sm font-semibold text-cyan-50 hover:bg-cyan-400/25 disabled:cursor-not-allowed disabled:opacity-50">{busy ? "Saving..." : label}</button>
         </div>
     );
 }
@@ -105,7 +108,7 @@ export function ProjectFormDialog({ mode, form, setForm, customers, agents, busy
                         <CheckboxRow label="Only lead can change status" checked={form.onlyLeadCanChangeStatus} onChange={(checked) => setForm((prev) => ({ ...prev, onlyLeadCanChangeStatus: checked }))} />
                     </fieldset>
                     {error && <p role="alert" className="text-sm text-rose-300">{error}</p>}
-                    <DialogActions onCancel={onClose} onSubmit={onSubmit} disabled={busy || !String(form.goal || "").trim()} busy={busy} label="Save project" />
+                    <DialogActions onCancel={onClose} onSubmit={onSubmit} disabled={busy || !String(form.goal || "").trim()} busy={busy} label="Save project" reason="Name the project to save it." />
                 </div>
             </DialogContent>
         </Dialog>
@@ -219,7 +222,7 @@ export function TaskFormDialog({ mode, form, setForm, projects, defaultProject =
                         <CheckboxRow label="Human approval required" checked={form.humanApprovalRequired} onChange={(checked) => setForm((prev) => ({ ...prev, humanApprovalRequired: checked }))} />
                     </div>
                     {error && <p role="alert" className="text-sm text-rose-300">{error}</p>}
-                    <DialogActions onCancel={onClose} onSubmit={onSubmit} disabled={busy || (!form.projectId && !defaultProject) || !String(form.title || "").trim()} busy={busy} label={mode === "edit" ? "Save task" : "Create task"} />
+                    <DialogActions onCancel={onClose} onSubmit={onSubmit} disabled={busy || (!form.projectId && !defaultProject) || !String(form.title || "").trim()} busy={busy} label={mode === "edit" ? "Save task" : "Create task"} reason={!form.projectId && !defaultProject ? "Choose a project for the task." : "Give the task a title."} />
                 </div>
             </DialogContent>
         </Dialog>
@@ -270,7 +273,8 @@ export function BlockTaskDialog({ open, title, reason, setReason, busy, error, o
                     <textarea autoFocus value={reason} onChange={(event) => setReason(event.target.value)} placeholder="Name the person or dependency you are waiting on" rows={3} className="w-full resize-y rounded-lg border border-zinc-800 bg-zinc-900 p-3 text-sm text-zinc-100 outline-none focus:border-cyan-400" />
                 </label>
                 {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
-                <div className="flex justify-end gap-2">
+                <div className="flex flex-wrap items-center justify-end gap-2">
+                    {!busy && !reason.trim() && <span className="mr-auto text-xs text-muted-foreground">Say why it is blocked to continue.</span>}
                     <button disabled={busy} onClick={onCancel} className="min-h-11 rounded-md border px-4 text-sm">Cancel</button>
                     <button disabled={busy || !reason.trim()} onClick={onConfirm} className="min-h-11 rounded-md bg-rose-500/90 px-4 text-sm font-medium text-white hover:bg-rose-500 disabled:opacity-50">{busy ? "Blocking…" : "Block task"}</button>
                 </div>

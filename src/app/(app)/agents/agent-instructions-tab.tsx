@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useViewerPermissions } from "@/lib/use-viewer-permissions";
 import { IconFileText, IconPlus, IconTrash, IconDeviceFloppy, IconPencil } from "@tabler/icons-react";
 import { Button } from "@/components/ui/button";
+import { DisabledReason } from "@/components/ui/disabled-reason";
 import { toast } from "sonner";
 
 type DoctrineFile = {
@@ -198,16 +199,18 @@ export function AgentInstructionsTab({ agentId, initialDoctrine }: Props) {
                                 )}
                             </div>
                             <div className="flex items-center gap-1">
-                                <Button
-                                    size="sm"
-                                    variant="outline"
-                                    onClick={handleSave}
-                                    disabled={saving || !canWrite}
-                                    className="h-7 text-xs border-zinc-700 text-zinc-300 hover:bg-zinc-800"
-                                >
-                                    <IconDeviceFloppy className="h-3 w-3 mr-1" />
-                                    {saving ? "Saving..." : "Save"}
-                                </Button>
+                                <DisabledReason reason={canWrite ? null : "You have view-only access, so you can't change this agent's instructions."}>
+                                    <Button
+                                        size="sm"
+                                        variant="outline"
+                                        onClick={handleSave}
+                                        disabled={saving || !canWrite}
+                                        className="h-7 text-xs border-zinc-700 text-zinc-300 hover:bg-zinc-800"
+                                    >
+                                        <IconDeviceFloppy className="h-3 w-3 mr-1" />
+                                        {saving ? "Saving..." : "Save"}
+                                    </Button>
+                                </DisabledReason>
                                 {canWrite && !BUILT_IN_FILES.includes(editingFile) && (
                                     <Button
                                         size="sm"

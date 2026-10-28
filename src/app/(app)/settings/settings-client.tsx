@@ -6,6 +6,7 @@ import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { toast } from "sonner";
 import { PageHeader } from "@/components/page-header";
+import { SampleDataCard } from "@/components/sample-client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
@@ -257,6 +258,7 @@ export default function SettingsClient({
     return (
         <div className="mx-auto min-w-0 max-w-[1440px] @container space-y-6 animate-in fade-in duration-500">
             <PageHeader eyebrow="Workspace" title="Settings" description="Manage your profile, workspace, and connections." />
+            {isAdmin && <SampleDataCard />}
             <div className="grid min-w-0 gap-6 @min-[900px]:grid-cols-[200px_minmax(0,1fr)]">
                 <aside className="min-w-0">
                     <label className="block space-y-2 @min-[900px]:hidden"><span className="text-sm font-medium">Settings section</span><select aria-label="Settings section" value={activeTab} onChange={event => setActiveTab(event.target.value as SettingsTab)} className="min-h-11 w-full rounded-xl border border-border bg-card px-3 text-base">{sections.map(section => <optgroup key={section.label} label={section.label}>{section.items.map(item => <option key={item.id} value={item.id}>{item.label}</option>)}</optgroup>)}</select></label>

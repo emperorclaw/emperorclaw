@@ -10,6 +10,8 @@ import {
 } from "@tabler/icons-react";
 import { Button } from "@/components/ui/button";
 import { HermesImageProgress } from "@/components/hermes-image-progress";
+import { SampleClientOffer } from "@/components/sample-client";
+import { DisabledReason } from "@/components/ui/disabled-reason";
 import { Input } from "@/components/ui/input";
 import { agentRoleTemplates, getAgentTemplate } from "@/lib/agent-templates";
 import { BUSINESS_TYPES, COMFORTABLE_AGENT_COUNT, DEFAULT_AGENT_NAMES, TEAM_TEMPLATES, planTeam, suggestedTeams, teamPlanProblem, type PlannedGroup } from "@/lib/onboarding-shared";
@@ -47,7 +49,7 @@ const STEPS: { id: Step; label: string; icon: typeof IconBuilding }[] = [
 
 const STARTUP_GRACE_MS = 3 * 60 * 1000;
 
-export function SetupWizard({ initialCompanyName, initialBusinessType = "", profileComplete, hasAgents: hasAgentsNow }: { initialCompanyName: string; initialBusinessType?: string; profileComplete: boolean; hasAgents: boolean }) {
+export function SetupWizard({ initialCompanyName, initialBusinessType = "", profileComplete, hasAgents: hasAgentsNow, offerSampleClient = false }: { initialCompanyName: string; initialBusinessType?: string; profileComplete: boolean; hasAgents: boolean; offerSampleClient?: boolean }) {
     const router = useRouter();
     // The mode is fixed when the wizard opens. The launch saves agents before
     // their runtimes start, and the dashboard refreshes every few seconds: a
@@ -58,6 +60,7 @@ export function SetupWizard({ initialCompanyName, initialBusinessType = "", prof
     const [resumingLaunch] = useState(hasAgentsNow && profileComplete);
     const [step, setStep] = useState<Step>(resumingLaunch ? "launch" : "welcome");
     const [hidden, setHidden] = useState(false);
+    const [showSampleOffer] = useState(offerSampleClient);
     const [error, setError] = useState("");
 
     // Company
@@ -454,6 +457,8 @@ export function SetupWizard({ initialCompanyName, initialBusinessType = "", prof
                                         </li>
                                     ))}
                                 </ul>
+                                {/* Owners/admins of a workspace with no customers yet (decided on the server). */}
+                                {showSampleOffer && <div className="mt-6 w-full"><SampleClientOffer /></div>}
                             </section>
                         )}
 
@@ -765,10 +770,12 @@ export function SetupWizard({ initialCompanyName, initialBusinessType = "", prof
                             {step === "launch" && (
                                 <>
                                     <Button variant="ghost" onClick={() => void goToDashboard()} disabled={launching}>Go to dashboard</Button>
-                                    <Button onClick={() => void openDirectChat()} disabled={!online}>
-                                        {!online && created?.some((r) => r.success) && <IconLoader2 className="h-4 w-4 animate-spin" />}
-                                        <IconMessage className="h-4 w-4" />Open direct chat{lead ? ` with ${lead.name}` : ""}
-                                    </Button>
+                                    <DisabledReason reason={online ? null : `${lead?.name ?? "Your lead"} isn't online yet. This turns on as soon as it connects.`}>
+                                        <Button onClick={() => void openDirectChat()} disabled={!online}>
+                                            {!online && created?.some((r) => r.success) && <IconLoader2 className="h-4 w-4 animate-spin" />}
+                                            <IconMessage className="h-4 w-4" />Open direct chat{lead ? ` with ${lead.name}` : ""}
+                                        </Button>
+                                    </DisabledReason>
                                 </>
                             )}
                         </div>

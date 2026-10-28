@@ -8,6 +8,8 @@ import { IconAlertTriangle, IconLayoutColumns, IconList, IconPlus, IconSearch, I
 import { toast } from "sonner";
 import { PageHeader } from "@/components/page-header";
 import { SearchableSelect } from "@/components/ui/searchable-select";
+import { EmptyState } from "@/components/ui/empty-state";
+import { DisabledReason } from "@/components/ui/disabled-reason";
 import { migrateLegacyAgentFilter, normalizeAssigneeFilter } from "@/lib/project-board-filters";
 import {
     blockedReason,
@@ -817,7 +819,11 @@ export default function ProjectsClient({ initialTasks, projects, agents, custome
                         </button>
                     </>
                 ) : (
-                    <span className="rounded-lg border border-zinc-800 px-3 py-1.5 text-xs text-zinc-400">View only</span>
+                    <DisabledReason reason="You have view-only access. Ask an owner or admin for member access to add projects and tasks.">
+                        <button type="button" disabled className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-border px-3 text-sm font-medium text-muted-foreground disabled:opacity-60">
+                            <IconPlus className="h-4 w-4" aria-hidden="true" />Task
+                        </button>
+                    </DisabledReason>
                 )}
             />
 
@@ -920,21 +926,23 @@ export default function ProjectsClient({ initialTasks, projects, agents, custome
             )}
 
             {nothingMatches ? (
-                <div className="flex flex-1 flex-col items-center justify-center rounded-2xl border border-dashed border-zinc-800 px-6 py-16 text-center">
-                    {totalCount === 0 ? (
-                        <>
-                            <p className="text-base font-medium text-zinc-200">No tasks yet</p>
-                            <p className="mt-1 max-w-sm text-sm text-zinc-500">Tasks your agents and team create show up here, grouped by where they are.</p>
-                            {canEdit && <button type="button" onClick={() => openCreateTask()} className="mt-4 inline-flex h-10 items-center gap-1.5 rounded-lg bg-cyan-400/15 px-4 text-sm font-semibold text-cyan-50 ring-1 ring-inset ring-cyan-400/30 hover:bg-cyan-400/25"><IconPlus className="h-4 w-4" aria-hidden="true" />Create a task</button>}
-                        </>
-                    ) : (
-                        <>
-                            <p className="text-base font-medium text-zinc-200">{showAttentionOnly ? "Nothing needs attention" : "No tasks match these filters"}</p>
-                            <p className="mt-1 max-w-sm text-sm text-zinc-500">{hasBoardFilters ? `${totalCount} tasks are hidden by: ${filterParts.join(", ")}.` : "Everything is moving."}</p>
-                            {hasBoardFilters && <button type="button" onClick={clearBoardFilters} className="mt-4 inline-flex h-10 items-center rounded-lg border border-zinc-700 px-4 text-sm font-medium text-zinc-100 hover:bg-zinc-900">Clear filters</button>}
-                        </>
-                    )}
-                </div>
+                totalCount === 0 ? (
+                    <EmptyState
+                        className="flex-1 justify-center"
+                        icon={IconLayoutColumns}
+                        title="No tasks yet"
+                        description={canEdit ? "Create one, or ask an agent in chat to plan the work. Tasks land here, grouped by where they are." : "Tasks your agents and team create show up here. You have view-only access, so you can't add one."}
+                        action={canEdit && <button type="button" onClick={() => openCreateTask()} className="inline-flex h-10 items-center gap-1.5 rounded-lg bg-cyan-400/15 px-4 text-sm font-semibold text-cyan-50 ring-1 ring-inset ring-cyan-400/30 hover:bg-cyan-400/25"><IconPlus className="h-4 w-4" aria-hidden="true" />Create a task</button>}
+                    />
+                ) : (
+                    <EmptyState
+                        className="flex-1 justify-center"
+                        icon={IconSearch}
+                        title={showAttentionOnly && !hasBoardFilters ? "Nothing needs attention" : "No tasks match these filters"}
+                        description={hasBoardFilters ? `${totalCount} task${totalCount === 1 ? " is" : "s are"} hidden by: ${filterParts.join(", ")}.` : "Everything is moving."}
+                        action={hasBoardFilters && <button type="button" onClick={clearBoardFilters} className="inline-flex h-10 items-center rounded-lg border border-border px-4 text-sm font-medium text-foreground hover:bg-muted">Clear filters</button>}
+                    />
+                )
             ) : (
                 <>
                     {/* Desktop board */}

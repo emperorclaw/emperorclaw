@@ -2,7 +2,8 @@
 
 import { useMemo, useState } from "react";
 import Link from "next/link";
-import { IconArrowDown, IconArrowUp, IconDownload, IconX } from "@tabler/icons-react";
+import { IconArrowDown, IconArrowUp, IconCoin, IconDownload, IconX } from "@tabler/icons-react";
+import { EmptyState } from "@/components/ui/empty-state";
 import { cn } from "@/lib/utils";
 import {
     COST_TAB_LABELS,
@@ -176,9 +177,12 @@ export function CostsClient({
                     </table>
                 </div>
                 {sorted.length === 0 && (
-                    <div className="p-8 text-center text-sm text-muted-foreground">
-                        No agent runs in this range{restricted ? " for the clients and agents you can see" : ""}.
-                    </div>
+                    <EmptyState
+                        bordered={false}
+                        icon={IconCoin}
+                        title="No agent runs in this range"
+                        description={restricted ? "None of the clients and agents you can see ran in this range. Pick a wider range." : "No agent reported a run in this range, so nothing was spent. Pick a wider range."}
+                    />
                 )}
             </div>
             <p className="text-xs text-muted-foreground">

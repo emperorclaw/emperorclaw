@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { cn } from "@/lib/utils";
 import { ModelSearchSelect, type ModelOption, type ModelSelection } from "@/components/model-search-select";
+import { DisabledReason } from "@/components/ui/disabled-reason";
 import { toast } from "sonner";
 
 type AgentRow = {
@@ -102,16 +103,18 @@ function ModelCell({ agent, options, updateAgent, canEdit }: { agent: AgentRow; 
     };
 
     return (
-        <ModelSearchSelect
-            options={options}
-            value={agent.llmModel || ""}
-            provider={agent.llmProvider || ""}
-            onChange={select}
-            saving={saving}
-            disabled={saving || !canEdit}
-            error={error}
-            compact
-        />
+        <DisabledReason reason={canEdit ? null : "Only owners and admins can change an agent's model."} className="block">
+            <ModelSearchSelect
+                options={options}
+                value={agent.llmModel || ""}
+                provider={agent.llmProvider || ""}
+                onChange={select}
+                saving={saving}
+                disabled={saving || !canEdit}
+                error={error}
+                compact
+            />
+        </DisabledReason>
     );
 }
 

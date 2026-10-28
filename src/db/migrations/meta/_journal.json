@@ -470,6 +470,13 @@
       "when": 1793136005007,
       "tag": "0066_views",
       "breakpoints": true
+    },
+    {
+      "idx": 67,
+      "version": "7",
+      "when": 1793176798928,
+      "tag": "0067_inbox-state",
+      "breakpoints": true
     }
   ]
 }

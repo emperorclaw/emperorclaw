@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { IconArchive, IconArrowRight, IconCheck, IconClockHour4, IconRosetteDiscountCheck, IconSearch, IconX } from "@tabler/icons-react";
 import { toast } from "sonner";
 import { PageHeader } from "@/components/page-header";
+import { EmptyState } from "@/components/ui/empty-state";
 import { MarkdownRenderer } from "@/components/markdown-renderer";
 import { agentAvatarSrc } from "@/lib/avatar";
 import { approvalAgeDays, isStaleApproval } from "@/lib/approval-status";
@@ -267,10 +268,19 @@ export default function ApprovalsClient({ items }: { items: ApprovalItem[] }) {
             <section className="min-w-0 space-y-3">
                 <h2 className="text-sm font-semibold text-zinc-300">Waiting on you <span className="ml-1 rounded-full bg-zinc-800 px-2 py-0.5 text-xs tabular-nums text-zinc-400">{pending.length}</span></h2>
                 {pending.length === 0 ? (
-                    <div className="emperor-panel rounded-2xl p-10 text-center text-sm text-zinc-500">
-                        <IconRosetteDiscountCheck className="mx-auto mb-3 h-10 w-10 text-muted-foreground/50" />
-                        Nothing is waiting on you.
-                    </div>
+                    query.trim() ? (
+                        <EmptyState
+                            icon={IconSearch}
+                            title="No approvals match that search"
+                            description={<button type="button" onClick={() => setQuery("")} className="text-primary hover:underline">Clear the search</button>}
+                        />
+                    ) : (
+                        <EmptyState
+                            icon={IconRosetteDiscountCheck}
+                            title="Nothing is waiting on you"
+                            description="No agent has asked to spend, send, publish, delete or close work that needs sign-off. New requests show up here and in the Inbox."
+                        />
+                    )
                 ) : pending.map((item) => <PendingCard key={item.key} item={item} onDecide={decide} busy={busyKey === item.key} />)}
             </section>
 
@@ -278,7 +288,7 @@ export default function ApprovalsClient({ items }: { items: ApprovalItem[] }) {
                 <h2 className="mb-1 px-2 text-sm font-semibold text-zinc-300">Recently decided</h2>
                 {resolved.length > 0
                     ? <ul className="divide-y divide-zinc-800/70">{resolved.map((item) => <ResolvedRow key={item.key} item={item} />)}</ul>
-                    : <p className="px-2 py-4 text-xs text-zinc-500">Decisions you make show up here.</p>}
+                    : <EmptyState compact bordered={false} title={<span className="text-xs font-normal text-muted-foreground">{query.trim() ? "No decided approvals match that search." : "No decisions yet. Approvals you decide show up here."}</span>} />}
             </section>
             </div>
         </div>

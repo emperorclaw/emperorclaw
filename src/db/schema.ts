@@ -1125,6 +1125,25 @@ export const notificationPreferences = pgTable("notification_preferences", {
     companyUserUnique: uniqueIndex("notification_preferences_company_user_unique").on(table.companyId, table.userId),
 }));
 
+// Per-person read/archive state for the derived inbox (src/lib/inbox-state.ts).
+// Inbox items are computed, not stored: item_key is the entry id (agent:<id>,
+// approval:<id>...). Each flag holds the fingerprint of the item as it was when
+// the person acted, so an item that changes (an agent going offline again)
+// comes back unread and unarchived.
+export const inboxItemState = pgTable("inbox_item_state", {
+    id: uuid("id").primaryKey().defaultRandom(),
+    companyId: uuid("company_id").notNull().references(() => companies.id, { onDelete: 'cascade' }),
+    userId: uuid("user_id").notNull().references(() => users.id, { onDelete: 'cascade' }),
+    itemKey: text("item_key").notNull(),
+    readAt: timestamp("read_at"),
+    readFingerprint: text("read_fingerprint"),
+    archivedAt: timestamp("archived_at"),
+    archivedFingerprint: text("archived_fingerprint"),
+    updatedAt: timestamp("updated_at").defaultNow().notNull(),
+}, (table) => ({
+    companyUserItemUnique: uniqueIndex("inbox_item_state_company_user_item_unique").on(table.companyId, table.userId, table.itemKey),
+}));
+
 // One outgoing webhook per company (Slack, Discord, or generic JSON). The URL
 // is a credential (it lets anyone post to the channel), so it is stored
 // encrypted with EMPEROR_CLAW_MASTER_KEY and never sent back to the browser.

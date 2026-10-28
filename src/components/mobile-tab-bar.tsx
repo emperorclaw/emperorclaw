@@ -37,7 +37,7 @@ export function MobileTabBar() {
                 const Icon = TAB_ICONS[tab.id] ?? IconHome;
                 const count = tab.badge === "inbox" ? inbox : tab.badge === "messages" ? unreadMessages : 0;
                 const live = tab.badge === "live" && workingNow > 0;
-                const label = tab.badge === "inbox" && count > 0 ? `${tab.name}, ${count} need you`
+                const label = tab.badge === "inbox" && count > 0 ? `${tab.name}, ${count} unread need you`
                     : tab.badge === "messages" && count > 0 ? `${tab.name}, ${count} unread`
                         : live ? `${tab.name}, ${workingNow} agents working now` : undefined;
                 return (

@@ -36,6 +36,22 @@ export async function realtimeAudienceFor(companyId: string, payload: unknown): 
     return mostRestrictiveHumanAudience(threads);
 }
 
+/**
+ * An event for one signed-in person only (e.g. their inbox read/archive state
+ * changed in another tab). The audience names the person and no agent, so no
+ * agent socket and no other person receives it (lib/realtime-delivery.ts).
+ */
+export async function broadcastUserEvent(companyId: string, userId: string, payload: { type: string }) {
+    if (!companyId || !userId) return;
+    try {
+        const audience: RealtimeAudience = { agentId: null, ownerUserId: userId };
+        const subject: RealtimeSubject = { projectIds: [], customerIds: [], agentIds: [] };
+        await db.execute(sql`SELECT pg_notify('mcp_events', ${JSON.stringify({ companyId, audience, subject, payload })})`);
+    } catch (e) {
+        console.error("Failed to broadcast user event:", e);
+    }
+}
+
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 /**

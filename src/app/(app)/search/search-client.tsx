@@ -7,6 +7,7 @@ import {
     IconBook, IconBuildingStore, IconFileText, IconFolder, IconListCheck, IconLoader2, IconMessage, IconRobot, IconSearch, IconX,
 } from "@tabler/icons-react";
 import { PageHeader } from "@/components/page-header";
+import { EmptyState } from "@/components/ui/empty-state";
 import { isPlainKey, isTypingTarget } from "@/lib/keyboard-shortcuts";
 import {
     SEARCH_MIN_QUERY_LENGTH, SEARCH_PAGE_LIMIT, SEARCH_TYPE_LABELS, SEARCH_TYPES, snippetParts,
@@ -229,9 +230,14 @@ export function SearchClient({ initialQuery, initialType, initial }: { initialQu
             </div>
 
             {!searchable ? (
-                <EmptyState title="Find anything" body="Search by a few words. The last word matches as you type, and accents don't matter (cafe finds café)." />
+                <EmptyState icon={IconSearch} title="Find anything" description="Search tasks, projects, customers, notes, files, agents and messages by a few words. The last word matches as you type, and accents don't matter (cafe finds café)." />
             ) : state && ordered.length === 0 && !loading ? (
-                <EmptyState title={`Nothing matches “${trimmed}”`} body={type ? `No ${SEARCH_TYPE_LABELS[type].toLowerCase()} match. Try All, or fewer words.` : "Try fewer or different words."} />
+                <EmptyState
+                    icon={IconSearch}
+                    title={`Nothing matches “${trimmed}”`}
+                    description={type ? `No ${SEARCH_TYPE_LABELS[type].toLowerCase()} you can see contain these words. Search all types, or use fewer words.` : "Nothing you can see contains these words. Try fewer or different words."}
+                    action={type ? <button type="button" onClick={() => { setType(null); setActive(-1); }} className="inline-flex min-h-9 items-center rounded-lg border border-border px-3 text-sm text-foreground hover:bg-muted">Search all types</button> : undefined}
+                />
             ) : (
                 <div id={listId} role="listbox" aria-label="Search results" className={cn("space-y-6 transition-opacity", loading && "opacity-60")}>
                     {groups.map((group) => {
@@ -303,12 +309,3 @@ function Hint({ keys, children }: { keys: string[]; children: string }) {
     );
 }
 
-function EmptyState({ title, body }: { title: string; body: string }) {
-    return (
-        <div className="rounded-2xl border border-dashed border-border px-6 py-14 text-center">
-            <IconSearch className="mx-auto h-8 w-8 text-muted-foreground" stroke={1.6} />
-            <h2 className="mt-3 text-base font-semibold text-foreground">{title}</h2>
-            <p className="mx-auto mt-1 max-w-sm text-sm leading-6 text-muted-foreground">{body}</p>
-        </div>
-    );
-}
