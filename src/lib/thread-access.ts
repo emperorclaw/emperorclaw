@@ -1,8 +1,10 @@
-import { and, eq, sql } from "drizzle-orm";
+import { and, eq, isNull, sql } from "drizzle-orm";
 import { db } from "@/db";
-import { messageThreads, threadMessages } from "@/db/schema";
+import { agents, messageThreads, threadMessages, threadParticipants } from "@/db/schema";
 import { agentTokenMayUseThread } from "@/lib/direct-chat-mode";
 import { resolveAgentId } from "@/lib/mcp";
+import { isAgentPairThread } from "@/lib/groups";
+import { mentionedAgentIds } from "@/lib/message-routing";
 
 /**
  * MCP-side access to private direct threads (lib/direct-chat-mode.ts): a
@@ -88,4 +90,39 @@ export function privateThreadsHiddenFromToken(companyId: string, boundAgentId: s
 export async function mcpTokenMayStartRun(companyId: string, boundAgentId: string | null | undefined, input: { threadId?: string | null; triggerMessageId?: string | null }): Promise<boolean> {
     return (await mcpTokenMayUseThreadId(companyId, boundAgentId, input.threadId))
         && (await mcpTokenMayUseMessageId(companyId, boundAgentId, input.triggerMessageId));
+}
+
+/**
+ * Is this post a real reply by `agentId` to a message it was sent? Verified on
+ * the server, never taken from the caller: the message exists in the company,
+ * lives in the same thread the post goes to (`postThreadId` when the caller
+ * names one; otherwise the post goes to the message's own thread), was not
+ * sent by the agent itself, and was addressed to it: targeted at it, in its
+ * own direct thread or agent pair thread, or @mentioning it.
+ */
+export async function isVerifiedReplyBy(companyId: string, agentId: string | null, postThreadId: string | null | undefined, messageId: unknown): Promise<boolean> {
+    if (!agentId || typeof messageId !== "string" || !UUID_RE.test(messageId)) return false;
+    const [source] = await db.select({
+        threadId: threadMessages.threadId, senderType: threadMessages.senderType, senderId: threadMessages.senderId,
+        targetAgentId: threadMessages.targetAgentId, text: threadMessages.text,
+        type: messageThreads.type, directAgentId: messageThreads.directAgentId,
+        description: messageThreads.description, createdByType: messageThreads.createdByType,
+    }).from(threadMessages)
+        .innerJoin(messageThreads, eq(messageThreads.id, threadMessages.threadId))
+        .where(and(eq(threadMessages.id, messageId), eq(threadMessages.companyId, companyId))).limit(1);
+    if (!source) return false;
+    if (postThreadId && UUID_RE.test(postThreadId) && postThreadId !== source.threadId) return false;
+    if (source.senderType === "agent" && source.senderId === agentId) return false;
+    if (source.targetAgentId === agentId) return true;
+    if (source.type === "direct" && source.directAgentId === agentId) return true;
+    if (isAgentPairThread(source)) {
+        const [member] = await db.select({ id: threadParticipants.id }).from(threadParticipants).where(and(
+            eq(threadParticipants.companyId, companyId), eq(threadParticipants.threadId, source.threadId),
+            eq(threadParticipants.participantType, "agent"), eq(threadParticipants.participantId, agentId),
+        )).limit(1);
+        return Boolean(member);
+    }
+    const roster = await db.select({ id: agents.id, name: agents.name }).from(agents)
+        .where(and(eq(agents.companyId, companyId), isNull(agents.deletedAt)));
+    return mentionedAgentIds(source.text ?? "", roster).has(agentId);
 }

@@ -6,6 +6,8 @@ import { listPendingDecisions } from "@/lib/approvals";
 import { redirect } from "next/navigation";
 import ApprovalsClient, { type ApprovalItem } from "./approvals-client";
 import { splitProjectTitle } from "@/lib/project-title";
+import { isActionApproval, storedActionArgs } from "@/lib/action-policy-rules";
+import { actionLabel } from "@/lib/action-policy";
 
 export const dynamic = "force-dynamic";
 
@@ -70,13 +72,37 @@ export default async function ApprovalsPage() {
                 state: task.state,
                 assignee: task.assignedAgentId ? agentById.get(task.assignedAgentId)?.name ?? null : task.assignedMemberId ? memberById.get(task.assignedMemberId) ?? null : null,
             },
+            action: null,
             linkedTasks: linked.map((t) => ({ id: t.id, projectId: t.projectId, title: taskTitle(t) })),
             projectName: project?.goal ? splitProjectTitle(project.goal).name : null,
             customerName: customer?.name ?? null,
         };
     };
 
-    const resolved: ApprovalItem[] = allApprovals.flatMap((approval) =>
+    // An agent asking to run one action (an "ask first" permission): no task, the action and its arguments instead.
+    const toActionItem = (approval: typeof approvals.$inferSelect): ApprovalItem => {
+        const args = storedActionArgs(approval.metadataJson);
+        const requester = approval.requesterAgentId ? agentById.get(approval.requesterAgentId) : null;
+        return {
+            key: approval.id,
+            approvalId: approval.id,
+            status: approval.status as ApprovalItem["status"],
+            actionType: approval.actionType,
+            rationale: null,
+            resolutionNote: approval.resolutionNote,
+            requestedAt: approval.requestedAt.toISOString(),
+            resolvedAt: approval.resolvedAt ? approval.resolvedAt.toISOString() : null,
+            resolverName: approval.resolverUserId ? userById.get(approval.resolverUserId) ?? null : null,
+            requester: requester ? { id: requester.id, name: requester.name, avatarUrl: requester.avatarUrl } : null,
+            task: null,
+            action: { key: approval.actionType, label: actionLabel(approval.actionType), args },
+            linkedTasks: [],
+            projectName: null,
+            customerName: null,
+        };
+    };
+
+    const resolved: ApprovalItem[] = allApprovals.flatMap((approval) => isActionApproval(approval) ? [toActionItem(approval)] :
         allLinks.filter((l) => l.approvalId === approval.id)
             .map((l) => tasksById.get(l.taskId))
             .filter((t): t is typeof tasks.$inferSelect => Boolean(t))
@@ -87,7 +113,7 @@ export default async function ApprovalsPage() {
     // first live task (deciding it resolves them all), then tasks flagged
     // "requires approval" with no request yet.
     const pending: ApprovalItem[] = [
-        ...decisions.approvals.map(({ approval, tasks: linked }) => toItem(linked[0], approval, linked)),
+        ...decisions.approvals.map(({ approval, tasks: linked }) => linked[0] ? toItem(linked[0], approval, linked) : toActionItem(approval)),
         ...decisions.implicit.map((task) => toItem(task, null)),
     ];
 

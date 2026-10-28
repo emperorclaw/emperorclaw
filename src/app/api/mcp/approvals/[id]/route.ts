@@ -3,7 +3,7 @@ import { verifyMcpToken } from "@/lib/mcp";
 import { requireRole, AuthError } from "@/lib/roles";
 import { getApprovalDetail, resolveApproval } from "@/lib/approvals";
 import { mayProceed } from "@/lib/approval-status";
-import { memberMaySeeProjectId } from "@/lib/member-scope";
+import { memberMaySeeApproval, memberVisibleProjectIds } from "@/lib/member-scope";
 import { mcpMayUseProject, mcpRouteAccess } from "@/lib/mcp-access";
 
 export async function GET(
@@ -20,7 +20,11 @@ export async function GET(
     const detail = await getApprovalDetail(companyId, id);
     const scoped = await mcpRouteAccess(companyId, auth.companyToken!, req.nextUrl.searchParams.get("agentId"));
     if (scoped.response) return scoped.response;
-    if (!detail || !mcpMayUseProject(scoped.access, detail.approval.projectId)) {
+    // An ask-first action approval has no project: only the agent that asked reads it.
+    const visible = detail && (detail.approval.projectId
+        ? mcpMayUseProject(scoped.access, detail.approval.projectId)
+        : !scoped.access.agentId || detail.approval.requesterAgentId === scoped.access.agentId);
+    if (!detail || !visible) {
         return NextResponse.json({ error: "Approval not found" }, { status: 404 });
     }
 
@@ -49,7 +53,7 @@ export async function PATCH(
         const { id } = await params;
         // A restricted member decides only approvals on projects they can see.
         const current = await getApprovalDetail(ctx.companyId, id);
-        if (!current || !(await memberMaySeeProjectId(ctx.companyId, ctx.scope, current.approval.projectId))) {
+        if (!current || !memberMaySeeApproval(ctx.scope, await memberVisibleProjectIds(ctx.companyId, ctx.scope), current.approval)) {
             return NextResponse.json({ error: "Approval not found" }, { status: 404 });
         }
         const body = await _req.json();

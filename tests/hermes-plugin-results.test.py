@@ -392,5 +392,25 @@ class TaskWriteReceiptTests(unittest.TestCase):
         self.assertIn("inputJson", self._patch({"method": "PATCH", "path": "/projects/p1", "body": {}}, response)["data"]["task"])
 
 
+class CheckActionTests(unittest.TestCase):
+    def test_posts_the_action_and_details_for_this_agent(self):
+        answer = {"ok": True, "status": 200, "data": {"decision": "approval_pending", "mayProceed": False, "approvalId": "a1"}}
+        with patch.object(plugin, "_request", return_value=answer) as request, patch.object(plugin, "_agent_ref", return_value="agent-1"):
+            out = json.loads(plugin.emperor_check_action({"action": "send_email", "details": {"to": "x@example.com"}}))
+        request.assert_called_once_with("POST", "/action-policies/check", body={"action": "send_email", "details": {"to": "x@example.com"}, "agentId": "agent-1"})
+        self.assertEqual(out["data"]["decision"], "approval_pending")
+
+    def test_unknown_action_is_refused_locally(self):
+        with patch.object(plugin, "_request") as request:
+            out = json.loads(plugin.emperor_check_action({"action": "launch_rocket", "details": {}}))
+        request.assert_not_called()
+        self.assertIn("error", out)
+
+    def test_text_details_are_wrapped(self):
+        with patch.object(plugin, "_request", return_value={"ok": True, "data": {}}) as request, patch.object(plugin, "_agent_ref", return_value=""):
+            plugin.emperor_check_action({"action": "run_shell", "details": "rm -rf build"})
+        self.assertEqual(request.call_args.kwargs["body"], {"action": "run_shell", "details": {"details": "rm -rf build"}, "agentId": None})
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -136,7 +136,8 @@ export function approvalDecisionMessage(input: {
  * - a pending approval with at least one live linked task (not deleted, in a
  *   live project). One approval is one decision, however many tasks it covers.
  *   A pending approval whose tasks are all gone (or that never had any) has
- *   nothing to show or decide, so it does not count;
+ *   nothing to show or decide, so it does not count — except a standalone one
+ *   (an agent asking to run one action), which is about the action itself;
  * - an "implicit" decision: an open task flagged human-approval-required that
  *   no approval request covers yet (the caller only passes tasks never linked
  *   to any approval; tasks covered by a counted approval are dropped here).
@@ -152,6 +153,8 @@ export function selectPendingDecisions<A extends { id: string }, T extends { id:
     liveLinkedTasks: T[];
     /** Live open tasks that require approval and have no approval request. */
     approvalRequiredTasks: T[];
+    /** Approvals that stand on their own without a task (an agent's ask-first action permission). */
+    standalone?: (approval: A) => boolean;
 }): { approvals: { approval: A; tasks: T[] }[]; implicit: T[]; count: number } {
     const liveById = new Map(input.liveLinkedTasks.map((t) => [t.id, t]));
     const taskIdsByApproval = new Map<string, string[]>();
@@ -168,7 +171,7 @@ export function selectPendingDecisions<A extends { id: string }, T extends { id:
         if (seen.has(approval.id)) continue;
         seen.add(approval.id);
         const tasks = (taskIdsByApproval.get(approval.id) ?? []).flatMap((id) => liveById.get(id) ?? []);
-        if (tasks.length === 0) continue;
+        if (tasks.length === 0 && !input.standalone?.(approval)) continue;
         for (const t of tasks) covered.add(t.id);
         approvals.push({ approval, tasks });
     }

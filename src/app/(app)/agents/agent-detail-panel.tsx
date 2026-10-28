@@ -25,6 +25,7 @@ import { AgentInstructionsTab } from "./agent-instructions-tab";
 import { AgentMemoryTab } from "./agent-memory-tab";
 import { AvatarPicker } from "@/components/avatar-picker";
 import { AgentScopeTab } from "./agent-scope-tab";
+import { AgentActionsTab } from "./agent-actions-tab";
 import { AgentRunsTab } from "./agent-runs-tab";
 import { DeleteAgentDialog } from "./delete-agent-dialog";
 import { getProvider, buildAgentSetupPrompt } from "@/lib/agent-providers";
@@ -127,7 +128,7 @@ export function AgentDetailPanel({ agentId, agentName, runtime = null }: {
 }) {
     // `?tab=scope` (a failure's "Open agent scope" fix) opens that tab.
     const requestedTab = useSearchParams().get("tab");
-    const initialTab = requestedTab && ["memory", "instructions", "scope", "chat", "threads", "runs"].includes(requestedTab) ? requestedTab : "memory";
+    const initialTab = requestedTab && ["memory", "instructions", "scope", "actions", "chat", "threads", "runs"].includes(requestedTab) ? requestedTab : "memory";
     const [data, setData] = useState<AgentDetailData | null>(null);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
@@ -698,12 +699,13 @@ export function AgentDetailPanel({ agentId, agentName, runtime = null }: {
 
             {/* Tabs */}
             <Tabs key={initialTab} defaultValue={initialTab} className="p-4 sm:p-5">
-                {/* Six tabs outgrow a phone: the strip scrolls sideways instead of overflowing the panel. */}
+                {/* Seven tabs outgrow a phone: the strip scrolls sideways instead of overflowing the panel. */}
                 <div className="-mx-1 max-w-full overflow-x-auto px-1 pb-1">
                     <TabsList className="w-max bg-zinc-900 border border-zinc-800">
                         <TabsTrigger value="memory">Memory</TabsTrigger>
                         <TabsTrigger value="instructions">Instructions</TabsTrigger>
                         <TabsTrigger value="scope">Scope</TabsTrigger>
+                        <TabsTrigger value="actions">Actions</TabsTrigger>
                         <TabsTrigger value="chat">Direct Chat</TabsTrigger>
                         <TabsTrigger value="threads">Threads</TabsTrigger>
                         <TabsTrigger value="runs">Runs</TabsTrigger>
@@ -727,6 +729,10 @@ export function AgentDetailPanel({ agentId, agentName, runtime = null }: {
                         agentName={agent.name}
                         initialScope={agent.scopeJson}
                     />
+                </TabsContent>
+
+                <TabsContent value="actions" className="mt-4">
+                    <AgentActionsTab agentId={agent.id} agentName={agent.name} />
                 </TabsContent>
 
                 <TabsContent value="chat" className="mt-4">

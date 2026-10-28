@@ -106,6 +106,8 @@ export interface AttentionEntry {
     /** A mention/decision notification that "Mark read" clears. */
     notificationId?: string | null;
     runId?: string | null;
+    /** An ask-first action: every argument it would run with (redacted), shown in full before deciding. */
+    actionArgs?: { field: string; value: string }[];
     /** Rationale or failure detail shown under the title on the inbox. */
     detail?: string | null;
     /** A failure's one plain cause and its one fix (src/lib/failure-cause.ts); the fix is already filtered for the viewer's role. */

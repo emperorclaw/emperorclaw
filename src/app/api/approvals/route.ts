@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createApprovalRequest, listApprovalsForCompany } from "@/lib/approvals";
 import { companyRouteAccess } from "@/lib/company-access";
-import { memberMaySeeProjectId, memberVisibleProjectIds } from "@/lib/member-scope";
+import { memberMaySeeApproval, memberMaySeeProjectId, memberVisibleProjectIds } from "@/lib/member-scope";
 
 interface CreateApprovalRequestBody {
     projectId: string;
@@ -22,7 +22,7 @@ export async function GET(req: NextRequest) {
     const approvals = await listApprovalsForCompany(companyId);
     const visibleProjects = await memberVisibleProjectIds(companyId, access.ctx.scope);
     const filtered = approvals.filter((approval) => {
-        if (visibleProjects && !visibleProjects.has(approval.projectId)) return false;
+        if (!memberMaySeeApproval(access.ctx.scope, visibleProjects, approval)) return false;
         if (projectId && approval.projectId !== projectId) return false;
         if (status && approval.status !== status) return false;
         return true;

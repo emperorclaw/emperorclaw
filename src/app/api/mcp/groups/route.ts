@@ -28,5 +28,5 @@ export async function POST(req: NextRequest) {
         const group = await createGroup(companyId, actor, body);
         announceGroupChange(companyId, group.id, "created");
         return { group };
-    }, 201);
+    }, 201, body);
 }

@@ -12,7 +12,7 @@ import { AGENT_PAIR_DESCRIPTION, listGroups } from "@/lib/groups";
 import { attentionAccessFromGuard, buildAttention } from "@/lib/attention";
 import { requireRole } from "@/lib/roles";
 import { canAdmin, canWrite } from "@/lib/role-matrix";
-import { getScopedAgentIds, memberAgentCondition, memberVisibleProjectIds } from "@/lib/member-scope";
+import { getScopedAgentIds, memberAgentCondition, memberMaySeeApproval, memberVisibleProjectIds } from "@/lib/member-scope";
 import { SetupWizard } from "@/components/setup-wizard";
 import { BUSINESS_TYPES } from "@/lib/onboarding-shared";
 import { settleOnboardingForEstablishedTeam } from "@/lib/onboarding";
@@ -117,9 +117,10 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
         db.selectDistinct({ agentId: agentRuns.agentId }).from(agentRuns)
             .where(and(eq(agentRuns.companyId, companyId), eq(agentRuns.status, "running"), gte(agentRuns.startedAt, new Date(now.getTime() - OFFLINE_AFTER_MS)), isNotNull(agentRuns.agentId), agentScope(agentRuns.agentId))),
     ]);
-    const pendingApprovals = decisions.approvals.filter(({ approval }) => !visibleProjects || visibleProjects.has(approval.projectId)).map(({ approval, tasks: linked }) => ({
+    const pendingApprovals = decisions.approvals.filter(({ approval }) => memberMaySeeApproval(memberScope, visibleProjects, approval)).map(({ approval, tasks: linked }) => ({
         id: approval.id, requestedAt: approval.requestedAt, actionType: approval.actionType, rationale: approval.rationale, projectId: approval.projectId,
-        requesterAgentId: approval.requesterAgentId, taskInput: linked[0].inputJson as unknown, taskType: linked[0].taskType as string | null,
+        // An ask-first action has no task.
+        requesterAgentId: approval.requesterAgentId, taskInput: (linked[0]?.inputJson ?? null) as unknown, taskType: (linked[0]?.taskType ?? null) as string | null,
     }));
     const agentsWithOpenRun = new Set(openRuns.flatMap((r) => r.agentId ? [r.agentId] : []));
 

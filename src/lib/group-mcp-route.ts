@@ -16,8 +16,10 @@ export async function groupMcpRoute<T>(
     requestedAgentId: unknown,
     handler: (ctx: { companyId: string; actor: GroupActor; requireMember: (groupId: string) => Promise<void> }) => Promise<T>,
     status = 200,
+    /** The body, when the route already read it (for the action-permission gate). */
+    body?: unknown,
 ) {
-    const auth = await verifyMcpToken(req);
+    const auth = await verifyMcpToken(req, { parsedBody: body });
     if (auth.error) return NextResponse.json({ error: auth.error }, { status: auth.status });
     const companyId = auth.companyToken!.companyId;
     try {

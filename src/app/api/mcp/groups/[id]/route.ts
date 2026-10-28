@@ -23,7 +23,7 @@ export async function PATCH(req: NextRequest, { params }: Params) {
         const group = await updateGroup(companyId, id, body);
         announceGroupChange(companyId, id, "updated");
         return { group };
-    });
+    }, 200, body);
 }
 
 export async function DELETE(req: NextRequest, { params }: Params) {
@@ -34,5 +34,5 @@ export async function DELETE(req: NextRequest, { params }: Params) {
         await archiveGroup(companyId, id);
         announceGroupChange(companyId, id, "archived");
         return { ok: true };
-    });
+    }, 200, body);
 }

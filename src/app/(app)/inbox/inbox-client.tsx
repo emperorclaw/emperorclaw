@@ -473,6 +473,22 @@ function InboxRow({ entry, now, selected, unread, archivedView, onSelect, onArch
                                 <p className={cn("mt-1 line-clamp-2 text-sm", group === "blocked" ? "text-rose-600/90 dark:text-rose-300/90" : "text-muted-foreground")}>{entry.reason}</p>
                             )}
                             {entry.detail && <p className="mt-1 line-clamp-2 text-sm text-muted-foreground">{entry.detail}</p>}
+                            {entry.actionArgs && (
+                                // Every argument in full: approving here lets exactly this call run once.
+                                <details className="mt-1.5 text-sm" open={entry.actionArgs.length <= 4}>
+                                    <summary className="cursor-pointer select-none text-xs text-muted-foreground hover:text-foreground">
+                                        {entry.actionArgs.length === 0 ? "No details given" : `Details (${entry.actionArgs.length})`}
+                                    </summary>
+                                    <dl className="mt-1 grid grid-cols-[minmax(0,auto)_minmax(0,1fr)] gap-x-3 gap-y-0.5 rounded-lg border border-border/70 bg-muted/30 px-2.5 py-1.5">
+                                        {entry.actionArgs.map((arg, i) => (
+                                            <div key={`${arg.field}-${i}`} className="contents">
+                                                <dt className="truncate font-mono text-xs leading-5 text-muted-foreground">{arg.field}</dt>
+                                                <dd className="min-w-0 whitespace-pre-wrap break-words text-foreground">{arg.value}</dd>
+                                            </div>
+                                        ))}
+                                    </dl>
+                                </details>
+                            )}
                             <div className="mt-2 flex flex-wrap items-center gap-x-3.5 gap-y-1 text-xs text-muted-foreground">
                                 {entry.memberName && <Meta icon={entry.memberKey?.startsWith("human:") ? IconUser : IconRobot}>{entry.memberName}</Meta>}
                                 {entry.customerName && <Meta icon={IconBuildingStore} title="Customer">{entry.customerName}</Meta>}

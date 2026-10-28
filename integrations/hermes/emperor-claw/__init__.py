@@ -810,6 +810,22 @@ def emperor_request_approval(args: Dict[str, Any], **_: Any) -> str:
     return _json(_request("POST", "/approvals", body=body))
 
 
+CHECK_ACTIONS = ("send_email", "post_social", "spend_money", "delete_data", "deploy", "browse_web", "run_shell")
+
+
+def emperor_check_action(args: Dict[str, Any], **_: Any) -> str:
+    action = str(args.get("action") or "").strip()
+    if action not in CHECK_ACTIONS:
+        return _json({"error": f"action must be one of: {', '.join(CHECK_ACTIONS)}"})
+    details = args.get("details")
+    if details is None:
+        details = {}
+    if not isinstance(details, dict):
+        details = {"details": str(details)}
+    body = {"action": action, "details": details, "agentId": _agent_ref() or None}
+    return _json(_request("POST", "/action-policies/check", body=body))
+
+
 def emperor_remember(args: Dict[str, Any], **_: Any) -> str:
     content = str(args.get("content") or "").strip()
     if not content:
@@ -1606,6 +1622,22 @@ def register(ctx: Any) -> None:
         check_fn=_available,
         requires_env=requires,
         description="Request Emperor approval",
+    )
+    ctx.register_tool(
+        "emperor_check_action",
+        TOOLSET,
+        _schema(
+            "Call this BEFORE you send email, post on social media, spend money, delete data, deploy, browse the web, or run shell commands with your own tools. Pass exactly what you will do in details (recipients and subject, amount and vendor, target, command...). mayProceed true = go ahead once, exactly as described. decision approval_pending = a person must approve first; do nothing yet; when told it is approved, call again with the same details and act only if mayProceed is true. off or refused = do NOT do it and don't work around it.",
+            {
+                "action": {"type": "string", "enum": list(CHECK_ACTIONS)},
+                "details": {"type": "object", "description": "What you are about to do. Use the same details when you check again after approval."},
+            },
+            ["action", "details"],
+        ),
+        emperor_check_action,
+        check_fn=_available,
+        requires_env=requires,
+        description="Check an action permission",
     )
     ctx.register_tool(
         "emperor_remember",

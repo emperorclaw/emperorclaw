@@ -137,6 +137,16 @@ export async function memberMaySeeProjectId(companyId: string, scope: MemberScop
     return Boolean(visible?.has(projectId));
 }
 
+/**
+ * An approval is visible through its project; an agent's ask-first action
+ * (no project) through the agent that asked.
+ */
+export function memberMaySeeApproval(scope: MemberScope | null, visibleProjects: Set<string> | null, approval: { projectId: string | null; requesterAgentId: string | null }): boolean {
+    if (!scope) return true;
+    if (approval.projectId) return Boolean(visibleProjects?.has(approval.projectId));
+    return memberMaySeeAgent(scope, approval.requesterAgentId);
+}
+
 /** True when the task's project is visible to the member. */
 export async function memberMaySeeTaskId(companyId: string, scope: MemberScope | null, taskId: string | null | undefined): Promise<boolean> {
     if (!scope) return true;
@@ -235,7 +245,7 @@ export async function filterNotificationsForMember<T extends { sourceType: strin
     const messageIds = ids("message");
     const [taskRows, approvalRows, incidentRows, messageRows] = await Promise.all([
         taskIds.length ? db.select({ id: tasks.id, projectId: tasks.projectId }).from(tasks).where(and(eq(tasks.companyId, companyId), inArray(tasks.id, taskIds))) : Promise.resolve([]),
-        approvalIds.length ? db.select({ id: approvals.id, projectId: approvals.projectId }).from(approvals).where(and(eq(approvals.companyId, companyId), inArray(approvals.id, approvalIds))) : Promise.resolve([]),
+        approvalIds.length ? db.select({ id: approvals.id, projectId: approvals.projectId, requesterAgentId: approvals.requesterAgentId }).from(approvals).where(and(eq(approvals.companyId, companyId), inArray(approvals.id, approvalIds))) : Promise.resolve([]),
         incidentIds.length ? db.select({ id: incidents.id, projectId: incidents.projectId }).from(incidents).where(and(eq(incidents.companyId, companyId), inArray(incidents.id, incidentIds))) : Promise.resolve([]),
         messageIds.length
             ? db.select({ id: threadMessages.id, senderType: threadMessages.senderType, senderId: threadMessages.senderId, targetAgentId: threadMessages.targetAgentId, directAgentId: messageThreads.directAgentId })
@@ -243,15 +253,19 @@ export async function filterNotificationsForMember<T extends { sourceType: strin
                 .where(and(eq(threadMessages.companyId, companyId), inArray(threadMessages.id, messageIds)))
             : Promise.resolve([]),
     ]);
-    const projectOf = new Map<string, string>([...taskRows, ...approvalRows, ...incidentRows].map((r) => [r.id, r.projectId]));
+    const projectOf = new Map<string, string | null>([...taskRows, ...approvalRows, ...incidentRows].map((r) => [r.id, r.projectId]));
+    const approvalById = new Map(approvalRows.map((r) => [r.id, r]));
     const messageAgents = new Map(messageRows.map((m) => [m.id,
         [m.directAgentId, m.targetAgentId, m.senderType === "agent" ? m.senderId : null].filter((id): id is string => Boolean(id))]));
     return rows.filter((row) => {
         if (!row.sourceType || !row.sourceId) return true;
         switch (row.sourceType) {
             case "agent": return memberMaySeeAgent(scope, row.sourceId);
+            case "approval": {
+                const approval = approvalById.get(row.sourceId);
+                return approval ? memberMaySeeApproval(scope, visibleProjects, approval) : false;
+            }
             case "task":
-            case "approval":
             case "incident": return visibleProjects.has(projectOf.get(row.sourceId) ?? "");
             case "message": return (messageAgents.get(row.sourceId) ?? []).every((id) => memberMaySeeAgent(scope, id));
             default: return true;

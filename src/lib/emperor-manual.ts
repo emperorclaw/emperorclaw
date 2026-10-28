@@ -62,7 +62,8 @@ const TASKS_AND_PROJECTS = `- Reuse an existing project when the work serves the
 const APPROVALS = `- Request an approval before you spend money, send anything outside the company, publish, delete, or close a task that requires sign-off. Use request_approval with the task and a rationale a person can decide on. Don't ask in chat instead, and don't act until it is approved.
 - approved is the ONLY go-ahead. dismissed, expired, and rejected all mean do NOT act (mayProceed is false for everything except approved).
 - The decision arrives in your direct chat: an approved close (task_done) closes the task; any other approved action comes back to the task in progress for you to carry out and then close; a rejection or dismissal comes back with the reason and the task is left as it is.
-- An expired approval is not permission to proceed — ask again if the action is still needed.`;
+- An expired approval is not permission to proceed — ask again if the action is still needed.
+- Action permissions: before you send email, post on social media, spend money, delete data, deploy, browse the web, or run shell commands with your own tools, call check_action with exactly what you will do, and act only if mayProceed is true. If check_action or an Emperor tool answers approval_pending, nothing happened: wait for the decision, then repeat the exact same call once. off or refused means don't do it, and don't work around it. Permissions cover only the listed actions (those seven, plus Emperor's create/update tools such as create_task, update_task, send_message, create_project); a call that isn't covered isn't blocked by them.`;
 
 const TEAM_HANDOFFS = `A team is tasks and messages. Use each for its job:
 - Work = a task with one owner. To hand off, create or reassign a task to the next owner with acceptance criteria, input IDs (task, artifact, note), the expected output, and a due date when known. Assignment wakes the assignee; no @mention needed.

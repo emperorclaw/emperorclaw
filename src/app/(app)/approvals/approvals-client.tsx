@@ -23,7 +23,10 @@ export type ApprovalItem = {
     resolvedAt: string | null;
     resolverName: string | null;
     requester: { id: string; name: string; avatarUrl: string | null } | null;
-    task: { id: string; projectId: string; title: string; description: string | null; state: string; assignee: string | null };
+    /** Null for an agent asking to run one action (an "ask first" permission), which has `action` instead. */
+    task: { id: string; projectId: string; title: string; description: string | null; state: string; assignee: string | null } | null;
+    /** The action and its key arguments (already redacted) for an "ask first" permission. */
+    action: { key: string; label: string; args: { field: string; value: string }[] } | null;
     /** Every live task this approval covers (deciding it resolves them all); the card's task is the first. */
     linkedTasks: { id: string; projectId: string; title: string }[];
     projectName: string | null;
@@ -46,8 +49,23 @@ function ago(iso: string): string {
     return `${Math.round(minutes / 1440)}d ago`;
 }
 
-function taskHref(item: ApprovalItem) {
-    return `/projects?project=${item.task.projectId}&task=${item.task.id}`;
+function taskHref(task: NonNullable<ApprovalItem["task"]>) {
+    return `/projects?project=${task.projectId}&task=${task.id}`;
+}
+
+/** The arguments an agent wants to run an action with, as a short field / value list. */
+function ActionArgs({ args }: { args: { field: string; value: string }[] }) {
+    if (args.length === 0) return <span className="text-muted-foreground">No details given.</span>;
+    return (
+        <dl className="grid grid-cols-[minmax(0,auto)_minmax(0,1fr)] gap-x-3 gap-y-1">
+            {args.map((arg, i) => (
+                <div key={`${arg.field}-${i}`} className="contents">
+                    <dt className="truncate font-mono text-xs leading-5 text-muted-foreground">{arg.field}</dt>
+                    <dd className="min-w-0 whitespace-pre-wrap break-words text-sm text-foreground">{arg.value}</dd>
+                </div>
+            ))}
+        </dl>
+    );
 }
 
 function Avatar({ requester }: { requester: ApprovalItem["requester"] }) {
@@ -63,7 +81,7 @@ function PendingCard({ item, onDecide, busy }: { item: ApprovalItem; onDecide: (
     const [rejecting, setRejecting] = useState(false);
     const [confirming, setConfirming] = useState(false);
     const [confirmDays, setConfirmDays] = useState(0);
-    const action = ACTION_LABEL[item.actionType] ?? item.actionType.replace(/_/g, " ");
+    const action = item.action?.label ?? ACTION_LABEL[item.actionType] ?? item.actionType.replace(/_/g, " ");
     const requestedAtMs = new Date(item.requestedAt).getTime();
     const requester = item.requester?.name ?? "the agent";
     // The clock is read in the click handler, never during render (React purity).
@@ -87,10 +105,14 @@ function PendingCard({ item, onDecide, busy }: { item: ApprovalItem; onDecide: (
                         <span className="rounded-md border border-amber-500/25 bg-amber-500/10 px-1.5 py-0.5 font-medium text-amber-200">{action}</span>
                         <span className="inline-flex items-center gap-1"><IconClockHour4 className="h-3 w-3" />{ago(item.requestedAt)}</span>
                     </div>
-                    <Link href={taskHref(item)} className="group mt-1.5 inline-flex max-w-full items-center gap-1.5 text-base font-semibold text-zinc-100 hover:text-zinc-50">
-                        <span className="truncate">{item.task.title}</span>
-                        <IconArrowRight className="h-4 w-4 shrink-0 text-zinc-600 transition-transform group-hover:translate-x-0.5 group-hover:text-zinc-300" />
-                    </Link>
+                    {item.task ? (
+                        <Link href={taskHref(item.task)} className="group mt-1.5 inline-flex max-w-full items-center gap-1.5 text-base font-semibold text-zinc-100 hover:text-zinc-50">
+                            <span className="truncate">{item.task.title}</span>
+                            <IconArrowRight className="h-4 w-4 shrink-0 text-zinc-600 transition-transform group-hover:translate-x-0.5 group-hover:text-zinc-300" />
+                        </Link>
+                    ) : (
+                        <p className="mt-1.5 text-base font-semibold text-foreground">{action}, once</p>
+                    )}
                     {item.linkedTasks.length > 1 && (
                         <div className="mt-1.5 text-xs text-zinc-400">
                             <p className="font-medium text-amber-200">Covers {item.linkedTasks.length} tasks</p>
@@ -103,18 +125,30 @@ function PendingCard({ item, onDecide, busy }: { item: ApprovalItem; onDecide: (
                             </ul>
                         </div>
                     )}
-                    <div className="mt-0.5 flex flex-wrap gap-x-3 text-xs text-zinc-500">
-                        {item.projectName && <span>{item.projectName}</span>}
-                        {item.customerName && <span>· {item.customerName}</span>}
-                        <span>· {item.task.assignee ? `Owner: ${item.task.assignee}` : "No owner"}</span>
-                        <span>· {item.task.state.replace(/_/g, " ")}</span>
-                    </div>
-                    <div className="mt-3 rounded-xl border border-zinc-800 bg-zinc-950/50 px-3.5 py-2.5 text-sm text-zinc-300">
-                        {item.rationale
-                            ? <MarkdownRenderer content={item.rationale} className="[&_.markdown-content>div:last-child]:mb-0" />
-                            : <span className="text-zinc-500">{item.approvalId ? "No reason given." : "This task requires approval before it can be closed; no request has been made yet."}</span>}
-                    </div>
-                    {item.task.description && (
+                    {item.task ? (
+                        <div className="mt-0.5 flex flex-wrap gap-x-3 text-xs text-zinc-500">
+                            {item.projectName && <span>{item.projectName}</span>}
+                            {item.customerName && <span>· {item.customerName}</span>}
+                            <span>· {item.task.assignee ? `Owner: ${item.task.assignee}` : "No owner"}</span>
+                            <span>· {item.task.state.replace(/_/g, " ")}</span>
+                        </div>
+                    ) : (
+                        <p className="mt-0.5 text-xs text-muted-foreground">
+                            This agent asks first before this action. Approving lets this exact call run once, within 24 hours.
+                        </p>
+                    )}
+                    {item.action ? (
+                        <div className="mt-3 rounded-xl border border-border bg-muted/40 px-3.5 py-2.5">
+                            <ActionArgs args={item.action.args} />
+                        </div>
+                    ) : (
+                        <div className="mt-3 rounded-xl border border-zinc-800 bg-zinc-950/50 px-3.5 py-2.5 text-sm text-zinc-300">
+                            {item.rationale
+                                ? <MarkdownRenderer content={item.rationale} className="[&_.markdown-content>div:last-child]:mb-0" />
+                                : <span className="text-zinc-500">{item.approvalId ? "No reason given." : "This task requires approval before it can be closed; no request has been made yet."}</span>}
+                        </div>
+                    )}
+                    {item.task?.description && (
                         <details className="mt-2 text-xs text-zinc-500">
                             <summary className="cursor-pointer select-none hover:text-zinc-300">Task description</summary>
                             <p className="mt-1.5 whitespace-pre-wrap leading-relaxed">{item.task.description}</p>
@@ -174,15 +208,17 @@ function ResolvedRow({ item }: { item: ApprovalItem }) {
     const approved = item.status === "approved";
     const dismissed = item.status === "dismissed";
     const label = approved ? "Approved" : dismissed ? "Dismissed" : item.status === "expired" ? "Expired" : "Rejected";
+    const title = item.task?.title ?? `${item.requester?.name ?? "An agent"}: ${item.action?.label ?? item.actionType.replace(/_/g, " ")}`;
+    const href = item.task ? taskHref(item.task) : item.requester ? `/agents?agent=${item.requester.id}` : "/approvals";
     return (
         <li>
-            <Link href={taskHref(item)} className="flex items-center gap-3 rounded-lg px-2 py-2.5 transition-colors hover:bg-zinc-900">
+            <Link href={href} className="flex items-center gap-3 rounded-lg px-2 py-2.5 transition-colors hover:bg-zinc-900">
                 <span className={cn("grid h-6 w-6 shrink-0 place-items-center rounded-full",
                     approved ? "bg-emerald-500/15 text-emerald-300" : dismissed || item.status === "expired" ? "bg-zinc-500/15 text-zinc-300" : "bg-rose-500/15 text-rose-300")}>
                     {approved ? <IconCheck className="h-3.5 w-3.5" /> : dismissed || item.status === "expired" ? <IconArchive className="h-3.5 w-3.5" /> : <IconX className="h-3.5 w-3.5" />}
                 </span>
                 <span className="min-w-0 flex-1">
-                    <span className="block truncate text-sm text-zinc-200">{item.task.title}</span>
+                    <span className="block truncate text-sm text-zinc-200">{title}</span>
                     <span className="block truncate text-xs text-zinc-500">
                         {label}{item.resolverName ? ` by ${item.resolverName}` : ""}{item.resolutionNote ? ` — "${item.resolutionNote}"` : ""}
                     </span>
@@ -202,7 +238,8 @@ export default function ApprovalsClient({ items }: { items: ApprovalItem[] }) {
     const filtered = useMemo(() => {
         const q = query.trim().toLowerCase();
         if (!q) return items;
-        return items.filter((i) => [i.task.title, ...i.linkedTasks.map((t) => t.title), i.task.description, i.rationale, i.projectName, i.customerName, i.requester?.name, i.task.assignee]
+        return items.filter((i) => [i.task?.title, ...i.linkedTasks.map((t) => t.title), i.task?.description, i.rationale, i.projectName, i.customerName, i.requester?.name, i.task?.assignee,
+            i.action?.label, ...(i.action?.args.map((a) => `${a.field} ${a.value}`) ?? [])]
             .filter(Boolean).join(" ").toLowerCase().includes(q));
     }, [items, query]);
     const pending = filtered.filter((i) => i.status === "pending").sort((a, b) => a.requestedAt.localeCompare(b.requestedAt));
@@ -212,7 +249,7 @@ export default function ApprovalsClient({ items }: { items: ApprovalItem[] }) {
         setBusyKey(item.key);
         try {
             let approvalId = item.approvalId;
-            if (!approvalId) {
+            if (!approvalId && item.task) {
                 const created = await fetch("/api/approvals", {
                     method: "POST",
                     headers: { "Content-Type": "application/json" },

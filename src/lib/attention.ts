@@ -17,6 +17,8 @@ import {
 import type { SessionWithUserId } from "@/lib/auth";
 import { computeCompanyHealth, OFFLINE_AFTER_MS, type CompanyHealth } from "@/lib/agent-health";
 import { listPendingDecisions } from "@/lib/approvals";
+import { isActionApproval, storedActionArgs } from "@/lib/action-policy-rules";
+import { actionLabel } from "@/lib/action-policy";
 import { directThreadLink, userMayUseThread } from "@/lib/direct-chat-mode";
 import { isAgentPairThread } from "@/lib/groups";
 import { getScopedAgentIds, getScopedCustomerIds } from "@/lib/member-scope";
@@ -343,13 +345,17 @@ export async function buildAttention(companyId: string, access: AttentionAccess,
         const what = first ? taskTitle(first.inputJson, first.taskType) : approval.rationale ? excerpt(approval.rationale, 48) : humanize(approval.actionType);
         const key = approval.requesterAgentId ? `agent:${approval.requesterAgentId}` : null;
         for (const t of linked) coveredTasks.add(t.id);
+        // An ask-first action permission: the action is the title, its key arguments the detail.
+        const askFirst = isActionApproval(approval);
         entries.push({
             id: `approval:${approval.id}`, kind: "approval",
-            title: approval.actionType === "task_done" ? `Approve ${excerpt(what, 52)}` : `Approve ${humanize(approval.actionType)}: ${excerpt(what, 40)}`,
+            title: askFirst ? `Allow once: ${actionLabel(approval.actionType)}`
+                : approval.actionType === "task_done" ? `Approve ${excerpt(what, 52)}` : `Approve ${humanize(approval.actionType)}: ${excerpt(what, 40)}`,
             memberKey: key, memberName: memberName(key), at: approval.requestedAt.toISOString(),
             actionLabel: approval.actionType === "task_done" ? "Review work" : "Review request", href: "/approvals",
             approvalId: approval.id, taskId: first?.id ?? null, taskCount: linked.length,
-            detail: approval.rationale ? excerpt(approval.rationale, 180) : null,
+            detail: askFirst ? null : approval.rationale ? excerpt(approval.rationale, 180) : null,
+            ...(askFirst ? { actionArgs: storedActionArgs(approval.metadataJson) } : {}),
             ...context(approval.projectId),
         });
     }

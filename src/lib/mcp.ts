@@ -53,6 +53,8 @@ type VerifyMcpTokenOptions = {
     allowRequestsScope?: boolean;
     // Only read-only feeds (GET /api/mcp/live) accept "read_only"-scoped tokens.
     allowReadOnlyScope?: boolean;
+    // The request body, for a route that already read it (the action-permission gate needs it).
+    parsedBody?: unknown;
 };
 
 function getPositiveIntegerEnv(name: string, fallback: number): number {
@@ -263,6 +265,12 @@ export async function verifyMcpToken(req: NextRequest, options: VerifyMcpTokenOp
         if (!companyLimit.allowed) {
             return { error: "Rate limit exceeded", status: 429 };
         }
+        // Agent action permissions (off / ask first): the one gate every
+        // agent REST call passes, so no route can skip it. Loaded lazily to
+        // keep this module free of the approvals import chain.
+        const { enforceRestActionPolicy } = await import("./action-policy-server");
+        const refused = await enforceRestActionPolicy(req, result.companyToken, options.parsedBody);
+        if (refused) return refused;
     }
 
     return result;

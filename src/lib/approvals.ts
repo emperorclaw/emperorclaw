@@ -1,5 +1,7 @@
 import { randomUUID } from "crypto";
-import { and, desc, eq, inArray, isNull, lt, ne, notExists, sql } from "drizzle-orm";
+import { and, desc, eq, inArray, isNull, lt, ne, notExists, or, sql } from "drizzle-orm";
+import { ACTION_APPROVAL_KIND, isActionApproval } from "./action-policy-rules";
+import { actionLabel } from "./action-policy";
 import { db } from "@/db";
 import { approvalTaskLinks, approvals, projects, taskEvents, tasks } from "@/db/schema";
 import { broadcastMcpEvent } from "./pubsub";
@@ -190,7 +192,8 @@ export async function expireStaleApprovals(now = new Date()): Promise<number> {
   const cutoff = new Date(now.getTime() - EXTERNAL_APPROVAL_TTL_MS);
   const candidates = await db.select().from(approvals).where(and(
     eq(approvals.status, "pending"),
-    inArray(approvals.actionType, [...EXTERNAL_ACTION_TYPES]),
+    // An agent's ask-first action is as time-sensitive as an external action.
+    or(inArray(approvals.actionType, [...EXTERNAL_ACTION_TYPES]), sql`${approvals.metadataJson}->>'kind' = ${ACTION_APPROVAL_KIND}`),
     lt(approvals.requestedAt, cutoff),
   )).orderBy(approvals.requestedAt).limit(EXPIRE_BATCH_SIZE);
 
@@ -268,6 +271,7 @@ export async function listPendingDecisions(companyId: string) {
     links,
     liveLinkedTasks: liveLinked.map((r) => r.task),
     approvalRequiredTasks: approvalRequired.map((r) => r.task),
+    standalone: isActionApproval,
   });
 }
 
@@ -276,7 +280,8 @@ export async function listApprovalsForCompany(companyId: string) {
     approval: approvals,
     projectGoal: projects.goal,
   }).from(approvals)
-    .innerJoin(projects, eq(projects.id, approvals.projectId))
+    // Action-permission asks have no project.
+    .leftJoin(projects, eq(projects.id, approvals.projectId))
     .where(eq(approvals.companyId, companyId))
     .orderBy(desc(approvals.requestedAt));
 
@@ -399,6 +404,18 @@ export async function requestApprovalForTasks(input: {
   return approval;
 }
 
+/** The decision on an ask-first action, for the agent that asked. */
+function actionDecisionMessage(approval: typeof approvals.$inferSelect): { text: string; deliveryState: "queued" } {
+  const label = actionLabel(approval.actionType);
+  const note = approval.resolutionNote?.trim() ? `: "${approval.resolutionNote.trim()}"` : ".";
+  const text = approval.status === "approved"
+    ? `Approval ${approval.id} granted for "${label}"${note}\n\nRepeat the exact same call once now (same arguments; for check_action, the same details). It is good for one use within 24 hours.`
+    : approval.status === "expired"
+      ? `Approval ${approval.id} for "${label}" expired without a decision — do NOT do it. Ask again only if it is still needed.`
+      : `Approval ${approval.id} for "${label}" was ${approval.status}${note}\n\nDo NOT do it, and don't repeat the same request unchanged.`;
+  return { text, deliveryState: "queued" };
+}
+
 /**
  * The agent learns the decision right away (it used to find out only when it
  * next looked at the task): a message in its direct thread, addressed to it,
@@ -415,12 +432,14 @@ async function tellAgentAboutDecision(companyId: string, approval: typeof approv
       const title = typeof input.title === "string" && input.title.trim() ? input.title.trim() : t.taskType;
       return `[${title.replace(/[[\]]/g, "")}](emperor://task/${t.id})`;
     }).join(", ");
-    const message = approvalDecisionMessage({
-      status: approval.status as ApprovalDecision | "expired",
-      actionType: approval.actionType,
-      refs,
-      note: approval.resolutionNote,
-    });
+    const message = isActionApproval(approval)
+      ? actionDecisionMessage(approval)
+      : approvalDecisionMessage({
+        status: approval.status as ApprovalDecision | "expired",
+        actionType: approval.actionType,
+        refs,
+        note: approval.resolutionNote,
+      });
     await appendThreadMessage({
       companyId,
       threadId: thread.id,

@@ -1,0 +1,2 @@
+ALTER TABLE "approvals" ADD COLUMN "args_hash" text;--> statement-breakpoint
+CREATE UNIQUE INDEX "approvals_pending_action_ask_unique" ON "approvals" USING btree ("company_id","action_type","args_hash") WHERE "approvals"."status" = 'pending' AND "approvals"."args_hash" IS NOT NULL;

@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { AuthError, requireRole } from "@/lib/roles";
 import { getApprovalDetail, resolveApproval } from "@/lib/approvals";
 import { companyRouteAccess } from "@/lib/company-access";
-import { memberMaySeeProjectId } from "@/lib/member-scope";
+import { memberMaySeeApproval, memberVisibleProjectIds } from "@/lib/member-scope";
 
 export async function GET(
     _req: NextRequest,
@@ -14,7 +14,7 @@ export async function GET(
 
     const { id } = await params;
     const detail = await getApprovalDetail(companyId, id);
-    if (!detail || !(await memberMaySeeProjectId(companyId, access.ctx.scope, detail.approval.projectId))) {
+    if (!detail || !memberMaySeeApproval(access.ctx.scope, await memberVisibleProjectIds(companyId, access.ctx.scope), detail.approval)) {
         return NextResponse.json({ error: "Approval not found" }, { status: 404 });
     }
 
@@ -37,7 +37,7 @@ export async function PATCH(
         const { id } = await params;
         // A restricted member decides only approvals on projects they can see.
         const current = await getApprovalDetail(ctx.companyId, id);
-        if (!current || !(await memberMaySeeProjectId(ctx.companyId, ctx.scope, current.approval.projectId))) {
+        if (!current || !memberMaySeeApproval(ctx.scope, await memberVisibleProjectIds(ctx.companyId, ctx.scope), current.approval)) {
             return NextResponse.json({ error: "Approval not found" }, { status: 404 });
         }
         const body = await req.json();

@@ -62,6 +62,9 @@ export const companies = pgTable("companies", {
     // New companies start private; companies that existed before the setting
     // were backfilled to 'shared' so nothing changed for them.
     directChatMode: text("direct_chat_mode").default("private").notNull(),
+    // Company-wide action permissions (lib/action-policy.ts): { actionKey: "off" | "ask" | "allowed" }.
+    // Overrides the built-in defaults; an agent's own map overrides this.
+    actionPoliciesJson: jsonb("action_policies_json").default("{}").$type<Record<string, string>>().notNull(),
     createdAt: timestamp("created_at").defaultNow().notNull(),
     deletedAt: timestamp("deleted_at"),
 });
@@ -273,6 +276,8 @@ export const agents = pgTable("agents", {
         customerIds?: string[];
         projectIds?: string[];
     }>().notNull(),
+    // Per-agent action permissions (lib/action-policy.ts); a key left out uses the company default.
+    actionPoliciesJson: jsonb("action_policies_json").default("{}").$type<Record<string, string>>().notNull(),
     monthlyBudgetCents: integer("monthly_budget_cents").default(0).notNull(), // 0 = unlimited
     monthlyTokenUsage: integer("monthly_token_usage").default(0).notNull(),
     monthlyCostCents: doublePrecision("monthly_cost_cents").default(0).notNull(), // calculated spend in cents
@@ -520,7 +525,8 @@ export const tasks = pgTable("tasks", {
 export const approvals = pgTable("approvals", {
     id: uuid("id").primaryKey().defaultRandom(),
     companyId: uuid("company_id").notNull().references(() => companies.id, { onDelete: 'cascade' }),
-    projectId: uuid("project_id").notNull().references(() => projects.id, { onDelete: 'cascade' }),
+    // Null for an action-permission ask (lib/action-policy-server.ts), which belongs to no project.
+    projectId: uuid("project_id").references(() => projects.id, { onDelete: 'cascade' }),
     requesterAgentId: uuid("requester_agent_id").references(() => agents.id, { onDelete: 'set null' }),
     resolverUserId: uuid("resolver_user_id").references(() => users.id, { onDelete: 'set null' }),
     status: text("status").default('pending').notNull(),
@@ -531,8 +537,17 @@ export const approvals = pgTable("approvals", {
     metadataJson: jsonb("metadata_json").default('{}').notNull(),
     requestedAt: timestamp("requested_at").defaultNow().notNull(),
     resolvedAt: timestamp("resolved_at"),
+    // An approved action-permission ask lets exactly one matching call through; set when it is used.
+    consumedAt: timestamp("consumed_at"),
+    // The exact caller + action + arguments an action-permission ask covers (lib/action-policy-rules.ts).
+    argsHash: text("args_hash"),
     createdAt: timestamp("created_at").defaultNow().notNull(),
-});
+}, (table) => [
+    index("approvals_requester_action_idx").on(table.companyId, table.requesterAgentId, table.actionType),
+    // One pending ask per exact call: a repeat waits on the same approval.
+    uniqueIndex("approvals_pending_action_ask_unique").on(table.companyId, table.actionType, table.argsHash)
+        .where(sql`${table.status} = 'pending' AND ${table.argsHash} IS NOT NULL`),
+]);
 
 export const approvalTaskLinks = pgTable("approval_task_links", {
     id: uuid("id").primaryKey().defaultRandom(),

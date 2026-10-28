@@ -7,6 +7,7 @@
 
 import { clipForRedaction, redactSensitive } from "@/lib/redact-sensitive";
 import { taskHref } from "@/lib/task-story";
+import { actionLabel } from "@/lib/action-policy";
 
 export type AuditActorType = "human" | "agent" | "system";
 
@@ -65,6 +66,8 @@ export const AUDIT_FIELD_ALLOWLIST: Record<AuditTargetType, Record<string, Field
         llmEndpointHost: "enum", llmKeyChanged: "bool",
         monthlyBudgetCents: "number", budgetStatus: "enum",
         scopeMode: "enum", scopeCustomerIds: "ids", scopeProjectIds: "ids", scopeAgentIds: "ids",
+        // An action permission change (lib/action-policy.ts): which action, and off / ask / allowed (null = default).
+        actionKey: "enum", permission: "enum",
     },
     task: {
         title: "label", state: "enum", priority: "number", projectId: "id",
@@ -79,6 +82,7 @@ export const AUDIT_FIELD_ALLOWLIST: Record<AuditTargetType, Record<string, Field
     company: {
         setting: "enum", directChatMode: "enum", registrationMode: "enum", instanceName: "label",
         agentRoutineEnabled: "bool", routineTime: "enum", timezone: "enum", weekdaysOnly: "bool", stallRemindersEnabled: "bool",
+        actionKey: "enum", permission: "enum",
     },
     organization: { leaderKind: "enum", leaderId: "id", nodeCount: "number", teamCount: "number" },
     project: {
@@ -209,6 +213,8 @@ const VERBS: Record<string, string> = {
     "agent.deleted": "deleted",
     "agent.scope_changed": "changed the data scope of",
     "agent.budget_changed": "changed the budget of",
+    "agent.permission_changed": "changed an action permission of",
+    "company.permission_changed": "changed a company action permission",
     "task.state_changed": "moved",
     "task.assigned": "reassigned",
     "task.archived": "archived",
@@ -278,6 +284,13 @@ function fallbackVerb(action: string): string {
     return action.replace(/^[a-z_]+\./, "").replace(/[._]+/g, " ").trim() || "changed";
 }
 
+const PERMISSION_WORDS: Record<string, string> = { off: "off", ask: "ask first", allowed: "allowed" };
+
+/** An action permission as words; null means the setting was removed (back to the default). */
+function permissionWord(value: unknown): string {
+    return typeof value === "string" ? PERMISSION_WORDS[value] ?? value : "default";
+}
+
 export function formatCents(cents: number): string {
     return `$${(cents / 100).toFixed(2)}`;
 }
@@ -299,6 +312,11 @@ function detailFor(action: string, payload: AuditPayload, names: Readonly<Record
         case "company.settings_changed": {
             const setting = typeof meta.setting === "string" ? SETTING_LABELS[meta.setting] ?? null : null;
             return setting ? `(${setting})` : null;
+        }
+        case "agent.permission_changed":
+        case "company.permission_changed": {
+            const key = typeof after.actionKey === "string" ? after.actionKey : null;
+            return key ? `(${actionLabel(key)}: ${permissionWord(after.permission)})` : null;
         }
         case "agent.budget_changed":
             return typeof after.monthlyBudgetCents === "number"
@@ -387,11 +405,14 @@ export const AUDIT_FIELD_LABELS: Record<string, string> = {
     nodeCount: "Chart nodes", teamCount: "Teams", leaderKind: "Leader type", leaderId: "Leader",
     model: "Model", inputPricePer1k: "Input price", outputPricePer1k: "Output price", active: "Active",
     scopeType: "Scope", scopeId: "Scope", panelCount: "Panels", version: "Version", pinnedToHome: "Pinned to Home",
+    actionKey: "Action", permission: "Permission",
 };
 
 /** One value of a diff, as text. Lists of ids collapse to a count. */
 export function formatAuditValue(key: string, value: unknown, names: Readonly<Record<string, string>> = {}): string {
-    if (value === null || value === undefined) return key === "scopeAgentIds" ? "all" : "none";
+    if (value === null || value === undefined) return key === "scopeAgentIds" ? "all" : key === "permission" ? "default" : "none";
+    if (key === "permission") return permissionWord(value);
+    if (key === "actionKey" && typeof value === "string") return actionLabel(value);
     if (Array.isArray(value)) {
         if (value.length === 0) return "none";
         const named = value.map((v) => (typeof v === "string" ? names[v] : undefined)).filter(Boolean);

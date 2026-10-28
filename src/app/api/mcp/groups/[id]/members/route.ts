@@ -17,7 +17,7 @@ export async function POST(req: NextRequest, { params }: Params) {
         const group = await addGroupMembers(companyId, id, body);
         announceGroupChange(companyId, id, "members");
         return { group };
-    });
+    }, 200, body);
 }
 
 /** { kind: "agent" | "human", id, agentId? } */
@@ -29,5 +29,5 @@ export async function DELETE(req: NextRequest, { params }: Params) {
         const group = await removeGroupMember(companyId, id, { kind: body.kind, id: body.memberId ?? body.id });
         announceGroupChange(companyId, id, "members");
         return { group };
-    });
+    }, 200, body);
 }
