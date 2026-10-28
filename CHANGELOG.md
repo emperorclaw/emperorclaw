@@ -9,6 +9,18 @@ tagged (e.g. `## [1.2.0] — 2026-07-22`). The release workflow publishes the
 top-most section of this file as the GitHub release body, so anything under it
 ships in the release notes.
 
+## [0.16.0] — 2026-10-28
+
+### Added
+- **Inbox you can clear.** Items show as unread until you open them; archive anything with `e` or the Archive button and undo it for 8 seconds; "Mark all as read"; an Archived view to bring items back; and search by title, agent or project. An archived item comes back on its own if it changes, for example an agent going offline again. The Inbox badge now counts unread items that need you.
+- **Pause all / Resume all** on Home for owners and admins, with a banner while everything is paused. Each change is in the activity log.
+- **Sample client.** A new workspace can add "Sample: Harbor Dental" with a project, tasks and a note to explore, and remove it in one click from Settings. Removal only deletes what the sample created.
+
+### Changed
+- Empty pages explain what goes there and what to do next, and the main pages show a loading outline instead of a blank screen.
+- Disabled buttons say why they are disabled.
+- Decision notifications (bell, email, Slack) show the question and its options instead of raw JSON.
+
 ## [0.15.0] — 2026-10-28
 
 ### Added
