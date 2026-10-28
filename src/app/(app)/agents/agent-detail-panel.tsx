@@ -49,6 +49,7 @@ function hermesProfileName(agentName: string): string {
     return agentName.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "") || "<profile>";
 }
 import { toast } from "sonner";
+import { useModuleEnabled } from "@/components/modules-provider";
 
 const LLM_PROVIDER_LABELS: Record<string, string> = {
     openai: "OpenAI",
@@ -128,6 +129,7 @@ export function AgentDetailPanel({ agentId, agentName, runtime = null }: {
 }) {
     // `?tab=scope` (a failure's "Open agent scope" fix) opens that tab.
     const requestedTab = useSearchParams().get("tab");
+    const timelineOn = useModuleEnabled("timeline");
     const initialTab = requestedTab && ["memory", "instructions", "scope", "actions", "chat", "threads", "runs"].includes(requestedTab) ? requestedTab : "memory";
     const [data, setData] = useState<AgentDetailData | null>(null);
     const [loading, setLoading] = useState(true);
@@ -375,10 +377,12 @@ export function AgentDetailPanel({ agentId, agentName, runtime = null }: {
                             Work log
                         </Link>
                     )}
-                    <Link href={`/timeline?agentId=${encodeURIComponent(agent.id)}`} title="See this agent on the timeline"
-                        className="rounded-full border border-zinc-700 bg-zinc-900/60 p-2 text-zinc-500 transition-colors hover:border-zinc-600 hover:text-zinc-300">
-                        <IconHistory className="h-4 w-4" />
-                    </Link>
+                    {timelineOn && (
+                        <Link href={`/timeline?agentId=${encodeURIComponent(agent.id)}`} title="See this agent on the timeline"
+                            className="rounded-full border border-zinc-700 bg-zinc-900/60 p-2 text-zinc-500 transition-colors hover:border-zinc-600 hover:text-zinc-300">
+                            <IconHistory className="h-4 w-4" />
+                        </Link>
+                    )}
                     {agent.containerId && (
                         <ContainerNameDisplay containerName={agent.containerName ?? null} containerId={agent.containerId} />
                     )}

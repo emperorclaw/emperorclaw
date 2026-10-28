@@ -5,6 +5,7 @@ import { verifyMcpToken, checkIdempotency, saveIdempotencyResponse, resolveAgent
 import { mcpDenyOutOfScope, mcpMayReachAgent, mcpRouteAccess } from "@/lib/mcp-access";
 import { and, desc, eq, isNull, sql } from "drizzle-orm";
 import { extractRunContextSourceIds, PIPELINE_RUN_STATUSES, PipelineRunStatus } from "@/lib/pipelines";
+import { moduleGuard } from "@/lib/modules-server";
 
 // GET /api/mcp/pipelines/[id]/runs — run history.
 export async function GET(
@@ -17,6 +18,8 @@ export async function GET(
     }
 
     const companyId = auth.companyToken!.companyId;
+    const moduleOff = await moduleGuard(companyId, "automations");
+    if (moduleOff) return moduleOff;
     const { id } = await params;
     const { searchParams } = new URL(req.url);
     const limit = Math.min(parseInt(searchParams.get("limit") || "50", 10), 200);
@@ -56,6 +59,8 @@ export async function POST(
     }
 
     const companyId = auth.companyToken!.companyId;
+    const moduleOff = await moduleGuard(companyId, "automations");
+    if (moduleOff) return moduleOff;
     const { id } = await params;
     const endpoint = `/api/mcp/pipelines/${id}/runs`;
 

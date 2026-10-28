@@ -13,6 +13,8 @@ import { registerActionPolicyTools } from "./tools/action-policies";
 import { MCP_ACTOR_ARG_TOOLS, isActionKey } from "@/lib/action-policy";
 import { enforceActionPolicy, type ActionDecision } from "@/lib/action-policy-server";
 import { resolveAgentId } from "@/lib/mcp";
+import { moduleForTool, type ModuleState } from "@/lib/modules";
+import { loadCompanyModules } from "@/lib/modules-server";
 import { jsonResult } from "./result";
 
 /**
@@ -45,6 +47,21 @@ function gateToolsByActionPolicy(server: McpServer, companyId: string, callerAge
     };
 }
 
+/**
+ * Leave out the tools of a module the company switched off (lib/modules.ts
+ * MODULE_TOOLS): they are not registered, so tools/list omits them and a call
+ * is refused ("Tool … not found"). Installed after the action-policy gate, so
+ * it runs first. The server is built per request, so a change applies at once.
+ */
+function omitToolsOfModulesOff(server: McpServer, modules: ModuleState) {
+    const register = server.registerTool.bind(server) as (...args: unknown[]) => unknown;
+    (server as unknown as { registerTool: (...args: unknown[]) => unknown }).registerTool = (name: unknown, ...rest: unknown[]) => {
+        const key = typeof name === "string" ? moduleForTool(name) : null;
+        if (key && !modules[key]) return undefined;
+        return register(name, ...rest);
+    };
+}
+
 /** What the agent gets instead of the tool's result: nothing ran, and why. */
 function refusal(decision: Exclude<ActionDecision, { outcome: "allowed" }>) {
     const approvalId = "approvalId" in decision ? decision.approvalId : null;
@@ -68,6 +85,7 @@ export async function buildMcpServer(companyId: string, callerAgentId?: string |
         { instructions, capabilities: { tools: {} } },
     );
     gateToolsByActionPolicy(server, companyId, callerAgentId ?? null, tokenId ?? null);
+    omitToolsOfModulesOff(server, await loadCompanyModules(companyId));
 
     registerAgentTools(server, companyId, callerAgentId, tokenId ?? null);
     registerTaskTools(server, companyId, callerAgentId, tokenId ?? null);

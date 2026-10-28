@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { verifyMcpToken } from "@/lib/mcp";
 import { mcpMayUseCustomer, mcpRouteAccess } from "@/lib/mcp-access";
 import { archiveScopedResource, getScopedResource, resolveResourceScope, toPublicResource, updateScopedResource } from "@/lib/resources";
+import { moduleGuard } from "@/lib/modules-server";
 
 export async function PATCH(
     req: NextRequest,
@@ -13,6 +14,8 @@ export async function PATCH(
     }
 
     const companyId = auth.companyToken!.companyId;
+    const moduleOff = await moduleGuard(companyId, "customers");
+    if (moduleOff) return moduleOff;
     const { id, resourceId } = await params;
     const resource = await getScopedResource(companyId, resourceId);
 
@@ -50,6 +53,8 @@ export async function DELETE(
     }
 
     const companyId = auth.companyToken!.companyId;
+    const moduleOff = await moduleGuard(companyId, "customers");
+    if (moduleOff) return moduleOff;
     const { id, resourceId } = await params;
     const resource = await getScopedResource(companyId, resourceId);
 

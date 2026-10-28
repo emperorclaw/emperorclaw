@@ -65,6 +65,9 @@ export const companies = pgTable("companies", {
     // Company-wide action permissions (lib/action-policy.ts): { actionKey: "off" | "ask" | "allowed" }.
     // Overrides the built-in defaults; an agent's own map overrides this.
     actionPoliciesJson: jsonb("action_policies_json").default("{}").$type<Record<string, string>>().notNull(),
+    // Modules switched off for this company (lib/modules.ts): { moduleKey: boolean }.
+    // A missing key means on, so existing companies keep everything.
+    modulesJson: jsonb("modules_json").default("{}").$type<Record<string, boolean>>().notNull(),
     createdAt: timestamp("created_at").defaultNow().notNull(),
     deletedAt: timestamp("deleted_at"),
 });

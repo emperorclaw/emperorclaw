@@ -8,6 +8,8 @@ import { UpdateBanner } from "@/components/update-banner";
 import { getCompanyId } from "@/lib/auth";
 import { getPlatformAdminSession } from "@/lib/platform-admin";
 import { getCurrentUserEffectiveRole } from "@/lib/roles";
+import { loadCompanyModules } from "@/lib/modules-server";
+import { ModulesProvider } from "@/components/modules-provider";
 import pkg from "@/../package.json" assert { type: "json" };
 
 export default async function AppLayout({
@@ -26,21 +28,22 @@ export default async function AppLayout({
     if (!companyId) {
         return <>{children}</>;
     }
+    const modules = await loadCompanyModules(companyId);
 
     return (
         <div className="emperor-app-shell flex h-dvh flex-col overflow-hidden md:flex-row">
             <AutoRefresh intervalMs={15000} />
-            <InteractiveTour />
-            <AppSidebar isPlatformAdmin={isPlatformAdmin} isCompanyAdmin={isCompanyAdmin} canAct={canAct} appVersion={pkg.version} />
-            <CommandPalette access={{ isCompanyAdmin, isPlatformAdmin }} canAct={canAct} />
+            <InteractiveTour modules={modules} />
+            <AppSidebar isPlatformAdmin={isPlatformAdmin} isCompanyAdmin={isCompanyAdmin} canAct={canAct} appVersion={pkg.version} modules={modules} />
+            <CommandPalette access={{ isCompanyAdmin, isPlatformAdmin, modules }} canAct={canAct} />
             <main className="emperor-main flex-1 min-h-0 min-w-0 overflow-x-hidden overflow-y-auto w-full px-3 py-4 pb-8 sm:px-5 sm:py-5 md:pb-16 lg:px-8">
                 <div className="emperor-page-frame">
                     <UpdateBanner />
-                    {children}
+                    <ModulesProvider modules={modules}>{children}</ModulesProvider>
                 </div>
                 <OpenClawChat />
             </main>
-            <MobileTabBar />
+            <MobileTabBar modules={modules} />
         </div>
     );
 }

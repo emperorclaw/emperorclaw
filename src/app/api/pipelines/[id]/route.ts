@@ -10,7 +10,7 @@ import { validateForActivation, PIPELINE_STATUSES, PipelineStatus } from "@/lib/
 
 /** Pipeline status changes are writes: members and up, never viewers. */
 async function getMembership() {
-    const access = await companyRouteAccess("member");
+    const access = await companyRouteAccess("member", { module: "automations" });
     if (access.response) return { error: access.response };
     return { membership: access.ctx };
 }

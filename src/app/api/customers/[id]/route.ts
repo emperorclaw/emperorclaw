@@ -11,7 +11,7 @@ export async function PATCH(
     req: NextRequest,
     { params }: { params: Promise<{ id: string }> }
 ) {
-    const access = await companyRouteAccess("member");
+    const access = await companyRouteAccess("member", { module: "customers" });
     if (access.response) return access.response;
     const companyId = access.ctx.companyId;
 

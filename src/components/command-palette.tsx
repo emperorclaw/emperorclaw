@@ -9,6 +9,7 @@ import {
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
 import { CHORD_TIMEOUT_MS, GO_CHORDS, isPlainKey, isTypingTarget, matchesQuery } from "@/lib/keyboard-shortcuts";
 import { navSections, type NavAccess } from "@/lib/navigation";
+import { pathEnabled } from "@/lib/modules";
 import type { PaletteData } from "@/lib/palette";
 import { SEARCH_TYPE_LABELS, snippetParts, type SearchResult, type SearchType } from "@/lib/search-query";
 import { cn } from "@/lib/utils";
@@ -162,11 +163,11 @@ export function CommandPalette({ access, canAct }: { access: NavAccess; canAct: 
                 id: `page:${item.href}`, group: "Pages", label: item.name, href: item.href, icon: IconArrowRight, keywords: item.keywords,
             })),
             { id: "page:/approvals", group: "Pages", label: "Approval history", href: "/approvals", icon: IconArrowRight, keywords: "decisions decided" },
-        ];
+        ].filter((option) => pathEnabled(option.href, access.modules));
         const records: Option[] = [
             ...data.agents.map((a) => ({ id: `agent:${a.id}`, group: "Agents", label: a.name, hint: a.role, href: `/agents?agent=${a.id}`, icon: IconRobot })),
             ...data.projects.map((p) => ({ id: `project:${p.id}`, group: "Projects", label: p.name, hint: p.customerName, href: `/projects?project=${p.id}`, icon: IconFolder })),
-            ...data.customers.map((c) => ({ id: `customer:${c.id}`, group: "Customers", label: c.name, href: "/customers", icon: IconBuildingStore })),
+            ...(pathEnabled("/customers", access.modules) ? data.customers : []).map((c) => ({ id: `customer:${c.id}`, group: "Customers", label: c.name, href: "/customers", icon: IconBuildingStore })),
         ];
         const tasks = q ? (found?.q === q ? found.tasks : []) : data.tasks;
         const taskOptions: Option[] = tasks.map((t) => ({ id: `task:${t.id}`, group: "Tasks", label: t.title, hint: t.projectName, href: `/projects?project=${t.projectId}&task=${t.id}`, icon: IconListCheck }));

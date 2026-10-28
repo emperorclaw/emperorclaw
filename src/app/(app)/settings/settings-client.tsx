@@ -16,6 +16,8 @@ import { NotificationSettingsTab } from "./notification-settings-tab";
 import { RoutineSettingsTab } from "./routine-settings-tab";
 import { DirectChatSettingsTab } from "./direct-chat-settings-tab";
 import { DisplaysTab } from "./displays-tab";
+import { ModulesSettingsTab } from "./modules-settings-tab";
+import type { ModuleState } from "@/lib/modules";
 
 type SettingsToken = {
     id: string;
@@ -79,6 +81,7 @@ export default function SettingsClient({
     agents,
     customersData,
     isPlatformAdmin = false,
+    modules,
 }: {
     initialTokens: SettingsToken[];
     companyRole: string;
@@ -91,6 +94,8 @@ export default function SettingsClient({
     customersData?: { id: string; name: string }[];
     /** Ops (runtimes, errors, users across companies) lives here now, not in the main menu. */
     isPlatformAdmin?: boolean;
+    /** Tabs that belong to a module (Displays) hide while it is off. */
+    modules?: ModuleState;
 }) {
     const searchParams = useSearchParams();
     const router = useRouter();
@@ -117,8 +122,8 @@ export default function SettingsClient({
     // Same guard as token creation (POST /api/settings/tokens requires admin).
     const isAdmin = instanceRole === "instance_admin" || companyRole === "owner" || companyRole === "admin";
 
-    const sections = settingsSections({isAdmin,instanceAdmin:instanceRole === 'instance_admin'});
-    const activeTab = resolveSettingsTab(searchParams.get('tab'),{isAdmin,instanceAdmin:instanceRole === 'instance_admin'});
+    const sections = settingsSections({isAdmin,instanceAdmin:instanceRole === 'instance_admin',modules});
+    const activeTab = resolveSettingsTab(searchParams.get('tab'),{isAdmin,instanceAdmin:instanceRole === 'instance_admin',modules});
     const currentSection = sections.flatMap(section => section.items).find(item => item.id === activeTab)!;
     const setActiveTab = (tab:SettingsTab) => {
         const params = new URLSearchParams(searchParams.toString()); params.set('tab',tab);
@@ -290,6 +295,10 @@ export default function SettingsClient({
 
             {activeTab === "direct-chats" && isAdmin && (
                 <DirectChatSettingsTab isAdmin={isAdmin} />
+            )}
+
+            {activeTab === "modules" && isAdmin && (
+                <ModulesSettingsTab isAdmin={isAdmin} />
             )}
 
             {activeTab === "notifications" && (

@@ -4,6 +4,7 @@ import { mcpDenyOutOfScope, mcpRecordCondition, mcpRouteAccess } from "@/lib/mcp
 import { db } from "@/db";
 import { schedules, playbooks } from "@/db/schema";
 import { eq, and, isNull } from "drizzle-orm";
+import { moduleGuard } from "@/lib/modules-server";
 
 export async function PATCH(
     req: NextRequest,
@@ -15,6 +16,8 @@ export async function PATCH(
     }
 
     const companyId = auth.companyToken!.companyId;
+    const moduleOff = await moduleGuard(companyId, "automations");
+    if (moduleOff) return moduleOff;
     const { id: scheduleId } = await params;
     const endpoint = `/api/mcp/schedules/${scheduleId}`;
 
@@ -78,6 +81,8 @@ export async function DELETE(
     }
 
     const companyId = auth.companyToken!.companyId;
+    const moduleOff = await moduleGuard(companyId, "automations");
+    if (moduleOff) return moduleOff;
     const { id: scheduleId } = await params;
     const endpoint = `/api/mcp/schedules/${scheduleId}`;
 

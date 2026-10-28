@@ -4,7 +4,7 @@ import { revertView, viewErrorResponse } from "@/lib/views";
 
 /** Members and up: bring back an earlier layout as a new version. Body {version}. */
 export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-    const access = await companyRouteAccess("member");
+    const access = await companyRouteAccess("member", { module: "views" });
     if (access.response) return access.response;
     try {
         const { id } = await params;

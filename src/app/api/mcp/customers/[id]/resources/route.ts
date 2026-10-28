@@ -5,6 +5,7 @@ import { customers } from "@/db/schema";
 import { checkIdempotency, saveIdempotencyResponse, verifyMcpToken } from "@/lib/mcp";
 import { createScopedResource, listScopedResources, resolveResourceScope, toPublicResource } from "@/lib/resources";
 import { mcpMayUseCustomer, mcpRouteAccess } from "@/lib/mcp-access";
+import { moduleGuard } from "@/lib/modules-server";
 
 export async function GET(
     req: NextRequest,
@@ -16,6 +17,8 @@ export async function GET(
     }
 
     const companyId = auth.companyToken!.companyId;
+    const moduleOff = await moduleGuard(companyId, "customers");
+    if (moduleOff) return moduleOff;
     const { id } = await params;
 
     const [customer] = await db.select({ id: customers.id }).from(customers).where(and(
@@ -63,6 +66,8 @@ export async function POST(
     }
 
     const companyId = auth.companyToken!.companyId;
+    const moduleOff = await moduleGuard(companyId, "customers");
+    if (moduleOff) return moduleOff;
     const { id } = await params;
     const endpoint = `/api/mcp/customers/${id}/resources`;
 

@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server";
 import { AuthError, requireRole, type GuardContext, type Role } from "@/lib/roles";
+import type { ModuleKey } from "@/lib/modules";
+import { moduleGuard } from "@/lib/modules-server";
 
 /**
  * The single human-facing access check for /api/* routes and server pages.
@@ -29,12 +31,18 @@ export function accessErrorResponse(error: unknown): NextResponse | null {
     return null;
 }
 
-/** Route convenience: `const access = await companyRouteAccess("member"); if (access.response) return access.response;` */
+/**
+ * Route convenience: `const access = await companyRouteAccess("member"); if (access.response) return access.response;`
+ * Pass `{ module }` for a route that belongs to a module (lib/modules.ts): it answers 403 while the module is off.
+ */
 export async function companyRouteAccess(
     minRole: Role = READ_ROLE,
+    options: { module?: ModuleKey } = {},
 ): Promise<{ ctx: CompanyAccess; response?: undefined } | { ctx?: undefined; response: NextResponse }> {
     try {
-        return { ctx: await requireCompanyAccess(minRole) };
+        const ctx = await requireCompanyAccess(minRole);
+        const off = options.module ? await moduleGuard(ctx.companyId, options.module) : null;
+        return off ? { response: off } : { ctx };
     } catch (error) {
         const response = accessErrorResponse(error);
         if (response) return { response };

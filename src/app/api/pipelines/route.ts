@@ -10,7 +10,7 @@ import { eq, desc, and, isNull, inArray } from "drizzle-orm";
 
 export async function GET() {
     try {
-        const access = await companyRouteAccess("viewer");
+        const access = await companyRouteAccess("viewer", { module: "automations" });
         if (access.response) return access.response;
         const companyId = access.ctx.companyId;
 

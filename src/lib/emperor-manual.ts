@@ -12,6 +12,7 @@
  */
 import { RICH_REPLY_GUIDE } from "@/lib/rich-reply-guide";
 import { AGENT_WRITING_GUIDE } from "@/lib/agent-writing-guide";
+import { MODULE_KEYS, type ModuleKey, type ModuleState } from "@/lib/modules";
 
 export const EMPEROR_MANUAL_VERSION = 1;
 export const EMPEROR_KERNEL_VERSION = 1;
@@ -22,6 +23,10 @@ export type EmperorManualSection = {
   body: string;
 };
 
+/** Lines that describe one module's tools (lib/modules.ts); left out while that module is off. */
+const VIEWS_LINE = `- Views (create_view / update_panel): dashboard pages of live numbers (metrics, charts, tables) that you build when asked for "a view of …" and keep fresh with update_panel on your own schedule.`;
+const MODULE_LINES: Partial<Record<ModuleKey, readonly string[]>> = { views: [VIEWS_LINE] };
+
 const OVERVIEW = `Emperor Claw is the durable source of truth for this company's agents, projects, tasks, task notes, knowledge, and messages. Hermes, Codex, and other runtimes are the thinking layers; Emperor holds the state.
 
 Write information to the right surface:
@@ -30,7 +35,7 @@ Write information to the right surface:
 - add_task_note: a visible progress/handoff/blocker note on a task (counts as progress and resets the loop guard and stall sweep).
 - Knowledge & Rules (create_knowledge_note / update_knowledge_note): reusable scoped doctrine, SOPs, business rules, and reference instructions — not one-off facts.
 - Storage (create_folder / upload_artifact): deliverables, exports, reports, evidence, uploads, and working files.
-- Views (create_view / update_panel): dashboard pages of live numbers (metrics, charts, tables) that you build when asked for "a view of …" and keep fresh with update_panel on your own schedule.
+${VIEWS_LINE}
 
 Emperor tool names are LLM tools, not shell commands. If a runtime defers them behind tool_search, discover the tool, inspect its schema, and invoke it. Never run a tool name in the terminal. If a tool is unavailable, report the limitation rather than inventing its result. Never claim a task is done, an agent was created, or a message was sent unless the corresponding call actually succeeded. If local memory and Emperor disagree, prefer Emperor and surface the mismatch.`;
 
@@ -110,18 +115,33 @@ export const EMPEROR_MANUAL_SECTIONS: readonly EmperorManualSection[] = [
 ];
 
 /** The whole manual, each section under its heading. */
-export const EMPEROR_MANUAL = EMPEROR_MANUAL_SECTIONS
-  .map((section) => `## ${section.title}\n\n${section.body}`)
-  .join("\n\n");
+export function formatEmperorManual(sections: readonly EmperorManualSection[]): string {
+  return sections.map((section) => `## ${section.title}\n\n${section.body}`).join("\n\n");
+}
+
+export const EMPEROR_MANUAL = formatEmperorManual(EMPEROR_MANUAL_SECTIONS);
+
+/**
+ * The manual a company's agents get: lines about a module that is off are left
+ * out (fewer tokens, no tools the agent cannot call). `modules` omitted = all on.
+ */
+export function emperorManualSectionsFor(modules?: ModuleState | null): readonly EmperorManualSection[] {
+  const drop = modules ? MODULE_KEYS.filter((key) => !modules[key]).flatMap((key) => MODULE_LINES[key] ?? []) : [];
+  if (drop.length === 0) return EMPEROR_MANUAL_SECTIONS;
+  return EMPEROR_MANUAL_SECTIONS.map((section) => ({
+    ...section,
+    body: section.body.split("\n").filter((line) => !drop.includes(line)).join("\n"),
+  }));
+}
 
 export function listEmperorManualSections(): { id: string; title: string }[] {
   return EMPEROR_MANUAL_SECTIONS.map((section) => ({ id: section.id, title: section.title }));
 }
 
 /** Case-insensitive section lookup; null when no such section exists. */
-export function getEmperorManualSection(id: string): EmperorManualSection | null {
+export function getEmperorManualSection(id: string, sections: readonly EmperorManualSection[] = EMPEROR_MANUAL_SECTIONS): EmperorManualSection | null {
   const wanted = id.trim().toLowerCase();
-  return EMPEROR_MANUAL_SECTIONS.find((section) => section.id === wanted) ?? null;
+  return sections.find((section) => section.id === wanted) ?? null;
 }
 
 /**

@@ -1,7 +1,8 @@
 import { z } from "zod";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { resolveCompanyBrainContext, listScopedResources, createScopedResource, updateScopedResource, canAgentReadResource, loadAgentResourceAccess, getVisibleKnowledgeNote, searchVisibleKnowledgeNotes, resolveResourceScope, toPublicResource } from "@/lib/resources";
-import { EMPEROR_MANUAL, EMPEROR_MANUAL_VERSION, getEmperorManualSection, listEmperorManualSections } from "@/lib/emperor-manual";
+import { EMPEROR_MANUAL_VERSION, emperorManualSectionsFor, formatEmperorManual, getEmperorManualSection, listEmperorManualSections } from "@/lib/emperor-manual";
+import { loadCompanyModules } from "@/lib/modules-server";
 import { jsonResult, errorResult } from "../result";
 import { getScopedResource } from "@/lib/resources";
 import { mcpAccessForAgent, mcpMayUseResource, mcpMayWriteResourceScope, type McpAgentAccess } from "@/lib/mcp-access";
@@ -163,14 +164,16 @@ export function registerKnowledgeTools(server: McpServer, companyId: string, cal
         },
     }, async ({ section }) => {
         try {
+            // Lines about a module the company switched off are left out.
+            const sections = emperorManualSectionsFor(await loadCompanyModules(companyId));
             if (section) {
-                const found = getEmperorManualSection(section);
+                const found = getEmperorManualSection(section, sections);
                 if (!found) {
                     return errorResult(new Error(`Unknown section: ${section}. Sections: ${listEmperorManualSections().map((item) => item.id).join(", ")}`));
                 }
                 return jsonResult({ version: EMPEROR_MANUAL_VERSION, section: found });
             }
-            return jsonResult({ version: EMPEROR_MANUAL_VERSION, sections: listEmperorManualSections(), manual: EMPEROR_MANUAL });
+            return jsonResult({ version: EMPEROR_MANUAL_VERSION, sections: listEmperorManualSections(), manual: formatEmperorManual(sections) });
         } catch (e) {
             return errorResult(e);
         }

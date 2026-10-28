@@ -6,8 +6,8 @@ import { usePathname } from "next/navigation";
 import { useSession } from "next-auth/react";
 import { createPortal } from "react-dom";
 import {
-    IconBook, IconBuildingStore, IconChevronDown, IconCoin, IconDeviceSdCard, IconFileText, IconFolder, IconGitBranch, IconHierarchy2, IconHome, IconInbox, IconKey,
-    IconLayoutSidebarLeftCollapse, IconLayoutSidebarLeftExpand, IconLogout, IconMenu2, IconMessage, IconPlus, IconRobot, IconSearch, IconServerCog, IconUser, IconUsers,
+    IconBook, IconBuildingStore, IconChevronDown, IconCoin, IconDeviceSdCard, IconFileText, IconFolder, IconGitBranch, IconHierarchy2, IconHistory, IconHome, IconInbox, IconKey,
+    IconLayoutDashboard, IconLayoutSidebarLeftCollapse, IconLayoutSidebarLeftExpand, IconLogout, IconMenu2, IconMessage, IconPlus, IconRobot, IconSearch, IconServerCog, IconTimeline, IconUser, IconUsers,
 } from "@tabler/icons-react";
 import { ThemeToggle } from "./theme-toggle";
 import { NotificationBell } from "./notification-bell";
@@ -24,6 +24,7 @@ import {
     DropdownMenuTrigger
 } from "@/components/ui/dropdown-menu";
 import { Dialog, DialogContent, DialogTitle, DialogDescription, DialogTrigger, DialogClose } from "@/components/ui/dialog";
+import type { ModuleState } from "@/lib/modules";
 import { activeNavHref, NAV_SECTIONS_STORAGE_KEY, navSections, readCollapsedSections, type NavBadgeKey, type NavItem } from "@/lib/navigation";
 
 function cn(...inputs: ClassValue[]) {
@@ -39,6 +40,8 @@ const NAV_ICONS: Record<string, typeof IconFolder> = {
     inbox: IconInbox,
     messages: IconMessage,
     projects: IconFolder,
+    timeline: IconTimeline,
+    views: IconLayoutDashboard,
     automations: IconGitBranch,
     files: IconDeviceSdCard,
     customers: IconBuildingStore,
@@ -47,6 +50,7 @@ const NAV_ICONS: Record<string, typeof IconFolder> = {
     org: IconHierarchy2,
     people: IconUsers,
     costs: IconCoin,
+    activity: IconHistory,
     ops: IconServerCog,
     settings: IconKey,
 };
@@ -85,7 +89,7 @@ function NavBadge({ badge }: { badge: NonNullable<ReturnType<typeof badgeFor>> }
     );
 }
 
-export function AppSidebar({ isPlatformAdmin = false, isCompanyAdmin = false, canAct = true, appVersion }: { isPlatformAdmin?: boolean; isCompanyAdmin?: boolean; canAct?: boolean; appVersion?: string }) {
+export function AppSidebar({ isPlatformAdmin = false, isCompanyAdmin = false, canAct = true, appVersion, modules }: { isPlatformAdmin?: boolean; isCompanyAdmin?: boolean; canAct?: boolean; appVersion?: string; modules?: ModuleState | null }) {
     const pathname = usePathname();
     const { data: session } = useSession();
     const [collapsed, setCollapsed] = useState(false);
@@ -125,7 +129,7 @@ export function AppSidebar({ isPlatformAdmin = false, isCompanyAdmin = false, ca
 
     // docs/roadmap/product-decisions.md section 3: the attention cluster
     // first, then Work, Clients & knowledge, Team, a collapsed Admin, Settings.
-    const sections = navSections({ isCompanyAdmin, isPlatformAdmin });
+    const sections = navSections({ isCompanyAdmin, isPlatformAdmin, modules });
     const allItems = sections.flatMap((section) => section.items);
     const activeHref = activeNavHref(pathname, allItems);
     const isFolded = (id: string, defaultCollapsed = false) => {

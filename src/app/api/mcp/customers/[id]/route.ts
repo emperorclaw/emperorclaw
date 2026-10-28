@@ -6,6 +6,7 @@ import { eq, and, isNull } from "drizzle-orm";
 import { mcpAccessErrorResponse, mcpMayUseCustomer, resolveMcpAgentAccess } from "@/lib/mcp-access";
 import { mcpRequestActor, recordAudit } from "@/lib/audit";
 import { lengthError, NAME_MAX } from "@/lib/input-limits";
+import { moduleGuard } from "@/lib/modules-server";
 
 async function resolveScopedAgent(companyId: string, token: { agentId?: string | null }, agentIdParam: unknown): Promise<
     { ok: true; access: Awaited<ReturnType<typeof resolveMcpAgentAccess>> } | { ok: false; response: NextResponse }
@@ -27,6 +28,8 @@ export async function PATCH(
     }
 
     const companyId = auth.companyToken!.companyId;
+    const moduleOff = await moduleGuard(companyId, "customers");
+    if (moduleOff) return moduleOff;
     const { id: customerId } = await params;
     const endpoint = `/api/mcp/customers/${customerId}`;
 
@@ -89,6 +92,8 @@ export async function DELETE(
     }
 
     const companyId = auth.companyToken!.companyId;
+    const moduleOff = await moduleGuard(companyId, "customers");
+    if (moduleOff) return moduleOff;
     const { id: customerId } = await params;
     const endpoint = `/api/mcp/customers/${customerId}`;
 

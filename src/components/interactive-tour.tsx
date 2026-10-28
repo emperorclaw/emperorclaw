@@ -1,9 +1,11 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 import { useRouter, usePathname } from "next/navigation";
 import { IconArrowLeft, IconArrowRight, IconRosetteDiscountCheck, IconBook, IconRobot, IconFolder, IconGitBranch, IconDeviceSdCard, IconKey, IconLayoutDashboard, IconMessage, IconFileText, IconShieldCheck, IconX } from "@tabler/icons-react";
+
+import { pathEnabled, type ModuleState } from "@/lib/modules";
 
 const TOUR_DONE_KEY = "emperor:interactive-tour:v1";
 
@@ -14,7 +16,7 @@ interface TourStep {
     icon: typeof IconLayoutDashboard;
 }
 
-const steps: TourStep[] = [
+const TOUR_STEPS: TourStep[] = [
     {
         title: "Dashboard — your command center",
         body: "Your home base. See agent status, recent activity, team chat, and open issues at a glance. The sidebar on the left takes you everywhere.",
@@ -83,7 +85,8 @@ const steps: TourStep[] = [
     },
 ];
 
-export function InteractiveTour() {
+export function InteractiveTour({ modules }: { modules?: ModuleState | null }) {
+    const steps = useMemo(() => TOUR_STEPS.filter((s) => pathEnabled(s.href, modules)), [modules]);
     const router = useRouter();
     const pathname = usePathname();
     const [step, setStep] = useState(0);
@@ -109,7 +112,7 @@ export function InteractiveTour() {
             setStep(idx);
             router.push(steps[idx].href);
         },
-        [close, router],
+        [close, router, steps],
     );
 
     if (!ready || !open) return null;

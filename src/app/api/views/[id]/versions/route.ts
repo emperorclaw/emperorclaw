@@ -4,7 +4,7 @@ import { listViewVersions, viewErrorResponse } from "@/lib/views";
 
 /** A view's layout history, newest first. */
 export async function GET(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-    const access = await companyRouteAccess("viewer");
+    const access = await companyRouteAccess("viewer", { module: "views" });
     if (access.response) return access.response;
     try {
         const { id } = await params;

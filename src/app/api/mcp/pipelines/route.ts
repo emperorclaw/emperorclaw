@@ -5,6 +5,7 @@ import { verifyMcpToken, checkIdempotency, saveIdempotencyResponse, resolveAgent
 import { mcpRecordCondition, mcpRouteAccess } from "@/lib/mcp-access";
 import { and, desc, eq, isNull } from "drizzle-orm";
 import { generateMermaid, parsePipelineContextConfig, parsePipelineSteps, validateForActivation, PIPELINE_STATUSES, PipelineStatus } from "@/lib/pipelines";
+import { moduleGuard } from "@/lib/modules-server";
 
 // GET /api/mcp/pipelines — list registered pipelines.
 // Filters: ?name= ?status= ?projectId=
@@ -15,6 +16,8 @@ export async function GET(req: NextRequest) {
     }
 
     const companyId = auth.companyToken!.companyId;
+    const moduleOff = await moduleGuard(companyId, "automations");
+    if (moduleOff) return moduleOff;
     const { searchParams } = new URL(req.url);
     const limit = Math.min(parseInt(searchParams.get("limit") || "100", 10), 500);
     const name = searchParams.get("name");
@@ -66,6 +69,8 @@ export async function POST(req: NextRequest) {
     }
 
     const companyId = auth.companyToken!.companyId;
+    const moduleOff = await moduleGuard(companyId, "automations");
+    if (moduleOff) return moduleOff;
     const endpoint = "/api/mcp/pipelines";
 
     const { requestHash, cachedResponse, error: idempError, status: idempStatus } = await checkIdempotency(req, companyId, endpoint);

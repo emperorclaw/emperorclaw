@@ -5,6 +5,7 @@ import { verifyMcpToken, checkIdempotency, saveIdempotencyResponse } from "@/lib
 import { mcpDenyOutOfScope, mcpRecordCondition, mcpRouteAccess } from "@/lib/mcp-access";
 import { and, count, desc, eq, isNull } from "drizzle-orm";
 import { randomUUID } from "crypto";
+import { moduleGuard } from "@/lib/modules-server";
 
 export async function GET(req: NextRequest) {
     const auth = await verifyMcpToken(req);
@@ -13,6 +14,8 @@ export async function GET(req: NextRequest) {
     }
 
     const companyId = auth.companyToken!.companyId;
+    const moduleOff = await moduleGuard(companyId, "automations");
+    if (moduleOff) return moduleOff;
     const { searchParams } = new URL(req.url);
     const rawLimit = parseInt(searchParams.get("limit") || "100", 10);
     const rawPage = parseInt(searchParams.get("page") || "1", 10);
@@ -65,6 +68,8 @@ export async function POST(req: NextRequest) {
     }
 
     const companyId = auth.companyToken!.companyId;
+    const moduleOff = await moduleGuard(companyId, "automations");
+    if (moduleOff) return moduleOff;
     const endpoint = "/api/mcp/schedules";
 
     const { requestHash, cachedResponse, error: idempError, status } = await checkIdempotency(req, companyId, endpoint);

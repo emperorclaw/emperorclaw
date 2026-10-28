@@ -4,7 +4,7 @@ import { getView, setViewArchived, setViewPinned, updateView, viewErrorResponse,
 
 /** One view with its panel values. Out-of-scope and missing are both 404. */
 export async function GET(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-    const access = await companyRouteAccess("viewer");
+    const access = await companyRouteAccess("viewer", { module: "views" });
     if (access.response) return access.response;
     try {
         const { id } = await params;
@@ -20,7 +20,7 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
  * restore it. Panel values stay the agents' job (update_panel).
  */
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-    const access = await companyRouteAccess("member");
+    const access = await companyRouteAccess("member", { module: "views" });
     if (access.response) return access.response;
     try {
         const { id } = await params;

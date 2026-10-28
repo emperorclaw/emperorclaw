@@ -27,7 +27,7 @@ function parseId(value: string | null): string | null | "invalid" {
 
 /** GET /api/timeline?from&to&agentId&projectId&customerId — the company Gantt, member-scoped and privacy-filtered. */
 export async function GET(req: NextRequest) {
-    const guard = await companyRouteAccess("viewer");
+    const guard = await companyRouteAccess("viewer", { module: "timeline" });
     if (guard.response) return guard.response;
     const companyId = guard.ctx.companyId;
     try {

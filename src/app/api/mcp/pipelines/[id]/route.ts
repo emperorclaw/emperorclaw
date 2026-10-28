@@ -5,6 +5,7 @@ import { verifyMcpToken, checkIdempotency, saveIdempotencyResponse } from "@/lib
 import { mcpDenyOutOfScope, mcpRecordCondition, mcpRouteAccess } from "@/lib/mcp-access";
 import { and, desc, eq, isNull } from "drizzle-orm";
 import { generateMermaid, parsePipelineContextConfig, parsePipelineSteps, validateForActivation, PIPELINE_STATUSES, PipelineStatus, PipelineStep } from "@/lib/pipelines";
+import { moduleGuard } from "@/lib/modules-server";
 
 async function findPipeline(companyId: string, id: string) {
     const [row] = await db.select().from(pipelines).where(
@@ -24,6 +25,8 @@ export async function GET(
     }
 
     const companyId = auth.companyToken!.companyId;
+    const moduleOff = await moduleGuard(companyId, "automations");
+    if (moduleOff) return moduleOff;
     const { id } = await params;
 
     try {
@@ -58,6 +61,8 @@ export async function PATCH(
     }
 
     const companyId = auth.companyToken!.companyId;
+    const moduleOff = await moduleGuard(companyId, "automations");
+    if (moduleOff) return moduleOff;
     const { id } = await params;
     const endpoint = `/api/mcp/pipelines/${id}`;
 
@@ -168,6 +173,8 @@ export async function DELETE(
     }
 
     const companyId = auth.companyToken!.companyId;
+    const moduleOff = await moduleGuard(companyId, "automations");
+    if (moduleOff) return moduleOff;
     const { id } = await params;
     const endpoint = `/api/mcp/pipelines/${id}`;
 

@@ -25,6 +25,7 @@ import { taskStateLabel, type StoryEntry } from "@/lib/task-story";
 import type { TaskStoryView } from "@/lib/task-story-reads";
 import { LiveRunBlock, strongestStall, useNow, useTaskLive, useTimeZone } from "./task-live";
 import { TaskStoryTimeline } from "./task-story-timeline";
+import { useModuleEnabled } from "@/components/modules-provider";
 
 const STATE_TONE: Record<string, string> = {
     inbox: "border-zinc-700 bg-zinc-800/60 text-zinc-300",
@@ -61,6 +62,7 @@ function ApprovalSummary({ approval }: { approval: Story["task"]["approval"] }) 
 function TaskActions({ story, onDone }: { story: Story; onDone?: () => void }) {
     const router = useRouter();
     const { task, assignees } = story;
+    const timelineOn = useModuleEnabled("timeline");
     const [pending, startTransition] = useTransition();
     const [busy, setBusy] = useState(false);
     const [blockReason, setBlockReason] = useState("");
@@ -213,10 +215,12 @@ function TaskActions({ story, onDone }: { story: Story; onDone?: () => void }) {
                     <IconLayoutKanban className="h-3.5 w-3.5" aria-hidden="true" />
                     Open on the board (edit, priority, archive)
                 </Link>
-                <Link href={`/timeline?projectId=${encodeURIComponent(task.projectId)}`} className="inline-flex items-center gap-1.5 text-xs text-zinc-400 transition-colors hover:text-zinc-200">
-                    <IconHistory className="h-3.5 w-3.5" aria-hidden="true" />
-                    See this project on the timeline
-                </Link>
+                {timelineOn && (
+                    <Link href={`/timeline?projectId=${encodeURIComponent(task.projectId)}`} className="inline-flex items-center gap-1.5 text-xs text-zinc-400 transition-colors hover:text-zinc-200">
+                        <IconHistory className="h-3.5 w-3.5" aria-hidden="true" />
+                        See this project on the timeline
+                    </Link>
+                )}
             </div>
         </div>
     );

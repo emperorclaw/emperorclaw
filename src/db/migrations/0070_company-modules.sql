@@ -1,0 +1,1 @@
+ALTER TABLE "companies" ADD COLUMN "modules_json" jsonb DEFAULT '{}' NOT NULL;

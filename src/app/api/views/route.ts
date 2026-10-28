@@ -4,7 +4,7 @@ import { createView, listViews, viewErrorResponse } from "@/lib/views";
 
 /** The views the signed-in person may see (a restricted member: company views and their customers'/projects'). */
 export async function GET(req: NextRequest) {
-    const access = await companyRouteAccess("viewer");
+    const access = await companyRouteAccess("viewer", { module: "views" });
     if (access.response) return access.response;
     try {
         const views = await listViews(access.ctx.companyId, { kind: "member", userId: access.ctx.userId, scope: access.ctx.scope }, {
@@ -21,7 +21,7 @@ export async function GET(req: NextRequest) {
  * agent then fills in the panels; people can also pass a full panel list.
  */
 export async function POST(req: NextRequest) {
-    const access = await companyRouteAccess("member");
+    const access = await companyRouteAccess("member", { module: "views" });
     if (access.response) return access.response;
     try {
         const body = await req.json().catch(() => null) as Record<string, unknown> | null;

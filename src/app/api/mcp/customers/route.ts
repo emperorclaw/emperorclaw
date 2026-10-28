@@ -7,6 +7,7 @@ import { eq, and, desc, isNull } from "drizzle-orm";
 import { mcpAccessErrorResponse, mcpCustomerCondition, mcpMayUseCustomer, resolveMcpAgentAccess } from "@/lib/mcp-access";
 import { mcpRequestActor, recordAudit } from "@/lib/audit";
 import { lengthError, NAME_MAX } from "@/lib/input-limits";
+import { moduleGuard } from "@/lib/modules-server";
 
 export async function GET(req: NextRequest) {
     const auth = await verifyMcpToken(req);
@@ -15,6 +16,8 @@ export async function GET(req: NextRequest) {
     }
 
     const companyId = auth.companyToken!.companyId;
+    const moduleOff = await moduleGuard(companyId, "customers");
+    if (moduleOff) return moduleOff;
     const { searchParams } = new URL(req.url);
     const limit = Math.min(parseInt(searchParams.get("limit") || "100", 10), 500);
     const agentIdParam = searchParams.get("agentId");
@@ -47,6 +50,8 @@ export async function POST(req: NextRequest) {
     }
 
     const companyId = auth.companyToken!.companyId;
+    const moduleOff = await moduleGuard(companyId, "customers");
+    if (moduleOff) return moduleOff;
     const endpoint = "/api/mcp/customers";
 
     const { requestHash, cachedResponse, error, status } = await checkIdempotency(req, companyId, endpoint);

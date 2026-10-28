@@ -9,7 +9,7 @@ import { humanActor, recordAudit } from "@/lib/audit";
 import { lengthError, NAME_MAX } from "@/lib/input-limits";
 
 export async function GET() {
-    const access = await companyRouteAccess("viewer");
+    const access = await companyRouteAccess("viewer", { module: "customers" });
     if (access.response) return access.response;
     const companyId = access.ctx.companyId;
 
@@ -22,7 +22,7 @@ export async function GET() {
 }
 
 export async function POST(req: NextRequest) {
-    const access = await companyRouteAccess("member");
+    const access = await companyRouteAccess("member", { module: "customers" });
     if (access.response) return access.response;
     const companyId = access.ctx.companyId;
 

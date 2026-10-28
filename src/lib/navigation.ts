@@ -2,8 +2,11 @@
  * The app's information architecture (docs/roadmap/product-decisions.md,
  * section 3), shared by the desktop sidebar, the phone menu, the bottom tabs
  * and the command palette. One shell, no feature flags: an item exists only
- * when its page exists (tests/unit/navigation.test.ts checks every href).
+ * when its page exists (tests/unit/navigation.test.ts checks every href), and
+ * only while its module is on (lib/modules.ts, Settings → Modules).
  */
+
+import { pathEnabled, type ModuleState } from "@/lib/modules";
 
 export type NavBadgeKey = "live" | "inbox" | "messages";
 
@@ -31,12 +34,14 @@ export interface NavSection {
 export interface NavAccess {
     isCompanyAdmin: boolean;
     isPlatformAdmin: boolean;
+    /** The company's modules; omitted = everything on. */
+    modules?: ModuleState | null;
 }
 
 /** Where collapsed sections are remembered (per browser). */
 export const NAV_SECTIONS_STORAGE_KEY = "emperor-sidebar-sections";
 
-export function navSections({ isCompanyAdmin, isPlatformAdmin }: NavAccess): NavSection[] {
+export function navSections({ isCompanyAdmin, isPlatformAdmin, modules }: NavAccess): NavSection[] {
     const admin: NavItem[] = [
         ...(isCompanyAdmin ? [
             { id: "costs", name: "Costs", href: "/costs", activeFor: ["/budgets"], keywords: "budgets spend money tokens clients models" },
@@ -82,7 +87,17 @@ export function navSections({ isCompanyAdmin, isPlatformAdmin }: NavAccess): Nav
             ],
         },
     ];
-    return sections;
+    return sections
+        .map((section) => ({ ...section, items: withoutDisabledModules(section.items, modules) }))
+        .filter((section) => section.items.length > 0);
+}
+
+/** Drop items (and activeFor aliases) whose page belongs to a module that is off. */
+function withoutDisabledModules(items: NavItem[], modules: ModuleState | null | undefined): NavItem[] {
+    if (!modules) return items;
+    return items
+        .filter((item) => pathEnabled(item.href, modules))
+        .map((item) => (item.activeFor ? { ...item, activeFor: item.activeFor.filter((href) => pathEnabled(href, modules)) } : item));
 }
 
 /** Phone bottom tabs: five, fixed order, never flag-dependent. */
@@ -93,6 +108,11 @@ export const MOBILE_TABS: NavItem[] = [
     { id: "projects", name: "Projects", href: "/projects" },
     { id: "agents", name: "Agents", href: "/agents", activeFor: ["/budgets", "/costs"] },
 ];
+
+/** The bottom tabs for a company: always the same five; only aliases of modules that are off drop out. */
+export function mobileTabs(modules?: ModuleState | null): NavItem[] {
+    return withoutDisabledModules(MOBILE_TABS, modules);
+}
 
 export function pathMatches(pathname: string, href: string): boolean {
     return pathname === href || (href !== "/" && pathname.startsWith(`${href}/`));

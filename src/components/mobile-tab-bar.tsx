@@ -4,7 +4,8 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { IconFolder, IconHome, IconInbox, IconMessage, IconRobot } from "@tabler/icons-react";
 import { useNavBadges } from "@/components/use-nav-badges";
-import { activeNavHref, MOBILE_TABS } from "@/lib/navigation";
+import { activeNavHref, mobileTabs } from "@/lib/navigation";
+import type { ModuleState } from "@/lib/modules";
 import { cn } from "@/lib/utils";
 
 const TAB_ICONS: Record<string, typeof IconHome> = {
@@ -21,10 +22,11 @@ const TAB_ICONS: Record<string, typeof IconHome> = {
  * header menu. Rendered as the last row of the app shell's column (not
  * fixed), so it never covers a chat composer.
  */
-export function MobileTabBar() {
+export function MobileTabBar({ modules }: { modules?: ModuleState | null }) {
     const pathname = usePathname();
     const { unreadMessages, inbox, inboxHasFailures, workingNow } = useNavBadges();
-    const activeHref = activeNavHref(pathname, MOBILE_TABS);
+    const tabs = mobileTabs(modules);
+    const activeHref = activeNavHref(pathname, tabs);
 
     return (
         <nav
@@ -32,7 +34,7 @@ export function MobileTabBar() {
             className="grid shrink-0 grid-cols-5 border-t border-border bg-sidebar/95 backdrop-blur-xl md:hidden"
             style={{ paddingBottom: "env(safe-area-inset-bottom)" }}
         >
-            {MOBILE_TABS.map((tab) => {
+            {tabs.map((tab) => {
                 const active = activeHref === tab.href;
                 const Icon = TAB_ICONS[tab.id] ?? IconHome;
                 const count = tab.badge === "inbox" ? inbox : tab.badge === "messages" ? unreadMessages : 0;

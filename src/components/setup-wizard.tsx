@@ -17,6 +17,7 @@ import { agentRoleTemplates, getAgentTemplate } from "@/lib/agent-templates";
 import { BUSINESS_TYPES, COMFORTABLE_AGENT_COUNT, DEFAULT_AGENT_NAMES, TEAM_TEMPLATES, planTeam, suggestedTeams, teamPlanProblem, type PlannedGroup } from "@/lib/onboarding-shared";
 import { cn } from "@/lib/utils";
 import { CUSTOM_LLM_PROVIDER, normalizeLlmBaseUrl } from "@/lib/llm-endpoint";
+import { COMPANY_TEMPLATES, DEFAULT_COMPANY_TEMPLATE, type CompanyTemplateId } from "@/lib/modules";
 
 /**
  * First-run setup, modelled on an OS setup assistant: one focused screen per
@@ -72,6 +73,8 @@ export function SetupWizard({ initialCompanyName, initialBusinessType = "", prof
     const [website, setWebsite] = useState("");
     const [houseRules, setHouseRules] = useState("");
     const [documentIt, setDocumentIt] = useState(true);
+    // Which modules the company starts with (Settings → Modules); Agency = everything on.
+    const [template, setTemplate] = useState<CompanyTemplateId>(DEFAULT_COMPANY_TEMPLATE);
     const [savingProfile, setSavingProfile] = useState(false);
 
     // Model
@@ -177,6 +180,11 @@ export function SetupWizard({ initialCompanyName, initialBusinessType = "", prof
             });
             const data = await res.json().catch(() => ({}));
             if (!res.ok) throw new Error(data.error || "Could not save your company.");
+            if (!hasAgents) {
+                // A template only sets the starting modules; it changes nothing else.
+                const applied = await fetch("/api/settings/modules", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ template }) });
+                if (!applied.ok) throw new Error((await applied.json().catch(() => ({}))).error || "Could not save your modules.");
+            }
             if (hasAgents) {
                 await finish("completed");
                 setHidden(true);
@@ -496,6 +504,21 @@ export function SetupWizard({ initialCompanyName, initialBusinessType = "", prof
                                         ))}
                                     </div>
                                 </fieldset>
+                                {!hasAgents && (
+                                    <fieldset className="space-y-2">
+                                        <legend className="text-sm font-medium text-foreground">How will you use Emperor?</legend>
+                                        <div className="grid gap-2 sm:grid-cols-3">
+                                            {COMPANY_TEMPLATES.map((t) => (
+                                                <button key={t.id} type="button" aria-pressed={template === t.id} onClick={() => setTemplate(t.id)}
+                                                    className={cn("rounded-xl border p-3 text-left transition-colors", template === t.id ? "border-cyan-400/50 bg-cyan-400/10" : "border-border bg-muted/20 hover:border-input")}>
+                                                    <span className="block text-sm font-medium text-foreground">{t.label}</span>
+                                                    <span className="mt-0.5 block text-xs text-muted-foreground">{t.description}</span>
+                                                </button>
+                                            ))}
+                                        </div>
+                                        <p className="text-xs text-muted-foreground">This only picks which modules are on. Change them any time in Settings → Modules.</p>
+                                    </fieldset>
+                                )}
                                 <div className="grid gap-4 sm:grid-cols-2">
                                     <label className="block space-y-2">
                                         <span className="text-sm font-medium text-foreground">Website <span className="font-normal text-muted-foreground">(optional)</span></span>

@@ -83,6 +83,9 @@ export const AUDIT_FIELD_ALLOWLIST: Record<AuditTargetType, Record<string, Field
         setting: "enum", directChatMode: "enum", registrationMode: "enum", instanceName: "label",
         agentRoutineEnabled: "bool", routineTime: "enum", timezone: "enum", weekdaysOnly: "bool", stallRemindersEnabled: "bool",
         actionKey: "enum", permission: "enum",
+        // Settings → Modules (lib/modules.ts): one on/off per module, and the template that set them.
+        customersModule: "bool", automationsModule: "bool", timelineModule: "bool", costsModule: "bool",
+        approvalsModule: "bool", viewsModule: "bool", displaysModule: "bool", template: "enum",
     },
     organization: { leaderKind: "enum", leaderId: "id", nodeCount: "number", teamCount: "number" },
     project: {
@@ -253,7 +256,7 @@ const VERBS: Record<string, string> = {
 };
 
 const SETTING_LABELS: Record<string, string> = {
-    directChatMode: "direct chat mode", contextNotes: "company context", agentRoutine: "daily agent routine", instance: "instance settings",
+    directChatMode: "direct chat mode", contextNotes: "company context", agentRoutine: "daily agent routine", instance: "instance settings", modules: "modules",
 };
 
 const STATE_LABELS: Record<string, string> = {
@@ -406,6 +409,8 @@ export const AUDIT_FIELD_LABELS: Record<string, string> = {
     model: "Model", inputPricePer1k: "Input price", outputPricePer1k: "Output price", active: "Active",
     scopeType: "Scope", scopeId: "Scope", panelCount: "Panels", version: "Version", pinnedToHome: "Pinned to Home",
     actionKey: "Action", permission: "Permission",
+    customersModule: "Customers module", automationsModule: "Automations module", timelineModule: "Timeline module", costsModule: "Costs module",
+    approvalsModule: "Approval history module", viewsModule: "Views module", displaysModule: "Display screens module", template: "Template",
 };
 
 /** One value of a diff, as text. Lists of ids collapse to a count. */
@@ -422,6 +427,7 @@ export function formatAuditValue(key: string, value: unknown, names: Readonly<Re
     // Model prices are stored as cents per 1M tokens.
     if ((key === "inputPricePer1k" || key === "outputPricePer1k") && typeof value === "number") return `${formatCents(value)} per 1M tokens`;
     if (key === "state" && typeof value === "string") return STATE_LABELS[value] ?? value;
+    if (key.endsWith("Module") && typeof value === "boolean") return value ? "on" : "off";
     if (typeof value === "boolean") return value ? "yes" : "no";
     if (typeof value === "string" && UUID_RE.test(value)) return names[value] ?? "(removed)";
     return String(value);

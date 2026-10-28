@@ -23,6 +23,7 @@ import { matchesInboxSearch } from "@/lib/inbox-state-rules";
 import { isPlainKey, isTypingTarget } from "@/lib/keyboard-shortcuts";
 import { timeAgo, type AttentionEntry } from "@/lib/team-scene";
 import { cn } from "@/lib/utils";
+import { useModuleEnabled } from "@/components/modules-provider";
 
 type Agent = { key: string; id: string; name: string; role: string | null };
 type Decision = "approved" | "rejected" | "dismissed";
@@ -57,6 +58,8 @@ export function InboxClient({ entries, archived, agents, generatedAt, canAct, fi
     canAct: boolean;
     filter: InboxView;
 }) {
+    // Approval history off hides only its page: decisions stay here in the Inbox.
+    const approvalHistory = useModuleEnabled("approvals");
     const router = useRouter();
     const now = useMemo(() => new Date(generatedAt), [generatedAt]);
     const [busyId, setBusyId] = useState<string | null>(null);
@@ -243,9 +246,11 @@ export function InboxClient({ entries, archived, agents, generatedAt, canAct, fi
                                 <IconChecks className="h-4 w-4" />Mark all as read
                             </button>
                         )}
-                        <Link href="/approvals" className={cn(BTN, NEUTRAL, "text-sm font-medium")}>
-                            <IconHistory className="h-4 w-4" />Approval history
-                        </Link>
+                        {approvalHistory && (
+                            <Link href="/approvals" className={cn(BTN, NEUTRAL, "text-sm font-medium")}>
+                                <IconHistory className="h-4 w-4" />Approval history
+                            </Link>
+                        )}
                     </>
                 }
             />

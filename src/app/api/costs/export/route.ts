@@ -10,7 +10,7 @@ import { loadCostsView } from "@/lib/costs-reads";
  * (viewer and up), limited to a restricted member's scope.
  */
 export async function GET(req: NextRequest) {
-    const access = await companyRouteAccess("viewer");
+    const access = await companyRouteAccess("viewer", { module: "costs" });
     if (access.response) return access.response;
     const query = parseCostsQuery(req.nextUrl.searchParams, new Date());
     if (!query.dimension) return NextResponse.json({ error: "Nothing to export for this tab" }, { status: 400 });

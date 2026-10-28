@@ -22,6 +22,7 @@ import { loadOrganization } from "@/lib/organization";
 import { TeamDashboard } from "@/components/team-dashboard/team-dashboard";
 import { PinnedViewsStrip } from "@/components/views/pinned-views-strip";
 import { loadPinnedViewCards } from "@/lib/views";
+import { moduleEnabled } from "@/lib/modules-server";
 import { RealtimeRefresh } from "@/lib/use-realtime";
 import { PauseAllControl } from "@/components/pause-all-control";
 import { pauseSummary } from "@/lib/pause-all";
@@ -393,8 +394,8 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
 
     const pauseState = pauseSummary(agentRows);
 
-    // Views pinned to Home, limited to what this person may see.
-    const pinnedViews = await loadPinnedViewCards(companyId, { kind: "member", userId: guard.userId, scope: memberScope }).catch((error) => {
+    // Views pinned to Home, limited to what this person may see (none while the Views module is off).
+    const pinnedViews = !(await moduleEnabled(companyId, "views")) ? [] : await loadPinnedViewCards(companyId, { kind: "member", userId: guard.userId, scope: memberScope }).catch((error) => {
         console.error("Failed to load pinned views:", error);
         return [];
     });

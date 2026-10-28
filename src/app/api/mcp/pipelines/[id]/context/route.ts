@@ -6,6 +6,7 @@ import { mcpAccessForAgent, mcpMayUseRecord } from "@/lib/mcp-access";
 import { buildPipelineContextParams } from "@/lib/pipelines";
 import { resolveCompanyBrainContext } from "@/lib/resources";
 import { and, eq, isNull } from "drizzle-orm";
+import { moduleGuard } from "@/lib/modules-server";
 
 // GET /api/mcp/pipelines/[id]/context — resolve the Company Brain Context Pack for one pipeline.
 export async function GET(
@@ -18,6 +19,8 @@ export async function GET(
     }
 
     const companyId = auth.companyToken!.companyId;
+    const moduleOff = await moduleGuard(companyId, "automations");
+    if (moduleOff) return moduleOff;
     const { id } = await params;
 
     const [pipeline] = await db.select().from(pipelines).where(

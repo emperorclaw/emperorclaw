@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { verifyMcpToken } from "@/lib/mcp";
 import { buildLiveFeed, clampMessageCount, etagMatches, liveFeedEtag, scopeLiveFeed } from "@/lib/live-feed";
 import { getScopedAgentIds, loadMemberScope } from "@/lib/member-scope";
+import { moduleGuard } from "@/lib/modules-server";
 
 /**
  * GET /api/mcp/live — the live agent feed for screens and dashboards.
@@ -18,6 +19,12 @@ import { getScopedAgentIds, loadMemberScope } from "@/lib/member-scope";
 export async function GET(req: NextRequest) {
     const auth = await verifyMcpToken(req, { allowReadOnlyScope: true });
     if (auth.error || !auth.companyToken) return NextResponse.json({ error: auth.error ?? "Unauthorized" }, { status: auth.status ?? 401 });
+
+    // A screen (read_only token) goes dark while Display screens is off; other callers still read the feed.
+    if (auth.companyToken.scope === "read_only") {
+        const moduleOff = await moduleGuard(auth.companyToken.companyId, "displays");
+        if (moduleOff) return moduleOff;
+    }
 
     const messages = clampMessageCount(new URL(req.url).searchParams.get("messages"));
 
