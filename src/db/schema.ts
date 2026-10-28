@@ -1312,3 +1312,58 @@ export const agentRunDaily = pgTable("agent_run_daily", {
     // The retention job prunes by day.
     dayIdx: index("agent_run_daily_day_idx").on(table.day),
 }));
+
+// Views: dashboards an agent builds and keeps up to date (roadmap 0.15).
+// `spec_json` is the layout (a grid of typed panels, validated by
+// lib/view-spec.ts); the values live in view_panel_data, one row per panel, so
+// update_panel never rewrites the layout. Scope follows knowledge notes:
+// company, customer or project.
+export const views = pgTable("views", {
+    id: uuid("id").primaryKey().defaultRandom(),
+    companyId: uuid("company_id").notNull().references(() => companies.id, { onDelete: 'cascade' }),
+    title: text("title").notNull(),
+    description: text("description"),
+    scopeType: text("scope_type").default('company').notNull(),
+    scopeId: uuid("scope_id"),
+    specJson: jsonb("spec_json").default('{"panels":[]}').notNull(),
+    // The current layout version; every layout or title change adds a view_versions row.
+    version: integer("version").default(1).notNull(),
+    createdByType: text("created_by_type").notNull(),
+    createdById: uuid("created_by_id"),
+    updatedByType: text("updated_by_type").notNull(),
+    updatedById: uuid("updated_by_id"),
+    pinnedToHome: boolean("pinned_to_home").default(false).notNull(),
+    archivedAt: timestamp("archived_at"),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at").defaultNow().notNull(),
+}, (table) => ({
+    companyUpdatedIdx: index("views_company_updated_idx").on(table.companyId, table.updatedAt.desc()),
+    scopeTypeCheck: check("views_scope_type_check", sql`${table.scopeType} IN ('company', 'customer', 'project')`),
+}));
+
+export const viewVersions = pgTable("view_versions", {
+    id: uuid("id").primaryKey().defaultRandom(),
+    companyId: uuid("company_id").notNull().references(() => companies.id, { onDelete: 'cascade' }),
+    viewId: uuid("view_id").notNull().references(() => views.id, { onDelete: 'cascade' }),
+    version: integer("version").notNull(),
+    title: text("title").notNull(),
+    specJson: jsonb("spec_json").notNull(),
+    authorType: text("author_type").notNull(),
+    authorId: uuid("author_id"),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (table) => ({
+    viewVersionUnique: uniqueIndex("view_versions_view_version_unique").on(table.viewId, table.version),
+}));
+
+export const viewPanelData = pgTable("view_panel_data", {
+    id: uuid("id").primaryKey().defaultRandom(),
+    companyId: uuid("company_id").notNull().references(() => companies.id, { onDelete: 'cascade' }),
+    viewId: uuid("view_id").notNull().references(() => views.id, { onDelete: 'cascade' }),
+    panelId: text("panel_id").notNull(),
+    dataJson: jsonb("data_json").notNull(),
+    updatedByType: text("updated_by_type").notNull(),
+    updatedById: uuid("updated_by_id"),
+    updatedAt: timestamp("updated_at").defaultNow().notNull(),
+}, (table) => ({
+    viewPanelUnique: uniqueIndex("view_panel_data_view_panel_unique").on(table.viewId, table.panelId),
+}));

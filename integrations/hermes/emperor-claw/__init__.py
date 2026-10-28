@@ -1158,6 +1158,76 @@ def emperor_list_knowledge_folders(args: Dict[str, Any], **_: Any) -> str:
     return _json(_request("GET", "/knowledge/folders"))
 
 
+def _view_id(args: Dict[str, Any]) -> str:
+    return str(args.get("viewId") or args.get("view_id") or args.get("id") or "").strip()
+
+
+def _view_query(extra: Dict[str, Any] | None = None) -> Dict[str, Any]:
+    # Every views call names the acting agent (like the task/message tools), so
+    # an operator token acts with this agent's scope and is recorded as it:
+    # the server checks writes against the view's builder.
+    return {**(extra or {}), "agentId": _agent_ref()}
+
+
+def emperor_list_views(args: Dict[str, Any], **_: Any) -> str:
+    query: Dict[str, Any] = {
+        "scopeType": args.get("scopeType") or args.get("scope_type"),
+        "scopeId": args.get("scopeId") or args.get("scope_id"),
+        "includeArchived": "true" if args.get("includeArchived") else None,
+    }
+    return _json(_request("GET", "/views", query=_view_query(query)))
+
+
+def emperor_get_view(args: Dict[str, Any], **_: Any) -> str:
+    view_id = _view_id(args)
+    if not view_id:
+        return _json({"error": "viewId is required"})
+    return _json(_request("GET", f"/views/{urllib.parse.quote(view_id)}", query=_view_query()))
+
+
+def emperor_create_view(args: Dict[str, Any], **_: Any) -> str:
+    title = str(args.get("title") or "").strip()
+    panels = args.get("panels")
+    if not title or not isinstance(panels, list):
+        return _json({"error": "title and a panels array are required"})
+    body = {
+        "title": title,
+        "description": args.get("description"),
+        "scopeType": args.get("scopeType") or args.get("scope_type"),
+        "scopeId": args.get("scopeId") or args.get("scope_id"),
+        "panels": panels,
+    }
+    body = {k: v for k, v in body.items() if v not in (None, "")}
+    return _json(_request("POST", "/views", body=body, query=_view_query()))
+
+
+def emperor_update_view(args: Dict[str, Any], **_: Any) -> str:
+    view_id = _view_id(args)
+    if not view_id:
+        return _json({"error": "viewId is required"})
+    body = {key: args.get(key) for key in ("title", "description", "panels") if args.get(key) is not None}
+    if not body:
+        return _json({"error": "Pass title, description or panels"})
+    return _json(_request("PATCH", f"/views/{urllib.parse.quote(view_id)}", body=body, query=_view_query()))
+
+
+def emperor_update_panel(args: Dict[str, Any], **_: Any) -> str:
+    view_id = _view_id(args)
+    panel_id = str(args.get("panelId") or args.get("panel_id") or "").strip()
+    data = args.get("data")
+    if not view_id or not panel_id or not isinstance(data, dict):
+        return _json({"error": "viewId, panelId and a data object are required"})
+    path = f"/views/{urllib.parse.quote(view_id)}/panels/{urllib.parse.quote(panel_id, safe='')}"
+    return _json(_request("PUT", path, body={"data": data}, query=_view_query()))
+
+
+def emperor_archive_view(args: Dict[str, Any], **_: Any) -> str:
+    view_id = _view_id(args)
+    if not view_id:
+        return _json({"error": "viewId is required"})
+    return _json(_request("POST", f"/views/{urllib.parse.quote(view_id)}/archive", body={}, query=_view_query()))
+
+
 def emperor_create_agent(args: Dict[str, Any], **kwargs: Any) -> str:
     return _json(_request("POST", "/agents", {
         "name": args.get("name", ""),
@@ -1688,4 +1758,112 @@ def register(ctx: Any) -> None:
         check_fn=_available,
         requires_env=requires,
         description="List Emperor knowledge folders",
+    )
+
+    view_panels_doc = (
+        "Panels in reading order on a 12-column grid (max 40): {id?, type, title, subtitle?, w? 1-12, h? 1-8, data?}. "
+        "Reuse each id with emperor_update_panel. data by type (plain text, no HTML): "
+        "metric {value, unit?, delta?, deltaLabel?, trend?: up|down|flat or number[]}; "
+        "line|bar {series: [{name, points: [{x, y}]}], xLabel?, yLabel?, unit?, stacked?}; "
+        "table {columns: [{key, label, align?, format?: text|number|integer|percent|currency|date, currency?}], rows: [{key: value}] (max 500)}; "
+        "list {items: [{title, subtitle?, value?, href? (https URL or /app/path)}] (max 200)}; "
+        "markdown {text} (max 20,000 chars; no images; links only to https URLs or /app/paths); progress {value, max, label?, unit?}."
+    )
+    ctx.register_tool(
+        "emperor_list_views",
+        TOOLSET,
+        _schema(
+            "List the Emperor views (dashboards) you can see, with scope, panel count, who built each and when their values were last updated. Check before creating one so you update one of yours instead of building a duplicate (you can only change views you built).",
+            {
+                "scopeType": {"type": "string", "enum": ["company", "customer", "project"]},
+                "scopeId": {"type": "string"},
+                "includeArchived": {"type": "boolean"},
+            },
+        ),
+        emperor_list_views,
+        check_fn=_available,
+        requires_env=requires,
+        description="List Emperor views",
+    )
+    ctx.register_tool(
+        "emperor_get_view",
+        TOOLSET,
+        _schema(
+            "Load one Emperor view: its panels (ids and types), their current values, and when and by whom each was last updated. Read it before refreshing.",
+            {"viewId": {"type": "string"}},
+            ["viewId"],
+        ),
+        emperor_get_view,
+        check_fn=_available,
+        requires_env=requires,
+        description="Load an Emperor view",
+    )
+    ctx.register_tool(
+        "emperor_create_view",
+        TOOLSET,
+        _schema(
+            "Build an Emperor view: a dashboard page of typed panels (metrics, line/bar charts, tables, lists, markdown, progress) people open from Views or pin to Home. "
+            "Use it when asked for a dashboard or 'a view of ...'. You fetch the numbers with your own tools and credentials; Emperor stores only the values (never put secrets in a view). "
+            "Pick the smallest scope (company, or a customer/project id). You own it: only you (and people) can change it. Then keep it fresh: refresh every panel with emperor_update_panel on a schedule with your own cron, and whenever someone asks.",
+            {
+                "title": {"type": "string"},
+                "description": {"type": "string", "description": "What it shows, the source, how often you refresh it"},
+                "scopeType": {"type": "string", "enum": ["company", "customer", "project"]},
+                "scopeId": {"type": "string", "description": "Customer or project id for a customer/project view"},
+                "panels": {"type": "array", "items": {"type": "object"}, "description": view_panels_doc},
+            },
+            ["title", "panels"],
+        ),
+        emperor_create_view,
+        check_fn=_available,
+        requires_env=requires,
+        description="Create an Emperor view",
+    )
+    ctx.register_tool(
+        "emperor_update_view",
+        TOOLSET,
+        _schema(
+            "Change an Emperor view you built: title, description or layout (another agent's view is refused). panels replaces the whole layout (send every panel to keep, with its id). Each title or layout change is a new version people can revert. For new numbers only, use emperor_update_panel.",
+            {
+                "viewId": {"type": "string"},
+                "title": {"type": "string"},
+                "description": {"type": "string"},
+                "panels": {"type": "array", "items": {"type": "object"}, "description": view_panels_doc},
+            },
+            ["viewId"],
+        ),
+        emperor_update_view,
+        check_fn=_available,
+        requires_env=requires,
+        description="Update an Emperor view",
+    )
+    ctx.register_tool(
+        "emperor_update_panel",
+        TOOLSET,
+        _schema(
+            "Replace one panel's values in an Emperor view you built with a fresh snapshot (layout untouched, no new version). Call it once per panel on your refresh schedule and when asked to refresh (max 60 per view per minute). data must match the panel's type (see emperor_create_view).",
+            {
+                "viewId": {"type": "string"},
+                "panelId": {"type": "string"},
+                "data": {"type": "object", "description": "The panel's full new values"},
+            },
+            ["viewId", "panelId", "data"],
+        ),
+        emperor_update_panel,
+        check_fn=_available,
+        requires_env=requires,
+        description="Refresh an Emperor view panel",
+    )
+    ctx.register_tool(
+        "emperor_archive_view",
+        TOOLSET,
+        _schema(
+            "Archive an Emperor view that is no longer needed (people can restore it). Stop your refresh schedule for it too.",
+            {"viewId": {"type": "string"}},
+            ["viewId"],
+        ),
+        emperor_archive_view,
+        check_fn=_available,
+        requires_env=requires,
+        description="Archive an Emperor view",
     )

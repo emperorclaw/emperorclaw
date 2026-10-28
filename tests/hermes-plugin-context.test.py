@@ -354,6 +354,36 @@ class AckFlowTests(PluginContextCase):
         self.assertNotIn("ack", body)
 
 
+class ViewToolsTests(PluginContextCase):
+    """Every views tool names the acting agent, so the server scopes and records it."""
+
+    VIEW = "00000000-0000-4000-8000-000000000001"
+
+    def test_each_views_tool_sends_the_agent_id(self):
+        calls = {
+            "emperor_list_views": {},
+            "emperor_get_view": {"viewId": self.VIEW},
+            "emperor_create_view": {"title": "Shop", "panels": []},
+            "emperor_update_view": {"viewId": self.VIEW, "title": "Shop v2"},
+            "emperor_update_panel": {"viewId": self.VIEW, "panelId": "revenue", "data": {"value": 1}},
+            "emperor_archive_view": {"viewId": self.VIEW},
+        }
+        for name, args in calls.items():
+            seen = []
+
+            def fake_urlopen(req, timeout=0):
+                seen.append(req.full_url)
+                return _Response()
+
+            with self.subTest(tool=name), self.bind(self.viktor.bound()), \
+                    patch.object(plugin.urllib.request, "urlopen", side_effect=fake_urlopen):
+                getattr(plugin, name)(args)
+                self.assertEqual(len(seen), 1, name)
+                query = plugin.urllib.parse.parse_qs(plugin.urllib.parse.urlsplit(seen[0]).query)
+                self.assertEqual(query.get("agentId"), ["viktor-id"], f"{name} must send agentId: {seen[0]}")
+                self.assertTrue(seen[0].startswith("https://emperor.example/api/mcp/views"), seen[0])
+
+
 class RegistrationTests(unittest.TestCase):
     class Context:
         def __init__(self):

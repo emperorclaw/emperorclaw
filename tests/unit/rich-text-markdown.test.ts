@@ -52,3 +52,22 @@ test("html widgets stay off in agent text and show as code", () => {
     assert.doesNotMatch(html, /<iframe/);
     assert.match(html, /&lt;button&gt;x&lt;\/button&gt;/);
 });
+
+test("view mode never loads images and renders unsafe link targets as text", async () => {
+    const { isSafeViewHref } = await import("../../src/lib/view-spec");
+    const html = render(
+        "![tracking pixel](https://evil.example.com/p.png) [ok](https://example.com) [app](/projects) [proto](//evil.example.com) [rec](emperor://task/1)",
+        { allowImages: false, isLinkAllowed: isSafeViewHref },
+    );
+    assert.doesNotMatch(html, /<img/);
+    assert.doesNotMatch(html, /evil\.example\.com/);
+    assert.match(html, /tracking pixel/, "the image shows as its alt text");
+    assert.match(html, /<a [^>]*href="https:\/\/example.com"/);
+    assert.match(html, /<a [^>]*href="\/projects"/);
+    assert.match(html, /<span>proto<\/span>/);
+    assert.doesNotMatch(html, /emperor:\/\//);
+});
+
+test("images still load by default outside views", () => {
+    assert.match(render("![chart](https://example.com/c.png)"), /<img [^>]*src="https:\/\/example.com\/c.png"/);
+});

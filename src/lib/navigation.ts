@@ -56,6 +56,7 @@ export function navSections({ isCompanyAdmin, isPlatformAdmin }: NavAccess): Nav
             title: "Work", id: "work", collapsible: true, items: [
                 { id: "projects", name: "Projects", href: "/projects", keywords: "tasks board" },
                 { id: "timeline", name: "Timeline", href: "/timeline", keywords: "gantt chart work history handoffs" },
+                { id: "views", name: "Views", href: "/views", keywords: "dashboards panels reports charts metrics" },
                 { id: "automations", name: "Automations", href: "/pipelines", keywords: "pipelines schedules recurring" },
                 { id: "files", name: "Files", href: "/artifacts", keywords: "artifacts documents storage" },
             ],

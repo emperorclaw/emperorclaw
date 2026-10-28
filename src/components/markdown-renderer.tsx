@@ -43,6 +43,16 @@ interface MarkdownRendererProps {
    * notes turn them off and show the source as code instead.
    */
   allowWidgets?: boolean;
+  /**
+   * Off: images never load; each one renders as its alt text. For surfaces
+   * whose markdown comes from an agent and is shown to everyone (views).
+   */
+  allowImages?: boolean;
+  /**
+   * When set, a link whose target fails it renders as plain text (and
+   * `emperor://` record cards are not drawn unless it allows them).
+   */
+  isLinkAllowed?: (href: string) => boolean;
 }
 
 /** Tabs inside tabs inside tabs is plenty; deeper fences render as code. */
@@ -178,7 +188,7 @@ function CodeBlock({ language, code }: { language: string; code: string }) {
   );
 }
 
-function RichFence({ language, code, depth, allowWidgets = true, density = 'default' }: { language: string; code: string; depth: number; allowWidgets?: boolean; density?: 'default' | 'compact' }) {
+function RichFence({ language, code, depth, allowWidgets = true, density = 'default', allowImages = true, isLinkAllowed }: { language: string; code: string; depth: number; allowWidgets?: boolean; density?: 'default' | 'compact'; allowImages?: boolean; isLinkAllowed?: (href: string) => boolean }) {
   if (depth < MAX_RICH_DEPTH) {
     if (language === 'chart') {
       const spec = parseChartSpec(code);
@@ -188,7 +198,7 @@ function RichFence({ language, code, depth, allowWidgets = true, density = 'defa
       if (items) return <StatsBlock items={items} />;
     } else if (language === 'tabs') {
       const tabs = splitTabs(code);
-      if (tabs) return <TabsBlock tabs={tabs} renderMarkdown={(content) => <MarkdownRenderer content={content} depth={depth + 1} density={density} allowWidgets={allowWidgets} />} />;
+      if (tabs) return <TabsBlock tabs={tabs} renderMarkdown={(content) => <MarkdownRenderer content={content} depth={depth + 1} density={density} allowWidgets={allowWidgets} allowImages={allowImages} isLinkAllowed={isLinkAllowed} />} />;
     } else if (language === 'choices') {
       const spec = parseChoices(code);
       if (spec) return <ChoicesBlock spec={spec} />;
@@ -228,7 +238,7 @@ function entityOnlyParagraph(node: HastNode | undefined): { entityRef: EntityRef
   return items.length > 0 ? items : null;
 }
 
-export function MarkdownRenderer({ content, className = "", depth = 0, density = 'default', allowWidgets = true }: MarkdownRendererProps) {
+export function MarkdownRenderer({ content, className = "", depth = 0, density = 'default', allowWidgets = true, allowImages = true, isLinkAllowed }: MarkdownRendererProps) {
   const normalizedContent = ensureBlankBeforeFences(repairMarkdownTables(wrapUnifiedDiffHunks(content)));
   const compact = density === 'compact';
 
@@ -240,7 +250,7 @@ export function MarkdownRenderer({ content, className = "", depth = 0, density =
     h5: styled('h5', 'mb-1 mt-3 text-sm font-semibold text-zinc-200 first:mt-0'),
     h6: styled('h6', 'mb-1 mt-3 text-sm font-medium text-zinc-300 first:mt-0'),
     p: ({ node, ...props }) => {
-      const cards = entityOnlyParagraph(node as HastNode | undefined);
+      const cards = isLinkAllowed ? null : entityOnlyParagraph(node as HastNode | undefined);
       if (cards) return <EntityCardGrid items={cards} />;
       return <div className={compact ? 'mb-2.5 leading-relaxed text-zinc-300 last:mb-0' : 'mb-4 leading-relaxed text-zinc-300'} {...props} />;
     },
@@ -285,7 +295,7 @@ export function MarkdownRenderer({ content, className = "", depth = 0, density =
     pre: ({ node }) => {
       const fence = fenceOf(node as HastNode | undefined);
       if (!fence) return <CodeBlock language="" code={hastText(node as HastNode | undefined)} />;
-      return <RichFence language={fence.language} code={fence.code} depth={depth} allowWidgets={allowWidgets} density={density} />;
+      return <RichFence language={fence.language} code={fence.code} depth={depth} allowWidgets={allowWidgets} density={density} allowImages={allowImages} isLinkAllowed={isLinkAllowed} />;
     },
     code: styled('code', 'bg-zinc-800 px-1.5 py-0.5 rounded text-sm font-mono text-indigo-300'),
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
@@ -318,6 +328,7 @@ export function MarkdownRenderer({ content, className = "", depth = 0, density =
     th: styled('th', compact ? 'whitespace-nowrap border-b border-zinc-800 px-3 py-2 text-left text-xs font-medium text-zinc-400' : 'whitespace-nowrap border-b border-zinc-800 px-3 py-2 text-left text-[11px] font-semibold uppercase tracking-wider text-zinc-400'),
     td: styled('td', 'px-3 py-2 align-top text-zinc-300'),
     a: ({ node, href, children, ...props }) => {
+      if (isLinkAllowed && !isLinkAllowed(typeof href === 'string' ? href : '')) return <span>{children}</span>;
       const ref = parseEntityUrl(href);
       if (ref) return <EntityChip entityRef={ref} label={hastText(node as HastNode | undefined)} />;
       return <a className={compact ? "text-cyan-300 underline decoration-cyan-300/40 underline-offset-2 hover:text-cyan-200 hover:decoration-cyan-200" : "text-indigo-400 hover:text-indigo-300 underline"} target="_blank" rel="noopener noreferrer" href={href} {...props}>{children}</a>;
@@ -328,6 +339,7 @@ export function MarkdownRenderer({ content, className = "", depth = 0, density =
     // instead of showing a broken-image icon.
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
     img: ({ node, src, alt, ...props }) => {
+      if (!allowImages) return alt ? <span>{alt}</span> : null;
       const url = typeof src === 'string' ? src : '';
       const entityRef = parseEntityUrl(url);
       if (entityRef?.kind === 'artifact') return <EntityCard entityRef={entityRef} label={alt || 'File'} />;
@@ -342,7 +354,7 @@ export function MarkdownRenderer({ content, className = "", depth = 0, density =
       // eslint-disable-next-line @next/next/no-img-element
       return <img src={url} alt={alt ?? ''} loading="lazy" className="my-2 max-w-full rounded-lg border border-zinc-800" {...props} />;
     },
-  }), [depth, compact, allowWidgets, density]);
+  }), [depth, compact, allowWidgets, density, allowImages, isLinkAllowed]);
 
   return (
     // Nested renderers (tab bodies) skip the `prose` hook class so chat

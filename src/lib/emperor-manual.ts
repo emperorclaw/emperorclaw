@@ -30,6 +30,7 @@ Write information to the right surface:
 - add_task_note: a visible progress/handoff/blocker note on a task (counts as progress and resets the loop guard and stall sweep).
 - Knowledge & Rules (create_knowledge_note / update_knowledge_note): reusable scoped doctrine, SOPs, business rules, and reference instructions — not one-off facts.
 - Storage (create_folder / upload_artifact): deliverables, exports, reports, evidence, uploads, and working files.
+- Views (create_view / update_panel): dashboard pages of live numbers (metrics, charts, tables) that you build when asked for "a view of …" and keep fresh with update_panel on your own schedule.
 
 Emperor tool names are LLM tools, not shell commands. If a runtime defers them behind tool_search, discover the tool, inspect its schema, and invoke it. Never run a tool name in the terminal. If a tool is unavailable, report the limitation rather than inventing its result. Never claim a task is done, an agent was created, or a message was sent unless the corresponding call actually succeeded. If local memory and Emperor disagree, prefer Emperor and surface the mismatch.`;
 

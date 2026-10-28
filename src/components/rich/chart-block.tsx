@@ -23,11 +23,11 @@ const PALETTE = [
 
 const AXIS_FONT = 11;
 
-function seriesColor(spec: ChartSpec, index: number): string {
+export function seriesColor(spec: ChartSpec, index: number): string {
     return spec.series[index]?.color || PALETTE[index % PALETTE.length];
 }
 
-function useWidth<T extends HTMLElement>(fallback = 560): [React.RefObject<T | null>, number] {
+export function useWidth<T extends HTMLElement>(fallback = 560): [React.RefObject<T | null>, number] {
     const ref = useRef<T | null>(null);
     const [width, setWidth] = useState(fallback);
     useLayoutEffect(() => {
@@ -79,7 +79,7 @@ function Tooltip({ spec, hover, width, sliceIndex }: { spec: ChartSpec; hover: H
     );
 }
 
-function Legend({ items }: { items: { name: string; color: string; detail?: string }[] }) {
+export function Legend({ items }: { items: { name: string; color: string; detail?: string }[] }) {
     if (items.length < 2) return null;
     return (
         <div className="mt-3 flex flex-wrap gap-x-4 gap-y-1.5 text-xs text-zinc-400">
@@ -100,7 +100,7 @@ function estimateTextWidth(text: string): number {
 
 // ─── Cartesian (bar / line / area) ─────────────────────────────────────────
 
-function CartesianChart({ spec, width }: { spec: ChartSpec; width: number }) {
+export function CartesianChart({ spec, width }: { spec: ChartSpec; width: number }) {
     const gradientId = useId().replace(/:/g, "");
     const [hover, setHover] = useState<Hover | null>(null);
     const n = spec.labels.length;

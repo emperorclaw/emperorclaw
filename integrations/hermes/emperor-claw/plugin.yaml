@@ -38,3 +38,9 @@ provides_tools:
   - emperor_get_knowledge_note
   - emperor_search_knowledge
   - emperor_list_knowledge_folders
+  - emperor_list_views
+  - emperor_get_view
+  - emperor_create_view
+  - emperor_update_view
+  - emperor_update_panel
+  - emperor_archive_view

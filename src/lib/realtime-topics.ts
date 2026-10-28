@@ -86,6 +86,11 @@ export function eventTopicsFor(payload: unknown, subject: RealtimeSubject | null
             topics.add("inbox");
             topics.add("dashboard");
             break;
+        // lib/views.ts: a view's layout or a panel's values changed (ids only).
+        case "view_updated":
+            addId(topics, "view", p.viewId);
+            topics.add("views");
+            break;
         // lib/audit.ts: a new activity entry (the event carries no details).
         case "audit_recorded":
             topics.add("activity");

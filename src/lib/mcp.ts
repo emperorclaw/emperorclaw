@@ -268,7 +268,23 @@ export async function verifyMcpToken(req: NextRequest, options: VerifyMcpTokenOp
     return result;
 }
 
-export async function checkIdempotency(req: NextRequest, companyId: string, endpoint: string) {
+/**
+ * Who a cached idempotent response belongs to. Routes that resolved the token
+ * and acting agent pass them; every other route is bound to its credential
+ * automatically (a hash of the Authorization header plus the ?agentId= it
+ * names). The same caller replaying the same key and body gets the cached
+ * response; any other caller in the company misses and runs the request.
+ */
+export type IdempotencyCaller = { tokenId?: string | null; agentId?: string | null };
+
+function idempotencyCallerKey(req: NextRequest, caller?: IdempotencyCaller): string {
+    if (caller) return `token:${caller.tokenId ?? ""}|agent:${caller.agentId ?? ""}`;
+    const credential = req.headers.get("authorization") ?? "";
+    const agentParam = req.nextUrl?.searchParams.get("agentId") ?? "";
+    return `auth:${crypto.createHash("sha256").update(credential).digest("hex")}|agent:${agentParam}`;
+}
+
+export async function checkIdempotency(req: NextRequest, companyId: string, endpoint: string, caller?: IdempotencyCaller) {
     const idempotencyKey = req.headers.get("Idempotency-Key");
     if (!idempotencyKey) {
         return { error: "Idempotency-Key header is required", status: 400 };
@@ -288,7 +304,7 @@ export async function checkIdempotency(req: NextRequest, companyId: string, endp
     }
 
     const requestHash = crypto.createHash("sha256")
-        .update(`${idempotencyKey}:${endpoint}:${bodyHash}`)
+        .update(`${idempotencyKey}:${endpoint}:${bodyHash}:${idempotencyCallerKey(req, caller)}`)
         .digest("hex");
 
     const [existing] = await db.select().from(idempotencyKeys).where(

@@ -11,7 +11,7 @@ const TONE = {
     neutral: { chip: "bg-zinc-500/12 text-zinc-400 ring-zinc-500/20", stroke: "var(--chart-1)" },
 } as const;
 
-function Sparkline({ values, color }: { values: number[]; color: string }) {
+export function Sparkline({ values, color }: { values: number[]; color: string }) {
     const w = 96;
     const h = 28;
     const min = Math.min(...values);
