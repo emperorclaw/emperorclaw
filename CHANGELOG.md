@@ -9,6 +9,18 @@ tagged (e.g. `## [1.2.0] — 2026-07-22`). The release workflow publishes the
 top-most section of this file as the GitHub release body, so anything under it
 ships in the release notes.
 
+## [0.17.0] — 2026-10-28
+
+### Added
+- **Action permissions for agents.** For each agent, choose Off, Ask first or Allowed per action. This covers Emperor actions (send messages, create and update tasks, notes, projects…) and common real-world ones (send email, post on social, spend money, delete data, deploy, browse the web, run shell commands). "Ask first" puts an approval in your Inbox that shows exactly what the agent wants to do, with every argument in full. Approving it lets that one exact action through once. Set company defaults and override them per agent in the agent's new Actions tab. Sending email, posting, spending, deleting and deploying ask first by default; everything else stays allowed, so nothing changes until you decide.
+- Agents check before real-world actions with a new `check_action` tool.
+
+### Fixed
+- The Hermes bridge could drop a turn's start event and its first reasoning when the turn finished while its state was being saved (most likely on slow disks).
+
+### Changed
+- Hermes bridge 0.17.0 (`check_action` and the fix above). Update with `emperor-hermes update` after downloading the 0.17.0 installer.
+
 ## [0.16.0] — 2026-10-28
 
 ### Added
