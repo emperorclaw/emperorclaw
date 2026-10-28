@@ -85,8 +85,10 @@ maybe("owners see every run; every tab's groups add up to the overall total; oth
     assert.deepEqual(taskView.groups.map((group) => [group.key, group.label]), [[work.taskIn.id, "Task In"]]);
     assert.equal(taskView.filterLabels.project, "Project In");
 
-    const json = JSON.stringify(await loadCostsView(viewer, "agent", range, {}));
-    assert.ok(!json.includes("Other Co Agent") && !json.includes("777") && !json.includes("888"), "another company's runs never leak");
+    // Structural, not substring: random ids and timestamps can contain "777" or "888".
+    const byAgent = await loadCostsView(viewer, "agent", range, {});
+    assert.ok(!JSON.stringify(byAgent).includes("Other Co Agent"), "another company's agents never leak");
+    assert.ok(byAgent.groups.every((group) => group.costCents !== 777 && group.costCents !== 888), "another company's runs never leak");
 });
 
 maybe("a restricted member counts only in-scope clients' task runs and in-scope agents' chat runs", async () => {
