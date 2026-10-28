@@ -226,6 +226,32 @@ class TurnRunnerFixtureTest(unittest.IsolatedAsyncioTestCase):
         source_ids = [e["id"] for e in h.emperor.events(turn.run_id)]
         self.assertEqual(len(source_ids), len(set(source_ids)))
 
+    async def test_events_buffered_before_admission_survive_slow_state_save(self) -> None:
+        """Events that arrive before the prompt.submit answer must not be lost when the turn
+        settles (here: reconnect + replay of message.complete) while the admission is being saved."""
+        h = Harness("reconnect_replay", self.home)
+        real_save, gated = h.state.save, []
+
+        async def slow_save() -> None:
+            tracker = h.runner._by_thread.get("fx-replay")
+            if not gated and tracker is not None and tracker.admission_id is not None:
+                gated.append(True)  # the save right after admission: hold it until the turn completes
+                await h.wait_for(tracker.done.is_set)
+            await real_save()
+
+        h.state.save = slow_save  # type: ignore[method-assign]
+        async with h:
+            turn = h.turn("fx-replay")
+            result = await asyncio.wait_for(h.runner.run(turn), 10)
+            await h.sink.flush()
+        self.assertTrue(gated)
+        self.assertIs(result.outcome, TurnOutcome.COMPLETED)
+        kinds = h.emperor.kinds(turn.run_id)
+        self.assertEqual(kinds.count("turn.started"), 1)
+        self.assertEqual(kinds.count("reasoning"), 1)  # thinking.delta seq 6-7, buffered too
+        self.assertEqual(kinds[-1], "turn.completed")
+        self.assertIsNotNone(result.queue_ms)
+
     async def test_gateway_sigkill_resolves_unknown_without_retry_after_tool(self) -> None:
         async with Harness("gateway_kill9_mid_turn", self.home) as h:
             turn = h.turn("fx-kill")

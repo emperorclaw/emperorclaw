@@ -147,11 +147,14 @@ class TurnRunner:
         tracker.admission_id = admission["admission_id"]
         record.update(admissionId=tracker.admission_id)
         self._store.put_turn(turn.submission_id, record)
-        await self._store.save()
-        for event in tracker.buffered:
+        # Drain the events that raced ahead of the submit answer before any await: from here on
+        # `_on_event` processes live events directly, and a turn that completes during the save
+        # (fast turn, replay after a reconnect) would otherwise drop them (message.start included).
+        buffered, tracker.buffered = tracker.buffered, []
+        for event in buffered:
             if event.admission_id == tracker.admission_id:
                 self._process(tracker, event)
-        tracker.buffered.clear()
+        await self._store.save()
         if admission.get("status") == "terminal" and not tracker.done.is_set():
             await self._reconcile(tracker)  # an exact resubmit of an already settled admission
         if tracker.interrupt_reason and tracker.interrupt_sent_at is None:
