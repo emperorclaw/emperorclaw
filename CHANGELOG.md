@@ -9,6 +9,25 @@ tagged (e.g. `## [1.2.0] — 2026-07-22`). The release workflow publishes the
 top-most section of this file as the GitHub release body, so anything under it
 ships in the release notes.
 
+## [0.20.0] — 2026-10-28
+
+### Added
+- **Access on clients and projects.** An Access button on every client and project lets you give a person Admin, Can edit or Can view there, for example admin of one client and viewer everywhere else. Nothing changes for companies that never use it. People limited to certain clients see only those, and "Can view" is read-only for them. Admins of a client or project manage its Access but can never grant more than they have or touch company roles.
+- **Invite to one client.** From the Access dialog, invite someone by email to a single client or project; they see only that.
+- **Who can use each agent.** When you hire an agent, or in its Scope tab, choose Everyone, Specific people or Only one person. Others don't see it, can't message, mention or assign work to it, and it doesn't react to their messages in groups. Admins see its name, owner, status and cost, never its chats. An agent for one person never sees more data than that person.
+- **Recovering an agent whose owner left.** Removing a member clears their access and agent ownerships. An admin can then give the agent a new owner, open it to everyone or take it, without seeing the previous owner's conversations.
+
+### Changed
+- The Projects board, task pages and timeline only show what the viewer may see, and show "🔒 name" or "Private agent" for tasks held by agents the viewer can't use.
+- An agent name used by two agents in the same company is no longer accepted where an agent can be named; use its id.
+
+### Fixed
+- The Projects board loaded every project and task regardless of a member's limits, and sent full agent records to the browser.
+
+### Upgrade notes
+- Migration 0072 moves each limited member's client list into the new Access records; nobody gains or loses access. Rolling back to 0.19 needs the SQL in "Rolling Back 0.20 (Access)" in the self-hosting upgrade docs, or limited members will see no clients.
+- No Hermes bridge change: agents don't need an update.
+
 ## [0.19.0] — 2026-10-28
 
 ### Added
