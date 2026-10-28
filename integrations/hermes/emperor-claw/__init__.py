@@ -1206,12 +1206,22 @@ def emperor_create_view(args: Dict[str, Any], **_: Any) -> str:
     panels = args.get("panels")
     if not title or not isinstance(panels, list):
         return _json({"error": "title and a panels array are required"})
+    # The conversation the request came from decides who the view is for: the
+    # server makes the owner of a private chat the view's owner (private by
+    # default). Inside a bridge turn that is the turn's thread unless the
+    # agent names another one.
+    turn = _turn_context()
+    thread_id = args.get("threadId") or args.get("thread_id") or (turn["threadId"] if turn else None)
     body = {
         "title": title,
         "description": args.get("description"),
         "scopeType": args.get("scopeType") or args.get("scope_type"),
         "scopeId": args.get("scopeId") or args.get("scope_id"),
         "panels": panels,
+        "threadId": thread_id,
+        "ownerUserId": args.get("ownerUserId") or args.get("owner_user_id"),
+        "visibility": args.get("visibility"),
+        "refreshEveryMinutes": args.get("refreshEveryMinutes") if args.get("refreshEveryMinutes") is not None else args.get("refresh_every_minutes"),
     }
     body = {k: v for k, v in body.items() if v not in (None, "")}
     return _json(_request("POST", "/views", body=body, query=_view_query()))
@@ -1222,8 +1232,13 @@ def emperor_update_view(args: Dict[str, Any], **_: Any) -> str:
     if not view_id:
         return _json({"error": "viewId is required"})
     body = {key: args.get(key) for key in ("title", "description", "panels") if args.get(key) is not None}
+    # null/0 clears the refresh interval, so presence (not truthiness) counts.
+    for key in ("refreshEveryMinutes", "refresh_every_minutes"):
+        if key in args:
+            body["refreshEveryMinutes"] = args.get(key)
+            break
     if not body:
-        return _json({"error": "Pass title, description or panels"})
+        return _json({"error": "Pass title, description, panels or refreshEveryMinutes"})
     return _json(_request("PATCH", f"/views/{urllib.parse.quote(view_id)}", body=body, query=_view_query()))
 
 
@@ -1805,7 +1820,7 @@ def register(ctx: Any) -> None:
         "emperor_list_views",
         TOOLSET,
         _schema(
-            "List the Emperor views (dashboards) you can see, with scope, panel count, who built each and when their values were last updated. Check before creating one so you update one of yours instead of building a duplicate (you can only change views you built).",
+            "List the Emperor views (dashboards) you can see (those open to your scope and the private ones you maintain), with scope, visibility, owner, panel count, who built each and when their values were last updated. Check before creating one so you update one of yours instead of building a duplicate (you can only change views you built).",
             {
                 "scopeType": {"type": "string", "enum": ["company", "customer", "project"]},
                 "scopeId": {"type": "string"},
@@ -1836,13 +1851,20 @@ def register(ctx: Any) -> None:
         _schema(
             "Build an Emperor view: a dashboard page of typed panels (metrics, line/bar charts, tables, lists, markdown, progress) people open from Views or pin to Home. "
             "Use it when asked for a dashboard or 'a view of ...'. You fetch the numbers with your own tools and credentials; Emperor stores only the values (never put secrets in a view). "
-            "Pick the smallest scope (company, or a customer/project id). You own it: only you (and people) can change it. Then keep it fresh: refresh every panel with emperor_update_panel on a schedule with your own cron, and whenever someone asks.",
+            "Pick the smallest scope (company, or a customer/project id). You maintain it: only you (and people) can change it. "
+            "Asked in someone's private chat, the view is theirs and private to them (the current thread is sent automatically); asked in a team or group chat it is open to everyone in its scope unless you pass ownerUserId (a person from that chat) and visibility private. "
+            "Never repeat a private view's numbers in team or group chats. Set refreshEveryMinutes to your refresh interval so people see when it is overdue. "
+            "Then keep it fresh: refresh every panel with emperor_update_panel on a schedule with your own cron, and whenever someone asks.",
             {
                 "title": {"type": "string"},
                 "description": {"type": "string", "description": "What it shows, the source, how often you refresh it"},
                 "scopeType": {"type": "string", "enum": ["company", "customer", "project"]},
                 "scopeId": {"type": "string", "description": "Customer or project id for a customer/project view"},
                 "panels": {"type": "array", "items": {"type": "object"}, "description": view_panels_doc},
+                "threadId": {"type": "string", "description": "The conversation you were asked in (defaults to the thread you are answering)"},
+                "ownerUserId": {"type": "string", "description": "The person the view is for; must be someone from that conversation"},
+                "visibility": {"type": "string", "enum": ["private", "scope"], "description": "private (owner only) or scope (everyone who can see the scope); sharing with specific people is done by a person in Emperor"},
+                "refreshEveryMinutes": {"type": "integer", "description": "How often you refresh the values, in minutes (60 = hourly, 1440 = daily)"},
             },
             ["title", "panels"],
         ),
@@ -1855,12 +1877,13 @@ def register(ctx: Any) -> None:
         "emperor_update_view",
         TOOLSET,
         _schema(
-            "Change an Emperor view you built: title, description or layout (another agent's view is refused). panels replaces the whole layout (send every panel to keep, with its id). Each title or layout change is a new version people can revert. For new numbers only, use emperor_update_panel.",
+            "Change an Emperor view you built: title, description, refresh interval or layout (another agent's view is refused; who can see it is its owner's call, in Emperor). panels replaces the whole layout (send every panel to keep, with its id). Each title or layout change is a new version people can revert. For new numbers only, use emperor_update_panel.",
             {
                 "viewId": {"type": "string"},
                 "title": {"type": "string"},
                 "description": {"type": "string"},
                 "panels": {"type": "array", "items": {"type": "object"}, "description": view_panels_doc},
+                "refreshEveryMinutes": {"type": ["integer", "null"], "description": "How often you refresh the values, in minutes; null or 0 clears it"},
             },
             ["viewId"],
         ),

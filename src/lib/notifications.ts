@@ -31,7 +31,7 @@ import { richMessagePreview } from "@/lib/rich-preview";
  * catches its own failures.
  */
 
-export const NOTIFICATION_KINDS = ["mention", "decision", "approval", "task_assigned", "agent_failed", "agent_down", "incident", "stall", "loop_paused", "doctrine"] as const;
+export const NOTIFICATION_KINDS = ["mention", "decision", "approval", "task_assigned", "agent_failed", "agent_down", "incident", "stall", "loop_paused", "doctrine", "view_transferred"] as const;
 export type NotificationKind = (typeof NOTIFICATION_KINDS)[number];
 
 export const NOTIFICATION_KIND_LABELS: Record<NotificationKind, string> = {
@@ -45,6 +45,7 @@ export const NOTIFICATION_KIND_LABELS: Record<NotificationKind, string> = {
     stall: "A task has stalled",
     loop_paused: "Agent conversation paused",
     doctrine: "New team doctrine available",
+    view_transferred: "A view is handed to you or away from you",
 };
 
 /** Default email kinds for someone who never changed their preferences. */

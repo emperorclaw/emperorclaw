@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import { IconArrowDownRight, IconArrowRight, IconArrowUpRight } from "@tabler/icons-react";
+import { IconArrowDownRight, IconArrowRight, IconArrowUpRight, IconMessageQuestion } from "@tabler/icons-react";
 import { CartesianChart, Legend, seriesColor, useWidth } from "@/components/rich/chart-block";
 import { Sparkline } from "@/components/rich/stats-block";
 import { MarkdownRenderer } from "@/components/markdown-renderer";
@@ -13,6 +13,7 @@ import {
     type ViewPanelData, type ViewPanelLayout,
 } from "@/lib/view-spec";
 import { cn } from "@/lib/utils";
+import { viewStaleness } from "@/lib/view-access";
 
 /** A panel as the page receives it (lib/views.ts ViewPanel, serialized). */
 export type ViewPanelView = ViewPanelLayout & {
@@ -53,7 +54,16 @@ export function useNowMs(): number {
     return now;
 }
 
-export function ViewGrid({ panels, emptyHint }: { panels: ViewPanelView[]; emptyHint?: React.ReactNode }) {
+export function ViewGrid({ panels, emptyHint, refreshEveryMinutes = null, since, onAsk }: {
+    panels: ViewPanelView[];
+    emptyHint?: React.ReactNode;
+    /** The view's promised refresh interval: panels past 1.5x of it say they are overdue. */
+    refreshEveryMinutes?: number | null;
+    /** When the view was created (a panel with no value yet is measured from it). */
+    since?: string;
+    /** "Ask about this panel"; omitted when the person cannot chat with the maintaining agent. */
+    onAsk?: (panel: ViewPanelView) => void;
+}) {
     const now = useNowMs();
     if (panels.length === 0) {
         return (
@@ -64,29 +74,41 @@ export function ViewGrid({ panels, emptyHint }: { panels: ViewPanelView[]; empty
     }
     return (
         <div className="grid grid-cols-1 gap-3 md:grid-cols-12" style={{ gridAutoRows: `minmax(${ROW_PX}px, auto)` }}>
-            {panels.map((panel) => <PanelCard key={panel.id} panel={panel} nowMs={now} />)}
+            {panels.map((panel) => <PanelCard key={panel.id} panel={panel} nowMs={now} refreshEveryMinutes={refreshEveryMinutes} since={since} onAsk={onAsk} />)}
         </div>
     );
 }
 
-function PanelCard({ panel, nowMs }: { panel: ViewPanelView; nowMs: number }) {
+function PanelCard({ panel, nowMs, refreshEveryMinutes, since, onAsk }: {
+    panel: ViewPanelView; nowMs: number; refreshEveryMinutes: number | null; since?: string; onAsk?: (panel: ViewPanelView) => void;
+}) {
     const by = panel.updatedBy?.name ?? (panel.updatedBy?.type === "agent" ? "an agent" : panel.updatedBy ? "someone" : null);
+    const stale = viewStaleness({ lastAt: panel.updatedAt, since: since ?? panel.updatedAt ?? "", refreshEveryMinutes }, nowMs);
     const scrolls = panel.type === "table" || panel.type === "list" || panel.type === "markdown";
     return (
         <section
             aria-labelledby={`panel-${panel.id}`}
             className={cn("flex min-w-0 flex-col rounded-2xl border border-border bg-card p-4", COL_SPAN[panel.w] ?? "md:col-span-6", ROW_SPAN[panel.h] ?? "md:row-span-2")}
         >
-            <header className="mb-2 min-w-0">
-                <h2 id={`panel-${panel.id}`} className="truncate text-sm font-semibold text-foreground">{panel.title}</h2>
-                {panel.subtitle && <p className="truncate text-xs text-muted-foreground">{panel.subtitle}</p>}
+            <header className="mb-2 flex min-w-0 items-start gap-2">
+                <div className="min-w-0 flex-1">
+                    <h2 id={`panel-${panel.id}`} className="truncate text-sm font-semibold text-foreground">{panel.title}</h2>
+                    {panel.subtitle && <p className="truncate text-xs text-muted-foreground">{panel.subtitle}</p>}
+                </div>
+                {onAsk && (
+                    <button type="button" onClick={() => onAsk(panel)} title="Ask the agent about this panel" aria-label={`Ask about the panel ${panel.title}`}
+                        className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+                        <IconMessageQuestion className="h-4 w-4" aria-hidden />
+                    </button>
+                )}
             </header>
             <div className={cn("min-h-0 min-w-0 flex-1", scrolls && "max-h-[420px] overflow-auto md:max-h-none")}>
                 {panel.data ? <PanelBody type={panel.type} data={panel.data} height={panel.h * ROW_PX} /> : (
                     <p className="text-sm text-muted-foreground">No data yet.</p>
                 )}
             </div>
-            <footer className="mt-2 truncate text-[11px] text-muted-foreground" title={panel.updatedAt ?? undefined} suppressHydrationWarning>
+            <footer className={cn("mt-2 truncate text-[11px]", stale.overdue ? "font-medium text-amber-400" : "text-muted-foreground")} title={panel.updatedAt ?? undefined} suppressHydrationWarning>
+                {stale.overdue && "Overdue: "}
                 {panel.updatedAt ? `Updated ${formatAgo(panel.updatedAt, nowMs)}${by ? ` by ${by}` : ""}` : "Waiting for its first update"}
             </footer>
         </section>

@@ -22,7 +22,7 @@ export async function GET(req: NextRequest) {
     }
 }
 
-/** create_view: {title, description?, scopeType?, scopeId?, panels[]}. */
+/** create_view: {title, description?, scopeType?, scopeId?, panels[], threadId?, ownerUserId?, visibility?, refreshEveryMinutes?}. */
 export async function POST(req: NextRequest) {
     const resolved = await viewMcpCaller(req);
     if (resolved.response) return resolved.response;
@@ -37,6 +37,7 @@ export async function POST(req: NextRequest) {
         if (!body) return NextResponse.json({ error: "A JSON object body is required" }, { status: 400 });
         const view = await createView(resolved.companyId, resolved.caller, {
             title: body.title, description: body.description, scopeType: body.scopeType, scopeId: body.scopeId, panels: body.panels,
+            threadId: body.threadId, ownerUserId: body.ownerUserId, visibility: body.visibility, refreshEveryMinutes: body.refreshEveryMinutes,
         });
         const res = { message: "View created. Keep it fresh with update_panel on a schedule.", url: `/views/${view.id}`, view };
         await saveIdempotencyResponse(resolved.companyId, endpoint, idempotency.requestHash!, JSON.parse(JSON.stringify(res)));

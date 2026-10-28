@@ -5,6 +5,8 @@ import { IconLayoutDashboard } from "@tabler/icons-react";
 import { formatChartValue } from "@/lib/rich-blocks";
 import type { MetricPanelData, ProgressPanelData } from "@/lib/view-spec";
 import type { PinnedViewCard } from "@/lib/views";
+import { viewStaleness } from "@/lib/view-access";
+import { StaleNote } from "./view-meta";
 import { formatAgo, useNowMs } from "./view-panels";
 
 function headline(item: PinnedViewCard["highlights"][number]): string {
@@ -16,7 +18,7 @@ function headline(item: PinnedViewCard["highlights"][number]): string {
     return typeof data.value === "number" ? formatChartValue(data.value, "", data.unit ?? "", true) : `${data.value}${data.unit ? ` ${data.unit}` : ""}`;
 }
 
-/** Home: the views people pinned, compact (title plus up to three headline numbers). */
+/** Home: the views this person pinned, compact (title plus up to three headline numbers). */
 export function PinnedViewsStrip({ views }: { views: PinnedViewCard[] }) {
     const now = useNowMs();
     if (views.length === 0) return null;
@@ -45,9 +47,13 @@ export function PinnedViewsStrip({ views }: { views: PinnedViewCard[] }) {
                         ) : (
                             <p className="mt-2 text-xs text-muted-foreground">{view.panelCount} panel{view.panelCount === 1 ? "" : "s"}</p>
                         )}
-                        <p className="mt-2 truncate text-[11px] text-muted-foreground" suppressHydrationWarning>
-                            {view.dataUpdatedAt ? `Updated ${formatAgo(view.dataUpdatedAt, now)}` : "No values yet"}
-                        </p>
+                        {viewStaleness({ lastAt: view.dataUpdatedAt, since: view.createdAt, refreshEveryMinutes: view.refreshEveryMinutes }, now).overdue ? (
+                            <StaleNote lastAt={view.dataUpdatedAt} since={view.createdAt} refreshEveryMinutes={view.refreshEveryMinutes} now={now} className="mt-2 max-w-full text-[11px]" />
+                        ) : (
+                            <p className="mt-2 truncate text-[11px] text-muted-foreground" suppressHydrationWarning>
+                                {view.dataUpdatedAt ? `Updated ${formatAgo(view.dataUpdatedAt, now)}` : "No values yet"}
+                            </p>
+                        )}
                     </Link>
                 ))}
             </div>

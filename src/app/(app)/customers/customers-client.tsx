@@ -11,6 +11,7 @@ import { PageHeader } from "@/components/page-header";
 import { EmptyState } from "@/components/ui/empty-state";
 import { cn } from "@/lib/utils";
 import { splitProjectTitle } from "@/lib/project-title";
+import { ScopeViewsSection } from "@/components/views/scope-views-section";
 
 type CustomerSummary = any;
 
@@ -228,6 +229,7 @@ export default function CustomersClient({ initialData: customerData }: { initial
                                     </div>
                                 </section>
                             )}
+                            <ScopeViewsSection key={selectedCustomer.id} customerId={selectedCustomer.id} className="mt-4" />
                             <div className="pt-4 sm:pt-5">
                                 <div className="mb-2 flex items-center justify-between">
                                     <label className="text-sm font-medium text-zinc-300">Description</label>

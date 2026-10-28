@@ -25,7 +25,8 @@ export type EmperorManualSection = {
 
 /** Lines that describe one module's tools (lib/modules.ts); left out while that module is off. */
 const VIEWS_LINE = `- Views (create_view / update_panel): dashboard pages of live numbers (metrics, charts, tables) that you build when asked for "a view of …" and keep fresh with update_panel on your own schedule.`;
-const MODULE_LINES: Partial<Record<ModuleKey, readonly string[]>> = { views: [VIEWS_LINE] };
+const VIEWS_PRIVACY_LINE = `- A view asked for in someone's private chat is theirs and private to them (pass that threadId to create_view). Never repeat a private view's numbers in team or group chats; discuss them only in its owner's private chat with you. Set refreshEveryMinutes so people can see when a view is overdue.`;
+const MODULE_LINES: Partial<Record<ModuleKey, readonly string[]>> = { views: [VIEWS_LINE, VIEWS_PRIVACY_LINE] };
 
 const OVERVIEW = `Emperor Claw is the durable source of truth for this company's agents, projects, tasks, task notes, knowledge, and messages. Hermes, Codex, and other runtimes are the thinking layers; Emperor holds the state.
 
@@ -36,6 +37,7 @@ Write information to the right surface:
 - Knowledge & Rules (create_knowledge_note / update_knowledge_note): reusable scoped doctrine, SOPs, business rules, and reference instructions — not one-off facts.
 - Storage (create_folder / upload_artifact): deliverables, exports, reports, evidence, uploads, and working files.
 ${VIEWS_LINE}
+${VIEWS_PRIVACY_LINE}
 
 Emperor tool names are LLM tools, not shell commands. If a runtime defers them behind tool_search, discover the tool, inspect its schema, and invoke it. Never run a tool name in the terminal. If a tool is unavailable, report the limitation rather than inventing its result. Never claim a task is done, an agent was created, or a message was sent unless the corresponding call actually succeeded. If local memory and Emperor disagree, prefer Emperor and surface the mismatch.`;
 

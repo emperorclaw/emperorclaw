@@ -2,30 +2,28 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { toast } from "sonner";
-import { IconArchive, IconLayoutDashboard, IconMessageCircle, IconPin, IconPlus } from "@tabler/icons-react";
+import { IconArchive, IconLayoutDashboard, IconMessageCircle, IconPlus, IconSearch } from "@tabler/icons-react";
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
-import { formatAgo, useNowMs } from "@/components/views/view-panels";
+import { useNowMs } from "@/components/views/view-panels";
+import { ViewRow } from "@/components/views/view-meta";
 import type { ViewSummary } from "@/lib/views";
 import { VIEW_DESCRIPTION_MAX, VIEW_TITLE_MAX } from "@/lib/view-spec";
+import { cn } from "@/lib/utils";
+
+export { scopeText } from "@/components/views/view-meta";
 
 const EXAMPLE_ASKS = [
     "Build me a view of this month's e-shop products",
     "Build me a view of our finances for the last 7 days",
     "Build me a view of open leads by stage, refreshed daily",
 ];
-
-export function scopeText(view: { scopeType: string; scopeLabel: string | null }): string {
-    if (view.scopeType === "company") return "Company";
-    const noun = view.scopeType === "customer" ? "Client" : "Project";
-    return view.scopeLabel ? `${noun}: ${view.scopeLabel}` : noun;
-}
 
 /** The empty state teaches the one way views get built: ask an agent. */
 export function ViewsEmptyState() {
@@ -49,8 +47,59 @@ export function ViewsEmptyState() {
     );
 }
 
-export function ViewsList({ views, showArchived }: { views: ViewSummary[]; showArchived: boolean }) {
+const FILTERS = [
+    { key: "all", label: "All" },
+    { key: "mine", label: "Mine" },
+    { key: "shared", label: "Shared with me" },
+    { key: "pinned", label: "Pinned" },
+] as const;
+type FilterKey = (typeof FILTERS)[number]["key"];
+
+type Group = { key: string; title: string; views: ViewSummary[]; projects: { key: string; title: string; views: ViewSummary[] }[] };
+
+/**
+ * Company first, then one section per client with its projects nested under
+ * it, then projects that belong to no client. Each section keeps the server's
+ * order (most recently updated first).
+ */
+export function groupViews(views: ViewSummary[]): Group[] {
+    const company: Group = { key: "company", title: "Company", views: [], projects: [] };
+    const clients = new Map<string, Group>();
+    const internal: Group = { key: "internal", title: "Projects without a client", views: [], projects: [] };
+    const clientGroup = (id: string, label: string | null) => {
+        let group = clients.get(id);
+        if (!group) { group = { key: `customer:${id}`, title: label ?? "Client", views: [], projects: [] }; clients.set(id, group); }
+        return group;
+    };
+    for (const view of views) {
+        if (view.scopeType === "company") { company.views.push(view); continue; }
+        if (view.scopeType === "customer" && view.scopeId) { clientGroup(view.scopeId, view.scopeLabel).views.push(view); continue; }
+        const parent = view.customerId ? clientGroup(view.customerId, view.customerLabel) : internal;
+        const key = `project:${view.scopeId}`;
+        let project = parent.projects.find((p) => p.key === key);
+        if (!project) { project = { key, title: view.scopeLabel ?? "Project", views: [] }; parent.projects.push(project); }
+        project.views.push(view);
+    }
+    const sortedClients = [...clients.values()].sort((a, b) => a.title.localeCompare(b.title));
+    return [company, ...sortedClients, internal].filter((g) => g.views.length > 0 || g.projects.length > 0);
+}
+
+function matches(view: ViewSummary, filter: FilterKey, query: string, userId: string): boolean {
+    if (filter === "mine" && view.owner?.id !== userId) return false;
+    if (filter === "shared" && !(view.visibility === "shared" && view.access === "full" && view.owner?.id !== userId)) return false;
+    if (filter === "pinned" && !view.pinned) return false;
+    if (!query) return true;
+    return [view.title, view.description, view.scopeLabel, view.customerLabel, view.owner?.name, view.createdBy.name]
+        .some((text) => text?.toLowerCase().includes(query));
+}
+
+export function ViewsBrowser({ views, showArchived, userId }: { views: ViewSummary[]; showArchived: boolean; userId: string }) {
     const now = useNowMs();
+    const [filter, setFilter] = useState<FilterKey>("all");
+    const [query, setQuery] = useState("");
+    const shown = useMemo(() => views.filter((v) => matches(v, filter, query.trim().toLowerCase(), userId)), [views, filter, query, userId]);
+    const groups = useMemo(() => groupViews(shown), [shown]);
+
     if (views.length === 0) {
         return showArchived ? (
             <div className="space-y-3">
@@ -60,43 +109,43 @@ export function ViewsList({ views, showArchived }: { views: ViewSummary[]; showA
         ) : <ViewsEmptyState />;
     }
     return (
-        <div className="space-y-3">
-            <div className="overflow-hidden rounded-2xl border border-border bg-card">
-                <div className="hidden grid-cols-[minmax(0,1fr)_180px_80px_150px_70px] gap-3 border-b border-border px-4 py-2 text-xs font-medium text-muted-foreground md:grid">
-                    <span>Title</span><span>Scope</span><span className="text-right">Panels</span><span>Last updated</span><span className="text-center">Home</span>
+        <div className="space-y-4">
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                <div role="tablist" aria-label="Filter views" className="flex max-w-full gap-1 overflow-x-auto rounded-xl border border-border bg-card p-1">
+                    {FILTERS.map((f) => (
+                        <button key={f.key} type="button" role="tab" aria-selected={filter === f.key} onClick={() => setFilter(f.key)}
+                            className={cn("shrink-0 rounded-lg px-3 py-1.5 text-sm transition-colors",
+                                filter === f.key ? "bg-accent font-medium text-foreground" : "text-muted-foreground hover:text-foreground")}>
+                            {f.label}
+                        </button>
+                    ))}
                 </div>
-                <ul className="divide-y divide-border">
-                    {views.map((view) => {
-                        const updated = view.dataUpdatedAt && view.dataUpdatedAt > view.updatedAt ? view.dataUpdatedAt : view.updatedAt;
-                        return (
-                            <li key={view.id}>
-                                <Link href={`/views/${view.id}`} className="flex flex-wrap items-baseline gap-x-3 gap-y-1 px-4 py-3 hover:bg-accent/60 md:grid md:grid-cols-[minmax(0,1fr)_180px_80px_150px_70px] md:items-center md:gap-3">
-                                    <span className="w-full min-w-0 md:w-auto">
-                                        <span className="flex items-center gap-1.5 truncate text-sm font-medium text-foreground">
-                                            {view.archived && <IconArchive className="h-3.5 w-3.5 shrink-0 text-muted-foreground" aria-label="Archived" />}
-                                            {view.title}
-                                        </span>
-                                        {view.description && <span className="block truncate text-xs text-muted-foreground">{view.description}</span>}
-                                    </span>
-                                    <span className="truncate text-xs text-muted-foreground md:text-sm">{scopeText(view)}</span>
-                                    <span className="text-xs text-muted-foreground md:text-right md:text-sm md:tabular-nums">
-                                        <span className="md:hidden">{view.panelCount} panel{view.panelCount === 1 ? "" : "s"}</span>
-                                        <span className="hidden md:inline">{view.panelCount}</span>
-                                    </span>
-                                    <span className="truncate text-xs text-muted-foreground md:text-sm" suppressHydrationWarning>
-                                        <span className="md:hidden">Updated </span>{formatAgo(updated, now)}{view.createdBy.name ? ` · ${view.createdBy.name}` : ""}
-                                    </span>
-                                    <span className="text-xs text-muted-foreground md:flex md:justify-center">
-                                        {view.pinnedToHome
-                                            ? <span className="inline-flex items-center gap-1 text-primary"><IconPin className="h-4 w-4" aria-hidden /><span className="md:sr-only">Pinned to Home</span></span>
-                                            : <span className="hidden md:inline" aria-label="Not pinned">—</span>}
-                                    </span>
-                                </Link>
-                            </li>
-                        );
-                    })}
-                </ul>
+                <label className="flex h-10 w-full items-center gap-2 rounded-xl border border-border bg-card px-3 text-sm text-muted-foreground sm:w-72">
+                    <IconSearch className="h-4 w-4 shrink-0" aria-hidden />
+                    <span className="sr-only">Search views</span>
+                    <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search views"
+                        className="w-full min-w-0 bg-transparent text-foreground outline-none placeholder:text-muted-foreground" />
+                </label>
             </div>
+
+            {groups.length === 0 ? (
+                <p className="rounded-2xl border border-dashed border-border bg-card px-4 py-8 text-center text-sm text-muted-foreground">No views match.</p>
+            ) : groups.map((group) => (
+                <section key={group.key} aria-labelledby={`views-${group.key}`} className="space-y-2">
+                    <h2 id={`views-${group.key}`} className="px-1 text-sm font-semibold text-foreground">{group.title}</h2>
+                    <div className="overflow-hidden rounded-2xl border border-border bg-card">
+                        {group.views.length > 0 && (
+                            <ul className="divide-y divide-border">{group.views.map((view) => <ViewRow key={view.id} view={view} now={now} showScope={false} />)}</ul>
+                        )}
+                        {group.projects.map((project, index) => (
+                            <div key={project.key} className={cn((index > 0 || group.views.length > 0) && "border-t border-border")}>
+                                <h3 className="bg-muted/40 px-4 py-1.5 text-xs font-medium text-muted-foreground">Project: {project.title}</h3>
+                                <ul className="divide-y divide-border">{project.views.map((view) => <ViewRow key={view.id} view={view} now={now} showScope={false} />)}</ul>
+                            </div>
+                        ))}
+                    </div>
+                </section>
+            ))}
             <Link href={showArchived ? "/views" : "/views?archived=1"} className="inline-block text-sm text-muted-foreground hover:text-foreground">
                 {showArchived ? "Back to views" : "Show archived views"}
             </Link>
@@ -106,7 +155,7 @@ export function ViewsList({ views, showArchived }: { views: ViewSummary[]; showA
 
 type ScopeOption = { id: string; name: string };
 
-/** Members and up start a view (title, description, scope); an agent fills in the panels. */
+/** Members and up start a view (title, description, scope, who sees it); an agent fills in the panels. */
 export function NewViewButton({ customers, projects }: { customers: ScopeOption[]; projects: ScopeOption[] }) {
     const router = useRouter();
     const [open, setOpen] = useState(false);
@@ -114,6 +163,7 @@ export function NewViewButton({ customers, projects }: { customers: ScopeOption[
     const [title, setTitle] = useState("");
     const [description, setDescription] = useState("");
     const [scope, setScope] = useState("company");
+    const [visibility, setVisibility] = useState<"private" | "scope">("private");
 
     const submit = async (event: React.FormEvent) => {
         event.preventDefault();
@@ -122,7 +172,7 @@ export function NewViewButton({ customers, projects }: { customers: ScopeOption[
             const [scopeType, scopeId] = scope === "company" ? ["company", undefined] : scope.split(":");
             const res = await fetch("/api/views", {
                 method: "POST", headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ title, description, scopeType, scopeId }),
+                body: JSON.stringify({ title, description, scopeType, scopeId, visibility }),
             });
             const data = await res.json().catch(() => ({})) as { view?: { id: string }; error?: string };
             if (!res.ok || !data.view) throw new Error(data.error || "Couldn't create the view");
@@ -155,10 +205,10 @@ export function NewViewButton({ customers, projects }: { customers: ScopeOption[
                                 placeholder="What it shows, where the numbers come from, how often they refresh" />
                         </div>
                         <div className="grid gap-1.5">
-                            <Label htmlFor="view-scope">Who can see it</Label>
+                            <Label htmlFor="view-scope">Where it lives</Label>
                             <select id="view-scope" value={scope} onChange={(e) => setScope(e.target.value)}
                                 className="h-10 rounded-xl border border-border bg-card px-3 text-sm text-foreground">
-                                <option value="company">Everyone in the company</option>
+                                <option value="company">Company</option>
                                 {customers.length > 0 && (
                                     <optgroup label="Client">
                                         {customers.map((c) => <option key={c.id} value={`customer:${c.id}`}>{c.name}</option>)}
@@ -171,6 +221,19 @@ export function NewViewButton({ customers, projects }: { customers: ScopeOption[
                                 )}
                             </select>
                         </div>
+                        <fieldset className="grid gap-1.5">
+                            <legend className="mb-1.5 text-sm font-medium text-foreground">Who can see it</legend>
+                            <div className="grid grid-cols-2 gap-1 rounded-xl border border-border bg-card p-1">
+                                {([["private", "Only me"], ["scope", "Everyone in scope"]] as const).map(([value, label]) => (
+                                    <label key={value} className={cn("cursor-pointer rounded-lg px-3 py-1.5 text-center text-sm transition-colors",
+                                        visibility === value ? "bg-accent font-medium text-foreground" : "text-muted-foreground hover:text-foreground")}>
+                                        <input type="radio" name="view-visibility" value={value} checked={visibility === value} onChange={() => setVisibility(value)} className="sr-only" />
+                                        {label}
+                                    </label>
+                                ))}
+                            </div>
+                            <p className="text-xs text-muted-foreground">You can share it with specific people later.</p>
+                        </fieldset>
                         <DialogFooter>
                             <Button type="button" variant="ghost" onClick={() => setOpen(false)}>Cancel</Button>
                             <Button type="submit" disabled={busy || !title.trim()}>{busy ? "Creating…" : "Create view"}</Button>

@@ -6,6 +6,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { DndContext, DragOverlay, MouseSensor, TouchSensor, useSensor, useSensors, type DragEndEvent, type DragStartEvent } from "@dnd-kit/core";
 import { IconAlertTriangle, IconLayoutColumns, IconList, IconPlus, IconSearch, IconX } from "@tabler/icons-react";
 import { toast } from "sonner";
+import { ScopeViewsSection } from "@/components/views/scope-views-section";
 import { PageHeader } from "@/components/page-header";
 import { SearchableSelect } from "@/components/ui/searchable-select";
 import { EmptyState } from "@/components/ui/empty-state";
@@ -908,6 +909,7 @@ export default function ProjectsClient({ initialTasks, projects, agents, custome
                     onArchive={() => void archiveProject(selectedProject)}
                 />
             )}
+            {selectedProject && <ScopeViewsSection key={selectedProject.id} projectId={selectedProject.id} hideWhenEmpty />}
 
             {hasBoardFilters && (
                 <p className="flex flex-wrap items-center gap-x-2 gap-y-1 px-1 text-sm text-zinc-400" role="status">

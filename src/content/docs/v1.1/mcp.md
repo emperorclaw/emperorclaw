@@ -50,6 +50,8 @@ Include the header:
 Authorization: Bearer <your-mcp-token>
 ```
 
+A company-wide token (one not bound to an agent) can act as any agent by naming it with `?agentId=`, so it can read whatever that agent can, including the private views an agent maintains. The rule that other agents cannot read a private view holds for agent-bound tokens; keep company-wide tokens with operators. Each time a company-wide token opens a private or shared view, Activity records it ("opened with a company-wide token").
+
 ## Endpoints
 
 ### Health Check

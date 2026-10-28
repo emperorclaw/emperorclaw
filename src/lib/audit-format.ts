@@ -102,6 +102,8 @@ export const AUDIT_FIELD_ALLOWLIST: Record<AuditTargetType, Record<string, Field
     view: {
         title: "label", scopeType: "enum", scopeId: "id", panelCount: "number", version: "number",
         archived: "bool", pinnedToHome: "bool", fromVersion: "number",
+        visibility: "enum", ownerUserId: "id", sharedCount: "number", toName: "label",
+        ownerSource: "enum", threadId: "id",
     },
 };
 
@@ -248,6 +250,10 @@ const VERBS: Record<string, string> = {
     "view.archived": "archived",
     "view.restored": "restored",
     "view.reverted": "reverted",
+    "view.visibility_changed": "changed who can see",
+    "view.owner_transferred": "transferred",
+    "view.deleted": "deleted",
+    "view.read_unbound_token": "opened with a company-wide token",
     // Rows written before 0.14 by lib/mcp.ts logAudit.
     register_agent: "created",
     delete_agent: "deleted",
@@ -327,6 +333,12 @@ function detailFor(action: string, payload: AuditPayload, names: Readonly<Record
                 : null;
         case "view.reverted":
             return typeof meta.fromVersion === "number" ? `to version ${meta.fromVersion}` : null;
+        case "view.visibility_changed": {
+            const word = after.visibility === "private" ? "only its owner" : after.visibility === "shared" ? "shared people" : after.visibility === "scope" ? "everyone in scope" : null;
+            return word ? `(${word})` : null;
+        }
+        case "view.owner_transferred":
+            return typeof meta.toName === "string" && meta.toName ? `to ${meta.toName}` : null;
         case "knowledge_note.moved":
             return typeof after.path === "string" ? `to ${after.path}` : "to the top level";
         case "approval.approved":

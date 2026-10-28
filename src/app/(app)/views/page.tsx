@@ -6,24 +6,25 @@ import { requireCompanyAccess } from "@/lib/company-access";
 import { canWrite } from "@/lib/role-matrix";
 import { getScopedCustomerIds, memberVisibleProjectIds } from "@/lib/member-scope";
 import { splitProjectTitle } from "@/lib/project-title";
-import { listViews } from "@/lib/views";
+import { listViews, memberViewCaller } from "@/lib/views";
 import { PageHeader } from "@/components/page-header";
 import { RealtimeRefresh } from "@/lib/use-realtime";
-import { NewViewButton, ViewsList } from "./views-client";
+import { NewViewButton, ViewsBrowser } from "./views-client";
 
 export const dynamic = "force-dynamic";
 
 /**
- * Views (roadmap 0.15): dashboards agents build and keep up to date. Every
- * member reads them; a restricted member sees company views and those of
- * their customers and projects only. Members and up can start one.
+ * Views (roadmap 0.15): dashboards agents build and keep up to date, grouped
+ * by scope (company, then each client with its projects). Each person sees
+ * what lib/view-access.ts allows: views open to their scope, their own and
+ * those shared with them; owners/admins also see other private views by name
+ * only. Members and up can start one.
  */
 export default async function ViewsPage({ searchParams }: { searchParams: Promise<{ archived?: string }> }) {
     const access = await requireCompanyAccess("viewer").catch(() => null);
     if (!access) redirect("/login");
     const showArchived = (await searchParams).archived === "1";
-    const caller = { kind: "member" as const, userId: access.userId, scope: access.scope };
-    const all = await listViews(access.companyId, caller, { includeArchived: showArchived });
+    const all = await listViews(access.companyId, memberViewCaller(access), { includeArchived: showArchived });
     const rows = showArchived ? all.filter((view) => view.archived) : all;
     const canEdit = canWrite(access.role);
     const scopes = canEdit ? await loadScopeOptions(access.companyId, access.scope) : { customers: [], projects: [] };
@@ -36,7 +37,7 @@ export default async function ViewsPage({ searchParams }: { searchParams: Promis
                 description="Dashboards your agents build and keep up to date: metrics, charts, tables and notes, refreshed by the agent that owns them."
                 actions={canEdit && !showArchived ? <NewViewButton customers={scopes.customers} projects={scopes.projects} /> : undefined}
             />
-            <ViewsList views={rows} showArchived={showArchived} />
+            <ViewsBrowser views={rows} showArchived={showArchived} userId={access.userId} />
             <RealtimeRefresh topics={["views"]} />
         </div>
     );

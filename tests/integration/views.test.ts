@@ -99,7 +99,7 @@ maybe("an agent creates a view, refreshes one panel without touching the layout,
     assert.deepEqual(audits.map((a) => a.action).sort(), ["view.created", "view.updated"]);
     const created_ = audits.find((a) => a.action === "view.created")!;
     assert.equal(created_.actorType, "agent");
-    assert.deepEqual((created_.payloadJson as { after: Record<string, unknown> }).after, { title: "Products this month", scopeType: "company", scopeId: null, panelCount: 3, version: 1 });
+    assert.deepEqual((created_.payloadJson as { after: Record<string, unknown> }).after, { title: "Products this month", scopeType: "company", scopeId: null, panelCount: 3, version: 1, visibility: "scope", ownerUserId: null });
     assert.equal(JSON.stringify(audits).includes("12400"), false, "panel values leaked into the audit log");
     assert.equal(JSON.stringify(audits).includes("Mug"), false, "panel values leaked into the audit log");
 
@@ -225,7 +225,7 @@ maybe("restricted members see only in-scope views; viewers read but never write"
     const { listViews, loadPinnedViewCards } = await import("@/lib/views");
     const { loadMemberScope } = await import("@/lib/member-scope");
     const scope = await loadMemberScope(f.restricted.userId, f.companyId);
-    const caller = { kind: "member" as const, userId: f.restricted.userId, scope };
+    const caller = { kind: "member" as const, userId: f.restricted.userId, scope, role: "member" as const };
     assert.deepEqual((await listViews(f.companyId, caller)).map((v) => v.id).sort(), [inProject.id, companyView.id].sort());
     assert.deepEqual((await loadPinnedViewCards(f.companyId, caller)).map((v) => v.id), [inProject.id]);
 
@@ -242,11 +242,11 @@ maybe("restricted members see only in-scope views; viewers read but never write"
     actAs(f.member);
     const renamed = await call(viewRoute.PATCH, `/api/views/${companyView.id}`, { method: "PATCH", body: { title: "Company KPIs", description: "Weekly", pinnedToHome: true }, params: { id: companyView.id } });
     assert.equal(renamed.status, 200, renamed.text);
-    assert.equal((renamed.json.view as { title: string; version: number; pinnedToHome: boolean }).version, 2);
-    assert.equal((renamed.json.view as { pinnedToHome: boolean }).pinnedToHome, true);
+    assert.equal((renamed.json.view as { title: string; version: number; pinned: boolean }).version, 2);
+    assert.equal((renamed.json.view as { pinned: boolean }).pinned, true, "pinnedToHome pins it to the caller's own Home");
     const archived = await call(viewRoute.PATCH, `/api/views/${companyView.id}`, { method: "PATCH", body: { archived: true }, params: { id: companyView.id } });
     assert.equal((archived.json.view as { archived: boolean; pinnedToHome: boolean }).archived, true);
-    assert.equal((archived.json.view as { pinnedToHome: boolean }).pinnedToHome, false, "archiving unpins");
+    assert.equal((archived.json.view as { pinned: boolean }).pinned, false, "archiving unpins");
     const restored = await call(viewRoute.PATCH, `/api/views/${companyView.id}`, { method: "PATCH", body: { archived: false }, params: { id: companyView.id } });
     assert.equal((restored.json.view as { archived: boolean }).archived, false);
     actAs(null);
@@ -405,7 +405,7 @@ maybe("agents change only the views they built; people (member and up) change an
     // A view a person built belongs to no agent: agents read it but cannot change it.
     actAs(f.member);
     const listRoute = await import("@/app/api/views/route");
-    const personal = await call(listRoute.POST, "/api/views", { method: "POST", body: { title: "Started by a person", panels: [PANELS[0]] } });
+    const personal = await call(listRoute.POST, "/api/views", { method: "POST", body: { title: "Started by a person", visibility: "scope", panels: [PANELS[0]] } });
     actAs(null);
     const personalId = (personal.json.view as { id: string }).id;
     const builderClient = await mcpClientFor(f.companyId, f.builder.id);

@@ -1369,13 +1369,54 @@ export const views = pgTable("views", {
     createdById: uuid("created_by_id"),
     updatedByType: text("updated_by_type").notNull(),
     updatedById: uuid("updated_by_id"),
+    // Deprecated (0.19): pins are per person now (view_pins). Migration 0071
+    // copied every pin to the people who could see it; nothing reads this
+    // column any more. Drop it in a later release.
     pinnedToHome: boolean("pinned_to_home").default(false).notNull(),
+    // The person the view is for (whoever asked for it). NULL for views built
+    // before 0.19 and for views an agent started on its own. The building agent
+    // (created_by) stays the maintainer.
+    ownerUserId: uuid("owner_user_id").references(() => users.id, { onDelete: 'set null' }),
+    // Who sees it, inside the scope (lib/view-access.ts): 'private' = the owner
+    // (and the maintaining agent), 'shared' = the owner plus view_shares,
+    // 'scope' = everyone who can see the scope (the pre-0.19 behavior).
+    visibility: text("visibility").default('scope').notNull(),
+    // How often the maintainer means to refresh the values; drives the
+    // "Overdue" warning. NULL = no promise, no warning.
+    refreshEveryMinutes: integer("refresh_every_minutes"),
     archivedAt: timestamp("archived_at"),
     createdAt: timestamp("created_at").defaultNow().notNull(),
     updatedAt: timestamp("updated_at").defaultNow().notNull(),
 }, (table) => ({
     companyUpdatedIdx: index("views_company_updated_idx").on(table.companyId, table.updatedAt.desc()),
     scopeTypeCheck: check("views_scope_type_check", sql`${table.scopeType} IN ('company', 'customer', 'project')`),
+    visibilityCheck: check("views_visibility_check", sql`${table.visibility} IN ('private', 'shared', 'scope')`),
+}));
+
+// The people a 'shared' view is shared with (besides its owner). Scope stays
+// the ceiling: a share never shows a view to someone outside its scope.
+export const viewShares = pgTable("view_shares", {
+    id: uuid("id").primaryKey().defaultRandom(),
+    companyId: uuid("company_id").notNull().references(() => companies.id, { onDelete: 'cascade' }),
+    viewId: uuid("view_id").notNull().references(() => views.id, { onDelete: 'cascade' }),
+    userId: uuid("user_id").notNull().references(() => users.id, { onDelete: 'cascade' }),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (table) => ({
+    viewUserUnique: uniqueIndex("view_shares_view_user_unique").on(table.viewId, table.userId),
+    companyUserIdx: index("view_shares_company_user_idx").on(table.companyId, table.userId),
+}));
+
+// A person's Home pins (replaces the company-wide views.pinned_to_home).
+export const viewPins = pgTable("view_pins", {
+    id: uuid("id").primaryKey().defaultRandom(),
+    companyId: uuid("company_id").notNull().references(() => companies.id, { onDelete: 'cascade' }),
+    userId: uuid("user_id").notNull().references(() => users.id, { onDelete: 'cascade' }),
+    viewId: uuid("view_id").notNull().references(() => views.id, { onDelete: 'cascade' }),
+    position: integer("position").default(0).notNull(),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (table) => ({
+    userViewUnique: uniqueIndex("view_pins_user_view_unique").on(table.userId, table.viewId),
+    companyUserIdx: index("view_pins_company_user_idx").on(table.companyId, table.userId, table.position),
 }));
 
 export const viewVersions = pgTable("view_versions", {

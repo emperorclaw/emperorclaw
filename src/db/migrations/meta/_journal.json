@@ -498,6 +498,13 @@
       "when": 1793185777787,
       "tag": "0070_company-modules",
       "breakpoints": true
+    },
+    {
+      "idx": 71,
+      "version": "7",
+      "when": 1793190076953,
+      "tag": "0071_views-privacy",
+      "breakpoints": true
     }
   ]
 }

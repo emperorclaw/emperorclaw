@@ -14,6 +14,7 @@ import { hasChoicesBlock, hasRichBlocks } from "@/lib/rich-blocks";
 import { AttachmentChip, isAttachmentRef, type AttachmentRef } from "@/components/chat-attachments";
 import { MessageReasoningDisclosure } from "@/components/message-reasoning-disclosure";
 import { queuePromptPreview } from "@/lib/queue-prompt-preview";
+import { takeChatDraft } from "@/lib/chat-draft";
 import { AgentGoalControls } from "@/components/agent-goal-controls";
 import { requestSourceLabel } from "@/lib/request-label";
 import { LiveStatusRow } from "@/components/live-status-row";
@@ -139,6 +140,12 @@ export function AgentDirectChat({
     // on" row and the busy/queued signal.
     const [runningRuns, setRunningRuns] = useState<RunningRun[]>([]);
     const [draft, setDraft] = useState("");
+    // A draft another page handed over (e.g. "Ask about this panel"): prefilled, never sent.
+    useEffect(() => {
+        if (directThreadId) return;
+        const handed = takeChatDraft(agentId);
+        if (handed) setDraft((current) => current || handed);
+    }, [agentId, directThreadId]);
     const [isLoading, setIsLoading] = useState(true);
     const [isSending, setIsSending] = useState(false);
     const [sendMode, setSendMode] = useState<"queue" | "replace">("queue");
