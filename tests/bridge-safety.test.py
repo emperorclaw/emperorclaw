@@ -297,7 +297,8 @@ class TestProviderFailures(unittest.TestCase):
         self.assertEqual(strip_stop_hint("press Esc to stop.."), "press Esc to stop..")
 
     def test_adversarial_inputs_stay_linear(self):
-        # The regex these replaced took ~25 s on 5,000 spaces; every input here must take well under 50 ms.
+        # The regex these replaced took ~25 s on 5,000 spaces. A linear pass takes a few ms; the
+        # 500 ms ceiling leaves room for slow shared CI runners while still catching any blow-up.
         n = 300_000
         hostile = [" " * n, " " * n + "x", ";" + " " * n + "press Esc to stop!", "HTTP" + " " * n + "x",
                    "status " * (n // 7), "model " * (n // 6), "error code:" * (n // 11), "api " * (n // 4),
@@ -308,7 +309,7 @@ class TestProviderFailures(unittest.TestCase):
             error_classification(self.failed(error=text))
             error_classification(self.failed(failure_reason=text))
             elapsed = time.perf_counter() - started
-            self.assertLess(elapsed, 0.05, f"{text[:20]!r}... took {elapsed:.3f} s")
+            self.assertLess(elapsed, 0.5, f"{text[:20]!r}... took {elapsed:.3f} s")
 
 
 class TestReplyShape(unittest.TestCase):

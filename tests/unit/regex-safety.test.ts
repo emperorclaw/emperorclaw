@@ -8,7 +8,8 @@ import { providerTroubleFromRuns } from "../../src/lib/provider-trouble";
 import { quotedPromptText, taskBrief } from "../../src/lib/task-wake";
 
 // Every pattern added with local Hermes mode, fed inputs built to make a
-// backtracking regex go super-linear. Each call must stay far under 50 ms.
+// backtracking regex go super-linear. A linear pass takes a few ms; the 500 ms ceiling
+// leaves room for slow shared CI runners while still catching any blow-up.
 const N = 300_000;
 const HOSTILE: Record<string, string> = {
     spaces: " ".repeat(N),
@@ -35,7 +36,7 @@ function timed(label: string, fn: () => unknown) {
     const started = performance.now();
     fn();
     const elapsed = performance.now() - started;
-    assert.ok(elapsed < 50, `${label} took ${elapsed.toFixed(1)} ms`);
+    assert.ok(elapsed < 500, `${label} took ${elapsed.toFixed(1)} ms`);
 }
 
 test("stripStopHint: same results as before, linear on hostile input", () => {

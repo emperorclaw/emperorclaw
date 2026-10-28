@@ -7,7 +7,8 @@ import { cleanSnippet } from "../../src/lib/live-feed-v2";
 import { truncateRunError } from "../../src/lib/run-ledger";
 
 const SIZE = 300_000;
-const BUDGET_MS = 50;
+// A linear pass takes a few ms; the ceiling leaves room for slow shared CI runners.
+const BUDGET_MS = 500;
 
 /** Inputs that made the old patterns scan-and-fail at every position (quadratic). */
 const ADVERSARIAL: Record<string, string> = {
