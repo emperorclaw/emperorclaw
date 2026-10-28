@@ -22,7 +22,7 @@ from typing import Any, Awaitable, Callable, Mapping, Optional, Sequence
 from .emperor_api import (clear_retry, environment_wait_exhausted, is_soft_failure, remember_seen, schedule_retry,
                           sender_type_of, thread_of, thread_type_of)
 from .interfaces import Turn, TurnOutcome, TurnResult
-from .ledger import is_credits_failure, usage_report
+from .ledger import PROVIDER_CREDITS_ERROR, PROVIDER_REASONS, failure_notice_reason, usage_report
 
 Send = Callable[[Mapping[str, Any], str], Awaitable[Optional[str]]]
 Delivered = Callable[[dict[str, Any], Optional[str]], Awaitable[None]]
@@ -234,7 +234,7 @@ class Outbox:
 
 RESTART_NOTICE = ("My runtime restarted while I was working on this, so it stopped before finishing. "
                   "Send it again if you still need it.")
-CREDITS_REASON = "LLM provider out of credits (HTTP 402): add credits for this agent's API key, then retry"
+CREDITS_REASON = PROVIDER_REASONS[PROVIDER_CREDITS_ERROR]
 
 
 def give_up_notice(reason: Optional[str]) -> str:
@@ -267,7 +267,8 @@ class ReplyDesk:
         elif result.outcome is TurnOutcome.CANCELLED:
             text = ""
         else:
-            reason = CREDITS_REASON if is_credits_failure(result.failure_reason) else None
+            # Provider problems (credits, key, model, rate limit, unreachable) name their cause and fix.
+            reason = failure_notice_reason(result)
             text = RESTART_NOTICE if result.error_code == "runtime_restart" else give_up_notice(reason)
             text = text if human else ""
             self._spawn(self.status(thread_id, answers, typing=False, execution_state="cancelled",

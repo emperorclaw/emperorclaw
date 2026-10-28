@@ -202,7 +202,9 @@ test("Company profile onboarding seeds the starter Knowledge & Rules scaffold", 
 test("First-run setup requires a working model key and offers company documentation", () => {
   const wizard = read("src/components/setup-wizard.tsx");
   assert.ok(wizard.includes("/api/onboarding/validate-key"), "the key is checked with the provider before agents start");
-  assert.ok(wizard.includes("disabled={!apiKey.trim()"), "the model step cannot continue without a key");
+  assert.ok(wizard.includes("disabled={!modelReady"), "the model step cannot continue without a connection");
+  // Hosted providers need a key; a custom OpenAI-compatible endpoint needs its URL and model (its key is optional).
+  assert.ok(wizard.includes("Boolean(baseUrlCheck?.ok) && Boolean(model.trim()) : Boolean(apiKey.trim())"), "a hosted provider still requires a key");
   assert.ok(wizard.includes("/api/onboarding/document"), "the lead agent can be asked to document the company");
   const onboarding = read("src/lib/onboarding.ts");
   assert.ok(onboarding.includes('deliveryState: "queued"'), "the documentation job is queued so runtimes pick it up");

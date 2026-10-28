@@ -5,6 +5,7 @@ import {
     actionRuns,
     agentMemoryEntries,
     agentMemorySnapshots,
+    agentRuns,
     agentSessions,
     agents,
     llmPricing,
@@ -17,13 +18,16 @@ import { isMissingSchemaError } from "@/lib/schema-compat";
 import { userMayUseThread } from "@/lib/direct-chat-mode";
 import { getDirectChatMode } from "@/lib/control-plane";
 import { resolveAgentModelConfiguration } from "@/lib/agent-model-config";
-import { encryptSecretPayload } from "@/lib/secrets";
+import { decryptSecretPayload, encryptSecretPayload } from "@/lib/secrets";
+import { CUSTOM_LLM_PROVIDER, checkLlmModelName, llmEndpointHost, llmSecretPayload, normalizeLlmBaseUrl, parseLlmSecret, type LlmSecret } from "@/lib/llm-endpoint";
+import { checkLlmEndpointForSave } from "@/lib/llm-endpoint-policy";
 import { validAvatarUrl } from "@/lib/avatar";
 import { legacyAvatarToAppearance, normalizeAppearance } from "@/lib/character/model";
 import { companyRouteAccess } from "@/lib/company-access";
 import { memberMaySeeAgent } from "@/lib/member-scope";
 import { canAdmin } from "@/lib/role-matrix";
 import { humanActor, recordAgentChange } from "@/lib/audit";
+import { PROVIDER_TROUBLE_RUNS, providerTroubleFromRuns } from "@/lib/provider-trouble";
 
 function redactAgent<T extends { llmApiKeyEncrypted?: unknown; llmApiKeyVersion?: unknown }>(agent: T) {
     const { llmApiKeyEncrypted: _e, llmApiKeyVersion: _v, ...safe } = agent;
@@ -33,6 +37,111 @@ function redactAgent<T extends { llmApiKeyEncrypted?: unknown; llmApiKeyVersion?
 }
 
 export const dynamic = "force-dynamic";
+
+const LLM_FIELDS = ["llmProvider", "llmModel", "llmApiKey", "llmBaseUrl"] as const;
+const LLM_PROVIDERS = ["", "openai", "anthropic", "google", "openrouter", "grok", "deepseek", CUSTOM_LLM_PROVIDER];
+
+type LlmAudit = { before: { llmEndpointHost: string | null }; after: { llmEndpointHost: string | null; llmKeyChanged?: true } };
+type LlmChange = { error: string; status: number } | { updates: Record<string, unknown>; audit: LlmAudit };
+
+/**
+ * Resolve a PATCH of the agent's model endpoint (provider, base URL, model,
+ * key) into column updates.
+ *
+ * The stored key only ever goes back to the endpoint it was given for: when
+ * the provider or the base URL changes (a model of another provider changes
+ * the provider too), the request must carry the new endpoint's key
+ * (`llmApiKey`), or `llmApiKey: null` for an endpoint without one. Clearing
+ * the provider drops the key. `llmApiKey` alone rotates the key for the
+ * current endpoint; an empty string changes nothing.
+ */
+async function resolveLlmChange(body: Record<string, unknown>, agentId: string, companyId: string): Promise<LlmChange> {
+    const providerProvided = body.llmProvider !== undefined;
+    if (providerProvided && (typeof body.llmProvider !== "string" || !LLM_PROVIDERS.includes(body.llmProvider))) {
+        return { error: "Unknown LLM provider", status: 400 };
+    }
+    let model: string | undefined;
+    if (body.llmModel !== undefined) {
+        const checked = checkLlmModelName(body.llmModel);
+        if (!checked.ok) return { error: checked.error, status: 400 };
+        model = checked.model;
+    }
+    if (body.llmApiKey !== undefined && body.llmApiKey !== null && typeof body.llmApiKey !== "string") {
+        return { error: "llmApiKey must be a string, or null for an endpoint without a key", status: 400 };
+    }
+    const newKey = typeof body.llmApiKey === "string" ? body.llmApiKey.trim() : "";
+    const keyRemoved = body.llmApiKey === null;
+    let newBaseUrl: string | null | undefined;
+    if (body.llmBaseUrl === null) newBaseUrl = null;
+    else if (body.llmBaseUrl !== undefined) {
+        const checked = normalizeLlmBaseUrl(body.llmBaseUrl);
+        if (!checked.ok) return { error: checked.error, status: 400 };
+        const allowed = await checkLlmEndpointForSave(checked.url);
+        if (!allowed.ok) return { error: allowed.error, status: 400 };
+        newBaseUrl = checked.url;
+    }
+
+    const [current] = await db.select({ llmProvider: agents.llmProvider, llmModel: agents.llmModel, llmApiKeyEncrypted: agents.llmApiKeyEncrypted })
+        .from(agents).where(and(eq(agents.id, agentId), eq(agents.companyId, companyId), isNull(agents.deletedAt))).limit(1);
+    if (!current) return { error: "Agent not found", status: 404 };
+    let previous: LlmSecret = { apiKey: null, baseUrl: null };
+    if (current.llmApiKeyEncrypted) {
+        try { previous = parseLlmSecret(decryptSecretPayload(current.llmApiKeyEncrypted)); } catch { /* unreadable: replaced below if anything changes */ }
+    }
+
+    const requestedProvider = providerProvided ? body.llmProvider as string : current.llmProvider;
+    const resolved = resolveAgentModelConfiguration({
+        current: { llmProvider: current.llmProvider, llmModel: current.llmModel },
+        provider: providerProvided ? body.llmProvider as string : undefined,
+        model,
+        // A custom endpoint's model name is its own, never a priced model of another provider.
+        pricing: requestedProvider === CUSTOM_LLM_PROVIDER ? [] : await db.select({ provider: llmPricing.provider, model: llmPricing.model }).from(llmPricing),
+    });
+
+    const custom = resolved.llmProvider === CUSTOM_LLM_PROVIDER;
+    const wasCustom = current.llmProvider === CUSTOM_LLM_PROVIDER;
+    const previousBaseUrl = wasCustom ? previous.baseUrl : null;
+    const nextBaseUrl = custom ? (newBaseUrl !== undefined ? newBaseUrl : previousBaseUrl) : null;
+    if (custom && !nextBaseUrl) return { error: "A custom endpoint needs its base URL (llmBaseUrl).", status: 400 };
+    if (!custom && newBaseUrl) return { error: "A base URL only applies to the custom (OpenAI-compatible) provider.", status: 400 };
+    const endpointChanged = (resolved.llmProvider ?? null) !== (current.llmProvider ?? null) || nextBaseUrl !== previousBaseUrl;
+
+    let nextKey: string | null;
+    if (newKey) nextKey = newKey;
+    else if (keyRemoved || !resolved.llmProvider) nextKey = null;
+    else if (endpointChanged && previous.apiKey) {
+        return {
+            error: "Changing the provider or base URL needs that endpoint's API key (llmApiKey, or null for an endpoint without one): the stored key is never sent to a different endpoint.",
+            status: 400,
+        };
+    } else nextKey = endpointChanged ? null : previous.apiKey;
+
+    const updates: Record<string, unknown> = {};
+    if (providerProvided || model !== undefined) {
+        updates.llmProvider = resolved.llmProvider;
+        updates.llmModel = resolved.llmModel;
+    }
+    const keyChanged = nextKey !== previous.apiKey;
+    if (keyChanged || nextBaseUrl !== previous.baseUrl) {
+        const payload = llmSecretPayload({ apiKey: nextKey, baseUrl: nextBaseUrl });
+        if (payload) {
+            const encrypted = encryptSecretPayload(payload);
+            if (!encrypted) return { error: "EMPEROR_CLAW_MASTER_KEY is not configured; cannot store LLM API keys.", status: 500 };
+            updates.llmApiKeyEncrypted = encrypted.encryptedSecret;
+            updates.llmApiKeyVersion = encrypted.keyVersion;
+        } else {
+            updates.llmApiKeyEncrypted = null;
+            updates.llmApiKeyVersion = null;
+        }
+    }
+    return {
+        updates,
+        audit: {
+            before: { llmEndpointHost: llmEndpointHost(previousBaseUrl) },
+            after: { llmEndpointHost: llmEndpointHost(nextBaseUrl), ...(keyChanged ? { llmKeyChanged: true as const } : {}) },
+        },
+    };
+}
 
 export async function PATCH(
     req: NextRequest,
@@ -135,39 +244,19 @@ export async function PATCH(
             ...(agentIds ? { agentIds } : {}),
         };
     }
-    const llmApiKey = typeof body.llmApiKey === "string" ? body.llmApiKey.trim() : "";
-    if (llmApiKey) {
-        const encrypted = encryptSecretPayload({ apiKey: llmApiKey });
-        if (!encrypted) {
-            return NextResponse.json(
-                { error: "EMPEROR_CLAW_MASTER_KEY is not configured; cannot store LLM API keys." },
-                { status: 500 }
-            );
-        }
-        updates.llmApiKeyEncrypted = encrypted.encryptedSecret;
-        updates.llmApiKeyVersion = encrypted.keyVersion;
+    // The provider, base URL, model and key decide where the agent's key is
+    // sent, so only owners and admins change them: a member could otherwise
+    // point a stored key at a host they control and recreate the runtime.
+    const llmFieldsTouched = LLM_FIELDS.some((field) => body[field] !== undefined);
+    if (llmFieldsTouched && !canAdmin(access.ctx.role)) {
+        return NextResponse.json({ error: "Only owners and admins can change an agent's model provider, endpoint, model or API key" }, { status: 403 });
     }
-    const llmProviderProvided =
-        typeof body.llmProvider === "string" &&
-        ["", "openai", "anthropic", "google", "openrouter", "grok", "deepseek"].includes(body.llmProvider);
-    const llmModelProvided = typeof body.llmModel === "string";
-    if (llmProviderProvided || llmModelProvided) {
-        const [[currentAgent], pricing] = await Promise.all([
-            db.select({ llmProvider: agents.llmProvider, llmModel: agents.llmModel })
-                .from(agents)
-                .where(and(eq(agents.id, id), eq(agents.companyId, companyId), isNull(agents.deletedAt)))
-                .limit(1),
-            db.select({ provider: llmPricing.provider, model: llmPricing.model }).from(llmPricing),
-        ]);
-        if (!currentAgent) return NextResponse.json({ error: "Agent not found" }, { status: 404 });
-        const resolved = resolveAgentModelConfiguration({
-            current: currentAgent,
-            provider: llmProviderProvided ? body.llmProvider : undefined,
-            model: llmModelProvided ? body.llmModel : undefined,
-            pricing,
-        });
-        updates.llmProvider = resolved.llmProvider;
-        updates.llmModel = resolved.llmModel;
+    let llmAudit: LlmAudit | null = null;
+    if (llmFieldsTouched) {
+        const change = await resolveLlmChange(body, id, companyId);
+        if ("error" in change) return NextResponse.json({ error: change.error }, { status: change.status });
+        Object.assign(updates, change.updates);
+        llmAudit = change.audit;
     }
 
     if (Object.keys(updates).length === 0) {
@@ -181,7 +270,14 @@ export async function PATCH(
         .returning();
 
     if (!updated) return NextResponse.json({ error: "Agent not found" }, { status: 404 });
-    if (before) await recordAgentChange(companyId, humanActor(access.ctx.userId), before, updated);
+    if (before) {
+        await recordAgentChange(
+            companyId,
+            humanActor(access.ctx.userId),
+            llmAudit ? { ...before, ...llmAudit.before } : before,
+            llmAudit ? { ...updated, ...llmAudit.after } : updated,
+        );
+    }
 
     return NextResponse.json({ agent: redactAgent(updated) });
 }
@@ -254,8 +350,15 @@ export async function GET(
         if (!latestMessageByThread[msg.threadId]) latestMessageByThread[msg.threadId] = msg;
     }
 
+    // Online can still mean every turn fails on the model provider: say so next to the status.
+    const latestRuns = await db.select({ status: agentRuns.status, error: agentRuns.error, exitReason: agentRuns.exitReason, startedAt: agentRuns.startedAt, endedAt: agentRuns.endedAt })
+        .from(agentRuns).where(and(eq(agentRuns.companyId, companyId), eq(agentRuns.agentId, id), inArray(agentRuns.status, ["succeeded", "failed", "timeout", "lost"])))
+        .orderBy(desc(agentRuns.startedAt)).limit(PROVIDER_TROUBLE_RUNS)
+        .catch(() => []);
+
     return NextResponse.json({
         agent: redactAgent(agent),
+        providerTrouble: providerTroubleFromRuns(latestRuns),
         directChatMode: await getDirectChatMode(companyId),
         latestSnapshot,
         memoryEntries,

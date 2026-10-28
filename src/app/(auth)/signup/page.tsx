@@ -283,8 +283,9 @@ function SignupForm() {
 
                         {showCompanyName && (
                             <div className="space-y-1">
-                                <label className="text-sm font-medium text-zinc-400">Company Name</label>
+                                <label htmlFor="signup-company" className="text-sm font-medium text-zinc-400">Company Name</label>
                                 <input
+                                    id="signup-company"
                                     type="text"
                                     value={companyName}
                                     onChange={(e) => setCompanyName(e.target.value)}
@@ -299,8 +300,9 @@ function SignupForm() {
                         )}
 
                         <div className="space-y-1">
-                            <label className="text-sm font-medium text-zinc-400">Work Email</label>
+                            <label htmlFor="signup-email" className="text-sm font-medium text-zinc-400">Work Email</label>
                             <input
+                                id="signup-email"
                                 type="email"
                                 value={email}
                                 onChange={(e) => setEmail(e.target.value)}
@@ -315,8 +317,9 @@ function SignupForm() {
                         </div>
 
                         <div className="space-y-1">
-                            <label className="text-sm font-medium text-zinc-400">Password</label>
+                            <label htmlFor="signup-password" className="text-sm font-medium text-zinc-400">Password</label>
                             <input
+                                id="signup-password"
                                 type="password"
                                 value={password}
                                 onChange={(e) => setPassword(e.target.value)}
@@ -331,8 +334,9 @@ function SignupForm() {
                         </div>
 
                         <div className="space-y-1">
-                            <label className="text-sm font-medium text-zinc-400">Confirm Password</label>
+                            <label htmlFor="signup-confirm-password" className="text-sm font-medium text-zinc-400">Confirm Password</label>
                             <input
+                                id="signup-confirm-password"
                                 type="password"
                                 value={confirmPassword}
                                 onChange={(e) => setConfirmPassword(e.target.value)}

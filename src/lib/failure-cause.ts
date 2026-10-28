@@ -6,7 +6,9 @@
  * Pure and client-safe. The inputs are the raw strings Emperor already
  * stores: agent_runs.error and exit_reason (the Hermes bridge writes a short
  * classification such as `provider_credits_exhausted: HTTP 402`,
- * `idle_timeout`, `runtime_restart`, `not_admitted: GatewayUnavailable`),
+ * `provider_auth_failed: HTTP 401`, `provider_rate_limited: HTTP 429`,
+ * `provider_model_not_found`, `provider_unreachable`, `idle_timeout`,
+ * `runtime_restart`, `not_admitted: GatewayUnavailable`),
  * threadMessages.metadataJson.runtimeFailure.reason (the bridge's
  * `LLM provider out of credits (HTTP 402): ...` or its error code), and the
  * provider error text Hermes passes through (`Error code: 402 - {...}`).
@@ -24,6 +26,7 @@ export type FailureCause =
     | "provider_auth"
     | "rate_limited"
     | "model_unavailable"
+    | "provider_unreachable"
     | "budget"
     | "runtime_offline"
     | "stalled"
@@ -79,6 +82,13 @@ const MODEL_RE = /model[ _]not[ _]found|unknown model|unsupported model|model .{
 const RATE_RE = /rate[ _-]?limit|too many requests|\b(?:HTTP|error code:?|status(?:=| |: ?))\s*429\b|ratelimiterror|overloaded/i;
 const BUDGET_RE = /budget (?:exhausted|exceeded|unavailable|check denied|limit)|budget_(?:exhausted|exceeded|paused)|over budget|budget is paused/i;
 const SCOPE_RE = /outside (?:this agent's|your|the agent's) scope|out[ _]of[ _]scope|not in (?:the agent's |this agent's )?scope|bound to a different agent/i;
+/** How much of each failure text the patterns see (the bridge caps the same way, ledger.py FAILURE_TEXT_MAX). */
+export const FAILURE_TEXT_MAX = 4000;
+
+// The model provider could not be reached (refused, DNS, connect timeout, an
+// outage Hermes is waiting out). Checked before OFFLINE_RE: "connection error"
+// here is the agent's call to the model, not Emperor losing the agent.
+const UNREACHABLE_RE = /provider_unreachable|can'?t reach the model provider|api ?connection ?error|apitimeouterror|\bconnection error\b|connect(?:ion)?[ _]?timeout|name or service not known|getaddrinfo|temporary failure in name resolution|nodename nor servname|no route to host|network is unreachable|provider temporarily unavailable/i;
 const OFFLINE_RE = /runtime[ _](?:restart|offline|stopped|not connected|lost)|stopped reporting|bridge (?:not connected|offline|disconnected)|duplicate runtime|gateway(?:_error|unavailable| unavailable| down)|not_admitted|econnrefused|connection refused|no heartbeat/i;
 const TIMEOUT_RE = /idle[ _]timeout|timed out|\btimeout\b|no progress/i;
 
@@ -108,13 +118,15 @@ export interface FailureSignal {
  * cannot fix itself (credits, key, model) win over transient ones.
  */
 export function classifyFailure(signal: FailureSignal): FailureCause {
-    const text = (signal.texts ?? []).filter((t): t is string => typeof t === "string" && t.trim().length > 0).join(" | ");
+    // Each text is capped before the patterns run: provider error text is unbounded, a cause sits in its head.
+    const text = (signal.texts ?? []).filter((t): t is string => typeof t === "string" && t.trim().length > 0).map((t) => t.slice(0, FAILURE_TEXT_MAX)).join(" | ");
     if (text) {
         if (CREDITS_RE.test(text)) return "provider_credits";
         if (SCOPE_RE.test(text)) return "scope_denied";
         if (AUTH_RE.test(text)) return "provider_auth";
         if (MODEL_RE.test(text)) return "model_unavailable";
         if (RATE_RE.test(text)) return "rate_limited";
+        if (UNREACHABLE_RE.test(text)) return "provider_unreachable";
         if (BUDGET_RE.test(text)) return "budget";
         if (OFFLINE_RE.test(text)) return "runtime_offline";
         if (TIMEOUT_RE.test(text)) return "stalled";
@@ -130,6 +142,7 @@ const HEADLINE: Record<Exclude<FailureCause, "stalled">, string> = {
     provider_auth: "The model provider rejected the API key",
     rate_limited: "Rate limited by the model provider",
     model_unavailable: "This model isn't available",
+    provider_unreachable: "Can't reach the model provider",
     budget: "Budget limit reached",
     runtime_offline: "Agent runtime is offline",
     scope_denied: "Agent needs access to this project",
@@ -205,6 +218,10 @@ export function failureFix(cause: FailureCause, ctx: FixContext): FailureFix | n
             return agentId ? { label: "Open agent scope", action: { kind: "link", href: agentHref(agentId, "scope") } } : null;
         case "model_unavailable":
             return agentId ? { label: "Choose a model", action: { kind: "link", href: agentHref(agentId) } } : null;
+        case "provider_unreachable":
+            // Admins can fix the endpoint or provider; anyone can try again once it is back.
+            if (ctx.audience === "admin" && agentId) return { label: "Check provider settings", action: { kind: "link", href: agentHref(agentId) } };
+            return retryFix(ctx);
         case "runtime_offline":
             if (!agentId) return null;
             return ctx.canRestartRuntime

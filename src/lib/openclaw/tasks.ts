@@ -385,8 +385,10 @@ export async function updateTaskForCompany(input: UpdateTaskInput) {
     companyId: input.companyId,
     taskId: input.taskId,
     eventType: assignmentChanged ? "task_reassigned" : "task_updated",
-    actorType: input.actorType || "system",
-    actorId: input.actorId || null,
+    // MCP routes pass only `actor` (the token's bound agent); without this
+    // fallback an agent's own state change showed as "System" on the timeline.
+    actorType: input.actorType || input.actor?.type || "system",
+    actorId: input.actorId || input.actor?.id || null,
     payloadJson: {
       title: input.title,
       goal: input.goal,
@@ -410,6 +412,7 @@ export async function updateTaskForCompany(input: UpdateTaskInput) {
       companyId: input.companyId,
       task,
       actorAgentId: input.actorType === "agent" ? input.actorId : null,
+      actorUserId: input.actorType === "human" ? input.actorId : null,
       reason: "reassigned",
     });
   }
@@ -481,6 +484,7 @@ export async function createTaskForProject(input: CreateTaskInput) {
     companyId: input.companyId,
     task,
     actorAgentId: input.actorType === "agent" ? input.actorId : null,
+    actorUserId: input.actorType === "human" ? input.actorId : null,
     reason: "assigned",
   });
   return { task, project };

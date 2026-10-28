@@ -5,7 +5,7 @@ import { consumeRateLimit } from "@/lib/rate-limit";
 
 export const dynamic = "force-dynamic";
 
-/** Check a model API key with its provider before agents start with it. The key is not stored. */
+/** Check a model API key (or a custom endpoint) before agents start with it. Nothing is stored. */
 export async function POST(req: NextRequest) {
     let ctx;
     try {
@@ -18,6 +18,9 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ error: "Too many checks; wait a minute." }, { status: 429 });
     }
     const body = await req.json().catch(() => ({}));
-    const result = await validateLlmKey(typeof body.provider === "string" ? body.provider : "", typeof body.apiKey === "string" ? body.apiKey : "");
+    const result = await validateLlmKey(typeof body.provider === "string" ? body.provider : "", typeof body.apiKey === "string" ? body.apiKey : "", {
+        baseUrl: typeof body.baseUrl === "string" ? body.baseUrl : undefined,
+        model: typeof body.model === "string" ? body.model : undefined,
+    });
     return NextResponse.json(result);
 }

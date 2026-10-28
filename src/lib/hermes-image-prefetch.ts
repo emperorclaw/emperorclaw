@@ -16,11 +16,15 @@ export type HermesImagePullStatus = "idle" | "pulling" | "ready" | "error";
 
 export type HermesImagePullState = {
     status: HermesImagePullStatus;
-    /** 0-100, never decreases during one pull. Absent until anything is known. */
+    /** Downloading layers, then unpacking them (Docker extracts after the download). */
+    phase?: "downloading" | "extracting";
+    /** 0-100 of the current phase, never decreasing within it. Absent while the total is unknown. */
     percent?: number;
     downloadedBytes?: number;
-    /** Only set once every layer still to download has reported its size. */
+    /** Set once every layer still downloading has reported its size. */
     totalBytes?: number;
+    /** While extracting: bytes unpacked so far, of totalBytes. */
+    extractedBytes?: number;
     error?: string;
 };
 
@@ -32,14 +36,17 @@ export type DockerPullRecord = {
     error?: string;
 };
 
-type LayerProgress = { current: number; total: number | null; done: boolean; cached: boolean };
+type LayerProgress = { current: number; total: number | null; downloaded: boolean; extracted: number; complete: boolean; cached: boolean };
 
 /**
- * Folds Docker pull records into one progress figure. Layer sizes arrive only
- * when a layer starts downloading (Docker downloads a few at a time), so the
- * byte total is reported only once every layer has a size; until then percent
- * is the per-layer average, which does not jump backwards when a new large
- * layer appears.
+ * Folds Docker pull records into one byte-based progress figure. Layer sizes
+ * arrive only when a layer starts downloading (Docker downloads a few at a
+ * time), so the byte total is known once every layer still downloading has a
+ * size; until then there is no percent (the bar is indeterminate) and the
+ * downloaded bytes are shown instead. A layer that finished without ever
+ * reporting a size (small layers jump straight to "Download complete") counts
+ * as complete. Once everything is downloaded the phase becomes extracting,
+ * measured the same way, instead of sitting at 95-100% while Docker unpacks.
  */
 export class PullProgress {
     private layers = new Map<string, LayerProgress>();
@@ -49,36 +56,43 @@ export class PullProgress {
         const status = record.status ?? "";
         // Records without a layer id ("Pulling from ...", "Digest: ...") carry no progress.
         if (!id || /^Pulling from /.test(status) || /^(Digest|Status):/.test(status)) return;
-        const layer = this.layers.get(id) ?? { current: 0, total: null, done: false, cached: false };
+        const layer = this.layers.get(id) ?? { current: 0, total: null, downloaded: false, extracted: 0, complete: false, cached: false };
+        const detailTotal = record.progressDetail?.total;
+        const detailCurrent = record.progressDetail?.current;
         if (status === "Already exists") {
-            layer.done = true;
             layer.cached = true;
         } else if (status === "Downloading") {
-            const total = record.progressDetail?.total;
-            const current = record.progressDetail?.current;
-            if (typeof total === "number" && total > 0) layer.total = total;
-            if (typeof current === "number" && current >= 0) layer.current = layer.total ? Math.min(current, layer.total) : current;
-        } else if (/^(Download complete|Verifying Checksum|Extracting|Pull complete)$/.test(status)) {
-            layer.done = true;
+            if (typeof detailTotal === "number" && detailTotal > 0) layer.total = detailTotal;
+            if (typeof detailCurrent === "number" && detailCurrent >= 0) layer.current = layer.total ? Math.min(detailCurrent, layer.total) : detailCurrent;
+        } else if (status === "Verifying Checksum" || status === "Download complete") {
+            layer.downloaded = true;
             if (layer.total) layer.current = layer.total;
+        } else if (status === "Extracting") {
+            layer.downloaded = true;
+            if (layer.total === null && typeof detailTotal === "number" && detailTotal > 0) layer.total = detailTotal;
+            if (layer.total) layer.current = layer.total;
+            if (typeof detailCurrent === "number" && detailCurrent >= 0) layer.extracted = layer.total ? Math.min(detailCurrent, layer.total) : detailCurrent;
+        } else if (status === "Pull complete") {
+            layer.downloaded = true;
+            layer.complete = true;
+            if (layer.total) layer.current = layer.extracted = layer.total;
         }
         this.layers.set(id, layer);
     }
 
-    snapshot(): Pick<HermesImagePullState, "percent" | "downloadedBytes" | "totalBytes"> {
+    snapshot(): Pick<HermesImagePullState, "phase" | "percent" | "downloadedBytes" | "totalBytes" | "extractedBytes"> {
         const pending = [...this.layers.values()].filter((layer) => !layer.cached);
         if (pending.length === 0) return {};
-        const downloadedBytes = pending.reduce((sum, layer) => sum + layer.current, 0);
-        const allSized = pending.every((layer) => layer.total !== null);
-        const totalBytes = allSized ? pending.reduce((sum, layer) => sum + (layer.total ?? 0), 0) : undefined;
-        const fraction = totalBytes
-            ? downloadedBytes / totalBytes
-            : pending.reduce((sum, layer) => sum + (layer.done ? 1 : layer.total ? layer.current / layer.total : 0), 0) / pending.length;
-        return {
-            percent: Math.max(0, Math.min(100, Math.floor(fraction * 100))),
-            downloadedBytes,
-            ...(totalBytes ? { totalBytes } : {}),
-        };
+        const size = (layer: LayerProgress) => layer.total ?? layer.current;
+        const downloadedBytes = pending.reduce((sum, layer) => sum + (layer.downloaded ? size(layer) : layer.current), 0);
+        const sizeKnown = pending.every((layer) => layer.downloaded || layer.total !== null);
+        const totalBytes = sizeKnown ? pending.reduce((sum, layer) => sum + size(layer), 0) : undefined;
+        const pct = (part: number, whole: number) => Math.max(0, Math.min(100, Math.floor((part / whole) * 100)));
+        if (pending.some((layer) => !layer.downloaded)) {
+            return { phase: "downloading", downloadedBytes, ...(totalBytes ? { totalBytes, percent: pct(downloadedBytes, totalBytes) } : {}) };
+        }
+        const extractedBytes = pending.reduce((sum, layer) => sum + (layer.complete ? size(layer) : layer.extracted), 0);
+        return { phase: "extracting", downloadedBytes, extractedBytes, ...(totalBytes ? { totalBytes, percent: pct(extractedBytes, totalBytes) } : {}) };
     }
 }
 
@@ -125,6 +139,7 @@ export function pullHermesImage(image: string, platform: string | undefined, pul
     const current = entry(image);
     if (current.inflight) return current.inflight;
     const progress = new PullProgress();
+    let best: { phase: HermesImagePullState["phase"]; percent: number } = { phase: undefined, percent: 0 };
     current.state = { status: "pulling" };
     const run = (async () => {
         try {
@@ -132,7 +147,9 @@ export function pullHermesImage(image: string, platform: string | undefined, pul
                 progress.push(record);
                 const snapshot = progress.snapshot();
                 const next: HermesImagePullState = { status: "pulling", ...snapshot };
-                if (snapshot.percent !== undefined) next.percent = Math.max(current.state.percent ?? 0, snapshot.percent);
+                // Never backwards within a phase (a late layer size grows the total); unpacking starts its own bar.
+                if (snapshot.phase !== best.phase) best = { phase: snapshot.phase, percent: 0 };
+                if (snapshot.percent !== undefined) next.percent = best.percent = Math.max(best.percent, snapshot.percent);
                 current.state = next;
             });
             current.state = { ...current.state, status: "ready", percent: 100, error: undefined };

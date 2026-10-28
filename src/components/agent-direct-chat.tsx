@@ -708,6 +708,8 @@ export function AgentDirectChat({
     const recentlyCancelledItems = useMemo(() => messages
         .filter((message) => message.senderType === "human" && message.deliveryState === "cancelled")
         .slice(-3).reverse(), [messages]);
+    // A message the runtime gave up on is stored as cancelled too; say "failed" for those.
+    const recentlyStoppedLabel = stoppedLabel(recentlyCancelledItems);
 
     // "Also working on <task/chat> · 23 min →" for the agent's runs in other
     // threads, plus a "Queued — busy" signal when this chat's last message has
@@ -1004,7 +1006,7 @@ export function AgentDirectChat({
                         ))}
                         {showCancelledHistory && recentlyCancelledItems.length > 0 && (
                             <div className="mt-2 border-t border-zinc-800 pt-2">
-                                <p className="mb-1 text-[10px] font-medium uppercase tracking-wide text-zinc-500">Recently cancelled</p>
+                                <p className="mb-1 text-[10px] font-medium uppercase tracking-wide text-zinc-500">Recently {recentlyStoppedLabel}</p>
                                 {recentlyCancelledItems.map((message) => (
                                     <QueueItem
                                         key={message.id}
@@ -1021,7 +1023,7 @@ export function AgentDirectChat({
                 )}
                 {recentlyCancelledItems.length > 0 && !showCancelledHistory && (
                     <button type="button" onClick={() => setShowCancelledHistory(true)} className="px-1 text-[10px] text-zinc-600 hover:text-zinc-300">
-                        {recentlyCancelledItems.length} recently cancelled · Review or retry
+                        {recentlyCancelledItems.length} recently {recentlyStoppedLabel} · Review or retry
                     </button>
                 )}
                 {controlError && <p role="alert" className="text-xs text-red-300">{controlError}</p>}
@@ -1181,6 +1183,13 @@ function runtimeFailureOf(message: DirectMessage): { attempts?: number | null; r
     const metadata = (message.metadataJson as Record<string, unknown> | null) || {};
     const failure = metadata.runtimeFailure;
     return failure && typeof failure === "object" ? failure as { attempts?: number | null; reason?: string | null } : null;
+}
+
+/** "failed", "cancelled", or "failed or cancelled" for a list of stopped messages. */
+function stoppedLabel(messages: DirectMessage[]): string {
+    const failed = messages.filter((message) => runtimeFailureOf(message)).length;
+    if (failed === 0) return "cancelled";
+    return failed === messages.length ? "failed" : "failed or cancelled";
 }
 
 function failureLabel(message: DirectMessage): string | null {

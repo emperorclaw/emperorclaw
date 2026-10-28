@@ -4,7 +4,7 @@ import { and, eq, isNull } from "drizzle-orm";
 import { db } from "@/db";
 import { agents } from "@/db/schema";
 import { DOCKER_SOCKET, isDocker } from "@/lib/docker";
-import { mintAgentSetupToken, provisionHermesContainer, revokeAgentSetupTokens } from "@/lib/hermes-provisioning";
+import { mintAgentSetupToken, provisionHermesContainer, recordRuntimeSetup, revokeAgentSetupTokens } from "@/lib/hermes-provisioning";
 import { hermesSafeName } from "@/lib/hermes-names";
 import { recordAudit, SYSTEM_ACTOR, type AuditActor } from "@/lib/audit";
 
@@ -47,6 +47,7 @@ export async function hireHermesAgent(input: {
             // No container holds this token; a retry from Agents mints a new one.
             await revokeAgentSetupTokens(agent.id, { onlyTokenHash: tokenHash }).catch(() => 0);
         }
+        await recordRuntimeSetup(agent.id, result).catch(() => undefined);
         await recordAudit({ companyId: input.companyId, actor: input.actor ?? SYSTEM_ACTOR, action: "agent.created", target: { type: "agent", id: agent.id }, after: agent });
         return { agentId: agent.id, name, success: result.success, message: result.message, outputs: result.outputs };
     } catch (error) {

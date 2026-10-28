@@ -4,7 +4,7 @@ import { z } from "zod";
 import { verifyMcpToken, checkIdempotency, saveIdempotencyResponse } from "@/lib/mcp";
 import { mcpRouteAccess } from "@/lib/mcp-access";
 import { parseJsonBody, optionalString } from "@/lib/validation";
-import { listAgentsForCompany, createAgentForCompany } from "@/lib/agents-crud";
+import { AgentInputError, listAgentsForCompany, createAgentForCompany } from "@/lib/agents-crud";
 import { normalizeAppearance } from "@/lib/character/model";
 import { mcpActor } from "@/lib/audit";
 import { NAME_MAX } from "@/lib/input-limits";
@@ -102,6 +102,7 @@ export async function POST(req: NextRequest) {
         await saveIdempotencyResponse(companyId, "/api/mcp/agents", requestHash, responseObj);
         return NextResponse.json(responseObj, { status: 201 });
     } catch (error: unknown) {
+        if (error instanceof AgentInputError) return NextResponse.json({ error: error.message }, { status: 400 });
         console.error("MCP Agents Register Error:", error);
         const details = error instanceof Error ? error.message : undefined;
         const responseBody = details

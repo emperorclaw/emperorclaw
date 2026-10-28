@@ -9,7 +9,9 @@ import { db } from "@/db";
 import { agents, llmPricing } from "@/db/schema";
 import { DOCKER_SOCKET, isDocker, dockerCall } from "@/lib/docker";
 import { encryptSecretPayload } from "@/lib/secrets";
-import { mintAgentSetupToken, provisionHermesContainer, type SetupOutput } from "@/lib/hermes-provisioning";
+import { CUSTOM_LLM_PROVIDER, checkLlmModelName, llmEndpointHost, llmSecretPayload, normalizeLlmBaseUrl } from "@/lib/llm-endpoint";
+import { checkLlmEndpointForSave } from "@/lib/llm-endpoint-policy";
+import { mintAgentSetupToken, provisionHermesContainer, recordRuntimeSetup, revokeAgentSetupTokens, type SetupOutput } from "@/lib/hermes-provisioning";
 import { hermesSafeName } from "@/lib/hermes-names";
 import { resolveAgentModelConfiguration } from "@/lib/agent-model-config";
 import { humanActor, recordAudit } from "@/lib/audit";
@@ -18,7 +20,8 @@ export const dynamic = "force-dynamic";
 
 export const MAX_EASY_SETUP_AGENTS = 10;
 
-const VALID_LLM_PROVIDERS = ["openai", "anthropic", "google", "openrouter", "grok", "deepseek"];
+// "custom" is any OpenAI-compatible endpoint (Ollama, LM Studio, vLLM, LiteLLM): a base URL, a model, an optional key.
+const VALID_LLM_PROVIDERS = ["openai", "anthropic", "google", "openrouter", "grok", "deepseek", CUSTOM_LLM_PROVIDER];
 
 // GET /api/agents/easy-setup — availability check for the Easy Setup entry
 // point: only meaningful when the app itself is running in Docker with the
@@ -91,8 +94,9 @@ export async function POST(req: NextRequest) {
         ? body.llmProvider
         : null;
     const llmApiKey = typeof body.llmApiKey === "string" ? body.llmApiKey.trim() : "";
-    const parsedModel = z.string().trim().max(200).optional().safeParse(body.llmModel);
-    if (!parsedModel.success) return NextResponse.json({ error: "Model must be a name of at most 200 characters" }, { status: 400 });
+    const parsedModel = checkLlmModelName(body.llmModel);
+    if (!parsedModel.ok) return NextResponse.json({ error: parsedModel.error }, { status: 400 });
+    const requestedModel = parsedModel.model;
     const parsedSpecs = z.array(z.object({
         requestId: z.string().uuid().optional(),
         name: z.string().trim().min(1).max(200),
@@ -113,12 +117,24 @@ export async function POST(req: NextRequest) {
         }
         return NextResponse.json({ results });
     }
-    if (!llmProvider || !llmApiKey) return NextResponse.json({ error: "Choose an existing Hermes configuration or provide an LLM provider and API key" }, { status: 400 });
+    const custom = llmProvider === CUSTOM_LLM_PROVIDER;
+    if (!llmProvider || (!custom && !llmApiKey)) return NextResponse.json({ error: "Choose an existing Hermes configuration or provide an LLM provider and API key" }, { status: 400 });
+    let llmBaseUrl: string | null = null;
+    if (custom) {
+        const checked = normalizeLlmBaseUrl(body.llmBaseUrl);
+        if (!checked.ok) return NextResponse.json({ error: checked.error }, { status: 400 });
+        const allowed = await checkLlmEndpointForSave(checked.url);
+        if (!allowed.ok) return NextResponse.json({ error: allowed.error }, { status: 400 });
+        if (!requestedModel) return NextResponse.json({ error: "Enter the model name your endpoint serves." }, { status: 400 });
+        llmBaseUrl = checked.url;
+    }
 
     let llmApiKeyEncrypted: string | null = null;
     let llmApiKeyVersion: string | null = null;
-    if (llmApiKey) {
-        const encrypted = encryptSecretPayload({ apiKey: llmApiKey });
+    // A custom endpoint's base URL travels in the same encrypted payload as its key (src/lib/llm-endpoint.ts).
+    const secret = llmSecretPayload({ apiKey: llmApiKey, baseUrl: llmBaseUrl });
+    if (secret) {
+        const encrypted = encryptSecretPayload(secret);
         if (!encrypted) {
             return NextResponse.json(
                 { error: "EMPEROR_CLAW_MASTER_KEY is not configured; cannot store LLM API keys." },
@@ -129,11 +145,12 @@ export async function POST(req: NextRequest) {
         llmApiKeyVersion = encrypted.keyVersion;
     }
 
-    const pricing = await db.select({ provider: llmPricing.provider, model: llmPricing.model }).from(llmPricing);
+    // A custom endpoint's model name is its own, never a priced model of another provider.
+    const pricing = custom ? [] : await db.select({ provider: llmPricing.provider, model: llmPricing.model }).from(llmPricing);
     const llmConfiguration = resolveAgentModelConfiguration({
         current: { llmProvider: null, llmModel: null },
         provider: llmProvider,
-        model: parsedModel.data || null,
+        model: requestedModel || null,
         pricing,
     });
 
@@ -169,10 +186,11 @@ export async function POST(req: NextRequest) {
             const { agent } = reserved;
             agentId = agent.id;
             if (!reserved.created) { results.push(retainedHermesHiringResult(agent)); continue; }
-            await recordAudit({ companyId, actor: humanActor(ctx.userId), action: "agent.created", target: { type: "agent", id: agent.id }, after: agent });
+            // Where its model calls go (host only) and that a key was stored; never the key or the URL path.
+            await recordAudit({ companyId, actor: humanActor(ctx.userId), action: "agent.created", target: { type: "agent", id: agent.id }, after: { ...agent, llmEndpointHost: llmEndpointHost(llmBaseUrl), ...(llmApiKey ? { llmKeyChanged: true } : {}) } });
 
             const safeName = hermesSafeName(name);
-            const { rawToken } = await mintAgentSetupToken(companyId, safeName, agentId);
+            const { rawToken, tokenHash } = await mintAgentSetupToken(companyId, safeName, agentId);
             const provisionResult = await provisionHermesContainer({ agent, apiToken: rawToken, safeName, role });
 
             if (provisionResult.success && provisionResult.containerId) {
@@ -180,7 +198,11 @@ export async function POST(req: NextRequest) {
                     containerId: provisionResult.containerId,
                     containerName: provisionResult.containerName,
                 }).where(eq(agents.id, agent.id));
+            } else {
+                // No container holds this token; a retry mints a new one (same as hire-hermes-agent.ts).
+                await revokeAgentSetupTokens(agent.id, { onlyTokenHash: tokenHash }).catch(() => 0);
             }
+            await recordRuntimeSetup(agent.id, provisionResult).catch(() => undefined);
 
             results.push({
                 name,

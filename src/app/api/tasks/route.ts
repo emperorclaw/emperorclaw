@@ -4,6 +4,8 @@ import { serializeTaskWithAssignee } from "@/lib/task-assignee";
 import { companyRouteAccess } from "@/lib/company-access";
 import { lengthError, TASK_TITLE_MAX } from "@/lib/input-limits";
 import { memberMayAssignAgents, memberMaySeeProjectId } from "@/lib/member-scope";
+import { ensureDefaultProject } from "@/lib/default-project";
+import { humanActor } from "@/lib/audit";
 
 function splitLines(value: unknown) {
     if (Array.isArray(value)) {
@@ -20,10 +22,16 @@ export async function POST(req: NextRequest) {
 
     try {
         const body = await req.json();
-        const projectId = typeof body.projectId === "string" ? body.projectId.trim() : "";
+        let projectId = typeof body.projectId === "string" ? body.projectId.trim() : "";
         const title = typeof body.title === "string" ? body.title.trim() : "";
         const taskType = typeof body.taskType === "string" && body.taskType.trim() ? body.taskType.trim() : "manual_task";
 
+        // A workspace's first task: no project yet, so it goes into "General"
+        // (created once). Restricted members only see their customers' projects,
+        // so they still pick one.
+        if (!projectId && body.useDefaultProject === true && !access.ctx.scope && title) {
+            projectId = await ensureDefaultProject(companyId, humanActor(access.ctx.userId));
+        }
         if (!projectId) {
             return NextResponse.json({ error: "projectId is required" }, { status: 400 });
         }

@@ -15,10 +15,13 @@ import { canAdmin, canWrite } from "@/lib/role-matrix";
 import { getScopedAgentIds, memberAgentCondition, memberVisibleProjectIds } from "@/lib/member-scope";
 import { SetupWizard } from "@/components/setup-wizard";
 import { BUSINESS_TYPES } from "@/lib/onboarding-shared";
+import { settleOnboardingForEstablishedTeam } from "@/lib/onboarding";
 import { sceneMessagePreview } from "@/lib/observatory";
 import { loadDashboardLive, pendingApprovalRows } from "@/lib/dashboard-live";
 import { loadOrganization } from "@/lib/organization";
 import { TeamDashboard } from "@/components/team-dashboard/team-dashboard";
+import { PinnedViewsStrip } from "@/components/views/pinned-views-strip";
+import { loadPinnedViewCards } from "@/lib/views";
 import { RealtimeRefresh } from "@/lib/use-realtime";
 import {
     dashboardActivity, buildFeed, DONE_TODAY_MS, skillNames,
@@ -373,21 +376,30 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
         ]);
         if (!membership || !["owner", "admin"].includes(membership.role)) return null;
         const profileComplete = Boolean(company?.contextNotes?.trim());
-        if (profileComplete && agentRows.length > 0) return null;
+        // Stays open through the launch (agents are saved before their runtimes
+        // exist); an established team settles onboarding once (see onboarding.ts).
+        if (profileComplete && agentRows.length > 0 && await settleOnboardingForEstablishedTeam(userId, companyId, now)) return null;
         // The profile records the kind of company by its label; map it back so the team suggestion survives a reload.
         const businessType = BUSINESS_TYPES.find((t) => company?.contextNotes?.includes(`**Type of business:** ${t.label}`))?.id ?? "";
         return { companyName: company?.name ?? "", profileComplete, businessType };
     })();
 
+    // Views pinned to Home, limited to what this person may see.
+    const pinnedViews = await loadPinnedViewCards(companyId, { kind: "member", userId: guard.userId, scope: memberScope }).catch((error) => {
+        console.error("Failed to load pinned views:", error);
+        return [];
+    });
+
     return (
         <div className="mx-auto max-w-[1600px] space-y-5 animate-in fade-in duration-500">
-            {/* First-run setup: owners and admins, until they finish or skip it,
-                while the company has no agents or no profile yet. */}
+            {/* First-run setup: owners and admins, until they finish or skip it
+                (an established team settles it; see setup above). */}
             {!currentUser?.onboardingCompletedAt && !currentUser?.onboardingDismissedAt && setup && (
                 <SetupWizard initialCompanyName={setup.companyName} initialBusinessType={setup.businessType} profileComplete={setup.profileComplete} hasAgents={agentRows.length > 0} />
             )}
+            <PinnedViewsStrip views={pinnedViews} />
             <TeamDashboard data={data} initialView={view} hasAgents={agentRows.length > 0} canAct={canAct} isOwnerOrAdmin={isOwnerOrAdmin} />
-            <RealtimeRefresh topics={["dashboard"]} intervalMs={5000} />
+            <RealtimeRefresh topics={["dashboard", "views"]} intervalMs={5000} />
         </div>
     );
 }

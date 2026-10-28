@@ -34,6 +34,18 @@ function setLatestCheck(ts: number) {
     }
 }
 
+/** True when `latest` (x.y.z) is strictly newer than `current`. Unparseable versions never are. */
+export function isNewerVersion(latest: string, current: string): boolean {
+    const parse = (v: string) => /^(\d+)\.(\d+)\.(\d+)/.exec(v.trim())?.slice(1).map(Number);
+    const a = parse(latest);
+    const b = parse(current);
+    if (!a || !b) return false;
+    for (let i = 0; i < 3; i++) {
+        if (a[i] !== b[i]) return a[i] > b[i];
+    }
+    return false;
+}
+
 export function VersionBanner() {
     const [banner, setBanner] = useState<{
         current: string;
@@ -62,7 +74,10 @@ export function VersionBanner() {
             const latestVer = latest.tag_name.replace(/^v/, "");
             const currentVer = current.version;
 
-            if (latestVer !== currentVer) {
+            // Only a newer release is an update: a build ahead of the last
+            // published release (pre-release, local build) must not be told
+            // to "update" to an older version.
+            if (isNewerVersion(latestVer, currentVer)) {
                 setBanner({
                     current: currentVer,
                     latest: latestVer,
@@ -92,16 +107,15 @@ export function VersionBanner() {
                     Update available: v{banner.latest}
                 </span>
                 <span className="text-xs text-muted-foreground">
-                    You&apos;re running v{banner.current}. Run{" "}
-                    <code className="bg-muted px-1 rounded text-[11px]">
-                        ./install-bridge.sh --upgrade
-                    </code>{" "}
-                    to update.
+                    You&apos;re running v{banner.current}. An admin can update from Settings → Updates.
                 </span>
             </div>,
             {
                 duration: Infinity,
                 dismissible: true,
+                // A persistent toast needs a visible way out: it sits over the
+                // setup wizard's primary button in the bottom-right corner.
+                closeButton: true,
                 icon: <IconArrowUpCircle className="h-4 w-4 text-emerald-500" />,
                 action: {
                     label: (

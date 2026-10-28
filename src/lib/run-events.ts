@@ -302,9 +302,44 @@ export interface SanitizedRunEvent {
     data: Record<string, unknown> | null;
 }
 
+/**
+ * Hermes ends its wait-and-retry status with how to stop it in a terminal
+ * ("press Esc to stop") or a messaging app ("send /stop to cancel"); neither
+ * works in Emperor, which has its own Stop. Newer bridges strip it; this also
+ * covers older ones.
+ *
+ * Linear on purpose: the regex this replaces had adjacent `\s*` groups and
+ * took seconds on a few thousand spaces. Text longer than STOP_HINT_MAX_INPUT
+ * is left as is (a status line is short; the summary is capped anyway).
+ */
+const STOP_HINTS = ["press esc to stop", "send /stop to cancel", "cancel the request to stop"];
+const STOP_HINT_PUNCTUATION = ";,.—-";
+export const STOP_HINT_MAX_INPUT = 2000;
+
+function isSpace(char: string): boolean {
+    return char.trim() === "";
+}
+
+function trimEndIndex(text: string, end: number): number {
+    while (end > 0 && isSpace(text[end - 1])) end--;
+    return end;
+}
+
+export function stripStopHint(text: string): string {
+    if (text.length > STOP_HINT_MAX_INPUT) return text;
+    let end = trimEndIndex(text, text.length);
+    if (text[end - 1] === ".") end--;
+    const hint = STOP_HINTS.find((candidate) => end >= candidate.length && text.slice(end - candidate.length, end).toLowerCase() === candidate);
+    if (!hint) return text;
+    end = trimEndIndex(text, end - hint.length);
+    if (end > 0 && STOP_HINT_PUNCTUATION.includes(text[end - 1])) end = trimEndIndex(text, end - 1);
+    return text.slice(0, end);
+}
+
 /** Cap, redact and clamp one validated event for storage. */
 export function sanitizeRunEvent(event: RunEventInput, now: Date = new Date()): SanitizedRunEvent {
-    const summary = event.summary ? cleanSnippet(event.summary, RUN_EVENT_SUMMARY_MAX_CHARS) : "";
+    const raw = event.summary && (event.kind === "status" || event.kind === "notice") ? stripStopHint(event.summary) : event.summary;
+    const summary = raw ? cleanSnippet(raw, RUN_EVENT_SUMMARY_MAX_CHARS) : "";
     const toolName = event.toolName?.trim() ? truncateChars(event.toolName.trim(), RUN_EVENT_TOOL_NAME_MAX_CHARS) : null;
     const toolCallId = event.toolCallId?.trim() ? truncateChars(event.toolCallId.trim(), RUN_EVENT_TOOL_CALL_ID_MAX_CHARS) : null;
     return {

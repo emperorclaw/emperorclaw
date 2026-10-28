@@ -12,19 +12,21 @@ import { SetupOutputLog, type SetupOutputEntry } from "@/components/setup-output
 import { getAgentTemplate } from "@/lib/agent-templates";
 import { TEAM_TEMPLATES, DEFAULT_AGENT_NAMES, type TeamTemplateId } from "@/lib/onboarding-shared";
 import { cn } from "@/lib/utils";
+import { CUSTOM_LLM_PROVIDER, normalizeLlmBaseUrl } from "@/lib/llm-endpoint";
 
 // Matches MAX_EASY_SETUP_AGENTS in src/app/api/agents/easy-setup/route.ts — kept
 // as a local constant (not imported) so this client component doesn't pull in
 // server-only route dependencies.
 const MAX_EASY_SETUP_AGENTS = 10;
 
-// Easy Setup deliberately offers only the two providers we support for
-// one-click local hiring: OpenRouter (free default model, no billing
-// surprise) and DeepSeek. Every other provider stays reachable through the
-// Advanced create-agent flow.
+// Easy Setup offers the providers we support for one-click local hiring:
+// OpenRouter (free default model, no billing surprise), DeepSeek, and any
+// OpenAI-compatible endpoint (Ollama, LM Studio, vLLM, LiteLLM). Every other
+// provider stays reachable through the Advanced create-agent flow.
 const LLM_PROVIDER_OPTIONS: { id: string; label: string }[] = [
     { id: "openrouter", label: "OpenRouter" },
     { id: "deepseek", label: "DeepSeek" },
+    { id: CUSTOM_LLM_PROVIDER, label: "Custom (OpenAI-compatible)" },
 ];
 
 // Default model per provider, so a hired worker can reply without the operator
@@ -32,6 +34,7 @@ const LLM_PROVIDER_OPTIONS: { id: string; label: string }[] = [
 const DEFAULT_MODEL_BY_PROVIDER: Record<string, string> = {
     openrouter: "nvidia/nemotron-3-ultra-550b-a55b:free",
     deepseek: "",
+    [CUSTOM_LLM_PROVIDER]: "",
 };
 
 const DEFAULT_LLM_PROVIDER = LLM_PROVIDER_OPTIONS[0].id;
@@ -96,6 +99,7 @@ export function EasySetupDialog({
     const [llmProvider, setLlmProvider] = useState(DEFAULT_LLM_PROVIDER);
     const [llmApiKey, setLlmApiKey] = useState("");
     const [llmModel, setLlmModel] = useState(DEFAULT_MODEL_BY_PROVIDER[DEFAULT_LLM_PROVIDER]);
+    const [llmBaseUrl, setLlmBaseUrl] = useState("");
     const [submitting, setSubmitting] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [results, setResults] = useState<AgentBatchResult[] | null>(null);
@@ -113,6 +117,8 @@ export function EasySetupDialog({
             const data = await response.json().catch(() => null);
             if (!data) throw new Error("Could not check local setup. Sign in again or retry.");
             setConfigurations(data.configurations || []);
+            // Hiring next to an agent that already works: reuse its connection by default.
+            setSourceAgentId((current) => current || data.configurations?.[0]?.id || "");
             setAvailable(Boolean(data.available));
             setAvailabilityReason(data.reason || "Local Hermes setup is unavailable. Start Docker and retry.");
         } catch (e) {
@@ -135,6 +141,7 @@ export function EasySetupDialog({
         setLlmProvider(DEFAULT_LLM_PROVIDER);
         setLlmApiKey("");
         setLlmModel(DEFAULT_MODEL_BY_PROVIDER[DEFAULT_LLM_PROVIDER]);
+        setLlmBaseUrl("");
         setSourceAgentId("");
         setSubmitting(false);
         setError(null);
@@ -223,6 +230,7 @@ export function EasySetupDialog({
                     llmProvider,
                     llmApiKey,
                     llmModel: llmModel.trim() || undefined,
+                    llmBaseUrl: llmProvider === CUSTOM_LLM_PROVIDER ? llmBaseUrl.trim() : undefined,
                     agents: requested.map(({ spec: s }) => {
                         const template = s.templateId ? getAgentTemplate(s.templateId) : null;
                         return { requestId: s.id, role: s.role, name: s.name.trim() || s.role, doctrineJson: template ? {
@@ -277,6 +285,12 @@ export function EasySetupDialog({
     };
 
     const successCount = results?.filter((r) => r.success).length ?? 0;
+    const customEndpoint = llmProvider === CUSTOM_LLM_PROVIDER;
+    const baseUrlCheck = customEndpoint && llmBaseUrl.trim() ? normalizeLlmBaseUrl(llmBaseUrl) : null;
+    // A custom endpoint needs a URL and a model; its key is optional (local servers have none).
+    const connectionReady = Boolean(sourceAgentId) || (customEndpoint
+        ? Boolean(baseUrlCheck?.ok) && Boolean(llmModel.trim())
+        : Boolean(llmApiKey.trim()));
     const canContinueRoles = specs.every((s) => s.name.trim().length > 0) && (!teamTemplateId || (Boolean(teamName.trim()) && specs.some(spec => spec.id === teamLeadSpecId)));
 
     return (
@@ -411,7 +425,7 @@ export function EasySetupDialog({
                         {!sourceAgentId && <>
                         <div className="space-y-1.5">
                             <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">LLM Provider</label>
-                            <div className="grid grid-cols-2 gap-2">
+                            <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
                                 {LLM_PROVIDER_OPTIONS.map((p) => (
                                     <button
                                         key={p.id}
@@ -429,22 +443,40 @@ export function EasySetupDialog({
                                 ))}
                             </div>
                         </div>
+                        {customEndpoint && (
+                            <div className="space-y-1.5">
+                                <label htmlFor="easy-setup-base-url" className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Base URL</label>
+                                <input
+                                    id="easy-setup-base-url"
+                                    type="url"
+                                    value={llmBaseUrl}
+                                    onChange={(e) => setLlmBaseUrl(e.target.value)}
+                                    placeholder="http://host.docker.internal:11434/v1"
+                                    autoComplete="off"
+                                    aria-invalid={baseUrlCheck?.ok === false}
+                                    className="w-full bg-muted border-border focus:ring-1 focus:ring-cyan-500 rounded-lg px-3 py-2 text-sm text-foreground outline-none"
+                                />
+                                {baseUrlCheck?.ok === false
+                                    ? <p role="alert" className="text-xs text-destructive">{baseUrlCheck.error}</p>
+                                    : <p className="text-xs text-muted-foreground">{baseUrlCheck?.ok && baseUrlCheck.hint ? baseUrlCheck.hint : "Ollama, LM Studio, vLLM or LiteLLM. Agents run in containers: for a server on this machine use host.docker.internal, not localhost."}</p>}
+                            </div>
+                        )}
                         <div className="space-y-1.5">
-                            <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">API Key</label>
+                            <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">API Key{customEndpoint && <span className="ml-1 normal-case font-normal tracking-normal">(optional)</span>}</label>
                             <input
                                 type="password"
                                 value={llmApiKey}
                                 onChange={(e) => setLlmApiKey(e.target.value)}
-                                placeholder="Paste your provider API key"
+                                placeholder={customEndpoint ? "Only if your endpoint needs one" : "Paste your provider API key"}
                                 aria-label="LLM provider API key"
                                 autoComplete="off"
                                 className="w-full bg-muted border-border focus:ring-1 focus:ring-cyan-500 rounded-lg px-3 py-2 text-sm text-foreground outline-none"
                             />
                         </div>
                         <label className="block space-y-1.5 text-sm text-foreground">
-                            Model <span className="text-muted-foreground">(optional)</span>
+                            Model {!customEndpoint && <span className="text-muted-foreground">(optional)</span>}
                             <input value={llmModel} onChange={e => setLlmModel(e.target.value)} maxLength={200}
-                                placeholder={DEFAULT_MODEL_BY_PROVIDER[llmProvider] || "Use the provider default"} className="block w-full rounded-lg border border-border bg-muted px-3 py-2 text-sm text-foreground" />
+                                placeholder={customEndpoint ? "e.g. llama3.1:8b" : DEFAULT_MODEL_BY_PROVIDER[llmProvider] || "Use the provider default"} className="block w-full rounded-lg border border-border bg-muted px-3 py-2 text-sm text-foreground" />
                         </label>
                         <p className="text-xs text-muted-foreground">
                             Emperor encrypts and stores your key, then configures Hermes automatically.
@@ -524,7 +556,7 @@ export function EasySetupDialog({
                         <Button type="button" onClick={() => setStep("provider-key")} disabled={!canContinueRoles} className="min-h-11">Continue</Button>
                     )}
                     {step === "provider-key" && (
-                        <Button type="button" onClick={handleCreate} disabled={submitting || available !== true || (!sourceAgentId && !llmApiKey.trim())} className="min-h-11">
+                        <Button type="button" onClick={handleCreate} disabled={submitting || available !== true || !connectionReady} className="min-h-11">
                             Create &amp; start {specs.length === 1 ? "agent" : `${specs.length} agents`}
                         </Button>
                     )}
@@ -532,7 +564,7 @@ export function EasySetupDialog({
                         <Button
                             type="button"
                             onClick={handleCreate}
-                            disabled={submitting || available !== true || (!sourceAgentId && !llmApiKey.trim())}
+                            disabled={submitting || available !== true || !connectionReady}
                             className="min-h-11"
                         >
                             Retry provisioning

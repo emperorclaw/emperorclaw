@@ -60,20 +60,40 @@ test("a failed pull reports error to joiners and the status endpoint", async () 
     assert.match(state.error ?? "", /manifest unknown/);
 });
 
-test("progress aggregates bytes across layers once every size is known", () => {
+test("progress is byte-based: no percent until every downloading layer has a size", () => {
     const progress = new PullProgress();
     progress.push({ status: "Pulling from emperorclaw/emperorclaw-hermes", id: "v0.9.0" });
     progress.push({ status: "Already exists", id: "base" });
     progress.push({ status: "Pulling fs layer", id: "a" });
     progress.push({ status: "Pulling fs layer", id: "b" });
     progress.push({ status: "Downloading", id: "a", progressDetail: { current: 500, total: 1000 } });
-    // Layer b has no size yet: no byte total, percent from per-layer average.
-    assert.deepEqual(progress.snapshot(), { percent: 25, downloadedBytes: 500 });
+    // Layer b has no size yet: no total and no percent (an indeterminate bar), bytes so far.
+    assert.deepEqual(progress.snapshot(), { phase: "downloading", downloadedBytes: 500 });
     progress.push({ status: "Downloading", id: "b", progressDetail: { current: 1000, total: 3000 } });
-    assert.deepEqual(progress.snapshot(), { percent: 37, downloadedBytes: 1500, totalBytes: 4000 });
+    assert.deepEqual(progress.snapshot(), { phase: "downloading", percent: 37, downloadedBytes: 1500, totalBytes: 4000 });
     progress.push({ status: "Download complete", id: "a" });
+    progress.push({ status: "Download complete", id: "b" });
+    // Everything downloaded: the bar now measures unpacking, from zero.
+    assert.deepEqual(progress.snapshot(), { phase: "extracting", percent: 0, downloadedBytes: 4000, totalBytes: 4000, extractedBytes: 0 });
+    progress.push({ status: "Extracting", id: "a", progressDetail: { current: 1000, total: 1000 } });
+    progress.push({ status: "Pull complete", id: "a" });
+    progress.push({ status: "Extracting", id: "b", progressDetail: { current: 1500, total: 3000 } });
+    assert.deepEqual(progress.snapshot(), { phase: "extracting", percent: 62, downloadedBytes: 4000, totalBytes: 4000, extractedBytes: 2500 });
     progress.push({ status: "Pull complete", id: "b" });
-    assert.deepEqual(progress.snapshot(), { percent: 100, downloadedBytes: 4000, totalBytes: 4000 });
+    assert.deepEqual(progress.snapshot(), { phase: "extracting", percent: 100, downloadedBytes: 4000, totalBytes: 4000, extractedBytes: 4000 });
+});
+
+test("small layers that finish without a size count as complete, not as 0% or 100% of the pull", () => {
+    // The audit's case: many tiny layers done, one big layer at 0.25 of 1.46 GB. The old per-layer
+    // average said 88%; bytes say 17%.
+    const progress = new PullProgress();
+    for (let i = 0; i < 12; i++) {
+        progress.push({ status: "Pulling fs layer", id: `small${i}` });
+        progress.push({ status: "Download complete", id: `small${i}` });
+    }
+    progress.push({ status: "Pulling fs layer", id: "big" });
+    progress.push({ status: "Downloading", id: "big", progressDetail: { current: 250_000_000, total: 1_460_000_000 } });
+    assert.deepEqual(progress.snapshot(), { phase: "downloading", percent: 17, downloadedBytes: 250_000_000, totalBytes: 1_460_000_000 });
 });
 
 test("a fully cached image reports no download progress", () => {
@@ -89,10 +109,16 @@ test("reported percent never moves backwards during one pull", async () => {
     fake.emit({ status: "Pulling fs layer", id: "a" });
     fake.emit({ status: "Downloading", id: "a", progressDetail: { current: 900, total: 1000 } });
     assert.equal(getHermesImagePullState(IMAGE).percent, 90);
-    // A new layer appearing halves the per-layer average; the reported value holds.
+    // A bigger total (layer b reports its size) lowers the fraction; the reported value holds.
     fake.emit({ status: "Pulling fs layer", id: "b" });
+    fake.emit({ status: "Downloading", id: "b", progressDetail: { current: 0, total: 1000 } });
     assert.equal(getHermesImagePullState(IMAGE).percent, 90);
     assert.equal(getHermesImagePullState(IMAGE).downloadedBytes, 900);
+    // Unpacking is its own phase and starts its own bar.
+    fake.emit({ status: "Download complete", id: "a" });
+    fake.emit({ status: "Download complete", id: "b" });
+    assert.equal(getHermesImagePullState(IMAGE).phase, "extracting");
+    assert.equal(getHermesImagePullState(IMAGE).percent, 0);
     fake.finish("ok");
     await run;
 });
@@ -130,9 +156,11 @@ test("a hire during the boot prefetch joins it instead of pulling twice", async 
     await boot;
 });
 
-test("progress label shows gigabytes downloaded of the total when known", () => {
-    assert.equal(hermesImageProgressLabel({ downloadedBytes: 1_200_000_000, totalBytes: 3_800_000_000 }), "Downloading the agent runtime (one time) — 1.2 of 3.8 GB");
-    assert.equal(hermesImageProgressLabel({ downloadedBytes: 600_000_000 }), "Downloading the agent runtime (one time) — 0.6 GB so far");
+test("progress label shows gigabytes of the total when known, else what has arrived", () => {
+    assert.equal(hermesImageProgressLabel({ downloadedBytes: 250_000_000, totalBytes: 1_460_000_000 }), "Downloading the agent runtime (one time) — 0.25 of 1.46 GB");
+    assert.equal(hermesImageProgressLabel({ downloadedBytes: 600_000_000 }), "Downloading the agent runtime (one time) — 600 MB so far");
+    assert.equal(hermesImageProgressLabel({ downloadedBytes: 1_200_000_000 }), "Downloading the agent runtime (one time) — 1.20 GB so far");
+    assert.equal(hermesImageProgressLabel({ phase: "extracting", extractedBytes: 700_000_000, totalBytes: 1_460_000_000 }), "Unpacking the agent runtime (one time) — 0.70 of 1.46 GB");
     assert.equal(hermesImageProgressLabel({}), "Downloading the agent runtime (one time)…");
 });
 

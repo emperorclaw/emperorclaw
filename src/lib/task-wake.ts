@@ -1,6 +1,6 @@
 import { and, eq, inArray, isNull, sql } from "drizzle-orm";
 import { db } from "@/db";
-import { agents, projects, taskEvents, tasks } from "@/db/schema";
+import { agents, projects, taskEvents, tasks, users } from "@/db/schema";
 import { singleHumanOwner } from "@/lib/direct-chat-mode";
 import { appendThreadMessage, ensureDirectThread } from "@/lib/control-plane";
 import { getAgentScope, getAllowedProjectIds } from "@/lib/agent-scope";
@@ -35,6 +35,8 @@ export interface WakeTaskSummary {
     state: string;
     assignedBy: string;
     acceptanceCriteria: string | null;
+    /** The task's description as written (Markdown kept), capped; absent on older queued items. */
+    brief?: string | null;
 }
 
 /** Prompt text that came from task data is collapsed and capped, so a hostile or
@@ -53,10 +55,42 @@ export function taskTitle(task: { taskType: string; inputJson: unknown }): strin
 
 export function taskAcceptanceCriteria(task: { inputJson: unknown }): string | null {
     const input = task.inputJson && typeof task.inputJson === "object" ? task.inputJson as Record<string, unknown> : {};
-    const raw = [input.acceptanceCriteria, input.acceptance_criteria, input.acceptance, input.criteria, input.description]
-        .find((value) => typeof value === "string" && value.trim()) as string | undefined;
+    for (const value of [input.acceptanceCriteria, input.acceptance_criteria, input.acceptance, input.criteria]) {
+        // The task form stores criteria as a list of lines.
+        const text = Array.isArray(value) ? value.filter((item) => typeof item === "string" && item.trim()).join("; ") : value;
+        if (typeof text === "string" && text.trim()) return sanitizePromptText(text);
+    }
+    return null;
+}
+
+/** How much of the description the wake carries; the full task is one link away. */
+export const MAX_BRIEF_CHARS = 1500;
+
+/**
+ * The task's description as written, Markdown kept (line breaks, lists,
+ * emphasis), capped at MAX_BRIEF_CHARS. The wake quotes it line by line, so it
+ * reads as task data rather than as instructions from Emperor.
+ */
+export function taskBrief(task: { inputJson: unknown }): string | null {
+    const input = task.inputJson && typeof task.inputJson === "object" ? task.inputJson as Record<string, unknown> : {};
+    // Capped before the newline passes: only MAX_BRIEF_CHARS of it is kept.
+    const raw = typeof input.description === "string" ? input.description.slice(0, MAX_BRIEF_CHARS * 4).replace(/\r\n?/g, "\n").replace(/\n{3,}/g, "\n\n").trim() : "";
     if (!raw) return null;
-    return sanitizePromptText(raw);
+    return raw.length > MAX_BRIEF_CHARS ? `${raw.slice(0, MAX_BRIEF_CHARS - 1).trimEnd()}…` : raw;
+}
+
+function quotedBrief(brief: string): string[] {
+    return ["", "Brief (from the task, as written):", ...brief.split("\n").map((line) => (line.trim() ? `> ${line}` : ">"))];
+}
+
+/**
+ * A value shown inside double quotes in the wake: no quote can close it early
+ * and no control or bidi-override character can start a line or hide text
+ * (a person's display name is theirs to set).
+ */
+export function quotedPromptText(value: string): string {
+    return sanitizePromptText(value.replace(/[\u0000-\u001f\u007f-\u009f\u200e\u200f\u202a-\u202e\u2066-\u2069]/g, " "))
+        .replace(/["\u201c\u201d[\]]/g, "");
 }
 
 /** The system message an agent receives. Pure, so it is unit-tested. */
@@ -68,9 +102,10 @@ export function taskAssignedWakeText(items: WakeTaskSummary[]): string {
             `New task assigned to you: [${clean(t.title)}](emperor://task/${t.id})`,
             `- Project: "${clean(t.projectName)}"`,
             `- State: ${clean(t.state).replace(/_/g, " ")}`,
-            `- Assigned by: "${clean(t.assignedBy)}"`,
+            `- Assigned by: "${quotedPromptText(t.assignedBy)}"`,
         ];
         if (t.acceptanceCriteria) lines.push(`- Acceptance criteria: "${clean(t.acceptanceCriteria)}"`);
+        if (t.brief) lines.push(...quotedBrief(t.brief), "");
         lines.push("What to do next: set it in_progress when you start, keep a note as you go, and close it only when the acceptance criteria are met.");
         return lines.join("\n");
     }
@@ -210,6 +245,12 @@ async function agentName(companyId: string, agentId: string): Promise<string> {
     return agent?.name ?? "an agent";
 }
 
+/** A person's display name, else the name part of their email. */
+async function personName(userId: string): Promise<string> {
+    const [user] = await db.select({ displayName: users.displayName, email: users.email }).from(users).where(eq(users.id, userId)).limit(1);
+    return user?.displayName?.trim() || user?.email?.split("@")[0] || "a teammate";
+}
+
 /** Resolve a task's project display name (goal). */
 async function projectName(companyId: string, projectId: string): Promise<string> {
     const [project] = await db.select({ goal: projects.goal }).from(projects)
@@ -238,6 +279,8 @@ export interface WakeAssignmentInput {
     actorAgentId?: string | null;
     reason: WakeReason;
     assignedByLabel?: string | null;
+    /** The person who caused the change, named in the wake ("Assigned by: Priya"). */
+    actorUserId?: string | null;
 }
 
 /**
@@ -254,7 +297,8 @@ export async function wakeAgentOnTaskAssignment(input: WakeAssignmentInput): Pro
     try {
         const now = Date.now();
         const [assignedBy, project, scopeContext] = await Promise.all([
-            input.assignedByLabel ?? (input.actorAgentId ? agentName(companyId, input.actorAgentId) : "a teammate"),
+            input.assignedByLabel ?? (input.actorAgentId ? agentName(companyId, input.actorAgentId)
+                : input.actorUserId ? personName(input.actorUserId) : "a teammate"),
             projectName(companyId, task.projectId),
             (async () => {
                 const scope = await getAgentScope(companyId, assigneeId);
@@ -270,6 +314,7 @@ export async function wakeAgentOnTaskAssignment(input: WakeAssignmentInput): Pro
                 state: task.state,
                 assignedBy,
                 acceptanceCriteria: taskAcceptanceCriteria(task),
+                brief: taskBrief(task),
             }
             : { id: task.id, title: "", projectName: "", state: "", assignedBy: "", acceptanceCriteria: null };
 

@@ -1,10 +1,12 @@
 import crypto from "crypto";
 import fs from "fs";
-import { and, eq, isNotNull, isNull, like, ne } from "drizzle-orm";
+import { and, eq, isNotNull, isNull, like, ne, sql } from "drizzle-orm";
 import pkg from "@/../package.json" assert { type: "json" };
 import { db } from "@/db";
 import { agents, companyTokens } from "@/db/schema";
 import { decryptSecretPayload } from "@/lib/secrets";
+import { CUSTOM_LLM_PROVIDER, DOCKER_HOST_ALIAS, llmEndpointHost, parseLlmSecret } from "@/lib/llm-endpoint";
+import type { RuntimeSetupRecord } from "@/lib/runtime-setup";
 import { hermesContainerName, hermesSafeName, hermesVolumeName } from "@/lib/hermes-names";
 import { buildAgentInstructions } from "@/lib/agent-instructions";
 import { HERMES_CONFIG_DEFAULTS_ENV, hermesConfigDefaultsEnvValue } from "@/lib/hermes-profile-defaults";
@@ -79,6 +81,8 @@ const PROVIDER_ENV_VAR: Record<string, string> = {
     openrouter: "OPENROUTER_API_KEY",
     grok: "GROK_API_KEY",
     deepseek: "DEEPSEEK_API_KEY",
+    // Hermes' "custom" provider authenticates with OPENAI_API_KEY (its docs: custom endpoints).
+    [CUSTOM_LLM_PROVIDER]: "OPENAI_API_KEY",
 };
 
 type AgentRow = typeof agents.$inferSelect;
@@ -139,6 +143,8 @@ export type ProvisionHermesContainerInput = {
     role: string;
     /** Runtime image to run. Defaults to HERMES_IMAGE (this release's pinned tag). */
     image?: string;
+    /** The caller already made the image available (recreate pulls before stopping the old container). */
+    imageReady?: boolean;
 };
 
 export type ProvisionHermesContainerResult = {
@@ -156,6 +162,8 @@ type CreateHermesContainerOpts = {
     networkMode: string;
     mounts: ContainerMount[];
     agentId: string;
+    /** "host:ip" entries for /etc/hosts. */
+    extraHosts?: string[];
 };
 
 /**
@@ -180,6 +188,7 @@ async function createHermesContainer(opts: CreateHermesContainerOpts): Promise<s
             NetworkMode: opts.networkMode,
             Memory: HERMES_MEMORY_BYTES,
             NanoCpus: HERMES_NANO_CPUS,
+            ...(opts.extraHosts?.length ? { ExtraHosts: opts.extraHosts } : {}),
             Mounts: opts.mounts.map((mount) => ({
                 Type: mount.type,
                 Source: mount.source,
@@ -241,13 +250,16 @@ export async function provisionHermesContainer(
         // to "no key" with a warning line so the agent still gets created).
         let llmApiKeyEnv: string | null = null;
         let llmApiKeyValue: string | null = null;
+        let llmBaseUrl: string | null = null;
+        const customEndpoint = agent.llmProvider === CUSTOM_LLM_PROVIDER;
 
         if (agent.llmApiKeyEncrypted) {
             try {
-                const decrypted = decryptSecretPayload(agent.llmApiKeyEncrypted) as { apiKey?: string };
-                if (decrypted?.apiKey) {
-                    llmApiKeyValue = decrypted.apiKey;
-                } else {
+                const secret = parseLlmSecret(decryptSecretPayload(agent.llmApiKeyEncrypted));
+                llmBaseUrl = secret.baseUrl;
+                if (secret.apiKey) {
+                    llmApiKeyValue = secret.apiKey;
+                } else if (!customEndpoint) {
                     outputs.push({ command: "decrypt-llm-key", stdout: "", stderr: "Warning: stored key payload had no apiKey field", exitCode: 0 });
                 }
             } catch (err) {
@@ -283,8 +295,10 @@ export async function provisionHermesContainer(
         }
 
         // 3. Pull the pinned Hermes runtime image (or use a local copy).
-        const pulled = await ensureHermesImage(image, outputs);
-        if (!pulled.ok) return { success: false, message: pulled.message, outputs };
+        if (!input.imageReady) {
+            const pulled = await ensureHermesImage(image, outputs);
+            if (!pulled.ok) return { success: false, message: pulled.message, outputs };
+        }
 
         // 4. Build env + create + start the sibling container.
         const containerName = hermesContainerName(safeName, agent.id);
@@ -324,6 +338,18 @@ export async function provisionHermesContainer(
         if (llmApiKeyEnv && llmApiKeyValue) {
             env.push(`${llmApiKeyEnv}=${llmApiKeyValue}`);
         }
+        // A custom OpenAI-compatible endpoint: entrypoint.sh points the profile's
+        // model at it. host.docker.internal resolves on Docker Desktop already; on
+        // Linux it needs the host-gateway entry, so a model server on the host
+        // (Ollama, LM Studio) is reachable the same way everywhere. Only an
+        // endpoint on that exact host gets the entry: no other agent container
+        // is given a route to the host.
+        let extraHosts: string[] | undefined;
+        if (customEndpoint) {
+            if (llmBaseUrl) env.push(`EMPEROR_CLAW_LLM_BASE_URL=${llmBaseUrl}`);
+            else outputs.push({ command: "resolve-llm-endpoint", stdout: "", stderr: "Warning: custom provider without a stored base URL; the agent cannot reach a model until one is set", exitCode: 0 });
+            if (llmEndpointHost(llmBaseUrl) === DOCKER_HOST_ALIAS) extraHosts = [`${DOCKER_HOST_ALIAS}:host-gateway`];
+        }
 
         // Persist the agent's Hermes profile (state.db sessions, config, the
         // bridge's <profile>/emperor/ state) across container recreates
@@ -355,6 +381,7 @@ export async function provisionHermesContainer(
                 networkMode,
                 mounts,
                 agentId: agent.id,
+                extraHosts,
             });
             outputs.push({ command: `docker create ${containerName} (${image})`, stdout: containerId.slice(0, 12), stderr: "", exitCode: 0 });
         } catch (err) {
@@ -374,7 +401,8 @@ export async function provisionHermesContainer(
 
         return {
             success: true,
-            message: `${agent.name} is LIVE! Hermes sibling container running.`,
+            // Started is not connected: the agent shows Online once Hermes checks in.
+            message: `${agent.name}'s runtime started. It shows Online once it connects (usually under a minute).`,
             outputs,
             containerId,
             containerName,
@@ -448,7 +476,8 @@ export async function recreateHermesContainer(
     const role = agent.role || "operator";
     const { rawToken, tokenHash } = await mintAgentSetupToken(agent.companyId, safeName, agent.id);
 
-    const result = await provisionHermesContainer({ agent, apiToken: rawToken, safeName, role, image });
+    // The image was pulled above; pulling it again only repeated the registry round trip.
+    const result = await provisionHermesContainer({ agent, apiToken: rawToken, safeName, role, image, imageReady: true });
     result.outputs = [...outputs, ...result.outputs];
 
     try {
@@ -474,8 +503,21 @@ export async function recreateHermesContainer(
             status: "offline",
         }).where(eq(agents.id, agentId));
     }
+    await recordRuntimeSetup(agentId, result).catch(() => undefined);
 
     return result;
+}
+
+/**
+ * Remember the outcome of a provisioning attempt, so an agent whose container
+ * never started says "setup failed" (with the reason and a retry) instead of
+ * "starting up" forever. Merged with jsonb `||`: other metadata keys stay.
+ */
+export async function recordRuntimeSetup(agentId: string, result: Pick<ProvisionHermesContainerResult, "success" | "message">): Promise<void> {
+    const record: RuntimeSetupRecord = { status: result.success ? "started" : "failed", message: result.message.slice(0, 500), at: new Date().toISOString() };
+    await db.update(agents)
+        .set({ metadataJson: sql`COALESCE(${agents.metadataJson}, '{}'::jsonb) || ${JSON.stringify({ runtimeSetup: record })}::jsonb` })
+        .where(eq(agents.id, agentId));
 }
 
 // ---- Startup reconciler: roll managed runtimes onto this release's image ----

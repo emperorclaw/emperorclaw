@@ -79,8 +79,36 @@ cp -R /opt/emperor-claw-plugin/. "$PLUGIN_DIR/"
 # keys go last.
 CONFIG_PAIRS="$(mktemp)"
 trap 'rm -f "$CONFIG_PAIRS"' EXIT
-cfg() { printf 'set\t%s\t%s\n' "$1" "$2" >> "$CONFIG_PAIRS"; }
-hard() { printf 'hard\t%s\t%s\n' "$1" "$2" >> "$CONFIG_PAIRS"; }
+# A record is one tab-separated line: a value with a tab or line break would inject records, so it
+# is refused (logged, the key left as the profile has it).
+TAB="$(printf '\t')"
+CR="$(printf '\r')"
+NL='
+'
+single_line() {
+    case "$1" in
+        *"$TAB"* | *"$CR"* | *"$NL"*) return 1 ;;
+    esac
+    return 0
+}
+cfg() {
+    if ! single_line "$2"; then log "refusing config value for $1: it contains a tab or line break"; return 0; fi
+    printf 'set\t%s\t%s\n' "$1" "$2" >> "$CONFIG_PAIRS"
+}
+hard() {
+    if ! single_line "$2"; then log "refusing config value for $1: it contains a tab or line break"; return 0; fi
+    printf 'hard\t%s\t%s\n' "$1" "$2" >> "$CONFIG_PAIRS"
+}
+
+# The model settings come from the server's environment; drop any that is not a single line (the
+# provider's default model, or the profile's own setting, applies instead).
+for var in EMPEROR_CLAW_LLM_PROVIDER EMPEROR_CLAW_LLM_MODEL EMPEROR_CLAW_LLM_BASE_URL; do
+    eval "value=\${$var:-}"
+    if ! single_line "$value"; then
+        log "ignoring $var: it contains a tab or line break"
+        unset "$var"
+    fi
+done
 cfg_unset() { printf 'unset\t%s\t\n' "$1" >> "$CONFIG_PAIRS"; }
 
 # Model provider. A cloned profile inherits the base image's provider, so set it explicitly.
@@ -95,6 +123,19 @@ case "${EMPEROR_CLAW_LLM_PROVIDER:-}" in
     openrouter) cfg model.provider openrouter; cfg_unset model.base_url; DEFAULT_MODEL="nvidia/nemotron-3-ultra-550b-a55b:free" ;;
     grok) cfg model.provider xai; cfg_unset model.base_url; DEFAULT_MODEL="grok-2-latest" ;;
     deepseek) cfg model.provider deepseek; cfg_unset model.base_url; DEFAULT_MODEL="deepseek-chat" ;;
+    custom)
+        # Any OpenAI-compatible endpoint (Ollama, LM Studio, vLLM, LiteLLM): Hermes' "custom"
+        # provider with model.base_url, authenticated with OPENAI_API_KEY. A keyless local
+        # server still gets a placeholder key: the OpenAI client refuses an empty one.
+        if [ -n "${EMPEROR_CLAW_LLM_BASE_URL:-}" ]; then
+            cfg model.provider custom
+            cfg model.base_url "$EMPEROR_CLAW_LLM_BASE_URL"
+            cfg_unset model.api_key
+            [ -n "${OPENAI_API_KEY:-}" ] || export OPENAI_API_KEY=no-key-required
+        else
+            log "EMPEROR_CLAW_LLM_PROVIDER=custom without EMPEROR_CLAW_LLM_BASE_URL: leaving the profile's model provider as is"
+        fi
+        ;;
     "") ;;
     *) log "unknown EMPEROR_CLAW_LLM_PROVIDER '${EMPEROR_CLAW_LLM_PROVIDER}': leaving the profile's model provider as is" ;;
 esac
@@ -248,7 +289,7 @@ set_env() {
 }
 
 for key in EMPEROR_CLAW_API_URL EMPEROR_CLAW_API_TOKEN EMPEROR_CLAW_AGENT_ID EMPEROR_CLAW_AGENT_NAME \
-    EMPEROR_CLAW_AGENT_ROLE EMPEROR_CLAW_RUNTIME_ID EMPEROR_CLAW_LLM_PROVIDER EMPEROR_CLAW_LLM_MODEL \
+    EMPEROR_CLAW_AGENT_ROLE EMPEROR_CLAW_RUNTIME_ID EMPEROR_CLAW_LLM_PROVIDER EMPEROR_CLAW_LLM_MODEL EMPEROR_CLAW_LLM_BASE_URL \
     EMPEROR_CLAW_HERMES_TOOLSETS EMPEROR_CLAW_HERMES_MAX_PARALLEL_TURNS EMPEROR_CLAW_HERMES_CWD \
     EMPEROR_CLAW_HERMES_COMPACT_AFTER_TOKENS EMPEROR_CLAW_HERMES_TURN_TIMEOUT_SECONDS \
     EMPEROR_CLAW_HERMES_TURN_IDLE_TIMEOUT_SECONDS OPENAI_API_KEY ANTHROPIC_API_KEY GOOGLE_API_KEY \

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useRef } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import {
@@ -16,6 +16,10 @@ import {
     IconHistory,
 } from "@tabler/icons-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Button } from "@/components/ui/button";
+import { runtimeSetupOf } from "@/lib/runtime-setup";
+import { providerTroubleLabel, type ProviderTrouble } from "@/lib/provider-trouble";
 import { AgentDirectChat } from "@/components/agent-direct-chat";
 import { AgentInstructionsTab } from "./agent-instructions-tab";
 import { AgentMemoryTab } from "./agent-memory-tab";
@@ -28,10 +32,13 @@ import { getAgentTemplate } from "@/lib/agent-templates";
 import { ModelSearchSelect } from "@/components/model-search-select";
 import { SetupOutputLog, type SetupOutputEntry } from "@/components/setup-output-log";
 import { cn } from "@/lib/utils";
+import { useViewerPermissions } from "@/lib/use-viewer-permissions";
 import { BridgeBadge } from "./agent-now-card";
 import type { AgentRuntimeInfo } from "@/lib/agent-activity";
 import { HERMES_MIGRATION_DOC_HREF } from "@/lib/live-activity";
 import { directThreadLink, workLogThreadTitle } from "@/lib/direct-chat-mode";
+import { CUSTOM_LLM_PROVIDER } from "@/lib/llm-endpoint";
+import { planLlmEndpointEdit } from "@/lib/llm-endpoint-edit";
 
 /** The 0.9 remote installer (src/content/docs/v1.1/hermes-runtime.md). */
 const HERMES_INSTALLER_URL = "https://github.com/emperorclaw/emperorclaw/releases/download/v0.9.0/emperor-hermes.sh";
@@ -49,6 +56,7 @@ const LLM_PROVIDER_LABELS: Record<string, string> = {
     openrouter: "OpenRouter",
     grok: "Grok",
     deepseek: "DeepSeek",
+    custom: "Custom endpoint",
 };
 
 type AgentDetailData = {
@@ -74,7 +82,10 @@ type AgentDetailData = {
         containerId?: string | null;
         containerName?: string | null;
         createdAt?: string;
+        metadataJson?: unknown;
     };
+    /** Set when the agent's latest runs failed on the model provider (it may still be online). */
+    providerTrouble?: ProviderTrouble | null;
     latestSnapshot: { id: string; content: string; createdAt: string } | null;
     memoryEntries: Array<{
         id: string;
@@ -151,9 +162,14 @@ export function AgentDetailPanel({ agentId, agentName, runtime = null }: {
     const [editingProvider, setEditingProvider] = useState(false);
     const [editingDeployment, setEditingDeployment] = useState(false);
     const [editingLlm, setEditingLlm] = useState(false);
+    // The model endpoint decides where the agent's key is sent: owners and admins only (the server enforces it too).
+    const { canAdmin } = useViewerPermissions();
     const [saving, setSaving] = useState(false);
-    const editingLlmProviderRef = useRef("");
+    // The model endpoint editor's draft. The key is write-only: the saved one is never loaded or shown.
+    const [llmDraft, setLlmDraft] = useState({ provider: "", baseUrl: "", apiKey: "", noKey: false, model: "", pendingModel: null as string | null });
+    const [llmError, setLlmError] = useState<string | null>(null);
     const [recreating, setRecreating] = useState(false);
+    const [confirmRecreate, setConfirmRecreate] = useState(false);
     const [recreateResult, setRecreateResult] = useState<{ success: boolean; message: string; outputs: SetupOutputEntry[] } | null>(null);
     const [pricingOpts, setPricingOpts] = useState<{ model: string; label: string; provider: string; inputPricePer1k: number; outputPricePer1k: number; active: boolean }[]>([]);
 
@@ -200,8 +216,11 @@ export function AgentDetailPanel({ agentId, agentName, runtime = null }: {
     const startupGraceMs = 3 * 60 * 1000;
     const agentCreatedAtMs = agent.createdAt ? new Date(agent.createdAt).getTime() : 0;
     const withinStartupGrace = agentCreatedAtMs > 0 && Date.now() - agentCreatedAtMs < startupGraceMs;
+    // A hire whose container never started is not "starting up": say it failed, with the reason.
+    const runtimeSetup = runtimeSetupOf(agent.metadataJson);
 
-    const updateAgent = async (fields: Record<string, unknown>) => {
+    /** PATCH the agent; resolves to the server's error message, or null once saved. */
+    const patchAgent = async (fields: Record<string, unknown>): Promise<string | null> => {
         setSaving(true);
         try {
             const res = await fetch(`/api/agents/${agent.id}`, {
@@ -210,18 +229,76 @@ export function AgentDetailPanel({ agentId, agentName, runtime = null }: {
                 body: JSON.stringify(fields),
             });
             const updated = await res.json().catch(() => ({}));
-            if (!res.ok) throw new Error(updated.error || "Could not save agent settings");
+            if (!res.ok) return updated.error || "Could not save agent settings";
             setData((prev) => prev ? { ...prev, agent: { ...prev.agent, ...updated.agent } } : prev);
-            return true;
+            return null;
         } catch (error) {
-            toast.error(error instanceof Error ? error.message : "Could not save agent settings");
-            return false;
+            return error instanceof Error ? error.message : "Could not save agent settings";
         } finally {
             setSaving(false);
         }
     };
 
+    const updateAgent = async (fields: Record<string, unknown>) => {
+        const error = await patchAgent(fields);
+        if (error) toast.error(error);
+        return !error;
+    };
+
+    // Model endpoint editor: a provider or base URL change needs that endpoint's key in the same PATCH.
+    const startLlmEdit = (provider = agent.llmProvider || "", pendingModel: string | null = null) => {
+        setLlmDraft({
+            provider,
+            baseUrl: "",
+            apiKey: "",
+            noKey: false,
+            model: agent.llmProvider === CUSTOM_LLM_PROVIDER ? agent.llmModel || "" : "",
+            pendingModel,
+        });
+        setLlmError(null);
+        setEditingLlm(true);
+    };
+    const closeLlmEdit = () => {
+        setEditingLlm(false);
+        setLlmDraft((draft) => ({ ...draft, apiKey: "" }));
+        setLlmError(null);
+    };
+    const llmCustom = llmDraft.provider === CUSTOM_LLM_PROVIDER;
+    const llmModelToSave = (): string | undefined => {
+        if (llmCustom) return llmDraft.model;
+        if (llmDraft.pendingModel !== null) return llmDraft.pendingModel;
+        // A custom endpoint's model name means nothing to a named provider: use that provider's default.
+        if (agent.llmProvider === CUSTOM_LLM_PROVIDER && llmDraft.provider) return "";
+        const configuredModel = pricingOpts.find((option) => option.model === agent.llmModel);
+        return configuredModel && llmDraft.provider && configuredModel.provider !== llmDraft.provider ? "" : undefined;
+    };
+    const llmPlan = planLlmEndpointEdit({
+        currentProvider: agent.llmProvider,
+        provider: llmDraft.provider,
+        baseUrl: llmDraft.baseUrl,
+        apiKey: llmDraft.apiKey,
+        noKey: llmDraft.noKey,
+        model: llmModelToSave(),
+    });
+    const llmDraftLabel = LLM_PROVIDER_LABELS[llmDraft.provider] || llmDraft.provider;
+    const saveLlm = async () => {
+        if (!llmPlan.fields) {
+            setLlmError(llmPlan.error);
+            return;
+        }
+        const error = await patchAgent(llmPlan.fields);
+        if (error) setLlmError(error);
+        else closeLlmEdit();
+    };
+    const saveLlmOnEnter = (event: React.KeyboardEvent<HTMLInputElement>) => {
+        if (event.key === "Enter") {
+            event.preventDefault();
+            void saveLlm();
+        }
+    };
+
     const handleRecreateRuntime = async () => {
+        setConfirmRecreate(false);
         setRecreating(true);
         setRecreateResult(null);
         try {
@@ -233,7 +310,8 @@ export function AgentDetailPanel({ agentId, agentName, runtime = null }: {
                 outputs: result.outputs || [],
             });
             if (result.success) {
-                toast.success(result.message || "Runtime recreated");
+                // Started is not online: the status turns Online once Hermes connects.
+                toast.success("Runtime recreated", { description: "It shows Online once it connects." });
                 const refreshed = await fetch(`/api/agents/${agent.id}`).then((r) => r.json()).catch(() => null);
                 if (refreshed) setData(refreshed);
             } else {
@@ -271,6 +349,9 @@ export function AgentDetailPanel({ agentId, agentName, runtime = null }: {
                         <div className="mt-1.5 flex flex-wrap items-center gap-2 text-sm text-zinc-400">
                             <StatusDot status={agent.status} />
                             <span className="capitalize">{agent.status}</span>
+                            {data.providerTrouble && agent.status !== "offline" && (
+                                <span className="text-rose-300" title={data.providerTrouble.headline}>· {providerTroubleLabel(data.providerTrouble.cause)}</span>
+                            )}
                             {agent.deploymentMode === "local" && (
                                 <span className="rounded bg-emerald-500/10 px-1.5 py-0.5 text-[10px] text-emerald-300 font-medium">🖥️ Local</span>
                             )}
@@ -304,7 +385,7 @@ export function AgentDetailPanel({ agentId, agentName, runtime = null }: {
                         <button
                             type="button"
                             disabled={recreating}
-                            onClick={handleRecreateRuntime}
+                            onClick={() => setConfirmRecreate(true)}
                             title="Recreate Runtime — stop, remove, and re-provision this agent's Hermes container"
                             className="rounded-full border border-zinc-700 bg-zinc-900/60 p-2 text-zinc-500 hover:text-zinc-300 hover:border-zinc-600 transition-colors disabled:opacity-50"
                         >
@@ -315,15 +396,34 @@ export function AgentDetailPanel({ agentId, agentName, runtime = null }: {
                 </div>
             </div>
 
+            <Dialog open={confirmRecreate} onOpenChange={setConfirmRecreate}>
+                <DialogContent className="sm:max-w-md">
+                    <DialogHeader>
+                        <DialogTitle>Recreate {agent.name}&apos;s runtime?</DialogTitle>
+                        <DialogDescription>
+                            Emperor stops the current container (a reply in progress gets up to 75 seconds to finish) and starts a fresh one from the saved provider, model and key. Memory, chats and tasks are kept.
+                        </DialogDescription>
+                    </DialogHeader>
+                    <DialogFooter>
+                        <Button type="button" variant="outline" onClick={() => setConfirmRecreate(false)}>Cancel</Button>
+                        <Button type="button" onClick={() => void handleRecreateRuntime()} disabled={recreating}>Recreate runtime</Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
+
             {/* Recreate Runtime result — shown inline after the action runs */}
             {recreateResult && (
                 <div className={cn(
                     "border-b p-3 sm:p-4 space-y-2",
-                    recreateResult.success ? "border-emerald-500/20 bg-emerald-500/[0.04]" : "border-rose-500/20 bg-rose-500/[0.04]"
+                    recreateResult.success ? (agent.status === "online" ? "border-emerald-500/20 bg-emerald-500/[0.04]" : "border-zinc-700/60 bg-zinc-900/40") : "border-rose-500/20 bg-rose-500/[0.04]"
                 )}>
                     <div className="flex items-center gap-2">
-                        {recreateResult.success ? <IconCircleCheck className="h-4 w-4 text-emerald-400" /> : <IconAlertTriangle className="h-4 w-4 text-rose-400" />}
-                        <span className={cn("text-xs", recreateResult.success ? "text-emerald-200" : "text-rose-200")}>{recreateResult.message}</span>
+                        {!recreateResult.success ? <IconAlertTriangle className="h-4 w-4 text-rose-400" />
+                            : agent.status === "online" ? <IconCircleCheck className="h-4 w-4 text-emerald-400" />
+                                : <IconLoader className="h-4 w-4 animate-spin text-zinc-400" />}
+                        <span className={cn("text-xs", !recreateResult.success ? "text-rose-200" : agent.status === "online" ? "text-emerald-200" : "text-zinc-300")}>
+                            {recreateResult.success && agent.status === "online" ? `${agent.name} is online.` : recreateResult.message}
+                        </span>
                     </div>
                     <SetupOutputLog outputs={recreateResult.outputs} />
                 </div>
@@ -341,7 +441,11 @@ export function AgentDetailPanel({ agentId, agentName, runtime = null }: {
                     deploymentMode={(agent.deploymentMode as "local" | "remote") || "remote"}
                 />
                 {!agent.lastSeenAt && (
-                    withinStartupGrace ? (
+                    runtimeSetup?.status === "failed" && !agent.containerId && agent.provider === "hermes" && agent.deploymentMode === "local" ? (
+                        <div role="alert" className="border-b border-rose-500/15 bg-rose-500/[0.04] px-4 py-2 text-xs text-rose-200">
+                            Setup failed: {runtimeSetup.message} Use Retry local setup above once the cause is fixed.
+                        </div>
+                    ) : withinStartupGrace ? (
                         <div className="border-b border-amber-500/15 bg-amber-500/[0.04] px-4 py-2 text-[10px] text-amber-200/80">
                             ⏳ Starting up — the runtime is being installed and connected. The first boot can take a minute or two; this page shows “online” once it checks in.
                         </div>
@@ -419,15 +523,20 @@ export function AgentDetailPanel({ agentId, agentName, runtime = null }: {
                             </>
                         )}
                     </span>
-                    {/* LLM Provider — editable; keys live in the agent runtime, not here */}
+                    {/* LLM Provider — owners/admins edit it; a new endpoint's key is asked for below the bar */}
                     <span className="text-zinc-500 inline-flex items-center gap-1.5">
                         LLM:{" "}
-                        {editingLlm ? (
+                        {editingLlm && canAdmin ? (
                             <span className="inline-flex items-center gap-1.5">
                                 <select
-                                    defaultValue={agent.llmProvider || ""}
+                                    value={llmDraft.provider}
                                     disabled={saving}
-                                    onChange={(e) => { editingLlmProviderRef.current = e.target.value; }}
+                                    aria-label="LLM provider"
+                                    onChange={(e) => {
+                                        const nextProvider = e.target.value;
+                                        setLlmDraft((draft) => ({ ...draft, provider: nextProvider, pendingModel: null }));
+                                        setLlmError(null);
+                                    }}
                                     className="h-6 rounded border border-zinc-700 bg-zinc-900 px-1.5 text-xs text-zinc-200 outline-none focus:border-cyan-400"
                                 >
                                     <option value="">None</option>
@@ -437,31 +546,19 @@ export function AgentDetailPanel({ agentId, agentName, runtime = null }: {
                                     <option value="openrouter">OpenRouter</option>
                                     <option value="grok">Grok</option>
                                     <option value="deepseek">DeepSeek</option>
+                                    <option value={CUSTOM_LLM_PROVIDER}>Custom endpoint</option>
                                 </select>
                                 <button
                                     type="button"
                                     disabled={saving}
-                                    onClick={async () => {
-                                        const nextProvider = editingLlmProviderRef.current || "";
-                                        const configuredModel = pricingOpts.find((option) => option.model === agent.llmModel);
-                                        const clearsIncompatibleModel = Boolean(
-                                            configuredModel &&
-                                            nextProvider &&
-                                            configuredModel.provider !== nextProvider,
-                                        );
-                                        const saved = await updateAgent({
-                                            llmProvider: nextProvider,
-                                            ...(clearsIncompatibleModel ? { llmModel: "" } : {}),
-                                        });
-                                        if (saved) setEditingLlm(false);
-                                    }}
+                                    onClick={() => void saveLlm()}
                                     className="text-[10px] text-cyan-400 hover:text-cyan-300 font-medium disabled:opacity-50"
                                 >
                                     Save
                                 </button>
                                 <button
                                     type="button"
-                                    onClick={() => setEditingLlm(false)}
+                                    onClick={closeLlmEdit}
                                     className="text-zinc-600 hover:text-zinc-400 text-[10px]"
                                 >
                                     Cancel
@@ -472,11 +569,11 @@ export function AgentDetailPanel({ agentId, agentName, runtime = null }: {
                                 <span className="text-zinc-300 font-medium">
                                     {agent.llmProvider ? LLM_PROVIDER_LABELS[agent.llmProvider] || agent.llmProvider : "None"}
                                 </span>
-                                <button type="button" onClick={() => { editingLlmProviderRef.current = agent.llmProvider || ""; setEditingLlm(true); }} className="text-zinc-600 hover:text-zinc-400 transition-colors" title="Configure LLM provider">
+                                {canAdmin && <button type="button" onClick={() => startLlmEdit()} className="text-zinc-600 hover:text-zinc-400 transition-colors" title="Configure LLM provider">
                                     <IconPencil className="h-3 w-3" />
-                                </button>
+                                </button>}
                                 {agent.llmProvider && (
-                                    <a href="/docs/v1.1/troubleshooting#5-agent-setup--llm-configuration" target="_blank" className="text-[9px] text-cyan-400 hover:text-cyan-300 underline underline-offset-2" title="API keys are configured in the agent runtime, not stored in EmperorClaw. Click for setup guide.">
+                                    <a href="/docs/v1.1/troubleshooting#5-agent-setup--llm-configuration" target="_blank" className="text-[9px] text-cyan-400 hover:text-cyan-300 underline underline-offset-2" title="Model provider setup guide">
                                         ⓘ setup guide
                                     </a>
                                 )}
@@ -486,7 +583,8 @@ export function AgentDetailPanel({ agentId, agentName, runtime = null }: {
                     {/* Model selector — uses pricing table for cost tracking */}
                     <span className="text-zinc-500 inline-flex items-center gap-1.5">
                         Model:{" "}
-                        <ModelSearchSelect
+                        {/* A custom endpoint serves its own model names; the priced catalog would call them unavailable. */}
+                        {data.agent.llmProvider === "custom" || !canAdmin ? <span className="font-medium text-zinc-300">{data.agent.llmModel || "—"}</span> : <ModelSearchSelect
                             options={pricingOpts}
                             value={data.agent.llmModel || ""}
                             provider={data.agent.llmProvider || ""}
@@ -494,12 +592,17 @@ export function AgentDetailPanel({ agentId, agentName, runtime = null }: {
                             saving={saving}
                             compact
                             onChange={async (selection) => {
+                                // A model of another provider moves the agent to that provider's endpoint: ask for its key first.
+                                if (selection.provider && selection.provider !== (agent.llmProvider || "")) {
+                                    startLlmEdit(selection.provider, selection.model);
+                                    return;
+                                }
                                 await updateAgent({
                                     llmProvider: selection.provider,
                                     llmModel: selection.model,
                                 });
                             }}
-                        />
+                        />}
                     </span>
                     {agent.lastSeenAt && (
                         <span className="text-zinc-500">
@@ -517,6 +620,81 @@ export function AgentDetailPanel({ agentId, agentName, runtime = null }: {
                         </span>
                     )}
             </div>
+
+            {editingLlm && canAdmin && (llmPlan.keyRequired || llmCustom || llmError) && (
+                <div className="border-b border-border bg-muted/40 px-4 sm:px-5 py-3 space-y-2.5 text-xs">
+                    {llmDraft.pendingModel && (
+                        <p className="text-muted-foreground">
+                            {llmDraft.pendingModel} runs on {llmDraftLabel}: enter its API key to switch the agent over.
+                        </p>
+                    )}
+                    <div className="grid max-w-3xl gap-3 sm:grid-cols-2">
+                        {llmCustom && (
+                            <label className="space-y-1">
+                                <span className="block font-medium text-foreground">Base URL</span>
+                                <input
+                                    type="url"
+                                    value={llmDraft.baseUrl}
+                                    onChange={(e) => { const baseUrl = e.target.value; setLlmDraft((draft) => ({ ...draft, baseUrl })); setLlmError(null); }}
+                                    onKeyDown={saveLlmOnEnter}
+                                    disabled={saving}
+                                    placeholder="http://host.docker.internal:11434/v1"
+                                    autoComplete="off"
+                                    className="block w-full rounded-lg border border-border bg-background px-2.5 py-1.5 text-xs text-foreground outline-none focus:ring-1 focus:ring-cyan-500"
+                                />
+                                <span className="block text-muted-foreground">
+                                    {llmPlan.baseUrlHint
+                                        ?? `${agent.llmProvider === CUSTOM_LLM_PROVIDER ? "Leave blank to keep the current URL. " : ""}Agents run in containers: for a server on this machine use host.docker.internal, not localhost.`}
+                                </span>
+                            </label>
+                        )}
+                        {llmCustom && (
+                            <label className="space-y-1">
+                                <span className="block font-medium text-foreground">Model</span>
+                                <input
+                                    value={llmDraft.model}
+                                    onChange={(e) => { const model = e.target.value; setLlmDraft((draft) => ({ ...draft, model })); setLlmError(null); }}
+                                    onKeyDown={saveLlmOnEnter}
+                                    disabled={saving}
+                                    maxLength={200}
+                                    placeholder="e.g. llama3.1:8b"
+                                    autoComplete="off"
+                                    className="block w-full rounded-lg border border-border bg-background px-2.5 py-1.5 text-xs text-foreground outline-none focus:ring-1 focus:ring-cyan-500"
+                                />
+                            </label>
+                        )}
+                        {llmPlan.keyRequired && (
+                            <div className="space-y-1">
+                                <label htmlFor={`llm-key-${agent.id}`} className="block font-medium text-foreground">API key for {llmDraftLabel}</label>
+                                <input
+                                    id={`llm-key-${agent.id}`}
+                                    type="password"
+                                    value={llmDraft.apiKey}
+                                    onChange={(e) => { const apiKey = e.target.value; setLlmDraft((draft) => ({ ...draft, apiKey })); setLlmError(null); }}
+                                    onKeyDown={saveLlmOnEnter}
+                                    disabled={saving || (llmCustom && llmDraft.noKey)}
+                                    placeholder={llmCustom && llmDraft.noKey ? "No key" : "Paste the new key"}
+                                    autoComplete="off"
+                                    className="block w-full rounded-lg border border-border bg-background px-2.5 py-1.5 text-xs text-foreground outline-none focus:ring-1 focus:ring-cyan-500 disabled:opacity-60"
+                                />
+                                {llmCustom && (
+                                    <label className="flex items-center gap-1.5 text-muted-foreground">
+                                        <input
+                                            type="checkbox"
+                                            checked={llmDraft.noKey}
+                                            disabled={saving}
+                                            onChange={(e) => { const noKey = e.target.checked; setLlmDraft((draft) => ({ ...draft, noKey, apiKey: noKey ? "" : draft.apiKey })); setLlmError(null); }}
+                                        />
+                                        This endpoint needs no key
+                                    </label>
+                                )}
+                                <span className="block text-muted-foreground">The saved key is never shown, and never sent to a different endpoint.</span>
+                            </div>
+                        )}
+                    </div>
+                    {llmError && <p role="alert" className="text-destructive">{llmError}</p>}
+                </div>
+            )}
 
             {/* Tabs */}
             <Tabs key={initialTab} defaultValue={initialTab} className="p-4 sm:p-5">

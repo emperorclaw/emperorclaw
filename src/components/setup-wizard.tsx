@@ -14,6 +14,7 @@ import { Input } from "@/components/ui/input";
 import { agentRoleTemplates, getAgentTemplate } from "@/lib/agent-templates";
 import { BUSINESS_TYPES, COMFORTABLE_AGENT_COUNT, DEFAULT_AGENT_NAMES, TEAM_TEMPLATES, planTeam, suggestedTeams, teamPlanProblem, type PlannedGroup } from "@/lib/onboarding-shared";
 import { cn } from "@/lib/utils";
+import { CUSTOM_LLM_PROVIDER, normalizeLlmBaseUrl } from "@/lib/llm-endpoint";
 
 /**
  * First-run setup, modelled on an OS setup assistant: one focused screen per
@@ -27,12 +28,13 @@ type Step = "welcome" | "company" | "model" | "team" | "launch";
 type KeyState = { status: "idle" | "checking" | "ok" | "bad" | "unknown"; message: string };
 type Member = { templateId: string; name: string };
 type Created = { name: string; agentId: string | null; success: boolean; message: string; templateId: string; reused?: boolean };
-type AgentRow = { id: string; name: string; status: string; lastSeenAt: string | null };
+type AgentRow = { id: string; name: string; status: string; lastSeenAt: string | null; role?: string | null; createdAt?: string };
 type DocProgress = { taskId: string; state: string; agentId: string | null; taskUrl: string; notesTouched: string[]; totalNotes: number };
 
 const PROVIDERS = [
     { id: "openrouter", label: "OpenRouter", hint: "One key for hundreds of models, including free ones.", keyUrl: "https://openrouter.ai/keys", defaultModel: "nvidia/nemotron-3-ultra-550b-a55b:free" },
     { id: "deepseek", label: "DeepSeek", hint: "Low-cost DeepSeek models, billed by DeepSeek.", keyUrl: "https://platform.deepseek.com/api_keys", defaultModel: "" },
+    { id: CUSTOM_LLM_PROVIDER, label: "Custom (OpenAI-compatible)", hint: "Your own endpoint: Ollama, LM Studio, vLLM or LiteLLM.", keyUrl: "", defaultModel: "" },
 ] as const;
 
 const STEPS: { id: Step; label: string; icon: typeof IconBuilding }[] = [
@@ -45,14 +47,23 @@ const STEPS: { id: Step; label: string; icon: typeof IconBuilding }[] = [
 
 const STARTUP_GRACE_MS = 3 * 60 * 1000;
 
-export function SetupWizard({ initialCompanyName, initialBusinessType = "", profileComplete, hasAgents }: { initialCompanyName: string; initialBusinessType?: string; profileComplete: boolean; hasAgents: boolean }) {
+export function SetupWizard({ initialCompanyName, initialBusinessType = "", profileComplete, hasAgents: hasAgentsNow }: { initialCompanyName: string; initialBusinessType?: string; profileComplete: boolean; hasAgents: boolean }) {
     const router = useRouter();
-    const [step, setStep] = useState<Step>("welcome");
+    // The mode is fixed when the wizard opens. The launch saves agents before
+    // their runtimes start, and the dashboard refreshes every few seconds: a
+    // live `hasAgents` flipped a running launch into the profile-only flow.
+    // Agents but no profile: only the company step. Agents and a profile: a
+    // launch that was interrupted (reload), resumed on the launch step.
+    const [hasAgents] = useState(hasAgentsNow && !profileComplete);
+    const [resumingLaunch] = useState(hasAgentsNow && profileComplete);
+    const [step, setStep] = useState<Step>(resumingLaunch ? "launch" : "welcome");
     const [hidden, setHidden] = useState(false);
     const [error, setError] = useState("");
 
     // Company
     const [companyName, setCompanyName] = useState(initialCompanyName);
+    // The name given at sign-up is shown, not asked again; "Change" edits it.
+    const [editingName, setEditingName] = useState(initialCompanyName.trim().length < 2);
     const [whatYouDo, setWhatYouDo] = useState("");
     const [businessType, setBusinessType] = useState<string>(initialBusinessType);
     const [website, setWebsite] = useState("");
@@ -66,6 +77,7 @@ export function SetupWizard({ initialCompanyName, initialBusinessType = "", prof
     const [provider, setProvider] = useState<string>(PROVIDERS[0].id);
     const [apiKey, setApiKey] = useState("");
     const [model, setModel] = useState<string>(PROVIDERS[0].defaultModel);
+    const [baseUrl, setBaseUrl] = useState("");
     const [showModel, setShowModel] = useState(false);
     const [keyState, setKeyState] = useState<KeyState>({ status: "idle", message: "" });
 
@@ -94,6 +106,10 @@ export function SetupWizard({ initialCompanyName, initialBusinessType = "", prof
     const [, setTick] = useState(0);
 
     const providerInfo = PROVIDERS.find((p) => p.id === provider) ?? PROVIDERS[0];
+    const customEndpoint = provider === CUSTOM_LLM_PROVIDER;
+    const baseUrlCheck = customEndpoint && baseUrl.trim() ? normalizeLlmBaseUrl(baseUrl) : null;
+    // A custom endpoint needs its URL and model; the key is optional (local servers have none).
+    const modelReady = customEndpoint ? Boolean(baseUrlCheck?.ok) && Boolean(model.trim()) : Boolean(apiKey.trim());
     const stepIndex = STEPS.findIndex((s) => s.id === step);
 
     useEffect(() => {
@@ -111,6 +127,23 @@ export function SetupWizard({ initialCompanyName, initialBusinessType = "", prof
         })();
         return () => { cancelled = true; };
     }, []);
+
+    // Resuming a launch after a reload: the agents already exist, so watch them
+    // come online (with Retry) and hand the lead its first job, as before.
+    useEffect(() => {
+        if (!resumingLaunch) return;
+        let cancelled = false;
+        void (async () => {
+            const data = await fetch("/api/agents", { cache: "no-store" }).then((r) => r.json()).catch(() => null) as { agents?: AgentRow[] } | null;
+            if (cancelled || !data?.agents?.length) return;
+            const rows = data.agents.map((a) => ({ ...a, templateId: agentRoleTemplates.find((t) => t.title === a.role)?.id ?? a.role ?? "" }))
+                .sort((a, b) => (a.templateId === "boss" ? -1 : b.templateId === "boss" ? 1 : (a.createdAt ?? "").localeCompare(b.createdAt ?? "")));
+            setRoster(data.agents);
+            setCreated(rows.map((a) => ({ name: a.name, agentId: a.id, success: true, message: "", templateId: a.templateId })));
+            setLaunchedAt(Math.min(...rows.map((a) => (a.createdAt ? Date.parse(a.createdAt) : Date.now()))));
+        })();
+        return () => { cancelled = true; };
+    }, [resumingLaunch]);
 
     // Suggest teams for the kind of company, until the operator edits them.
     useEffect(() => {
@@ -160,7 +193,7 @@ export function SetupWizard({ initialCompanyName, initialBusinessType = "", prof
         if (keyState.status === "unknown") { setStep("team"); return; } // second click: continue anyway
         setKeyState({ status: "checking", message: "" });
         try {
-            const res = await fetch("/api/onboarding/validate-key", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ provider, apiKey }) });
+            const res = await fetch("/api/onboarding/validate-key", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ provider, apiKey, ...(customEndpoint ? { baseUrl, model } : {}) }) });
             const data = await res.json();
             if (data.ok === true) { setKeyState({ status: "ok", message: data.detail || "Key works." }); setStep("team"); }
             else if (data.ok === false) setKeyState({ status: "bad", message: data.error });
@@ -216,6 +249,7 @@ export function SetupWizard({ initialCompanyName, initialBusinessType = "", prof
                     llmProvider: provider,
                     llmApiKey: apiKey,
                     llmModel: model.trim() || undefined,
+                    llmBaseUrl: customEndpoint ? baseUrl.trim() : undefined,
                     agents: requested.map((m) => {
                         const t = getAgentTemplate(m.templateId);
                         if (!hiringRequestIds.current.has(m.templateId)) hiringRequestIds.current.set(m.templateId, createClientRequestId());
@@ -429,13 +463,20 @@ export function SetupWizard({ initialCompanyName, initialBusinessType = "", prof
                                     <h1 id="setup-title" className="text-2xl font-semibold text-foreground">Tell us about your company</h1>
                                     <p className="mt-2 text-sm leading-6 text-muted-foreground">Every agent reads this before it works. You can change it any time in Knowledge &amp; Rules.</p>
                                 </header>
-                                <label className="block space-y-2">
-                                    <span className="text-sm font-medium text-foreground">Company name</span>
-                                    <Input value={companyName} onChange={(e) => setCompanyName(e.target.value)} placeholder="Acme Robotics" autoFocus />
-                                </label>
+                                {editingName ? (
+                                    <label className="block space-y-2">
+                                        <span className="text-sm font-medium text-foreground">Company name</span>
+                                        <Input value={companyName} onChange={(e) => setCompanyName(e.target.value)} placeholder="Acme Robotics" autoFocus />
+                                    </label>
+                                ) : (
+                                    <p className="flex flex-wrap items-baseline gap-2 text-sm text-muted-foreground">
+                                        Company <span className="text-base font-medium text-foreground">{companyName}</span>
+                                        <button type="button" onClick={() => setEditingName(true)} className="min-h-11 text-xs text-cyan-700 underline-offset-2 hover:underline dark:text-cyan-300">Change</button>
+                                    </p>
+                                )}
                                 <label className="block space-y-2">
                                     <span className="text-sm font-medium text-foreground">What does it do, and for whom?</span>
-                                    <textarea value={whatYouDo} onChange={(e) => setWhatYouDo(e.target.value)} rows={3} placeholder="We build warehouse robots for mid-size logistics companies in Europe."
+                                    <textarea value={whatYouDo} onChange={(e) => setWhatYouDo(e.target.value)} rows={3} autoFocus={!editingName} placeholder="We build warehouse robots for mid-size logistics companies in Europe."
                                         className="w-full resize-y rounded-xl border border-border bg-muted/30 px-3 py-2.5 text-sm text-foreground outline-none placeholder:text-muted-foreground focus:border-cyan-300/60 focus:ring-2 focus:ring-cyan-300/20" />
                                 </label>
                                 <fieldset className="space-y-2">
@@ -491,7 +532,7 @@ export function SetupWizard({ initialCompanyName, initialBusinessType = "", prof
                                     </div>
                                 ) : (
                                     <>
-                                        <div className="grid gap-3 sm:grid-cols-2">
+                                        <div className="grid gap-3 sm:grid-cols-3">
                                             {PROVIDERS.map((p) => (
                                                 <button key={p.id} type="button" aria-pressed={provider === p.id}
                                                     onClick={() => { setProvider(p.id); setModel(p.defaultModel); setKeyState({ status: "idle", message: "" }); }}
@@ -501,12 +542,27 @@ export function SetupWizard({ initialCompanyName, initialBusinessType = "", prof
                                                 </button>
                                             ))}
                                         </div>
+                                        {customEndpoint && (
+                                            <div className="grid gap-4 sm:grid-cols-2">
+                                                <label className="block space-y-2">
+                                                    <span className="text-sm font-medium text-foreground">Base URL</span>
+                                                    <Input type="url" autoComplete="off" value={baseUrl} onChange={(e) => { setBaseUrl(e.target.value); setKeyState({ status: "idle", message: "" }); }} placeholder="http://host.docker.internal:11434/v1" aria-invalid={baseUrlCheck?.ok === false} />
+                                                </label>
+                                                <label className="block space-y-2">
+                                                    <span className="text-sm font-medium text-foreground">Model</span>
+                                                    <Input value={model} onChange={(e) => { setModel(e.target.value); setKeyState({ status: "idle", message: "" }); }} placeholder="e.g. llama3.1:8b" />
+                                                </label>
+                                                {baseUrlCheck?.ok === false
+                                                    ? <p role="alert" className="text-xs text-rose-700 dark:text-rose-300 sm:col-span-2">{baseUrlCheck.error}</p>
+                                                    : <p className="text-xs leading-5 text-muted-foreground sm:col-span-2">{baseUrlCheck?.ok && baseUrlCheck.hint ? baseUrlCheck.hint : "Agents run in their own containers, so localhost there is not this machine: for a server here, use host.docker.internal."}</p>}
+                                            </div>
+                                        )}
                                         <label className="block space-y-2">
                                             <span className="flex items-center justify-between text-sm font-medium text-foreground">
-                                                <span className="flex items-center gap-2"><IconKey className="h-4 w-4 text-cyan-700 dark:text-cyan-300" />{providerInfo.label} API key</span>
-                                                <a href={providerInfo.keyUrl} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-xs font-normal text-cyan-700 dark:text-cyan-300 hover:underline">Get a key <IconExternalLink className="h-3 w-3" /></a>
+                                                <span className="flex items-center gap-2"><IconKey className="h-4 w-4 text-cyan-700 dark:text-cyan-300" />{customEndpoint ? <>API key <span className="font-normal text-muted-foreground">(optional)</span></> : `${providerInfo.label} API key`}</span>
+                                                {providerInfo.keyUrl && <a href={providerInfo.keyUrl} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-xs font-normal text-cyan-700 dark:text-cyan-300 hover:underline">Get a key <IconExternalLink className="h-3 w-3" /></a>}
                                             </span>
-                                            <Input type="password" autoComplete="off" value={apiKey} onChange={(e) => { setApiKey(e.target.value); setKeyState({ status: "idle", message: "" }); }} placeholder={provider === "openrouter" ? "sk-or-v1-…" : "sk-…"} aria-invalid={keyState.status === "bad"} />
+                                            <Input type="password" autoComplete="off" value={apiKey} onChange={(e) => { setApiKey(e.target.value); setKeyState({ status: "idle", message: "" }); }} placeholder={customEndpoint ? "Only if your endpoint needs one" : provider === "openrouter" ? "sk-or-v1-…" : "sk-…"} aria-invalid={keyState.status === "bad"} />
                                             {keyState.status === "ok" && <p className="flex items-center gap-1.5 text-xs text-emerald-700 dark:text-emerald-300"><IconCircleCheck className="h-3.5 w-3.5" />{keyState.message}</p>}
                                             {keyState.status === "bad" && <p role="alert" className="text-xs text-rose-700 dark:text-rose-300">{keyState.message}</p>}
                                             {keyState.status === "unknown" && <p className="text-xs text-amber-800 dark:text-amber-200">{keyState.message} Click Continue again to go on.</p>}
@@ -516,12 +572,12 @@ export function SetupWizard({ initialCompanyName, initialBusinessType = "", prof
                                                 Starts on a <strong className="text-foreground">free model</strong>, so you can try everything at no cost. Switch to a stronger model per agent later.
                                             </p>
                                         )}
-                                        <div>
+                                        {!customEndpoint && <div>
                                             <button type="button" onClick={() => setShowModel((v) => !v)} className="text-xs text-muted-foreground underline-offset-2 hover:text-muted-foreground hover:underline">{showModel ? "Hide" : "Choose a specific"} model</button>
                                             {showModel && (
                                                 <Input className="mt-2" value={model} onChange={(e) => setModel(e.target.value)} placeholder={provider === "openrouter" ? "e.g. anthropic/claude-sonnet-5-5" : "e.g. deepseek-chat"} aria-label="Model" />
                                             )}
-                                        </div>
+                                        </div>}
                                     </>
                                 )}
                             </section>
@@ -701,7 +757,7 @@ export function SetupWizard({ initialCompanyName, initialBusinessType = "", prof
                             {step === "model" && (available === false
                                 ? <Button onClick={() => void goToDashboard()}>Finish setup</Button>
                                 : (
-                                    <Button onClick={() => void checkKey()} disabled={!apiKey.trim() || keyState.status === "checking" || available === null}>
+                                    <Button onClick={() => void checkKey()} disabled={!modelReady || keyState.status === "checking" || available === null}>
                                         {keyState.status === "checking" ? <><IconLoader2 className="h-4 w-4 animate-spin" />Checking key…</> : <>{keyState.status === "unknown" ? "Continue anyway" : "Continue"}<IconArrowRight className="h-4 w-4" /></>}
                                     </Button>
                                 ))}

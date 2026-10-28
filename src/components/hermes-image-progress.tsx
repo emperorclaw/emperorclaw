@@ -3,19 +3,29 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { cn } from "@/lib/utils";
 
-type PullState = { status: "idle" | "pulling" | "ready" | "error"; percent?: number; downloadedBytes?: number; totalBytes?: number };
+type PullState = { status: "idle" | "pulling" | "ready" | "error"; phase?: "downloading" | "extracting"; percent?: number; downloadedBytes?: number; totalBytes?: number; extractedBytes?: number };
 
 const POLL_MS = 2000;
 
 function gigabytes(bytes: number): string {
-    return (bytes / 1_000_000_000).toFixed(1);
+    return (bytes / 1_000_000_000).toFixed(2);
 }
 
-/** Text for the download line; values are decimal gigabytes, as Docker reports sizes. */
-export function hermesImageProgressLabel(state: Pick<PullState, "downloadedBytes" | "totalBytes" | "percent">): string {
+/** "340 MB" under a gigabyte, "1.24 GB" above (decimal units, as Docker reports sizes). */
+function amount(bytes: number): string {
+    return bytes < 1_000_000_000 ? `${Math.round(bytes / 1_000_000)} MB` : `${gigabytes(bytes)} GB`;
+}
+
+/** Text for the progress line: "x of y GB" once the total is known, else what has arrived so far. */
+export function hermesImageProgressLabel(state: Pick<PullState, "phase" | "downloadedBytes" | "totalBytes" | "extractedBytes" | "percent">): string {
+    if (state.phase === "extracting") {
+        const base = "Unpacking the agent runtime (one time)";
+        if (state.extractedBytes !== undefined && state.totalBytes) return `${base} — ${gigabytes(state.extractedBytes)} of ${gigabytes(state.totalBytes)} GB`;
+        return `${base}…`;
+    }
     const base = "Downloading the agent runtime (one time)";
     if (state.downloadedBytes !== undefined && state.totalBytes) return `${base} — ${gigabytes(state.downloadedBytes)} of ${gigabytes(state.totalBytes)} GB`;
-    if (state.downloadedBytes) return `${base} — ${gigabytes(state.downloadedBytes)} GB so far`;
+    if (state.downloadedBytes) return `${base} — ${amount(state.downloadedBytes)} so far`;
     return `${base}…`;
 }
 
@@ -53,7 +63,7 @@ export function HermesImageProgress({ active, fallback = null, className }: { ac
             <div
                 className="h-2 w-full overflow-hidden rounded-full bg-muted"
                 role="progressbar"
-                aria-label="Agent runtime download"
+                aria-label={state.phase === "extracting" ? "Agent runtime unpacking" : "Agent runtime download"}
                 aria-valuemin={0}
                 aria-valuemax={100}
                 aria-valuenow={percent}

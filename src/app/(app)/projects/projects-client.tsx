@@ -607,8 +607,10 @@ export default function ProjectsClient({ initialTasks, projects, agents, custome
         setTaskDialogMode("edit");
     };
 
+    // A workspace with no projects yet: the first task goes into "General" (created by the server).
+    const useDefaultProject = taskDialogMode === "create" && !taskForm.projectId && projectItems.length === 0;
     const submitTask = async () => {
-        if (!taskForm.projectId || !taskForm.title.trim()) return;
+        if ((!taskForm.projectId && !useDefaultProject) || !taskForm.title.trim()) return;
         setIsMutating(true);
         setMutationError(null);
         try {
@@ -624,11 +626,12 @@ export default function ProjectsClient({ initialTasks, projects, agents, custome
             const res = await fetch(isEdit ? `/api/tasks/${selectedTask.id}` : "/api/tasks", {
                 method: isEdit ? "PATCH" : "POST",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ ...taskForm, assignee: parseAssigneeValue(taskForm.assignee), priority: Number(taskForm.priority) || 0, inputJson }),
+                body: JSON.stringify({ ...taskForm, assignee: parseAssigneeValue(taskForm.assignee), priority: Number(taskForm.priority) || 0, inputJson, ...(useDefaultProject && !isEdit ? { useDefaultProject: true } : {}) }),
             });
             const data = await res.json();
             if (!res.ok) throw new Error(data.error || "Task save failed");
             setTasks((prev) => isEdit ? prev.map((task) => task.id === data.task.id ? data.task : task) : [data.task, ...prev]);
+            if (!isEdit && !projectById.has(data.task.projectId)) setProjectItems((prev) => [...prev, { id: data.task.projectId, goal: "General", status: "active", customerId: null }]);
             setTaskDialogMode(null);
             router.refresh();
         } catch (error) {
@@ -1002,7 +1005,7 @@ export default function ProjectsClient({ initialTasks, projects, agents, custome
             )}
 
             <ProjectFormDialog mode={projectDialogMode} form={projectForm} setForm={setProjectForm} customers={customers} agents={agents} busy={isMutating} error={projectDialogMode ? mutationError : null} onClose={() => setProjectDialogMode(null)} onSubmit={() => void submitProject()} />
-            <TaskFormDialog mode={taskDialogMode} form={taskForm} setForm={setTaskForm} projects={taskDialogMode === "edit" ? projectItems : visibleProjects} customers={customers} agents={agents} members={members} busy={isMutating} error={taskDialogMode ? mutationError : null} onClose={() => setTaskDialogMode(null)} onSubmit={() => void submitTask()} />
+            <TaskFormDialog mode={taskDialogMode} form={taskForm} setForm={setTaskForm} projects={taskDialogMode === "edit" ? projectItems : visibleProjects} defaultProject={useDefaultProject} customers={customers} agents={agents} members={members} busy={isMutating} error={taskDialogMode ? mutationError : null} onClose={() => setTaskDialogMode(null)} onSubmit={() => void submitTask()} />
             <ConfirmArchiveTaskDialog
                 open={Boolean(archivingTaskId)}
                 title={taskTitle(tasks.find((task) => task.id === archivingTaskId) ?? { id: "" })}

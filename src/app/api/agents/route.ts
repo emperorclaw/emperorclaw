@@ -5,6 +5,7 @@ import { and, eq, isNull } from "drizzle-orm";
 import { writeAgentMemory } from "@/lib/control-plane";
 import { resolveAgentModelConfiguration } from "@/lib/agent-model-config";
 import { encryptSecretPayload } from "@/lib/secrets";
+import { checkLlmModelName } from "@/lib/llm-endpoint";
 import { legacyAvatarToAppearance, normalizeAppearance, resolveAvatarPhoto } from "@/lib/character/model";
 import { companyRouteAccess } from "@/lib/company-access";
 import { humanActor, recordAudit } from "@/lib/audit";
@@ -22,10 +23,12 @@ export async function GET() {
         const allAgents = await db.select({
             id: agents.id,
             name: agents.name,
+            role: agents.role,
             avatarUrl: agents.avatarUrl,
             avatarAppearance: agents.avatarAppearance,
             status: agents.status,
             lastSeenAt: agents.lastSeenAt,
+            createdAt: agents.createdAt,
         }).from(agents)
             .where(and(eq(agents.companyId, companyId), isNull(agents.deletedAt), memberAgentCondition(access.ctx.scope, agents.id)));
 
@@ -70,7 +73,9 @@ export async function POST(req: NextRequest) {
         const requestedLlmProvider = (typeof body.llmProvider === "string" &&
             ["openai", "anthropic", "google", "openrouter", "grok", "deepseek"].includes(body.llmProvider))
             ? body.llmProvider : null;
-        const requestedLlmModel = typeof body.llmModel === "string" ? body.llmModel : null;
+        const checkedModel = checkLlmModelName(body.llmModel);
+        if (!checkedModel.ok) return NextResponse.json({ error: checkedModel.error }, { status: 400 });
+        const requestedLlmModel = checkedModel.model || null;
 
         if (!name) {
             return NextResponse.json({ error: "name is required" }, { status: 400 });

@@ -108,13 +108,17 @@ type AgentSnapshot = {
     deploymentMode?: string | null;
     llmProvider?: string | null;
     llmModel?: string | null;
+    /** A custom model endpoint's host name (never its path or the key); set by the caller that changed it. */
+    llmEndpointHost?: string | null;
+    /** True when this change stored a new API key (the key itself is never recorded). */
+    llmKeyChanged?: boolean;
     concurrencyLimit?: number | null;
     monthlyBudgetCents?: number | null;
     budgetStatus?: string | null;
     scopeJson?: unknown;
 };
 
-const AGENT_SETTINGS = ["name", "role", "provider", "deploymentMode", "llmProvider", "llmModel", "concurrencyLimit"] as const;
+const AGENT_SETTINGS = ["name", "role", "provider", "deploymentMode", "llmProvider", "llmModel", "llmEndpointHost", "llmKeyChanged", "concurrencyLimit"] as const;
 
 function pick(row: AgentSnapshot, keys: readonly (keyof AgentSnapshot)[]): AuditFields {
     const out: AuditFields = {};

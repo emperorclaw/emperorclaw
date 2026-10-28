@@ -7,7 +7,7 @@ import { agents } from "@/db/schema";
 import { eq, and, isNull } from "drizzle-orm";
 import { parseJsonBody, optionalString } from "@/lib/validation";
 import { readAgentBudget } from "@/lib/agent-budget";
-import { updateAgentForCompany } from "@/lib/agents-crud";
+import { AgentInputError, updateAgentForCompany } from "@/lib/agents-crud";
 import { mcpActor, recordAudit } from "@/lib/audit";
 import { normalizeAppearance } from "@/lib/character/model";
 import { NAME_MAX } from "@/lib/input-limits";
@@ -120,6 +120,7 @@ export async function PATCH(
         return NextResponse.json(res, { status: 200 });
 
     } catch (err) {
+        if (err instanceof AgentInputError) return NextResponse.json({ error: err.message }, { status: 400 });
         console.error(`Error updating agent ${agentId}:`, err);
         return NextResponse.json({ error: "Internal Server Error" }, { status: 500 });
     }

@@ -10,6 +10,7 @@ for a transient finish failure, a 4xx is never retried).
 from __future__ import annotations
 
 import logging
+import re
 import time
 from datetime import datetime, timezone
 from typing import Any, Awaitable, Callable, Mapping, Optional
@@ -23,6 +24,60 @@ BREAKER_THRESHOLD = 3
 BREAKER_COOLDOWN_S = 5 * 60
 EXIT_REASON_MAX = 120
 PROVIDER_CREDITS_ERROR = "provider_credits_exhausted: HTTP 402"
+# Provider failures as fixed, secret-free codes the server's classifier maps to one cause and one
+# fix (src/lib/failure-cause.ts). The raw provider text never goes into `error`: it can quote a key.
+PROVIDER_AUTH_ERROR = "provider_auth_failed: HTTP 401"
+PROVIDER_RATE_LIMIT_ERROR = "provider_rate_limited: HTTP 429"
+PROVIDER_MODEL_ERROR = "provider_model_not_found"
+PROVIDER_UNREACHABLE_ERROR = "provider_unreachable"
+
+# What a person reads in the chat notice and the message's failure reason (also classified by the
+# server, so each one names its cause in words the classifier knows).
+PROVIDER_REASONS = {
+    PROVIDER_CREDITS_ERROR: "LLM provider out of credits (HTTP 402): add credits for this agent's API key, then retry",
+    PROVIDER_AUTH_ERROR: "The model provider rejected the API key (HTTP 401): update this agent's key, then retry",
+    PROVIDER_RATE_LIMIT_ERROR: "Rate limited by the model provider (HTTP 429): wait a minute, then retry",
+    PROVIDER_MODEL_ERROR: "The model provider doesn't serve this model (model_not_found): choose another model for this agent",
+    PROVIDER_UNREACHABLE_ERROR: "Can't reach the model provider (connection refused or timed out): check the provider settings, then retry",
+}
+
+# Hermes' typed verdict for a failed turn (`failure_reason`, agent/error_classifier.py FailoverReason
+# at v0.22.4) -> code. Unlisted verdicts (format_error, context_overflow, ...) are not provider-account
+# problems and keep the generic code with the verdict appended.
+_REASON_CODES = {
+    "billing": PROVIDER_CREDITS_ERROR,
+    "auth": PROVIDER_AUTH_ERROR, "auth_permanent": PROVIDER_AUTH_ERROR,
+    "rate_limit": PROVIDER_RATE_LIMIT_ERROR, "upstream_rate_limit": PROVIDER_RATE_LIMIT_ERROR,
+    "overloaded": PROVIDER_RATE_LIMIT_ERROR,
+    "model_not_found": PROVIDER_MODEL_ERROR, "model_entitlement": PROVIDER_MODEL_ERROR,
+    "timeout": PROVIDER_UNREACHABLE_ERROR, "ssl_cert_verification": PROVIDER_UNREACHABLE_ERROR,
+}
+HERMES_FAILURE_REASONS = frozenset(_REASON_CODES) | frozenset({
+    "upstream_blocked", "server_error", "context_overflow", "payload_too_large", "image_too_large", "image_corrupt",
+    "provider_policy_blocked", "data_policy_denied", "content_policy_blocked", "incomplete_response",
+    "format_error", "role_alternation", "invalid_encrypted_content", "multimodal_tool_content_unsupported",
+    "reasoning_mandatory", "thinking_signature", "long_context_tier", "oauth_long_context_beta_forbidden",
+    "llama_cpp_grammar_pattern", "unknown", "context_compression_exhausted", "context_compression_timeout",
+})
+
+# How much of each failure string the patterns below see.
+FAILURE_TEXT_MAX = 4000
+
+# Text fallbacks for receipts without a typed verdict (older Hermes, gateway-level errors).
+_TEXT_CODES: tuple[tuple[re.Pattern[str], str], ...] = (
+    (re.compile(r"invalid[ _-]?(?:x-)?api[ _-]?key|incorrect api key|api key not valid|no auth credentials"
+                r"|authentication[ _]?(?:error|failed)|unauthori[sz]ed|\b(?:HTTP|error code:?|status(?:=| |: ?))\s*40[13]\b",
+                re.IGNORECASE), PROVIDER_AUTH_ERROR),
+    (re.compile(r"model[ _]not[ _]found|unknown model|not a valid model|no endpoints found"
+                r"|model .{0,80}(?:does not exist|not found|is not (?:supported|available))", re.IGNORECASE),
+     PROVIDER_MODEL_ERROR),
+    (re.compile(r"rate[ _-]?limit|too many requests|\b(?:HTTP|error code:?|status(?:=| |: ?))\s*429\b|overloaded",
+                re.IGNORECASE), PROVIDER_RATE_LIMIT_ERROR),
+    (re.compile(r"api ?connection ?error|apitimeouterror|\bconnection error\b|connection refused|econnrefused"
+                r"|connect(?:ion)?[ _]?timeout|name or service not known|temporary failure in name resolution"
+                r"|nodename nor servname|no route to host|network is unreachable|provider temporarily unavailable",
+                re.IGNORECASE), PROVIDER_UNREACHABLE_ERROR),
+)
 
 
 def iso(ts: Optional[float] = None) -> str:
@@ -31,10 +86,42 @@ def iso(ts: Optional[float] = None) -> str:
 
 
 def is_credits_failure(text: Optional[str]) -> bool:
-    import re
     return bool(text) and re.search(r"insufficient credits|credits? (?:are |is )?exhausted|billing or credits"
                                     r"|out of credits|\bHTTP 402\b|error code: 402\b|status(?:=| )402\b",
                                     str(text), re.IGNORECASE) is not None
+
+
+def _failure_texts(result: TurnResult) -> list[str]:
+    """The raw failure strings of a turn: its verdict, exit reason, and the receipt's error text."""
+    receipt = result.receipt if isinstance(result.receipt, Mapping) else {}
+    inner = receipt.get("result") if isinstance(receipt.get("result"), Mapping) else {}
+    values = (result.failure_reason, result.exit_reason, inner.get("error"))
+    # Capped before any pattern runs: the provider's error text is unbounded and a code needs only its head.
+    return [v[:FAILURE_TEXT_MAX] for v in values if isinstance(v, str) and v.strip()]
+
+
+def provider_failure_code(result: TurnResult) -> Optional[str]:
+    """The provider problem behind a failed turn, as a fixed code (PROVIDER_REASONS), or None."""
+    if result.outcome is not TurnOutcome.FAILED or result.error_code == "runtime_restart":
+        return None
+    texts = _failure_texts(result)
+    if any(is_credits_failure(text) for text in texts):
+        return PROVIDER_CREDITS_ERROR
+    verdict = (result.failure_reason or "").strip().lower()
+    if verdict in _REASON_CODES:
+        return _REASON_CODES[verdict]
+    if verdict in HERMES_FAILURE_REASONS:
+        return None  # a typed verdict that is not a provider-account problem: trust it over the text
+    for pattern, code in _TEXT_CODES:
+        if any(pattern.search(text) for text in texts):
+            return code
+    return None
+
+
+def failure_notice_reason(result: TurnResult) -> Optional[str]:
+    """The plain reason a person reads for a failed turn (chat notice, message failure), or None."""
+    code = provider_failure_code(result)
+    return PROVIDER_REASONS.get(code) if code else None
 
 
 def error_classification(result: TurnResult) -> Optional[str]:
@@ -43,8 +130,14 @@ def error_classification(result: TurnResult) -> Optional[str]:
         return None
     if is_credits_failure(result.failure_reason) or is_credits_failure(result.exit_reason):
         return PROVIDER_CREDITS_ERROR
-    code = result.error_code or result.outcome.value
-    return str(code)[:120]
+    provider = provider_failure_code(result)
+    if provider:
+        return provider
+    code = str(result.error_code or result.outcome.value)
+    verdict = (result.failure_reason or "").strip().lower()
+    if code == "hermes_failed" and verdict in HERMES_FAILURE_REASONS:
+        code = f"{code}: {verdict}"  # Hermes' own enum value: safe to store, and says what failed
+    return code[:120]
 
 
 def start_payload(turn: Turn, *, agent_id: str, runtime_id: str, bridge_version: str, started_at: float,

@@ -6,6 +6,24 @@ import { resolveAgentModelConfiguration } from "@/lib/agent-model-config";
 import { recordAgentChange, recordAudit, SYSTEM_ACTOR, type AuditActor } from "@/lib/audit";
 import { broadcastMcpEvent } from "@/lib/pubsub";
 import { legacyAvatarToAppearance, normalizeAppearance, resolveAvatarPhoto } from "@/lib/character/model";
+import { checkLlmModelName } from "@/lib/llm-endpoint";
+
+/** A request the caller can fix (an invalid model name, a provider change that needs a new key): HTTP 400. */
+export class AgentInputError extends Error {
+    readonly status = 400;
+    constructor(message: string) {
+        super(message);
+        this.name = "AgentInputError";
+    }
+}
+
+/** The model name checked like every other write path (src/lib/llm-endpoint.ts); undefined/null pass through. */
+function checkedModel<T extends string | null | undefined>(model: T): T | string {
+    if (model === undefined || model === null) return model;
+    const checked = checkLlmModelName(model);
+    if (!checked.ok) throw new AgentInputError(checked.error);
+    return checked.model;
+}
 
 // Strips the encrypted LLM API key (ciphertext + rotation version) before
 // returning an agent row to any caller — REST or MCP. Encrypted at rest, but
@@ -59,11 +77,12 @@ export type CreateAgentInput = {
 };
 
 export async function createAgentForCompany(input: CreateAgentInput) {
+    const model = checkedModel(input.llmModel);
     const pricing = await db.select({ provider: llmPricing.provider, model: llmPricing.model }).from(llmPricing);
     const llmConfiguration = resolveAgentModelConfiguration({
         current: { llmProvider: null, llmModel: null },
         provider: input.llmProvider ?? undefined,
-        model: input.llmModel ?? undefined,
+        model: model ?? undefined,
         pricing,
     });
 
@@ -163,13 +182,23 @@ export async function updateAgentForCompany(input: UpdateAgentInput) {
     if (typeof input.monthlyTokenUsage === "number" && input.monthlyTokenUsage >= 0) updateData.monthlyTokenUsage = Math.round(input.monthlyTokenUsage);
     if (input.budgetStatus && ["active", "warning", "paused"].includes(input.budgetStatus)) updateData.budgetStatus = input.budgetStatus;
     if (hasLLM) {
+        const model = checkedModel(input.llmModel);
         const pricing = await db.select({ provider: llmPricing.provider, model: llmPricing.model }).from(llmPricing);
         const resolved = resolveAgentModelConfiguration({
             current: { llmProvider: existing.llmProvider, llmModel: existing.llmModel },
             provider: input.llmProvider,
-            model: input.llmModel,
+            model,
             pricing,
         });
+        // A stored key belongs to its provider: this path carries no key, so it
+        // never moves one to another provider (the dashboard PATCH takes the new key).
+        if ((resolved.llmProvider ?? null) !== (existing.llmProvider ?? null)) {
+            const [stored] = await db.select({ llmApiKeyEncrypted: agents.llmApiKeyEncrypted }).from(agents)
+                .where(and(eq(agents.id, input.agentId), eq(agents.companyId, input.companyId))).limit(1);
+            if (stored?.llmApiKeyEncrypted) {
+                throw new AgentInputError("This agent has a stored API key for its current provider. Change the provider in the agent's settings, with the new provider's key.");
+            }
+        }
         updateData.llmProvider = resolved.llmProvider;
         updateData.llmModel = resolved.llmModel;
     }

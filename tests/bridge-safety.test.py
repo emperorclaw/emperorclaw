@@ -8,6 +8,7 @@ CLI output cleaning, subprocess timeouts/orphan reaping, the main-chat digest an
 import asyncio
 import sys
 import tempfile
+import time
 import unittest
 from pathlib import Path
 
@@ -18,7 +19,8 @@ from emperor_bridge.emperor_api import (check_loop_guard, classify, environment_
                                         is_for_agent, mark_inflight, mentions_agent, retry_due, schedule_retry,
                                         split_control_commands)
 from emperor_bridge.interfaces import TurnOutcome, TurnResult, UsageLedger  # noqa: E402
-from emperor_bridge.ledger import BudgetGate, error_classification  # noqa: E402
+from emperor_bridge.events import strip_stop_hint  # noqa: E402
+from emperor_bridge.ledger import BudgetGate, error_classification, failure_notice_reason  # noqa: E402
 from emperor_bridge.outbox import build_entry  # noqa: E402
 
 AGENT = "agent-1"
@@ -237,6 +239,76 @@ class TestProviderFailures(unittest.TestCase):
         self.assertEqual(error_classification(self.result(TurnOutcome.FAILED, error_code="hermes_failed",
                                                           failure_reason="secret tool output")), "hermes_failed")
         self.assertIsNone(error_classification(self.result(TurnOutcome.COMPLETED)))
+
+    def failed(self, failure_reason=None, error=None, **kw):
+        receipt = {"outcome": "failed", "result": {"failure_reason": failure_reason, "error": error}}
+        return self.result(TurnOutcome.FAILED, error_code="hermes_failed", failure_reason=failure_reason,
+                           receipt=receipt, **kw)
+
+    def test_hermes_verdicts_map_to_provider_codes(self):
+        # agent/error_classifier.py FailoverReason values at Hermes v0.22.4.
+        cases = {"auth": "provider_auth_failed: HTTP 401", "auth_permanent": "provider_auth_failed: HTTP 401",
+                 "billing": "provider_credits_exhausted: HTTP 402",
+                 "rate_limit": "provider_rate_limited: HTTP 429", "overloaded": "provider_rate_limited: HTTP 429",
+                 "model_not_found": "provider_model_not_found", "timeout": "provider_unreachable"}
+        for verdict, code in cases.items():
+            self.assertEqual(error_classification(self.failed(verdict)), code, verdict)
+
+    def test_error_text_maps_when_there_is_no_verdict(self):
+        # The strings the audit reproduced: a 401 from an OpenAI-compatible endpoint, and the
+        # provider stopped (openai.APIConnectionError) while Hermes waited it out.
+        cases = {
+            "Error code: 401 - {'error': {'message': 'Incorrect API key provided: sk-fake***.', 'code': 'invalid_api_key'}}":
+                "provider_auth_failed: HTTP 401",
+            "APIConnectionError: Connection error.": "provider_unreachable",
+            "httpx.ConnectError: [Errno 111] Connection refused": "provider_unreachable",
+            "Error code: 429 - Too Many Requests": "provider_rate_limited: HTTP 429",
+            "The model `gpt-9` does not exist or you do not have access to it.": "provider_model_not_found",
+        }
+        for error, code in cases.items():
+            self.assertEqual(error_classification(self.failed(error=error)), code, error)
+
+    def test_typed_non_provider_verdict_is_kept_and_text_is_never_stored(self):
+        result = self.failed("context_overflow", error="Error code: 401 secret sk-abcdefghijklmnopqrstuv")
+        self.assertEqual(error_classification(result), "hermes_failed: context_overflow")
+        self.assertNotIn("sk-", error_classification(self.failed(error="Incorrect API key provided: sk-abcdefghijklmnop")))
+
+    def test_restart_and_idle_timeout_are_not_provider_failures(self):
+        self.assertEqual(error_classification(self.result(TurnOutcome.FAILED, error_code="runtime_restart",
+                                                          failure_reason="timeout")), "runtime_restart")
+        self.assertEqual(error_classification(self.result(TurnOutcome.TIMEOUT, error_code="idle_timeout",
+                                                          failure_reason="timeout")), "idle_timeout")
+
+    def test_notice_reason_names_cause_and_fix(self):
+        self.assertIn("rejected the API key", failure_notice_reason(self.failed("auth")))
+        self.assertIn("Can't reach the model provider", failure_notice_reason(self.failed("timeout")))
+        self.assertIsNone(failure_notice_reason(self.failed("format_error")))
+        self.assertIsNone(failure_notice_reason(self.result(TurnOutcome.COMPLETED)))
+
+    def test_stop_hint_is_stripped_from_live_status(self):
+        text = "⏳ Provider temporarily unavailable — retrying automatically in 30s (cycle 2/5); press Esc to stop"
+        self.assertEqual(strip_stop_hint(text),
+                         "⏳ Provider temporarily unavailable — retrying automatically in 30s (cycle 2/5)")
+        self.assertEqual(strip_stop_hint("waiting; send /stop to cancel"), "waiting")
+        self.assertEqual(strip_stop_hint("Press Escape twice"), "Press Escape twice")
+        self.assertIsNone(strip_stop_hint(None))
+        self.assertEqual(strip_stop_hint("retrying  —  Cancel the request to stop.  "), "retrying")
+        self.assertEqual(strip_stop_hint("press Esc to stop"), "")
+        self.assertEqual(strip_stop_hint("press Esc to stop.."), "press Esc to stop..")
+
+    def test_adversarial_inputs_stay_linear(self):
+        # The regex these replaced took ~25 s on 5,000 spaces; every input here must take well under 50 ms.
+        n = 300_000
+        hostile = [" " * n, " " * n + "x", ";" + " " * n + "press Esc to stop!", "HTTP" + " " * n + "x",
+                   "status " * (n // 7), "model " * (n // 6), "error code:" * (n // 11), "api " * (n // 4),
+                   "\t" * n + "send /stop to cancel" + " " * n + "!"]
+        for text in hostile:
+            started = time.perf_counter()
+            strip_stop_hint(text)
+            error_classification(self.failed(error=text))
+            error_classification(self.failed(failure_reason=text))
+            elapsed = time.perf_counter() - started
+            self.assertLess(elapsed, 0.05, f"{text[:20]!r}... took {elapsed:.3f} s")
 
 
 class TestReplyShape(unittest.TestCase):

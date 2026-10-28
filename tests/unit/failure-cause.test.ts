@@ -24,17 +24,31 @@ const SAMPLES: Record<FailureCause, string[]> = {
         "No auth credentials found",
         "API key not valid. Please pass a valid API key.",
         "HTTP 403 Forbidden",
+        // Hermes bridge ledger codes and chat-status reasons (emperor_bridge/ledger.py).
+        "provider_auth_failed: HTTP 401",
+        "The model provider rejected the API key (HTTP 401): update this agent's key, then retry",
     ],
     rate_limited: [
         "Error code: 429 - {'error': {'message': 'Rate limit reached for gpt-4o in organization org-x on tokens per min (TPM)', 'code': 'rate_limit_exceeded'}}",
         "RateLimitError: Too Many Requests",
         "Error code: 529 - {'type': 'error', 'error': {'type': 'overloaded_error', 'message': 'Overloaded'}}",
+        "provider_rate_limited: HTTP 429",
     ],
     model_unavailable: [
         "Error code: 404 - {'error': {'message': 'The model `gpt-5-turbo` does not exist or you do not have access to it.', 'code': 'model_not_found'}}",
         "deepseek/deepseek-v9 is not a valid model ID",
         "No endpoints found for deepseek/deepseek-v9.",
         "Active model pricing required for capped agents",
+        "provider_model_not_found",
+        "The model provider doesn't serve this model (model_not_found): choose another model for this agent",
+    ],
+    provider_unreachable: [
+        "provider_unreachable",
+        "Can't reach the model provider (connection refused or timed out): check the provider settings, then retry",
+        "APIConnectionError: Connection error.",
+        "httpx.ConnectTimeout: timed out",
+        "[Errno -2] Name or service not known",
+        "⏳ Provider temporarily unavailable — retrying automatically in 30s (cycle 2/5)",
     ],
     budget: [
         "Budget exhausted",
@@ -129,6 +143,19 @@ test("fixes: what members can act on", () => {
     assert.deepEqual(failureFix("unknown", { audience: "member", agentId: "a1", taskId: "t1", retryMessageId: "m1" }), { label: "Retry", action: { kind: "retry_message", messageId: "m1" } });
     assert.deepEqual(failureFix("unknown", { audience: "member", agentId: "a1", taskId: "t1" }), { label: "Retry", action: { kind: "message_agent", agentId: "a1", taskId: "t1", mode: "retry" } });
     assert.equal(failureFix("unknown", { audience: "member", agentId: "a1" }), null);
+});
+
+test("fixes: an unreachable provider is a settings link for admins and Retry for members", () => {
+    assert.deepEqual(failureFix("provider_unreachable", { audience: "admin", agentId: "a1", retryMessageId: "m1" }), { label: "Check provider settings", action: { kind: "link", href: "/agents?agent=a1" } });
+    assert.deepEqual(failureFix("provider_unreachable", { audience: "member", agentId: "a1", retryMessageId: "m1" }), { label: "Retry", action: { kind: "retry_message", messageId: "m1" } });
+    const view = describeFailure({ texts: ["provider_unreachable"], runStatus: "failed" }, { audience: "member", agentId: "a1" });
+    assert.equal(view.headline, "Can't reach the model provider");
+    assert.equal(view.detail, null);
+});
+
+test("classify: Emperor losing the runtime is still runtime_offline, not the provider", () => {
+    assert.equal(classifyFailure({ texts: ["connection refused"] }), "runtime_offline");
+    assert.equal(classifyFailure({ texts: ["not_admitted: GatewayUnavailable"] }), "runtime_offline");
 });
 
 test("fixes: a rate limit holds Retry for a short delay", () => {

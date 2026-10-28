@@ -52,6 +52,31 @@ _REDACTIONS: tuple[tuple[re.Pattern[str], str], ...] = (
 )
 
 
+# Hermes ends its wait-and-retry status with how to stop it on the surface it thinks it is on
+# ("press Esc to stop" on the CLI/TUI, "send /stop to cancel" on messaging platforms). Neither
+# works in Emperor's chat, which has its own Stop control. String operations, not a regex: the
+# pattern this replaces had adjacent `\s*` groups and backtracked for seconds on long whitespace.
+_STOP_HINTS = ("press esc to stop", "send /stop to cancel", "cancel the request to stop")
+_STOP_HINT_PUNCTUATION = ";,.—-"
+STOP_HINT_MAX_INPUT = 2000
+
+
+def strip_stop_hint(text: Any) -> Any:
+    """`text` without a trailing terminal-only stop hint (non-strings and long text pass through)."""
+    if not isinstance(text, str) or len(text) > STOP_HINT_MAX_INPUT:
+        return text
+    head = text.rstrip()
+    if head.endswith("."):
+        head = head[:-1]
+    hint = next((h for h in _STOP_HINTS if head[-len(h):].lower() == h), None)
+    if hint is None:
+        return text
+    head = head[:-len(hint)].rstrip()
+    if head and head[-1] in _STOP_HINT_PUNCTUATION:
+        head = head[:-1].rstrip()
+    return head
+
+
 def redact(text: Any, limit: int) -> Optional[str]:
     """Secret-scrubbed, single-spaced, truncated text (None for empty)."""
     if text is None:
@@ -280,13 +305,14 @@ class EventMapper:
         self._emit_throttled(f"progress:{call}", PROGRESS_INTERVAL_S, event, now, out)
 
     def _on_print(self, ev: GatewayEvent, now: float, out: list[EmperorEvent]) -> None:
-        event = self._event(ev, "notice", summary=redact(ev.payload.get("text"), NOTICE_MAX))
+        event = self._event(ev, "notice", summary=redact(strip_stop_hint(ev.payload.get("text")), NOTICE_MAX))
         if event.summary:
             self._emit_throttled("notice", NOTICE_INTERVAL_S, event, now, out)
 
     def _on_status(self, ev: GatewayEvent, now: float, out: list[EmperorEvent]) -> None:
         p = ev.payload
-        event = self._event(ev, "status", summary=redact(p.get("text"), NOTICE_MAX), data={"kind": p.get("kind")})
+        event = self._event(ev, "status", summary=redact(strip_stop_hint(p.get("text")), NOTICE_MAX),
+                            data={"kind": p.get("kind")})
         self._emit_throttled("status", STATUS_INTERVAL_S, event, now, out)
 
     def _on_usage(self, ev: GatewayEvent, now: float, out: list[EmperorEvent]) -> None:

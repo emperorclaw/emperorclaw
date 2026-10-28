@@ -112,11 +112,13 @@ export function ProjectFormDialog({ mode, form, setForm, customers, agents, busy
     );
 }
 
-export function TaskFormDialog({ mode, form, setForm, projects, customers, agents, members, busy, error, onClose, onSubmit }: {
+export function TaskFormDialog({ mode, form, setForm, projects, defaultProject = false, customers, agents, members, busy, error, onClose, onSubmit }: {
     mode: "create" | "edit" | null;
     form: any;
     setForm: (updater: (prev: any) => any) => void;
     projects: any[];
+    /** No projects exist yet: the task goes into a new "General" project. */
+    defaultProject?: boolean;
     customers: any[];
     agents: any[];
     members: any[];
@@ -136,6 +138,13 @@ export function TaskFormDialog({ mode, form, setForm, projects, customers, agent
                 </DialogHeader>
                 <div className="grid gap-4">
                     <div className="grid gap-3 sm:grid-cols-2">
+                        {defaultProject ? (
+                            <div className={labelClass}>
+                                <span>Project</span>
+                                <p className="flex h-10 items-center rounded-lg border border-zinc-800 bg-zinc-900/40 px-3 text-sm text-zinc-300">General</p>
+                                <span className="text-xs text-zinc-500">Your first task starts a General project. Rename it or add more in Projects.</span>
+                            </div>
+                        ) : (
                         <label className={labelClass}>
                             <span>Project</span>
                             <select value={form.projectId} disabled={mode === "edit"} onChange={(event) => setForm((prev) => ({ ...prev, projectId: event.target.value }))} className={cn(field, "h-10", !form.projectId && "text-zinc-400")}>
@@ -148,6 +157,7 @@ export function TaskFormDialog({ mode, form, setForm, projects, customers, agent
                             </select>
                             {!form.projectId && mode === "create" && <span className="text-xs text-zinc-500">Every task lives in a project.</span>}
                         </label>
+                        )}
                         <label className={labelClass}>
                             <span>Work type</span>
                             <select value={form.taskType} disabled={mode === "edit"} onChange={(event) => setForm((prev) => ({ ...prev, taskType: event.target.value }))} className={cn(field, "h-10")}>
@@ -209,7 +219,7 @@ export function TaskFormDialog({ mode, form, setForm, projects, customers, agent
                         <CheckboxRow label="Human approval required" checked={form.humanApprovalRequired} onChange={(checked) => setForm((prev) => ({ ...prev, humanApprovalRequired: checked }))} />
                     </div>
                     {error && <p role="alert" className="text-sm text-rose-300">{error}</p>}
-                    <DialogActions onCancel={onClose} onSubmit={onSubmit} disabled={busy || !form.projectId || !String(form.title || "").trim()} busy={busy} label={mode === "edit" ? "Save task" : "Create task"} />
+                    <DialogActions onCancel={onClose} onSubmit={onSubmit} disabled={busy || (!form.projectId && !defaultProject) || !String(form.title || "").trim()} busy={busy} label={mode === "edit" ? "Save task" : "Create task"} />
                 </div>
             </DialogContent>
         </Dialog>

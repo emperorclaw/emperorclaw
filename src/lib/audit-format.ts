@@ -15,7 +15,7 @@ export type AuditActor = { type: AuditActorType; id: string | null; tokenId?: st
 
 export const AUDIT_TARGET_TYPES = [
     "agent", "task", "approval", "member", "invitation", "company", "organization", "project", "customer", "knowledge_note",
-    "pricing",
+    "pricing", "view",
 ] as const;
 export type AuditTargetType = (typeof AUDIT_TARGET_TYPES)[number];
 
@@ -61,6 +61,8 @@ export const AUDIT_FIELD_ALLOWLIST: Record<AuditTargetType, Record<string, Field
     agent: {
         name: "label", role: "label", provider: "enum", deploymentMode: "enum",
         llmProvider: "enum", llmModel: "enum", concurrencyLimit: "number",
+        // Where the model calls go (host name only, never the path, query or key) and whether the key was replaced.
+        llmEndpointHost: "enum", llmKeyChanged: "bool",
         monthlyBudgetCents: "number", budgetStatus: "enum",
         scopeMode: "enum", scopeCustomerIds: "ids", scopeProjectIds: "ids", scopeAgentIds: "ids",
     },
@@ -88,6 +90,11 @@ export const AUDIT_FIELD_ALLOWLIST: Record<AuditTargetType, Record<string, Field
     // llm_pricing is instance-wide; the entry lands in the editing admin's company.
     pricing: {
         provider: "enum", model: "enum", inputPricePer1k: "number", outputPricePer1k: "number", active: "bool",
+    },
+    // A view's title, scope and shape only: never panel values.
+    view: {
+        title: "label", scopeType: "enum", scopeId: "id", panelCount: "number", version: "number",
+        archived: "bool", pinnedToHome: "bool", fromVersion: "number",
     },
 };
 
@@ -190,7 +197,7 @@ export function scopeAuditFields(scopeJson: unknown): AuditFields {
 const TARGET_NOUNS: Record<string, string> = {
     agent: "agent", task: "task", approval: "approval", member: "", invitation: "an invitation for",
     company: "", organization: "", project: "project", customer: "customer", knowledge_note: "note",
-    pricing: "pricing for",
+    pricing: "pricing for", view: "view",
 };
 
 /** "<verb> <noun> <label>"; a verb with "{target}" places the target itself. */
@@ -227,6 +234,11 @@ const VERBS: Record<string, string> = {
     "knowledge_note.deleted": "deleted",
     "pricing.created": "added",
     "pricing.updated": "changed",
+    "view.created": "created",
+    "view.updated": "updated",
+    "view.archived": "archived",
+    "view.restored": "restored",
+    "view.reverted": "reverted",
     // Rows written before 0.14 by lib/mcp.ts logAudit.
     register_agent: "created",
     delete_agent: "deleted",
@@ -292,6 +304,8 @@ function detailFor(action: string, payload: AuditPayload, names: Readonly<Record
             return typeof after.monthlyBudgetCents === "number"
                 ? after.monthlyBudgetCents > 0 ? `to ${formatCents(after.monthlyBudgetCents)} a month` : "to no limit"
                 : null;
+        case "view.reverted":
+            return typeof meta.fromVersion === "number" ? `to version ${meta.fromVersion}` : null;
         case "knowledge_note.moved":
             return typeof after.path === "string" ? `to ${after.path}` : "to the top level";
         case "approval.approved":
@@ -356,6 +370,7 @@ export function auditTargetHref(targetType: string, targetId: string, payload: A
         case "invitation": return "/settings/members";
         case "organization": return "/agents/organization";
         case "pricing": return "/costs?tab=budgets";
+        case "view": return `/views/${encodeURIComponent(targetId)}`;
         default: return null;
     }
 }
@@ -363,7 +378,7 @@ export function auditTargetHref(targetType: string, targetId: string, payload: A
 /** Human labels for the fields a diff popover lists. */
 export const AUDIT_FIELD_LABELS: Record<string, string> = {
     name: "Name", role: "Role", provider: "Runtime", deploymentMode: "Deployment", llmProvider: "LLM provider",
-    llmModel: "Model", concurrencyLimit: "Concurrency", monthlyBudgetCents: "Monthly budget", budgetStatus: "Budget state",
+    llmModel: "Model", llmEndpointHost: "Model endpoint", llmKeyChanged: "API key replaced", concurrencyLimit: "Concurrency", monthlyBudgetCents: "Monthly budget", budgetStatus: "Budget state",
     scopeMode: "Scope", scopeCustomerIds: "Customers", scopeProjectIds: "Projects", scopeAgentIds: "Agents",
     title: "Title", state: "State", priority: "Priority", assigneeType: "Assignee type", assigneeId: "Assignee",
     status: "Status", instanceRole: "Instance role", email: "Email", directChatMode: "Direct chat mode",
@@ -371,6 +386,7 @@ export const AUDIT_FIELD_LABELS: Record<string, string> = {
     maxActiveAgents: "Max active agents", path: "Folder", archived: "Archived", timezone: "Timezone",
     nodeCount: "Chart nodes", teamCount: "Teams", leaderKind: "Leader type", leaderId: "Leader",
     model: "Model", inputPricePer1k: "Input price", outputPricePer1k: "Output price", active: "Active",
+    scopeType: "Scope", scopeId: "Scope", panelCount: "Panels", version: "Version", pinnedToHome: "Pinned to Home",
 };
 
 /** One value of a diff, as text. Lists of ids collapse to a count. */
