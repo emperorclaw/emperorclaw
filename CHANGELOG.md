@@ -4,12 +4,27 @@ All notable changes to EmperorClaw are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project aims
 to follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-At release time, rename the `## [0.18.0] — 2026-10-28` heading below to the version being
+At release time, rename the `## [Unreleased]` heading below to the version being
 tagged (e.g. `## [1.2.0] — 2026-07-22`). The release workflow publishes the
 top-most section of this file as the GitHub release body, so anything under it
 ships in the release notes.
 
-## [Unreleased]
+## [0.19.0] — 2026-10-28
+
+### Added
+- **Private and shared views.** Every view now has an owner, the person who asked for it, and a visibility: Private (only you and the agent that keeps it up to date), Shared with people you pick, or Everyone who can see its company, client or project. A view you ask for in your private chat with an agent starts private. Owners and admins outside a private view see that it exists, who owns it and which agent maintains it, never its panels or numbers. Admins can hand a view to someone else (both are notified) or delete it, but can't take it for themselves.
+- **Views organized where the work lives.** The Views page groups views by company, client and project, with Mine, Shared with me and Pinned filters, search, each view's key number and its visibility. Client and project pages show their own views.
+- **Pin to my Home.** Pins are now per person; everyone keeps the pins they had.
+- **Overdue warning.** A view that tells Emperor how often it refreshes shows an amber warning when an update is late.
+- **Ask about this panel** opens your private chat with the agent that maintains the view, with a ready-to-send question.
+
+### Changed
+- Hermes bridge 0.19.0: agents pass the conversation when they create a view, so the person who asked becomes its owner. Update with `emperor-hermes update` after downloading the 0.19.0 installer.
+
+### Fixed
+- The 0.18.0 notes were published under "Unreleased" in this file; they are now under their version.
+
+## [0.18.0] — 2026-10-28
 
 ### Added
 - **Modules.** Owners and admins switch parts of Emperor on and off per company in Settings → Modules: Customers, Automations, Timeline, Costs, Approval history, Views and Display screens. A module that is off disappears from the menu, the command palette and the phone menu; its pages and API answer that it is off; and agents lose its tools and its lines in the Emperor manual, so prompts get shorter. Its data is kept: turning it back on restores everything. Every change shows in Activity with before and after. Existing companies keep every module on.

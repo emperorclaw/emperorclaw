@@ -383,6 +383,33 @@ class ViewToolsTests(PluginContextCase):
                 self.assertEqual(query.get("agentId"), ["viktor-id"], f"{name} must send agentId: {seen[0]}")
                 self.assertTrue(seen[0].startswith("https://emperor.example/api/mcp/views"), seen[0])
 
+    def create(self, bound, args):
+        with self.bind(bound), patch.object(plugin, "_request", return_value={"ok": True}) as request:
+            plugin.emperor_create_view(args)
+        return request.call_args.kwargs["body"]
+
+    def test_create_view_sends_the_turn_thread_so_the_server_can_find_the_owner(self):
+        self.viktor.write_turn()
+        body = self.create(self.viktor.bound(), {"title": "Shop", "panels": [], "refreshEveryMinutes": 60, "visibility": "private"})
+        self.assertEqual(body["threadId"], "thread-1")
+        self.assertEqual(body["refreshEveryMinutes"], 60)
+        self.assertEqual(body["visibility"], "private")
+        self.assertNotIn("ownerUserId", body)
+
+    def test_create_view_keeps_an_explicit_thread_and_owner(self):
+        self.viktor.write_turn()
+        body = self.create(self.viktor.bound(), {"title": "Shop", "panels": [], "threadId": "group-3", "ownerUserId": "user-7"})
+        self.assertEqual((body["threadId"], body["ownerUserId"]), ("group-3", "user-7"))
+
+    def test_create_view_outside_a_turn_sends_no_thread(self):
+        body = self.create(self.viktor.bound(), {"title": "Shop", "panels": []})
+        self.assertNotIn("threadId", body)
+
+    def test_update_view_can_clear_the_refresh_interval(self):
+        with self.bind(self.viktor.bound()), patch.object(plugin, "_request", return_value={"ok": True}) as request:
+            plugin.emperor_update_view({"viewId": self.VIEW, "refreshEveryMinutes": None})
+        self.assertEqual(request.call_args.kwargs["body"], {"refreshEveryMinutes": None})
+
 
 class RegistrationTests(unittest.TestCase):
     class Context:
@@ -410,7 +437,7 @@ class RegistrationTests(unittest.TestCase):
 
     def test_manifest_matches(self):
         manifest = (PLUGIN_DIR / "plugin.yaml").read_text(encoding="utf-8")
-        self.assertIn("version: 0.17.0", manifest)
+        self.assertIn("version: 0.19.0", manifest)
         self.assertNotIn("provides_hooks", manifest)
         self.assertNotIn("pre_llm_call", manifest)
         ctx = self.Context()

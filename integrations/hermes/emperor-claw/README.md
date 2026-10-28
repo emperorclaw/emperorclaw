@@ -38,7 +38,7 @@ Requirements: Linux with systemd user units, `curl`, `git`, `tar`, `python3`, li
 
 ```bash
 mkdir -p ~/.local/bin
-curl -fsSL https://github.com/emperorclaw/emperorclaw/releases/download/v0.17.0/emperor-hermes.sh -o ~/.local/bin/emperor-hermes
+curl -fsSL https://github.com/emperorclaw/emperorclaw/releases/download/v0.19.0/emperor-hermes.sh -o ~/.local/bin/emperor-hermes
 chmod +x ~/.local/bin/emperor-hermes
 
 emperor-hermes doctor --plan --profiles viktor,katarina   # does the host fit?

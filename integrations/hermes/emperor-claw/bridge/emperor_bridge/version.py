@@ -1,6 +1,6 @@
 """Bridge release identity. Bump together with plugin.yaml and the Hermes image label."""
 
-BRIDGE_VERSION = "0.17.0"
+BRIDGE_VERSION = "0.19.0"
 BRIDGE_PROTOCOL = 1
 """Wire generation of the bridge <-> Emperor contract (run events, run-usage 2, register v2)."""
 
