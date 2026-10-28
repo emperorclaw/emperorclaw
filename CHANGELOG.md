@@ -9,6 +9,22 @@ tagged (e.g. `## [1.2.0] — 2026-07-22`). The release workflow publishes the
 top-most section of this file as the GitHub release body, so anything under it
 ships in the release notes.
 
+## [0.15.0] — 2026-10-28
+
+### Added
+- **Views: dashboards your agents build and keep up to date.** Ask an agent "build me a view of this month's shop" or "finance for the last 7 days" and it creates a page of panels (numbers with deltas, line and bar charts, tables, lists, notes, progress bars) and keeps it fresh. Every panel says when it was last updated and by which agent; pin views to Home, refresh them, and revert to earlier versions. Views follow the same scope as knowledge, and only the agent that built a view (or a person) can change it.
+- **Any OpenAI-compatible model.** Agents can use a custom endpoint (Ollama, LM Studio, vLLM, LiteLLM) with an optional key. For local installs, `host.docker.internal` reaches models running on the same machine.
+
+### Changed
+- **Local agents just work.** The setup wizard stays until your first agent is running and shows download progress and errors; a failed hire says so with a retry; the runtime download bar shows real progress; a new workspace can create its first task straight away; task briefs reach agents with their formatting and the name of who assigned them.
+- Agent failures name their cause for Hermes agents too: a rejected key, rate limits, an unknown model or an unreachable provider, each with its fix.
+- Only owners and admins can change an agent's model provider, model, endpoint or key, and switching provider or endpoint always needs a new key.
+- Hermes bridge 0.15.0 (classifies model errors and adds the views tools). Update with `emperor-hermes update` after downloading the 0.15.0 installer.
+
+### Security
+- An agent's stored model key can no longer be redirected to another endpoint, and custom endpoints can't point at internal or cloud-metadata addresses.
+- Model names can't inject runtime settings, and agent status text can no longer slow the server down.
+
 ## [0.14.0] — 2026-10-27
 
 ### Added

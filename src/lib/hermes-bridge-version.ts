@@ -8,7 +8,7 @@ import { isVersionNewer } from "@/lib/semver";
  * Bump LATEST with every bridge release; raise MINIMUM only when the server
  * drops support for an older bridge protocol.
  */
-export const LATEST_HERMES_BRIDGE_VERSION = "0.13.0";
+export const LATEST_HERMES_BRIDGE_VERSION = "0.15.0";
 export const MIN_HERMES_BRIDGE_VERSION = "0.9.0";
 /** The bridge protocol LATEST speaks (bridge `BRIDGE_PROTOCOL`). */
 export const HERMES_BRIDGE_PROTOCOL = 2;

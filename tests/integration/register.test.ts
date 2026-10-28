@@ -105,7 +105,7 @@ maybe("runtime register: a 0.3 bridge still registers and is reported as legacy"
     assert.ok(json.replyFormatGuide);
     assert.equal(json.runtimeNode.agentId, agent.id);
     assert.equal(json.runtimeNode.bridgeVersion, null);
-    assert.deepEqual(json.bridge, { latest: "0.13.0", minimum: "0.9.0", hermes: "v0.22.4", deprecated: ["0.3"], updateState: "legacy" });
+    assert.deepEqual(json.bridge, { latest: "0.15.0", minimum: "0.9.0", hermes: "v0.22.4", deprecated: ["0.3"], updateState: "legacy" });
     assert.equal(json.duplicateRuntime, null);
     assert.equal(json.sharedHostOk, true);
 });
@@ -122,12 +122,12 @@ maybe("runtime register: versions are stored and a second live runtime for the a
     // ...when the 0.9 bridge for the same agent registers.
     const v09 = {
         runtimeId: "hermes-pc-qa", name: "Hermes on pc", hostname: "pc",
-        bridgeVersion: "0.13.0", bridgeProtocol: 2, hermesVersion: "v0.22.4", hermesCodeSha: "4d04303818b6",
+        bridgeVersion: "0.15.0", bridgeProtocol: 2, hermesVersion: "v0.22.4", hermesCodeSha: "4d04303818b6",
         transport: "gateway-ws", deployMode: "remote", maxParallelTurns: 3,
     };
     const { res, json } = await registerRuntime(token, v09);
     assert.equal(res.status, 200);
-    assert.equal(json.runtimeNode.bridgeVersion, "0.13.0");
+    assert.equal(json.runtimeNode.bridgeVersion, "0.15.0");
     assert.equal(json.runtimeNode.bridgeProtocol, 2);
     assert.equal(json.runtimeNode.hermesVersion, "v0.22.4");
     assert.equal(json.runtimeNode.transport, "gateway-ws");

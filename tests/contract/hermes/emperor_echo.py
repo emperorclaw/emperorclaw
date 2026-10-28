@@ -295,7 +295,7 @@ class Handler(BaseHTTPRequestHandler):
                 "gatewayTopology": topo, "deployMode": body.get("deployMode"), "transport": body.get("transport")}
         return 200, {"runtimeNode": node, "serverCapabilities": SERVER_CAPABILITIES,
                      "replyFormatGuide": REPLY_FORMAT_GUIDE,
-                     "bridge": {"latestVersion": "0.13.0", "updateState": "current"},
+                     "bridge": {"latestVersion": "0.15.0", "updateState": "current"},
                      "duplicateRuntime": ({"runtimeId": "other-runtime", "hostname": "elsewhere"} if dup else None),
                      "sharedHostOk": shared_ok}, None, None
 
