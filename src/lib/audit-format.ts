@@ -68,6 +68,8 @@ export const AUDIT_FIELD_ALLOWLIST: Record<AuditTargetType, Record<string, Field
         scopeMode: "enum", scopeCustomerIds: "ids", scopeProjectIds: "ids", scopeAgentIds: "ids",
         // An action permission change (lib/action-policy.ts): which action, and off / ask / allowed (null = default).
         actionKey: "enum", permission: "enum",
+        // Who can use it (0.20, lib/agent-access.ts).
+        access: "enum", ownerUserId: "id", accessCount: "number", toName: "label",
     },
     task: {
         title: "label", state: "enum", priority: "number", projectId: "id",
@@ -77,8 +79,10 @@ export const AUDIT_FIELD_ALLOWLIST: Record<AuditTargetType, Record<string, Field
     member: {
         name: "label", email: "email", role: "enum", instanceRole: "enum",
         scopeMode: "enum", scopeCustomerIds: "ids", scopeAgentIds: "ids",
+        // Access to one customer or project (0.20, lib/resource-roles.ts).
+        resourceType: "enum", resourceId: "id", resourceRole: "enum", resourceName: "label",
     },
-    invitation: { email: "email", role: "enum" },
+    invitation: { email: "email", role: "enum", resourceType: "enum", resourceId: "id", resourceRole: "enum", resourceName: "label" },
     company: {
         setting: "enum", directChatMode: "enum", registrationMode: "enum", instanceName: "label",
         agentRoutineEnabled: "bool", routineTime: "enum", timezone: "enum", weekdaysOnly: "bool", stallRemindersEnabled: "bool",
@@ -219,6 +223,8 @@ const VERBS: Record<string, string> = {
     "agent.scope_changed": "changed the data scope of",
     "agent.budget_changed": "changed the budget of",
     "agent.permission_changed": "changed an action permission of",
+    "agent.access_changed": "changed who can use",
+    "agent.owner_transferred": "transferred",
     "company.permission_changed": "changed a company action permission",
     "task.state_changed": "moved",
     "task.assigned": "reassigned",
@@ -231,6 +237,9 @@ const VERBS: Record<string, string> = {
     "member.scope_changed": "changed the access of",
     "member.removed": "removed",
     "member.invited": "invited",
+    "member.access_granted": "gave",
+    "member.access_changed": "changed the access of",
+    "member.access_removed": "removed the access of",
     "invitation.revoked": "revoked",
     "company.settings_changed": "changed company settings",
     "organization.updated": "edited the org chart",
@@ -293,6 +302,8 @@ function fallbackVerb(action: string): string {
     return action.replace(/^[a-z_]+\./, "").replace(/[._]+/g, " ").trim() || "changed";
 }
 
+const RESOURCE_ROLE_WORDS: Record<string, string> = { admin: "Admin", editor: "Can edit", viewer: "Can view" };
+
 const PERMISSION_WORDS: Record<string, string> = { off: "off", ask: "ask first", allowed: "allowed" };
 
 /** An action permission as words; null means the setting was removed (back to the default). */
@@ -317,7 +328,22 @@ function detailFor(action: string, payload: AuditPayload, names: Readonly<Record
         case "member.role_changed":
             return typeof after.role === "string" ? `to ${after.role}` : null;
         case "member.invited":
+            if (typeof meta.resourceName === "string" && typeof after.resourceRole === "string") return `to ${meta.resourceName} as ${RESOURCE_ROLE_WORDS[after.resourceRole] ?? after.resourceRole}`;
             return typeof after.role === "string" ? `as ${after.role}` : null;
+        case "member.access_granted":
+        case "member.access_changed": {
+            const where = typeof meta.resourceName === "string" ? meta.resourceName : "a client or project";
+            const role = typeof after.resourceRole === "string" ? RESOURCE_ROLE_WORDS[after.resourceRole] ?? after.resourceRole : null;
+            return action === "member.access_granted" ? `access to ${where}${role ? ` (${role})` : ""}` : `on ${where}${role ? ` to ${role}` : ""}`;
+        }
+        case "member.access_removed":
+            return typeof meta.resourceName === "string" ? `on ${meta.resourceName}` : null;
+        case "agent.access_changed": {
+            const word = after.access === "everyone" ? "everyone" : after.access === "people" ? "specific people" : after.access === "owner" ? "only its owner" : null;
+            return word ? `(${word})` : null;
+        }
+        case "agent.owner_transferred":
+            return typeof meta.toName === "string" && meta.toName ? `to ${meta.toName}` : null;
         case "company.settings_changed": {
             const setting = typeof meta.setting === "string" ? SETTING_LABELS[meta.setting] ?? null : null;
             return setting ? `(${setting})` : null;

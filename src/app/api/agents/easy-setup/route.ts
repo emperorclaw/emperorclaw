@@ -4,7 +4,8 @@ import { hireHermesAgent } from "@/lib/hire-hermes-agent";
 import { NextRequest, NextResponse } from "next/server";
 import fs from "fs";
 import { and, eq, isNotNull, isNull } from "drizzle-orm";
-import { requireRole, AuthError } from "@/lib/roles";
+import { requireRole, AuthError, type GuardContext } from "@/lib/roles";
+import { applyHireAccess } from "@/lib/agent-access-server";
 import { db } from "@/db";
 import { agents, llmPricing } from "@/db/schema";
 import { DOCKER_SOCKET, isDocker, dockerCall } from "@/lib/docker";
@@ -115,7 +116,7 @@ export async function POST(req: NextRequest) {
                 results.push({ name: spec.name, agentId: null, success: false, message: err instanceof HermesHiringError ? err.message : "Could not create this agent profile. Retry provisioning.", outputs: [] });
             }
         }
-        return NextResponse.json({ results });
+        return NextResponse.json({ results: await withHireAccess(ctx, results, body) });
     }
     const custom = llmProvider === CUSTOM_LLM_PROVIDER;
     if (!llmProvider || (!custom && !llmApiKey)) return NextResponse.json({ error: "Choose an existing Hermes configuration or provide an LLM provider and API key" }, { status: 400 });
@@ -217,5 +218,15 @@ export async function POST(req: NextRequest) {
         }
     }
 
-    return NextResponse.json({ results });
+    return NextResponse.json({ results: await withHireAccess(ctx, results, body) });
+}
+
+/** "Who can use it" (0.20) for every agent hired in this batch; a failure is reported on its result. */
+async function withHireAccess(ctx: GuardContext, results: AgentBatchResult[], body: { access?: unknown; accessUserIds?: unknown; ownerUserId?: unknown }) {
+    for (const result of results) {
+        if (!result.success || !result.agentId) continue;
+        const error = await applyHireAccess(ctx, result.agentId, body);
+        if (error) result.message = `${result.message} (${error})`;
+    }
+    return results;
 }

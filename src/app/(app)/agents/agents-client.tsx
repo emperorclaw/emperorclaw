@@ -7,6 +7,7 @@ import { IconArrowLeft, IconHierarchy2, IconHeartbeat, IconLoader2, IconRobot, I
 import { CreateAgentDialog } from "./create-agent-dialog";
 import { EasySetupDialog } from "./easy-setup-dialog";
 import { AgentDetailPanel } from "./agent-detail-panel";
+import { AgentLockBadge } from "@/components/access/agent-access-control";
 import { AgentNowCard, BridgeBadge, formatDuration } from "./agent-now-card";
 import { useAgentActivity } from "./use-agent-activity";
 import { PageHeader } from "@/components/page-header";
@@ -26,6 +27,11 @@ type AgentDirectoryItem = {
     currentLoad: number;
     deadLetterCount: number;
     failedCount: number;
+    /** Who can use it (0.20): limited agents show a lock badge with their owner. */
+    access?: string;
+    ownerName?: string | null;
+    /** "metadata": an owner/admin who may not use it sees a locked card. */
+    use?: "full" | "metadata";
 };
 
 export function AgentsClient({ agents }: { agents: AgentDirectoryItem[] }) {
@@ -181,6 +187,7 @@ export function AgentsClient({ agents }: { agents: AgentDirectoryItem[] }) {
                                                 </span>
                                             )}
                                             <BridgeBadge runtime={activity[agent.id]?.runtime} compact />
+                                            {agent.access && <AgentLockBadge access={agent.access} ownerName={agent.ownerName ?? null} />}
                                         </span>
                                         <AgentSubtitle agent={agent} now={activity[agent.id]} />
                                     </span>
@@ -204,7 +211,7 @@ export function AgentsClient({ agents }: { agents: AgentDirectoryItem[] }) {
                                 <IconArrowLeft className="h-4 w-4" />
                                 All agents
                             </button>
-                            <AgentNowCard now={activity[selectedAgent.id]} />
+                            {selectedAgent.use !== "metadata" && <AgentNowCard now={activity[selectedAgent.id]} />}
                             <AgentDetailPanel agentId={selectedAgent.id} agentName={selectedAgent.name} runtime={activity[selectedAgent.id]?.runtime ?? null} />
                         </div>
                     ) : (

@@ -242,3 +242,28 @@ and automatically run database migrations. It intentionally preserves the old
 container configuration. For releases that add Compose services or volumes,
 such as the Google Drive mirror, run the shell upgrade once so the host also
 receives the new `docker-compose.yml` and scripts.
+
+## Rolling Back 0.20 (Access)
+
+Migration `0072_access-roles` moves each restricted member's client list from
+`company_members.scope_json.customerIds` to `resource_memberships`, then
+removes `customerIds` from `scope_json`. Keeping a stale copy would fail open
+after a rollback, so it is not kept. Before starting a 0.19 image on a
+database that ran 0.20, run this once to put the client lists back:
+
+```sql
+UPDATE company_members cm
+SET scope_json = coalesce(cm.scope_json, '{}'::jsonb) || jsonb_build_object(
+    'customerIds',
+    coalesce((SELECT jsonb_agg(rm.resource_id::text ORDER BY rm.resource_id)
+              FROM resource_memberships rm
+              WHERE rm.company_id = cm.company_id AND rm.user_id = cm.user_id
+                AND rm.resource_type = 'customer'), '[]'::jsonb))
+WHERE cm.scope_json->>'mode' = 'restricted';
+```
+
+0.19 does not know project-level access, "Can view" or "Who can use it":
+people given access to a single project, and agents limited to some people,
+fall back to the 0.19 rules (restricted members lose those projects; limited
+agents are open to everyone again). The 0.20 tables and columns are left in
+place and are ignored by 0.19.

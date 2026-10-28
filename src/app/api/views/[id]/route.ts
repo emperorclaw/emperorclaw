@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { companyRouteAccess } from "@/lib/company-access";
+import { viewRoleFor } from "@/lib/resource-access";
+import { roleGte } from "@/lib/role-matrix";
 import { deleteView, getView, memberViewCaller, setViewArchived, setViewPinned, updateView, viewErrorResponse } from "@/lib/views";
 
 /**
@@ -24,14 +26,18 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
  * (update_panel); who sees it is /access, its owner /owner.
  */
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-    const access = await companyRouteAccess("member", { module: "views" });
+    const access = await companyRouteAccess("viewer", { module: "views" });
     if (access.response) return access.response;
     try {
         const { id } = await params;
+        // Resource-aware (0.20): the caller's role on the view's customer/project.
+        const role = await viewRoleFor(access.ctx, id);
+        if (!role) return NextResponse.json({ error: "View not found" }, { status: 404 });
+        if (!roleGte(role, "member")) return NextResponse.json({ error: "Forbidden — this action requires member access to this view's scope." }, { status: 403 });
         const body = await req.json().catch(() => null) as Record<string, unknown> | null;
         if (!body || typeof body !== "object") return NextResponse.json({ error: "A JSON object body is required" }, { status: 400 });
         const { companyId } = access.ctx;
-        const caller = memberViewCaller(access.ctx);
+        const caller = memberViewCaller({ ...access.ctx, role });
         // Restore first and archive last: an archived view takes no other edits.
         if (body.archived === false) await setViewArchived(companyId, caller, id, false);
         if (body.title !== undefined || body.description !== undefined || body.refreshEveryMinutes !== undefined) {
@@ -51,7 +57,10 @@ export async function DELETE(_req: NextRequest, { params }: { params: Promise<{ 
     if (access.response) return access.response;
     try {
         const { id } = await params;
-        return NextResponse.json(await deleteView(access.ctx.companyId, memberViewCaller(access.ctx), id));
+        // A resource admin deletes views inside their customer/project like a company admin.
+        const role = await viewRoleFor(access.ctx, id);
+        if (!role) return NextResponse.json({ error: "View not found" }, { status: 404 });
+        return NextResponse.json(await deleteView(access.ctx.companyId, memberViewCaller({ ...access.ctx, role }), id));
     } catch (error) {
         return viewErrorResponse(error);
     }

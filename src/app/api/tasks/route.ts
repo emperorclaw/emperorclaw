@@ -2,8 +2,11 @@ import { NextRequest, NextResponse } from "next/server";
 import { createTaskForProject, updateTaskForCompany } from "@/lib/openclaw/tasks";
 import { serializeTaskWithAssignee } from "@/lib/task-assignee";
 import { companyRouteAccess } from "@/lib/company-access";
+import { loadResourceFacts, resourceWriteDenied } from "@/lib/resource-access";
+import { canWrite } from "@/lib/role-matrix";
 import { lengthError, TASK_TITLE_MAX } from "@/lib/input-limits";
-import { memberMayAssignAgents, memberMaySeeProjectId } from "@/lib/member-scope";
+import { assignedAgentIds, memberMayAssignAgents, memberMaySeeProjectId } from "@/lib/member-scope";
+import { memberMayUseAllAgents } from "@/lib/agent-access-server";
 import { ensureDefaultProject } from "@/lib/default-project";
 import { humanActor } from "@/lib/audit";
 
@@ -16,7 +19,9 @@ function splitLines(value: unknown) {
 }
 
 export async function POST(req: NextRequest) {
-    const access = await companyRouteAccess("member");
+    // Resource-aware (0.20): the company role is only the floor for reading;
+    // writing is decided on the task's project below.
+    const access = await companyRouteAccess("viewer");
     if (access.response) return access.response;
     const companyId = access.ctx.companyId;
 
@@ -29,16 +34,19 @@ export async function POST(req: NextRequest) {
         // A workspace's first task: no project yet, so it goes into "General"
         // (created once). Restricted members only see their customers' projects,
         // so they still pick one.
-        if (!projectId && body.useDefaultProject === true && !access.ctx.scope && title) {
+        if (!projectId && body.useDefaultProject === true && !access.ctx.scope && canWrite(access.ctx.role) && title) {
             projectId = await ensureDefaultProject(companyId, humanActor(access.ctx.userId));
         }
         if (!projectId) {
             return NextResponse.json({ error: "projectId is required" }, { status: 400 });
         }
-        if (!(await memberMaySeeProjectId(companyId, access.ctx.scope, projectId))) {
+        const project = await loadResourceFacts(companyId, { type: "project", id: projectId });
+        if (!project || !(await memberMaySeeProjectId(companyId, access.ctx.scope, projectId))) {
             return NextResponse.json({ error: "Project not found" }, { status: 404 });
         }
-        if (!memberMayAssignAgents(access.ctx.scope, body)) {
+        const denied = await resourceWriteDenied(access.ctx, project, "member", "Project");
+        if (denied) return denied;
+        if (!memberMayAssignAgents(access.ctx.scope, body) || !(await memberMayUseAllAgents(access.ctx, assignedAgentIds(body)))) {
             return NextResponse.json({ error: "Agent not found" }, { status: 404 });
         }
         if (!title) {

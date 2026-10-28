@@ -109,13 +109,69 @@ Admins can restrict what individual team members can see via Settings → Member
 
 When restricted:
 - **Agents page**: only selected agents appear
-- **Customers page**: only selected customers appear
-- **Knowledge Base**: resources scoped to visible agents/customers
-- **Storage**: artifacts linked to visible customers' projects
-- **Projects**: only projects belonging to visible customers
+- **Customers page**: only the customers they have access to appear
+- **Knowledge Base**: resources scoped to visible agents/customers/projects
+- **Storage**: artifacts linked to visible customers and projects
+- **Projects**: projects of their customers, plus projects shared with them directly
 - **Dashboard KPIs**: counts reflect only visible data
 
-Scope is stored per member in the `company_members` table and loaded into the session at login — no extra DB queries per page.
+The agent list lives on the member; the customers and projects come from
+**Access** (below). Both are read from the database on every request, so a
+change applies on the next page load.
+
+## Access To Clients And Projects
+
+Every client and project page has an **Access** button. It lists who has a
+role there and lets its admins add a person (an existing member, or an email
+invitation) as **Admin**, **Can edit** or **Can view**.
+
+- Inside that client or project a person acts with the higher of their company
+  role and their role there. A company viewer with **Can edit** on Harbor
+  Dental edits Harbor Dental's tasks, notes, views and files, and nothing else.
+- A client's role covers all its projects.
+- A restricted member sees only the clients and projects they have access to.
+  Inviting someone from the Access dialog makes them exactly that: they see
+  only that client or project.
+- Admins of a client or project manage its Access but can never grant more
+  than their own role, and never change company roles, billing, modules,
+  settings, agents or tokens.
+- Settings → Members shows each person's custom access ("Harbor Dental · Can
+  edit"). Every change is in the Activity log.
+
+Nothing changes for a company that never opens Access.
+
+## Who Can Use An Agent
+
+The hire dialog and the agent's Scope tab have one setting, **Who can use it**:
+
+| Setting | Who can chat with it, mention it, give it work |
+|---------|------------------------------------------------|
+| Everyone (default) | Every member whose access includes the agent |
+| Specific people | Its owner and the people picked |
+| Only one person | Its owner |
+
+Owners and admins who are not on the list see a locked card: name, owner,
+status and cost, never its chats. They can change who can use it, hand it to
+someone else (both owners are notified) or delete it, but cannot add
+themselves. If the owner leaves the company, an admin can recover the agent
+(new owner, everyone, or themselves); its earlier chats stay archived. An
+agent only its owner can use never sees more data than its owner. Agents and
+their bridges keep working as before.
+
+"Who can use it" protects an agent from other members. It is not a guarantee
+against an admin: admins can mint company-wide MCP tokens, and such a token
+can act as any agent, including reading that agent's direct and private
+chats, the way its bridge does. Fleet bridges depend on this, so it is the
+trust model: give token rights only to people you would trust with every
+agent's conversations.
+
+Recovering an orphaned agent archives its shared chat and hides it, and the
+runs that answered it, from everyone. The agent's own memory stays with the
+agent: what it learned in those chats can still shape its answers to its new
+owner.
+
+Inside a client or project, a restricted member's role there is exactly the
+role they were given: **Can view** is read-only, whatever their company role.
 
 ## Review And Approval
 

@@ -11,6 +11,8 @@ import { companyRouteAccess } from "@/lib/company-access";
 import { humanActor, recordAudit } from "@/lib/audit";
 import { lengthError, NAME_MAX } from "@/lib/input-limits";
 import { memberAgentCondition } from "@/lib/member-scope";
+import { agentsNotUsableBy, applyHireAccess, ownerNames, usableAgentCondition } from "@/lib/agent-access-server";
+import { canAdmin } from "@/lib/role-matrix";
 
 export const dynamic = "force-dynamic";
 
@@ -20,6 +22,9 @@ export async function GET() {
     const companyId = access.ctx.companyId;
 
     try {
+        // Agents limited to other people (0.20): hidden from members, a locked
+        // card (metadata) for owners and admins.
+        const { hidden, metadata } = await agentsNotUsableBy(access.ctx);
         const allAgents = await db.select({
             id: agents.id,
             name: agents.name,
@@ -29,10 +34,20 @@ export async function GET() {
             status: agents.status,
             lastSeenAt: agents.lastSeenAt,
             createdAt: agents.createdAt,
+            access: agents.access,
+            ownerUserId: agents.ownerUserId,
         }).from(agents)
-            .where(and(eq(agents.companyId, companyId), isNull(agents.deletedAt), memberAgentCondition(access.ctx.scope, agents.id)));
+            .where(and(eq(agents.companyId, companyId), isNull(agents.deletedAt), memberAgentCondition(access.ctx.scope, agents.id),
+                canAdmin(access.ctx.role) ? undefined : usableAgentCondition(hidden, agents.id)));
+        const owners = await ownerNames(allAgents.filter((a) => a.access !== "everyone").map((a) => a.ownerUserId));
 
-        return NextResponse.json({ agents: allAgents });
+        return NextResponse.json({
+            agents: allAgents.map((agent) => ({
+                ...agent,
+                ownerName: agent.ownerUserId ? owners.get(agent.ownerUserId) ?? null : null,
+                use: metadata.has(agent.id) ? "metadata" : "full",
+            })),
+        });
     } catch (error: unknown) {
         const message = error instanceof Error ? error.message : "Internal Server Error";
         return NextResponse.json({ error: message }, { status: 500 });
@@ -135,6 +150,8 @@ export async function POST(req: NextRequest) {
         }).returning();
 
         await recordAudit({ companyId, actor: humanActor(access.ctx.userId), action: "agent.created", target: { type: "agent", id: agent.id }, after: agent });
+        // Who can use it (0.20): the hirer owns it; "Specific people" / "Only ..." limit it now.
+        const accessError = await applyHireAccess(access.ctx, agent.id, body);
         if (memory) {
             await writeAgentMemory({
                 companyId,
@@ -150,7 +167,7 @@ export async function POST(req: NextRequest) {
         void _redactedEncrypted;
         void _redactedVersion;
 
-        return NextResponse.json({ agent: safeAgent }, { status: 201 });
+        return NextResponse.json({ agent: safeAgent, ...(accessError ? { accessError } : {}) }, { status: 201 });
     } catch (error: unknown) {
         console.error("Agent create error:", error);
         const message = error instanceof Error ? error.message : "Internal Server Error";

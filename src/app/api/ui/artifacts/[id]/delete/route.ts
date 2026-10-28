@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireCompanyFromSession } from "@/lib/company-session";
 import { memberMaySeeRecord } from "@/lib/member-scope";
+import { recordResource, resourceWriteDenied } from "@/lib/resource-access";
 import { artifacts } from "@/db/schema";
 import { db } from "@/db";
 import { and, eq, isNull } from "drizzle-orm";
@@ -9,7 +10,8 @@ import { deriveArtifactLogicalPath } from "@/lib/path-utils";
 
 export async function DELETE(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
     try {
-        const { companyId, scope } = await requireCompanyFromSession("member");
+        const session = await requireCompanyFromSession("viewer");
+        const { companyId, scope } = session;
         const { id: artifactId } = await params;
         const [artifact] = await db.select().from(artifacts).where(and(
             eq(artifacts.id, artifactId),
@@ -20,6 +22,9 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
         if (!artifact || !(await memberMaySeeRecord(companyId, scope, artifact))) {
             return NextResponse.json({ error: "Artifact not found" }, { status: 404 });
         }
+        // Resource-aware (0.20): edit access to the file's project or customer.
+        const denied = await resourceWriteDenied(session, await recordResource(companyId, artifact), "member", "Artifact");
+        if (denied) return denied;
 
         const purge = req.nextUrl.searchParams.get("purgeStorage") !== "false";
         if (purge && artifact.storageKey) {

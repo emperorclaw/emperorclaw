@@ -290,6 +290,8 @@ app.prepare().then(() => {
                 humanSocket.allowedAgentIds = initial.allowedAgentIds;
                 humanSocket.allowedCustomerIds = initial.allowedCustomerIds;
                 humanSocket.allowedProjectIds = initial.allowedProjectIds;
+                humanSocket.grantedProjectCustomerIds = initial.grantedProjectCustomerIds;
+                humanSocket.hiddenAgentIds = initial.hiddenAgentIds;
                 // Permission changes (sign-out, removal, role or scope edits)
                 // reach an open socket on this refresh, so for up to
                 // SOCKET_SCOPE_REFRESH_MS (60 s) it may still receive
@@ -311,6 +313,8 @@ app.prepare().then(() => {
                         humanSocket.allowedAgentIds = ctx.allowedAgentIds;
                         humanSocket.allowedCustomerIds = ctx.allowedCustomerIds;
                         humanSocket.allowedProjectIds = ctx.allowedProjectIds;
+                        humanSocket.grantedProjectCustomerIds = ctx.grantedProjectCustomerIds;
+                        humanSocket.hiddenAgentIds = ctx.hiddenAgentIds;
                     }).catch(() => {
                         // Fail closed: if the scope cannot be read, deliver nothing scoped.
                         humanSocket.allowedAgentIds = new Set();
@@ -441,6 +445,22 @@ app.prepare().then(() => {
           // only sockets bound to that agent receive them, never the company.
           // Human sockets get a compact invalidation instead of record contents.
           const topics = eventTopicsFor(notification.payload, notification.subject);
+          // Who can use an agent changed (0.20): re-resolve that company's
+          // browser sockets now instead of on the next 60 s refresh.
+          if ((notification.payload as { type?: unknown } | null)?.type === 'agent_access_changed') {
+            humanWss.clients.forEach((ws) => {
+              const socket = ws as HumanSocket;
+              if (socket.readyState !== WebSocket.OPEN || socket.companyId !== notification.companyId || !socket.userId) return;
+              resolveHumanRealtimeContext(socket.userId).then((ctx) => {
+                if (!ctx) return;
+                socket.allowedAgentIds = ctx.allowedAgentIds;
+                socket.hiddenAgentIds = ctx.hiddenAgentIds;
+              }).catch(() => {
+                // Fail closed until the periodic refresh succeeds.
+                socket.allowedAgentIds = new Set();
+              });
+            });
+          }
           humanWss.clients.forEach((ws) => {
             const socket = ws as HumanSocket;
             if (socket.readyState !== WebSocket.OPEN) return;

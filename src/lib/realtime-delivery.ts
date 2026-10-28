@@ -15,6 +15,8 @@ export type RealtimeSubject = {
     customerIds: string[];
     /** Agents a presence/status event is about (agent status, typing, profile changes). */
     agentIds?: string[];
+    /** The agents whose direct threads the event belongs to (human sockets only: lib/agent-access.ts). */
+    directAgentIds?: string[];
 };
 
 /**
@@ -39,6 +41,7 @@ export function parseRealtimeNotification(raw: string): { companyId: string; aud
             projectIds: data.subject.projectIds.filter((id): id is string => typeof id === "string"),
             customerIds: data.subject.customerIds.filter((id): id is string => typeof id === "string"),
             agentIds: Array.isArray(data.subject.agentIds) ? data.subject.agentIds.filter((id): id is string => typeof id === "string") : [],
+            directAgentIds: Array.isArray(data.subject.directAgentIds) ? data.subject.directAgentIds.filter((id): id is string => typeof id === "string") : [],
         }
         : null;
     return { companyId: data.companyId, audience: data.audience ?? null, subject, payload: data.payload, message: JSON.stringify(data.payload) };
@@ -86,6 +89,10 @@ export type HumanViewer = {
     allowedProjectIds?: ReadonlySet<string> | null;
     allowedCustomerIds?: ReadonlySet<string> | null;
     allowedAgentIds?: ReadonlySet<string> | null;
+    /** Customers of the projects granted directly (project memberships), whose events about those projects pass. */
+    grantedProjectCustomerIds?: ReadonlySet<string> | null;
+    /** Agents limited to other people (lib/agent-access.ts): nothing about them or their DMs reaches this person. */
+    hiddenAgentIds?: ReadonlySet<string> | null;
 };
 
 /**
@@ -103,10 +110,23 @@ export function humanSocketReceives(
     viewer: HumanViewer,
 ): boolean {
     if (!viewer.companyId || viewer.companyId !== event.companyId) return false;
+    const hidden = viewer.hiddenAgentIds;
+    if (hidden && hidden.size > 0 && event.subject
+        && [...(event.subject.agentIds ?? []), ...(event.subject.directAgentIds ?? [])].some((id) => hidden.has(id))) return false;
     if (event.audience) {
         return Boolean(event.audience.ownerUserId) && event.audience.ownerUserId === viewer.userId;
     }
-    return socketMayReceiveSubject(event.subject, viewer);
+    const subject = event.subject;
+    // A member granted a project directly (0.20 project Access) gets events
+    // about it even though its customer is not on their list: alongside
+    // visible projects, the customer of a directly granted project passes.
+    const viaProjects = viewer.grantedProjectCustomerIds;
+    if (subject && viaProjects && viaProjects.size > 0 && subject.projectIds.length > 0 && viewer.allowedProjectIds
+        && subject.projectIds.every((id) => viewer.allowedProjectIds!.has(id))) {
+        const customers = viewer.allowedCustomerIds ?? new Set<string>();
+        return socketMayReceiveSubject({ ...subject, customerIds: subject.customerIds.filter((id) => !(viaProjects.has(id) && !customers.has(id))) }, viewer);
+    }
+    return socketMayReceiveSubject(subject, viewer);
 }
 
 // ── Browser socket upgrade guards (/api/ws) ─────────────────────────────────

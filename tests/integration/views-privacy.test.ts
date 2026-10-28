@@ -323,10 +323,13 @@ maybe("the owner shares a view with people; the scope still caps every share; ch
 
     // The scope caps shares: Ria leaves Customer In and loses the view, share or not.
     const db = await getDb();
-    const { companyMembers, auditLog } = await getSchema();
+    const { companyMembers, auditLog, resourceMemberships } = await getSchema();
     const { and, eq } = await import("drizzle-orm");
-    await db.update(companyMembers).set({ scopeJson: { mode: "restricted", customerIds: [f.customerOut.id], agentIds: [] } })
+    // Since 0.20 her customers are resource memberships.
+    await db.update(companyMembers).set({ scopeJson: { mode: "restricted", agentIds: [] } })
         .where(and(eq(companyMembers.companyId, f.companyId), eq(companyMembers.userId, f.ria.userId)));
+    await db.update(resourceMemberships).set({ resourceId: f.customerOut.id })
+        .where(and(eq(resourceMemberships.companyId, f.companyId), eq(resourceMemberships.userId, f.ria.userId)));
     actAs(f.ria);
     assert.equal((await call(r.view.GET, `/api/views/${view.id}`, { params })).status, 404);
     assert.deepEqual((await call(r.list.GET, "/api/views")).json.views, []);
@@ -457,8 +460,11 @@ maybe("pins are per person, only for views they can open, and archiving clears t
 maybe("migration 0071 gives every current member who could see a pinned view their own pin", async () => {
     const f = await fixture();
     const db = await getDb();
-    const { views, viewPins, users } = await getSchema();
+    const { views, viewPins, users, companyMembers } = await getSchema();
     const { eq, sql } = await import("drizzle-orm");
+    // 0071 ran before 0.20 moved customer lists to resource_memberships: replay it on the old shape.
+    await db.update(companyMembers).set({ scopeJson: { mode: "restricted", customerIds: [f.customerIn.id], agentIds: [f.builder.id] } })
+        .where(eq(companyMembers.userId, f.ria.userId));
     const base = { companyId: f.companyId, specJson: { panels: [] }, version: 1, createdByType: "agent", createdById: f.builder.id, updatedByType: "agent", updatedById: f.builder.id, pinnedToHome: true };
     const [company] = await db.insert(views).values({ ...base, title: "Company KPIs", scopeType: "company", scopeId: null }).returning();
     const [outCustomer] = await db.insert(views).values({ ...base, title: "Out client", scopeType: "customer", scopeId: f.customerOut.id }).returning();

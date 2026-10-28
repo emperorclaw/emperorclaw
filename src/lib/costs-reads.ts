@@ -1,7 +1,7 @@
-import { and, eq, gte, inArray, lt, sql, type SQL } from "drizzle-orm";
+import { and, eq, gte, inArray, lt, or, sql, type SQL } from "drizzle-orm";
 import { db } from "@/db";
 import { agentRuns, agents, customers, llmPricing, projects, tasks } from "@/db/schema";
-import { getScopedAgentIds, getScopedCustomerIds, type MemberScope } from "@/lib/member-scope";
+import { getScopedAgentIds, getScopedCustomerIds, getScopedProjectIds, type MemberScope } from "@/lib/member-scope";
 import { projectTitle } from "@/lib/project-title";
 import {
     aggregateCosts,
@@ -31,7 +31,10 @@ function scopeCondition(scope: MemberScope | null): SQL | undefined {
     if (!scope) return undefined;
     const customerIds = getScopedCustomerIds(scope) ?? [];
     const agentIds = getScopedAgentIds(scope) ?? [];
-    const onTask = customerIds.length ? sql`(${agentRuns.taskId} is not null and ${inArray(customers.id, customerIds)})` : sql`false`;
+    const projectIds = getScopedProjectIds(scope) ?? [];
+    const onTask = customerIds.length || projectIds.length
+        ? sql`(${agentRuns.taskId} is not null and ${or(customerIds.length ? inArray(customers.id, customerIds) : undefined, projectIds.length ? inArray(projects.id, projectIds) : undefined)})`
+        : sql`false`;
     const inChat = agentIds.length ? sql`(${agentRuns.taskId} is null and ${inArray(agentRuns.agentId, agentIds)})` : sql`false`;
     return sql`(${onTask} or ${inChat})`;
 }

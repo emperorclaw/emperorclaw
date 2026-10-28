@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
-import { dbAvailable, getDb, getSchema, resetDb, seedAgent, seedCompanyWithToken } from "./_helper";
+import { dbAvailable, getDb, getSchema, resetDb, seedAgent, seedCompanyWithToken, migrateLegacyMemberScopes } from "./_helper";
 import { actAs, call, seedHuman } from "./_access-helper";
 
 /**
@@ -47,6 +47,7 @@ async function seedTimeline() {
 
     const [scopedUser] = await db.insert(s.users).values({ email: `scoped-${randomUUID()}@example.com`, passwordHash: "x", displayName: "Sam Scoped" }).returning();
     await db.insert(s.companyMembers).values({ companyId, userId: scopedUser.id, role: "member", scopeJson: { mode: "restricted", agentIds: [atlas.id], customerIds: [harbor.id] } });
+    await migrateLegacyMemberScopes();
 
     const [taskIn] = await db.insert(s.tasks).values({ companyId, projectId: project.id, taskType: "work", assignedAgentId: atlas.id, inputJson: { title: "In-scope task" } }).returning();
     const [taskOut] = await db.insert(s.tasks).values({ companyId, projectId: otherProject.id, taskType: "work", assignedAgentId: atlas.id, inputJson: { title: "Out-of-scope task" } }).returning();

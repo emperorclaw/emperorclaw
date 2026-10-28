@@ -3,6 +3,7 @@ import { AuthError, requireRole } from "@/lib/roles";
 import { getApprovalDetail, resolveApproval } from "@/lib/approvals";
 import { companyRouteAccess } from "@/lib/company-access";
 import { memberMaySeeApproval, memberVisibleProjectIds } from "@/lib/member-scope";
+import { recordResource, resourceWriteDenied } from "@/lib/resource-access";
 
 export async function GET(
     _req: NextRequest,
@@ -39,6 +40,11 @@ export async function PATCH(
         const current = await getApprovalDetail(ctx.companyId, id);
         if (!current || !memberMaySeeApproval(ctx.scope, await memberVisibleProjectIds(ctx.companyId, ctx.scope), current.approval)) {
             return NextResponse.json({ error: "Approval not found" }, { status: 404 });
+        }
+        // A restricted member with only "Can view" on that project reads it but never decides (0.20).
+        if (ctx.scope && current.approval.projectId) {
+            const denied = await resourceWriteDenied(ctx, await recordResource(ctx.companyId, { projectId: current.approval.projectId }), "member", "Approval");
+            if (denied) return denied;
         }
         const body = await req.json();
         const { status, resolutionNote } = body;

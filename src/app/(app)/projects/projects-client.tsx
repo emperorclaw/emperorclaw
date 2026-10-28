@@ -7,6 +7,7 @@ import { DndContext, DragOverlay, MouseSensor, TouchSensor, useSensor, useSensor
 import { IconAlertTriangle, IconLayoutColumns, IconList, IconPlus, IconSearch, IconX } from "@tabler/icons-react";
 import { toast } from "sonner";
 import { ScopeViewsSection } from "@/components/views/scope-views-section";
+import { ResourceAccessButton } from "@/components/access/resource-access-dialog";
 import { PageHeader } from "@/components/page-header";
 import { SearchableSelect } from "@/components/ui/searchable-select";
 import { EmptyState } from "@/components/ui/empty-state";
@@ -52,6 +53,10 @@ type Props = {
     members?: any[];
     currentMemberId?: string | null;
     companyRole?: string;
+    /** Company viewers: the projects they hold "Can edit" or Admin on (0.20 Access). */
+    editableProjectIds?: string[];
+    /** Agents holding visible tasks that this person may not use (0.20): name for owners/admins, else null. */
+    limitedAgents?: { id: string; name: string | null; limited: true }[];
 };
 
 const ALL_PROJECTS = "All Projects";
@@ -144,17 +149,18 @@ function writeStorage(key: string, value: string) {
     try { window.localStorage.setItem(key, value); } catch { /* private mode: preferences just do not persist */ }
 }
 
-export default function ProjectsClient({ initialTasks, projects, agents, customers, recurringDefinitions = [], artifacts = [], taskEvents = [], initialProjectMemory = [], members = [], currentMemberId = null, companyRole = "member" }: Props) {
+export default function ProjectsClient({ initialTasks, projects, agents, customers, recurringDefinitions = [], artifacts = [], taskEvents = [], initialProjectMemory = [], members = [], currentMemberId = null, companyRole = "member", editableProjectIds = [], limitedAgents = [] }: Props) {
     const router = useRouter();
     const searchParams = useSearchParams();
-    // Viewers read the board; they never drag, edit or archive.
-    const canEdit = companyRole !== "viewer";
     const nowMs = useMinuteClock();
 
     const [tasks, setTasks] = useState<any[]>(initialTasks);
     const [projectItems, setProjectItems] = useState<any[]>(projects);
     const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
     const [projectFilter, setProjectFilter] = useState(ALL_PROJECTS);
+    // Viewers read the board; they never drag, edit or archive, except inside
+    // a project where they were given "Can edit" or Admin (0.20 Access).
+    const canEdit = companyRole !== "viewer" || (projectFilter !== ALL_PROJECTS && editableProjectIds.includes(projectFilter));
     const [assigneeFilter, setAssigneeFilter] = useState("all");
     const [customerFilter, setCustomerFilter] = useState(ALL_CUSTOMERS);
     const [searchQuery, setSearchQuery] = useState("");
@@ -240,7 +246,14 @@ export default function ProjectsClient({ initialTasks, projects, agents, custome
     // ─── Lookups ────────────────────────────────────────────────────────────
     const projectById = useMemo(() => new Map(projectItems.map((project) => [project.id, project])), [projectItems]);
     const customerById = useMemo(() => new Map(customers.map((customer) => [customer.id, customer])), [customers]);
-    const agentName = useCallback((id?: string | null) => agents.find((agent) => agent.id === id)?.name || "Unknown agent", [agents]);
+    const agentName = useCallback((id?: string | null) => {
+        const agent = agents.find((item) => item.id === id);
+        if (agent) return agent.name || "Unknown agent";
+        // An agent limited to other people: 🔒 its name for owners/admins, "Private agent" for others.
+        const limited = limitedAgents.find((item) => item.id === id);
+        if (limited) return limited.name ? `🔒 ${limited.name}` : "Private agent";
+        return "Unknown agent";
+    }, [agents, limitedAgents]);
     const memberName = useCallback((id?: string | null) => {
         const member = members.find((item) => item.id === id);
         return member?.displayName || member?.email || "Unknown person";
@@ -907,6 +920,7 @@ export default function ProjectsClient({ initialTasks, projects, agents, custome
                     onComplete={() => void setProjectStatus(selectedProject, "completed")}
                     onReopen={() => void setProjectStatus(selectedProject, "active")}
                     onArchive={() => void archiveProject(selectedProject)}
+                    accessSlot={<ResourceAccessButton type="project" id={selectedProject.id} className="h-9" />}
                 />
             )}
             {selectedProject && <ScopeViewsSection key={selectedProject.id} projectId={selectedProject.id} hideWhenEmpty />}

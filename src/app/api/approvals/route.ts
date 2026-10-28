@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createApprovalRequest, listApprovalsForCompany } from "@/lib/approvals";
 import { companyRouteAccess } from "@/lib/company-access";
 import { memberMaySeeApproval, memberMaySeeProjectId, memberVisibleProjectIds } from "@/lib/member-scope";
+import { recordsWriteDenied } from "@/lib/resource-access";
 
 interface CreateApprovalRequestBody {
     projectId: string;
@@ -32,7 +33,7 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
-    const access = await companyRouteAccess("member");
+    const access = await companyRouteAccess("viewer");
     if (access.response) return access.response;
     const companyId = access.ctx.companyId;
     const userId = access.ctx.userId;
@@ -47,6 +48,9 @@ export async function POST(req: NextRequest) {
         if (!(await memberMaySeeProjectId(companyId, access.ctx.scope, projectId))) {
             return NextResponse.json({ error: "Project not found" }, { status: 404 });
         }
+        // Resource-aware (0.20): "Can edit" or Admin on the project.
+        const denied = await recordsWriteDenied(access.ctx, [{ projectId }], "member", "Project");
+        if (denied) return denied;
 
         const approval = await createApprovalRequest({
             companyId,

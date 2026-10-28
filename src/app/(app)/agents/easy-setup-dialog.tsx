@@ -5,6 +5,7 @@ import Link from "next/link";
 import { createClientRequestId } from "@/lib/client-request-id";
 import { useRouter } from "next/navigation";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter, DialogTrigger } from "@/components/ui/dialog";
+import { EVERYONE_ACCESS, WhoCanUseField, hireAccessBody, useAccessPeople, type AgentAccessValue } from "@/components/access/agent-access-control";
 import { Button } from "@/components/ui/button";
 import { DisabledReason } from "@/components/ui/disabled-reason";
 import { HermesImageProgress } from "@/components/hermes-image-progress";
@@ -110,6 +111,8 @@ export function EasySetupDialog({
     const [availabilityReason, setAvailabilityReason] = useState("");
     const [configurations, setConfigurations] = useState<{ id: string; name: string; llmProvider: string }[]>([]);
     const [sourceAgentId, setSourceAgentId] = useState("");
+    const [whoCanUse, setWhoCanUse] = useState<AgentAccessValue>(EVERYONE_ACCESS);
+    const accessPeople = useAccessPeople(open && step === "provider-key");
     const checkAvailability = useCallback(async () => {
         setAvailable(null);
         try {
@@ -232,6 +235,7 @@ export function EasySetupDialog({
                     llmApiKey,
                     llmModel: llmModel.trim() || undefined,
                     llmBaseUrl: llmProvider === CUSTOM_LLM_PROVIDER ? llmBaseUrl.trim() : undefined,
+                    ...hireAccessBody(whoCanUse),
                     agents: requested.map(({ spec: s }) => {
                         const template = s.templateId ? getAgentTemplate(s.templateId) : null;
                         return { requestId: s.id, role: s.role, name: s.name.trim() || s.role, doctrineJson: template ? {
@@ -484,6 +488,7 @@ export function EasySetupDialog({
                             {specs.length > 1 && " All agents in this batch use this connection."}
                         </p>
                         </>}
+                        <WhoCanUseField value={whoCanUse} onChange={setWhoCanUse} people={accessPeople.people} me={accessPeople.me} />
                         {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
                     </div>
                 )}

@@ -5,7 +5,9 @@ import { db } from "@/db";
 import { agents, customers, projects } from "@/db/schema";
 import { getCompanyId } from "@/lib/auth";
 import { companyRouteAccess } from "@/lib/company-access";
-import { memberCustomerCondition, memberMaySeeAgent, memberMaySeeCustomer } from "@/lib/member-scope";
+import { memberMaySeeCustomer, memberProjectCondition } from "@/lib/member-scope";
+import { memberMayUseAgent } from "@/lib/agent-access-server";
+import { resourceWriteDenied } from "@/lib/resource-access";
 import { prepareProjectGoal, saveProjectPurposeNote } from "@/lib/projects-crud";
 import { humanActor, recordProjectAudit } from "@/lib/audit";
 
@@ -27,19 +29,24 @@ export async function GET() {
 
     const rows = await db.select({ id: projects.id, goal: projects.goal, customerId: projects.customerId })
         .from(projects)
-        .where(and(eq(projects.companyId, companyId), isNull(projects.deletedAt), memberCustomerCondition(access.ctx.scope, projects.customerId)))
+        .where(and(eq(projects.companyId, companyId), isNull(projects.deletedAt), memberProjectCondition(access.ctx.scope, { id: projects.id, customerId: projects.customerId })))
         .orderBy(desc(projects.createdAt));
 
     return NextResponse.json({ projects: rows });
 }
 
 export async function POST(req: NextRequest) {
-    const access = await companyRouteAccess("member");
+    const access = await companyRouteAccess("viewer");
     if (access.response) return access.response;
     const companyId = access.ctx.companyId;
 
     try {
         const body = await req.json();
+        // A project under a customer needs edit access to that customer (0.20:
+        // a company viewer with "Can edit" there may add one); an internal
+        // project needs the company role.
+        const denied = await resourceWriteDenied(access.ctx, typeof body.customerId === "string" && body.customerId ? { type: "customer", id: body.customerId } : null, "member", "Customer");
+        if (denied) return denied;
         // Overlong names become a short name plus a purpose note (lib/project-title.ts).
         const prepared = prepareProjectGoal(body.goal, body.description);
         if (!prepared) {
@@ -51,7 +58,7 @@ export async function POST(req: NextRequest) {
             return NextResponse.json({ error: "Customer not found" }, { status: 404 });
         }
         if (!(await validateScopedRelation(companyId, agents, body.leadAgentId))
-            || (body.leadAgentId && !memberMaySeeAgent(access.ctx.scope, body.leadAgentId))) {
+            || (body.leadAgentId && !(await memberMayUseAgent(access.ctx, body.leadAgentId)))) {
             return NextResponse.json({ error: "Lead agent not found" }, { status: 404 });
         }
 

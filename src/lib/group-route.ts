@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
-import { AuthError, requireRole } from "@/lib/roles";
+import { AuthError, requireRole, type Role } from "@/lib/roles";
+import { memberMayUseAllAgents, type AgentAccessViewer } from "@/lib/agent-access-server";
 import { GroupError, getGroup } from "@/lib/groups";
 import { memberMaySeeAgent, type MemberScope } from "@/lib/member-scope";
 
@@ -26,16 +27,25 @@ export function requireAgentsInScope(scope: MemberScope | null, agentIds: unknow
     const ids = Array.isArray(agentIds) ? agentIds : [];
     if (ids.some((id) => typeof id !== "string" || !memberMaySeeAgent(scope, id))) throw new GroupError("Agent not found", 404);
 }
+
+/**
+ * Throws a 404 GroupError when a request would add an agent limited to other
+ * people (0.20, lib/agent-access.ts): a group would let everyone in it talk to it.
+ */
+export async function requireAgentsUsable(viewer: AgentAccessViewer, agentIds: unknown) {
+    const ids = (Array.isArray(agentIds) ? agentIds : []).filter((id): id is string => typeof id === "string");
+    if (!(await memberMayUseAllAgents(viewer, ids))) throw new GroupError("Agent not found", 404);
+}
 import { broadcastMcpEvent } from "@/lib/pubsub";
 
 /**
  * Shared plumbing for the group REST routes: members (not viewers) may create
  * and manage groups, and every failure maps to a clean status.
  */
-export async function groupRoute<T>(handler: (ctx: { userId: string; companyId: string; scope: MemberScope | null }) => Promise<T>, status = 200) {
+export async function groupRoute<T>(handler: (ctx: { userId: string; companyId: string; scope: MemberScope | null; role: Role }) => Promise<T>, status = 200) {
     try {
         const ctx = await requireRole("member")();
-        const result = await handler({ userId: ctx.userId, companyId: ctx.companyId, scope: ctx.scope });
+        const result = await handler({ userId: ctx.userId, companyId: ctx.companyId, scope: ctx.scope, role: ctx.role });
         return NextResponse.json(result, { status });
     } catch (error) {
         if (error instanceof AuthError) return NextResponse.json({ error: error.message }, { status: error.statusCode });

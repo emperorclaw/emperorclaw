@@ -17,6 +17,8 @@ type Member = {
     companyRole: string;
     instanceRole: string;
     joinedAt: string | null;
+    /** "Harbor Dental · Can edit": roles on clients and projects (0.20 Access). */
+    customAccess?: string | null;
 };
 
 type InvitationRow = {
@@ -327,6 +329,7 @@ export default function MembersClient({ currentUserId, currentUserRole, initialM
                                         {member.displayName && <br />}
                                         <span className={member.displayName ? "text-xs text-muted-foreground" : ""}>{member.email}</span>
                                         {member.roleTitle && <span className="block text-xs text-cyan-400/70 mt-0.5">{member.roleTitle}</span>}
+                                        {member.customAccess && <span className="mt-0.5 block text-xs text-muted-foreground">Custom access: {member.customAccess}</span>}
                                     </td>
                                     <td className="py-3">{roleBadge(member.companyRole)}</td>
                                     <td className="py-3">{roleBadge(member.instanceRole)}</td>

@@ -53,9 +53,18 @@ export async function seedHuman(
         passwordHash: "x",
         instanceRole: options.instanceRole ?? "member",
     }).returning();
+    // Since 0.20 a restricted member's customers are resource memberships
+    // (migration 0072); a legacy `customerIds` in the fixture becomes them.
+    const { customerIds, ...scopeJson } = (options.scope ?? {}) as { customerIds?: unknown };
     const [membership] = await db.insert(companyMembers).values({
-        companyId, userId: user.id, role, scopeJson: options.scope ?? {},
+        companyId, userId: user.id, role, scopeJson,
     }).returning();
+    if (Array.isArray(customerIds) && customerIds.length > 0 && (role === "member" || role === "viewer")) {
+        const { resourceMemberships } = await getSchema();
+        await db.insert(resourceMemberships).values(customerIds.map((id) => ({
+            companyId, userId: user.id, resourceType: "customer", resourceId: String(id), role: role === "viewer" ? "viewer" : "editor",
+        })));
+    }
     const [session] = await db.insert(sessions).values({
         userId: user.id, expiresAt: new Date(Date.now() + 86_400_000),
     }).returning();

@@ -19,6 +19,9 @@ import { agentAvatarSrc } from "@/lib/avatar";
 import { deriveAppearance, type CharacterAppearance } from "@/lib/character/model";
 import { isPrivateDirectThread, userMayUseThread } from "@/lib/direct-chat-mode";
 import { isAgentPairThread } from "@/lib/groups";
+import { memberProjectCondition } from "@/lib/member-scope";
+import { agentsNotUsableBy } from "@/lib/agent-access-server";
+import type { Role } from "@/lib/role-matrix";
 import { splitProjectTitle } from "@/lib/project-title";
 import { approvalInRun, scopedAgentIds, taskHref, taskVisibleToScope } from "@/lib/task-story";
 import type { TaskViewer } from "@/lib/task-story-reads";
@@ -186,7 +189,12 @@ export async function loadWorkTimeline(companyId: string, viewer: TaskViewer, qu
 
     // The visible agents: scoped, not deleted, and matching the agent filter.
     const visibleAgentIds = agentRows.map((a) => a.id);
-    const agentName = new Map(agentRows.map((a) => [a.id, a.name]));
+    // An agent limited to other people (0.20): its row reads "🔒 name" for an
+    // owner/admin (metadata) and "Private agent" for everyone else.
+    const limited = viewer.userId
+        ? await agentsNotUsableBy({ companyId, userId: viewer.userId, role: viewer.role as Role, scope: viewer.scope })
+        : { hidden: new Set(agentRows.map((a) => a.id)), metadata: new Set<string>() };
+    const agentName = new Map(agentRows.map((a) => [a.id, !limited.hidden.has(a.id) ? a.name : limited.metadata.has(a.id) ? `🔒 ${a.name}` : "Private agent"]));
     const memberIdToUserId = new Map(memberRows.map((m) => [m.id, m.userId]));
     const userIdToName = new Map<string, string>();
     for (const m of memberRows) userIdToName.set(m.userId, m.displayName?.trim() || UNNAMED_PERSON);
@@ -260,7 +268,7 @@ export async function loadWorkTimeline(companyId: string, viewer: TaskViewer, qu
     };
     const visibleRunRows = runRows.filter((run) => {
         if (!run.agentId || !agentName.has(run.agentId)) return false;
-        if (run.taskId && !taskVisibleToScope({ customerId: run.taskCustomerId }, viewer.scope)) return false;
+        if (run.taskId && !taskVisibleToScope({ customerId: run.taskCustomerId, projectId: run.taskProjectId }, viewer.scope)) return false;
         return taskMatchesParam(run.taskId, run.taskProjectId, run.taskCustomerId);
     });
 
@@ -514,8 +522,9 @@ interface TaskParamFilter {
 function scopedTaskPredicate(viewer: TaskViewer): { none: boolean; condition: SQL | undefined } {
     if (!viewer.scope || viewer.scope.mode !== "restricted") return { none: false, condition: undefined };
     const customerIds = viewer.scope.customerIds ?? [];
-    if (customerIds.length === 0) return { none: true, condition: undefined };
-    return { none: false, condition: inArray(projects.customerId, customerIds) };
+    const projectIds = viewer.scope.projectIds ?? [];
+    if (customerIds.length === 0 && projectIds.length === 0) return { none: true, condition: undefined };
+    return { none: false, condition: memberProjectCondition(viewer.scope, { id: projects.id, customerId: projects.customerId }) };
 }
 
 /** Live (not deleted) task and project, inside the viewer's scope and the page filters. */

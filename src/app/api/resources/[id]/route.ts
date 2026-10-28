@@ -3,9 +3,10 @@ export const dynamic = "force-dynamic";
 import { NextResponse } from "next/server";
 import { archiveScopedResource, resolveResourceScope, resourceNameError, updateScopedResource } from "@/lib/resources";
 import { companyRouteAccess } from "@/lib/company-access";
-import { memberResourceDenied } from "../_shared";
+import { memberResourceWriteDenied } from "../_shared";
 import { memberMaySeeResource } from "@/lib/member-scope";
 import { humanActor } from "@/lib/audit";
+import { resourceWriteDenied, scopeResource } from "@/lib/resource-access";
 
 
 export async function DELETE(
@@ -13,12 +14,13 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string }> },
 ) {
   try {
-    const access = await companyRouteAccess("member");
+    const access = await companyRouteAccess("viewer");
     if (access.response) return access.response;
     const membership = access.ctx;
 
     const { id } = await params;
-    const denied = await memberResourceDenied(membership, id);
+    // Resource-aware (0.20): edit access to the note's customer/project.
+    const denied = await memberResourceWriteDenied(membership, id);
     if (denied) return denied;
     const archived = await archiveScopedResource(membership.companyId, id, humanActor(membership.userId));
     if (!archived) {
@@ -38,12 +40,13 @@ export async function PATCH(
   { params }: { params: Promise<{ id: string }> },
 ) {
   try {
-    const access = await companyRouteAccess("member");
+    const access = await companyRouteAccess("viewer");
     if (access.response) return access.response;
     const membership = access.ctx;
 
     const { id } = await params;
-    const denied = await memberResourceDenied(membership, id);
+    // Resource-aware (0.20): edit access to the note's customer/project.
+    const denied = await memberResourceWriteDenied(membership, id);
     if (denied) return denied;
     const body = await request.json();
 
@@ -85,6 +88,10 @@ export async function PATCH(
     if ((patch.scopeType !== undefined || patch.scopeId !== undefined)
       && !(await memberMaySeeResource(membership.companyId, membership.scope, { scopeType: patch.scopeType ?? "company", scopeId: patch.scopeId ?? null }))) {
       return NextResponse.json({ error: "That scope is outside your access" }, { status: 403 });
+    }
+    if (patch.scopeType !== undefined || patch.scopeId !== undefined) {
+      const movedTo = await resourceWriteDenied(membership, await scopeResource(membership.companyId, { scopeType: patch.scopeType ?? "company", scopeId: patch.scopeId ?? null }), "member", "Scope");
+      if (movedTo) return movedTo;
     }
     patch.createdByType = "user";
     patch.createdById = membership.userId;

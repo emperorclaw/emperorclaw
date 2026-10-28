@@ -15,7 +15,7 @@ import { getGroupThread, GroupError, joinGroupAsHuman, isAgentPairThread, isComp
 import { parseEventsSince } from "@/lib/run-events";
 import { loadChatRunState } from "@/lib/run-ledger-reads";
 import { companyRouteAccess } from "@/lib/company-access";
-import { memberMaySeeAgent } from "@/lib/member-scope";
+import { agentUseFor, mentionedAgentsNotUsable, type AgentAccessViewer } from "@/lib/agent-access-server";
 import { requireGroupInScope } from "@/lib/group-route";
 
 type ThreadMessageLike = {
@@ -29,6 +29,15 @@ function serializeMessage(message: ThreadMessageLike) {
         ...message,
         fromUserId: message.fromUserId || message.senderId || null,
     };
+}
+
+/** 404 for an agent outside the person's scope, 403 for one an admin sees only as metadata. */
+async function agentUseDenied(viewer: AgentAccessViewer, agentId: string): Promise<NextResponse | null> {
+    const use = await agentUseFor(viewer, agentId);
+    if (use === "full") return null;
+    return use === "metadata"
+        ? NextResponse.json({ error: "This agent is limited to other people" }, { status: 403 })
+        : NextResponse.json({ error: "Agent not found" }, { status: 404 });
 }
 
 function normalizedPrompt(text: string) {
@@ -62,9 +71,11 @@ export async function GET(req: NextRequest) {
         const directThreadId = searchParams.get("directThreadId");
         const sinceDate = since ? new Date(since) : null;
         const beforeDate = before ? new Date(before) : null;
-        // A restricted member only reads chats with agents in their scope.
-        if (targetAgentId && !memberMaySeeAgent(access.ctx.scope, await resolveAgentId(companyId, targetAgentId))) {
-            return NextResponse.json({ error: "Agent not found" }, { status: 404 });
+        // A restricted member only reads chats with agents in their scope, and
+        // nobody reads the chats of an agent limited to other people (0.20).
+        if (targetAgentId) {
+            const denied = await agentUseDenied(access.ctx, await resolveAgentId(companyId, targetAgentId));
+            if (denied) return denied;
         }
         if (groupId && access.ctx.scope) await requireGroupInScope(companyId, groupId, access.ctx.userId, access.ctx.scope);
 
@@ -129,9 +140,16 @@ export async function POST(req: NextRequest) {
         const { text, targetAgentId, attachments, threadId: groupId, directThreadId } = await req.json();
         if (text !== undefined && typeof text !== "string") return NextResponse.json({ error: "Text must be a string" }, { status: 400 });
         if (groupId !== undefined && typeof groupId !== "string") return NextResponse.json({ error: "threadId must be a string" }, { status: 400 });
-        // A restricted member only talks to (and controls) agents in their scope.
-        if (typeof targetAgentId === "string" && targetAgentId && !memberMaySeeAgent(access.ctx.scope, await resolveAgentId(companyId, targetAgentId))) {
-            return NextResponse.json({ error: "Agent not found" }, { status: 404 });
+        // A restricted member only talks to (and controls) agents in their
+        // scope; an agent limited to other people is theirs alone (0.20).
+        if (typeof targetAgentId === "string" && targetAgentId) {
+            const denied = await agentUseDenied(access.ctx, await resolveAgentId(companyId, targetAgentId));
+            if (denied) return denied;
+        }
+        // Nor can a mention wake an agent they may not use.
+        const unusable = typeof text === "string" ? await mentionedAgentsNotUsable(access.ctx, text) : [];
+        if (unusable.length > 0) {
+            return NextResponse.json({ error: `You can't mention ${unusable.map((a) => a.name).join(", ")}: that agent is limited to other people` }, { status: 403 });
         }
         if (typeof groupId === "string" && groupId && access.ctx.scope) {
             try {

@@ -66,6 +66,7 @@ export async function realtimeSubjectFor(companyId: string, payload: unknown): P
     const projectIds = new Set<string>();
     const customerIds = new Set<string>();
     const taskIds = new Set<string>();
+    const directAgentIds = new Set<string>();
     const add = (set: Set<string>, value: unknown) => { if (typeof value === "string" && UUID_RE.test(value)) set.add(value); };
     add(projectIds, p.projectId);
     add(customerIds, p.customerId);
@@ -82,9 +83,9 @@ export async function realtimeSubjectFor(companyId: string, payload: unknown): P
     }
     const threadIds = eventThreadIds(payload).filter((id) => UUID_RE.test(id));
     if (threadIds.length > 0) {
-        const threads = await db.select({ projectId: messageThreads.projectId, taskId: messageThreads.taskId }).from(messageThreads)
+        const threads = await db.select({ projectId: messageThreads.projectId, taskId: messageThreads.taskId, directAgentId: messageThreads.directAgentId }).from(messageThreads)
             .where(and(inArray(messageThreads.id, threadIds), eq(messageThreads.companyId, companyId)));
-        for (const thread of threads) { add(projectIds, thread.projectId); add(taskIds, thread.taskId); }
+        for (const thread of threads) { add(projectIds, thread.projectId); add(taskIds, thread.taskId); add(directAgentIds, thread.directAgentId); }
     }
     if (taskIds.size > 0) {
         const rows = await db.select({ projectId: tasks.projectId }).from(tasks)
@@ -104,7 +105,7 @@ export async function realtimeSubjectFor(companyId: string, payload: unknown): P
     const agentIds = candidates.size > 0
         ? (await db.select({ id: agents.id }).from(agents).where(and(inArray(agents.id, [...candidates]), eq(agents.companyId, companyId)))).map((a) => a.id)
         : [];
-    return { projectIds: [...projectIds], customerIds: [...customerIds], agentIds };
+    return { projectIds: [...projectIds], customerIds: [...customerIds], agentIds, directAgentIds: [...directAgentIds] };
 }
 
 export async function broadcastMcpEvent(companyId: string, payload: any) {

@@ -24,7 +24,8 @@ import { checkLlmEndpointForSave } from "@/lib/llm-endpoint-policy";
 import { validAvatarUrl } from "@/lib/avatar";
 import { legacyAvatarToAppearance, normalizeAppearance } from "@/lib/character/model";
 import { companyRouteAccess } from "@/lib/company-access";
-import { memberMaySeeAgent } from "@/lib/member-scope";
+import { agentUseFor, loadAgentAccessInfo } from "@/lib/agent-access-server";
+import type { AgentUse } from "@/lib/agent-access";
 import { canAdmin } from "@/lib/role-matrix";
 import { humanActor, recordAgentChange } from "@/lib/audit";
 import { PROVIDER_TROUBLE_RUNS, providerTroubleFromRuns } from "@/lib/provider-trouble";
@@ -37,6 +38,24 @@ function redactAgent<T extends { llmApiKeyEncrypted?: unknown; llmApiKeyVersion?
 }
 
 export const dynamic = "force-dynamic";
+
+/** What an owner/admin who may not use an agent sees: name, owner, status and cost (lib/agent-access.ts). */
+function agentMetadata(agent: typeof agents.$inferSelect) {
+    return {
+        id: agent.id, name: agent.name, role: agent.role, avatarUrl: agent.avatarUrl, avatarAppearance: agent.avatarAppearance,
+        status: agent.status, lastSeenAt: agent.lastSeenAt, createdAt: agent.createdAt,
+        monthlyCostCents: agent.monthlyCostCents, monthlyBudgetCents: agent.monthlyBudgetCents, budgetStatus: agent.budgetStatus,
+        access: agent.access, ownerUserId: agent.ownerUserId,
+    };
+}
+
+/** 404 when the agent is out of reach, 403 when only its metadata is (owners/admins). */
+function agentUseDenied(use: AgentUse): NextResponse | null {
+    if (use === "full") return null;
+    return use === "metadata"
+        ? NextResponse.json({ error: "This agent is limited to other people" }, { status: 403 })
+        : NextResponse.json({ error: "Agent not found" }, { status: 404 });
+}
 
 const LLM_FIELDS = ["llmProvider", "llmModel", "llmApiKey", "llmBaseUrl"] as const;
 const LLM_PROVIDERS = ["", "openai", "anthropic", "google", "openrouter", "grok", "deepseek", CUSTOM_LLM_PROVIDER];
@@ -152,7 +171,9 @@ export async function PATCH(
     const companyId = access.ctx.companyId;
 
     const { id } = await params;
-    if (!memberMaySeeAgent(access.ctx.scope, id)) return NextResponse.json({ error: "Agent not found" }, { status: 404 });
+    // Configuring an agent needs full use of it (0.20): who can use it is /access.
+    const denied = agentUseDenied(await agentUseFor(access.ctx, id));
+    if (denied) return denied;
     const body = await req.json().catch(() => ({}));
 
     if (body.provider !== undefined || body.deploymentMode !== undefined) {
@@ -292,12 +313,18 @@ export async function GET(
     const viewerId = access.ctx.userId;
 
     const { id } = await params;
-    if (!memberMaySeeAgent(access.ctx.scope, id)) return NextResponse.json({ error: "Agent not found" }, { status: 404 });
+    const use = await agentUseFor(access.ctx, id);
+    if (use === "none") return NextResponse.json({ error: "Agent not found" }, { status: 404 });
     const [agent] = await db.select().from(agents).where(
         and(eq(agents.id, id), eq(agents.companyId, companyId), isNull(agents.deletedAt))
     ).limit(1);
 
     if (!agent) return NextResponse.json({ error: "Agent not found" }, { status: 404 });
+    const accessInfo = await loadAgentAccessInfo(companyId, id);
+    // An owner/admin who may not use it: name, owner, status and cost only.
+    if (use === "metadata") {
+        return NextResponse.json({ agent: agentMetadata(agent), access: "metadata", accessInfo });
+    }
 
     let latestSnapshot = null;
     let memoryEntries: typeof agentMemoryEntries.$inferSelect[] = [];
@@ -358,6 +385,8 @@ export async function GET(
 
     return NextResponse.json({
         agent: redactAgent(agent),
+        access: "full",
+        accessInfo,
         providerTrouble: providerTroubleFromRuns(latestRuns),
         directChatMode: await getDirectChatMode(companyId),
         latestSnapshot,
@@ -381,7 +410,13 @@ export async function DELETE(
     const userId = access.ctx.userId;
 
     const { id } = await params;
-    if (!memberMaySeeAgent(access.ctx.scope, id)) return NextResponse.json({ error: "Agent not found" }, { status: 404 });
+    // An agent limited to some people is deleted by its owner, owners and admins (who may not use it).
+    const use = await agentUseFor(access.ctx, id);
+    if (use === "none") return NextResponse.json({ error: "Agent not found" }, { status: 404 });
+    const accessInfo = await loadAgentAccessInfo(companyId, id);
+    if (accessInfo && accessInfo.access !== "everyone" && !canAdmin(access.ctx.role) && accessInfo.owner?.id !== userId) {
+        return NextResponse.json({ error: "Only its owner, owners and admins can delete this agent" }, { status: 403 });
+    }
     const body = await req.json().catch(() => ({}));
     const confirmName = typeof body.confirmName === "string" ? body.confirmName.trim() : "";
 

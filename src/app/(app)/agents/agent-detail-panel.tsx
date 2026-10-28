@@ -28,6 +28,7 @@ import { AgentScopeTab } from "./agent-scope-tab";
 import { AgentActionsTab } from "./agent-actions-tab";
 import { AgentRunsTab } from "./agent-runs-tab";
 import { DeleteAgentDialog } from "./delete-agent-dialog";
+import { AgentAccessSettings, LockedAgentCard } from "@/components/access/agent-access-control";
 import { getProvider, buildAgentSetupPrompt } from "@/lib/agent-providers";
 import { getAgentTemplate } from "@/lib/agent-templates";
 import { ModelSearchSelect } from "@/components/model-search-select";
@@ -62,6 +63,9 @@ const LLM_PROVIDER_LABELS: Record<string, string> = {
 };
 
 type AgentDetailData = {
+    /** "metadata": an owner/admin who may not use this agent (lib/agent-access.ts); only name, owner, status and cost come back. */
+    access?: "full" | "metadata";
+    accessInfo?: { access: string; owner: { id: string; name: string } | null; people: { id: string; name: string }[] } | null;
     directChatMode?: string;
     agent: {
         id: string;
@@ -205,6 +209,16 @@ export function AgentDetailPanel({ agentId, agentName, runtime = null }: {
                     <p className="text-sm">{error || "Could not load agent details."}</p>
                 </div>
             </main>
+        );
+    }
+
+    if (data.access === "metadata") {
+        const locked = data.agent as unknown as { id: string; name: string; role: string | null; status: string; monthlyCostCents: number; access: string };
+        return (
+            <div className="space-y-3">
+                <LockedAgentCard agent={locked} ownerName={data.accessInfo?.owner?.name ?? null} />
+                <div className="flex justify-end"><DeleteAgentDialog agentId={locked.id} agentName={locked.name} /></div>
+            </div>
         );
     }
 
@@ -727,7 +741,8 @@ export function AgentDetailPanel({ agentId, agentName, runtime = null }: {
                     />
                 </TabsContent>
 
-                <TabsContent value="scope" className="mt-4">
+                <TabsContent value="scope" className="mt-4 space-y-4">
+                    <AgentAccessSettings agentId={agent.id} />
                     <AgentScopeTab
                         agentId={agent.id}
                         agentName={agent.name}

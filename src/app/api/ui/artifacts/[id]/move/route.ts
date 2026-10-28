@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireCompanyFromSession } from "@/lib/company-session";
 import { memberMaySeeRecord } from "@/lib/member-scope";
+import { recordResource, resourceWriteDenied } from "@/lib/resource-access";
 import { artifacts } from "@/db/schema";
 import { db } from "@/db";
 import { and, eq, isNull } from "drizzle-orm";
@@ -11,7 +12,8 @@ import { sanitizeArtifactClientPayload } from "@/lib/artifacts";
 
 export async function PATCH(req: NextRequest, context: RouteContext<"/api/ui/artifacts/[id]/move">) {
     try {
-        const { companyId, scope } = await requireCompanyFromSession("member");
+        const session = await requireCompanyFromSession("viewer");
+        const { companyId, scope } = session;
         const { id: artifactId } = await context.params;
         const [artifact] = await db.select().from(artifacts).where(and(
             eq(artifacts.id, artifactId),
@@ -22,12 +24,22 @@ export async function PATCH(req: NextRequest, context: RouteContext<"/api/ui/art
         if (!artifact || !(await memberMaySeeRecord(companyId, scope, artifact))) {
             return NextResponse.json({ error: "Artifact not found" }, { status: 404 });
         }
+        // Resource-aware (0.20): edit access to the file's project or customer.
+        const denied = await resourceWriteDenied(session, await recordResource(companyId, artifact), "member", "Artifact");
+        if (denied) return denied;
 
         const body = await req.json();
         const targetFolderId = body.folderId || null;
         const targetFolder = targetFolderId ? await findActiveFolder(companyId, targetFolderId) : null;
         if (targetFolderId && !targetFolder) {
             return NextResponse.json({ error: "Destination folder not found" }, { status: 404 });
+        }
+        // The folder lives in a project/customer too: it must be visible and editable (0.20).
+        if (targetFolder) {
+            const folderRecord = { projectId: targetFolder.projectId as string | null, customerId: targetFolder.customerId as string | null };
+            if (!(await memberMaySeeRecord(companyId, scope, folderRecord))) return NextResponse.json({ error: "Destination folder not found" }, { status: 404 });
+            const folderDenied = await resourceWriteDenied(session, await recordResource(companyId, folderRecord), "member", "Folder");
+            if (folderDenied) return folderDenied;
         }
 
         const targetFolderIdValue = targetFolder && typeof targetFolder.id === "string" ? targetFolder.id : null;

@@ -3,7 +3,9 @@ import { and, eq, isNull } from "drizzle-orm";
 import { db } from "@/db";
 import { agents, customers, projects } from "@/db/schema";
 import { getCompanyId } from "@/lib/auth";
-import { companyRouteAccess } from "@/lib/company-access";
+import { hasCustomAccess, resourceRouteAccess, resourceWriteDenied } from "@/lib/resource-access";
+import { roleGte } from "@/lib/role-matrix";
+import { memberMayUseAgent } from "@/lib/agent-access-server";
 import { memberMaySeeProject } from "@/lib/member-scope";
 import { prepareProjectGoal, saveProjectPurposeNote } from "@/lib/projects-crud";
 import { humanActor, recordProjectAudit } from "@/lib/audit";
@@ -22,11 +24,12 @@ async function validateScopedRelation(companyId: string, table: typeof customers
 }
 
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ projectId: string }> }) {
-    const access = await companyRouteAccess("member");
+    const { projectId } = await params;
+    // Resource-aware (0.20): editors and admins of this project or its customer.
+    const access = await resourceRouteAccess({ type: "project", id: projectId }, "member");
     if (access.response) return access.response;
     const companyId = access.ctx.companyId;
 
-    const { projectId } = await params;
     try {
         const body = await req.json();
         const [existing] = await db.select().from(projects).where(and(
@@ -52,7 +55,23 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ pr
         if (!(await validateScopedRelation(companyId, customers, body.customerId))) {
             return NextResponse.json({ error: "Customer not found" }, { status: 404 });
         }
-        if (!(await validateScopedRelation(companyId, agents, body.leadAgentId))) {
+        // Moving the project to another customer needs edit access there too.
+        if (body.customerId !== undefined && (body.customerId || null) !== existing.customerId) {
+            // Moving it takes it away from its client's people: admin on the
+            // project (or its client) here; then edit access at the destination,
+            // or the company role to make it internal.
+            // (Only when someone actually has Access there: a company that never
+            // uses Access keeps letting members move projects, as before 0.20.)
+            if (!roleGte(access.ctx.resourceRole, "admin") && (await hasCustomAccess(companyId, access.ctx.resource))) {
+                return NextResponse.json({ error: "Forbidden — moving a project to another client requires admin access to it." }, { status: 403 });
+            }
+            const target = typeof body.customerId === "string" && body.customerId ? { type: "customer" as const, id: body.customerId } : null;
+            const denied = await resourceWriteDenied(access.ctx, target, "member", "Customer");
+            if (denied) return denied;
+        }
+        if (!(await validateScopedRelation(companyId, agents, body.leadAgentId))
+            // A new lead must be an agent they may use (0.20), resolved like the write resolves it.
+            || (body.leadAgentId && body.leadAgentId !== existing.leadAgentId && !(await memberMayUseAgent(access.ctx, body.leadAgentId)))) {
             return NextResponse.json({ error: "Lead agent not found" }, { status: 404 });
         }
 
@@ -80,11 +99,11 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ pr
 }
 
 export async function DELETE(_req: NextRequest, { params }: { params: Promise<{ projectId: string }> }) {
-    const access = await companyRouteAccess("member");
+    const { projectId } = await params;
+    const access = await resourceRouteAccess({ type: "project", id: projectId }, "member");
     if (access.response) return access.response;
     const companyId = access.ctx.companyId;
 
-    const { projectId } = await params;
     try {
         const [existing] = await db.select().from(projects).where(and(
             eq(projects.id, projectId),

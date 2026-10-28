@@ -4,7 +4,7 @@ import { agents, messageThreads, threadMessages, threadParticipants } from "@/db
 import { agentTokenMayUseThread } from "@/lib/direct-chat-mode";
 import { resolveAgentId } from "@/lib/mcp";
 import { isAgentPairThread } from "@/lib/groups";
-import { mentionedAgentIds } from "@/lib/message-routing";
+import { mentionedAgentIds, unreachableMentionsOf } from "@/lib/message-routing";
 
 /**
  * MCP-side access to private direct threads (lib/direct-chat-mode.ts): a
@@ -104,7 +104,7 @@ export async function isVerifiedReplyBy(companyId: string, agentId: string | nul
     if (!agentId || typeof messageId !== "string" || !UUID_RE.test(messageId)) return false;
     const [source] = await db.select({
         threadId: threadMessages.threadId, senderType: threadMessages.senderType, senderId: threadMessages.senderId,
-        targetAgentId: threadMessages.targetAgentId, text: threadMessages.text,
+        targetAgentId: threadMessages.targetAgentId, text: threadMessages.text, metadataJson: threadMessages.metadataJson,
         type: messageThreads.type, directAgentId: messageThreads.directAgentId,
         description: messageThreads.description, createdByType: messageThreads.createdByType,
     }).from(threadMessages)
@@ -113,6 +113,8 @@ export async function isVerifiedReplyBy(companyId: string, agentId: string | nul
     if (!source) return false;
     if (postThreadId && UUID_RE.test(postThreadId) && postThreadId !== source.threadId) return false;
     if (source.senderType === "agent" && source.senderId === agentId) return false;
+    // A person who may not use this agent never addressed it (0.20, decideDelivery).
+    if (source.senderType === "human" && unreachableMentionsOf(source.metadataJson).has(agentId)) return false;
     if (source.targetAgentId === agentId) return true;
     if (source.type === "direct" && source.directAgentId === agentId) return true;
     if (isAgentPairThread(source)) {

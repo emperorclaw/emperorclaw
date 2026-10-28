@@ -3,15 +3,19 @@
  * path for the single DELETE /api/tasks/[id] and the bulk archive/unarchive
  * routes, so the company and member-scope checks cannot drift apart.
  *
- * The caller has already passed requireRole("member") (viewers never get
- * here). Each task is then kept only when it belongs to the caller's company
- * and, for a restricted member, sits in a project they may see; anything else
- * is skipped, never an error, so a stale id in a batch cannot fail the rest.
+ * The caller has already passed requireRole("viewer"). Each task is then kept
+ * only when it belongs to the caller's company, sits in a project they may
+ * see and, since 0.20, one they may edit (company member, or "Can edit" on
+ * the project or its customer); anything else is skipped, never an error, so a
+ * stale id in a batch cannot fail the rest.
  */
 import { and, eq, gte, inArray, isNotNull, isNull } from "drizzle-orm";
 import { db } from "@/db";
 import { tasks } from "@/db/schema";
 import { memberVisibleProjectIds, type MemberScope } from "@/lib/member-scope";
+import { projectsWithRole } from "@/lib/resource-access";
+import { roleGte, type Role } from "@/lib/role-matrix";
+import type { GuardContext } from "@/lib/roles";
 import { broadcastMcpEvent } from "@/lib/pubsub";
 import { auditTaskTitle, humanActor, recordAudits } from "@/lib/audit";
 import { randomUUID } from "crypto";
@@ -22,7 +26,7 @@ export const TASK_UNARCHIVE_WINDOW_MS = 10 * 60_000;
 
 type TaskRow = typeof tasks.$inferSelect;
 /** userId: who is archiving, for the activity log. */
-export type ArchiveCaller = { companyId: string; scope: MemberScope | null; userId?: string | null };
+export type ArchiveCaller = { companyId: string; scope: MemberScope | null; userId?: string | null; role?: Role; memberships?: GuardContext["memberships"] };
 
 /** One activity entry per task; a bulk change shares a batch id so the feed can group it. */
 function auditArchive(caller: ArchiveCaller, action: "task.archived" | "task.unarchived", changed: TaskRow[]) {
@@ -54,8 +58,12 @@ export function parseTaskIdList(body: unknown): { ids: string[] } | { error: str
 /** Rows (from `rows`) the caller may act on: same company, and in scope for a restricted member. */
 async function permitted(caller: ArchiveCaller, rows: TaskRow[]) {
     const visible = await memberVisibleProjectIds(caller.companyId, caller.scope);
-    if (!visible) return rows;
-    return rows.filter((row) => row.projectId !== null && visible.has(row.projectId));
+    const seen = visible ? rows.filter((row) => row.projectId !== null && visible.has(row.projectId)) : rows;
+    // Below company member, or restricted: only tasks in projects they may edit
+    // (a restricted member's role there is their membership role).
+    if (!caller.role || !caller.userId || (roleGte(caller.role, "member") && !caller.scope)) return seen;
+    const writable = await projectsWithRole(caller as GuardContext, seen.map((row) => row.projectId));
+    return seen.filter((row) => writable.has(row.projectId));
 }
 
 function skippedOf(ids: string[], done: TaskRow[]) {

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { AuthError, requireRole } from "@/lib/roles";
+import { editNowhereResponse, mayEditSomewhere } from "@/lib/resource-access";
 import { parseTaskIdList, unarchiveTasksForCaller } from "@/lib/task-archive";
 
 /**
@@ -10,11 +11,13 @@ import { parseTaskIdList, unarchiveTasksForCaller } from "@/lib/task-archive";
 export async function POST(req: NextRequest) {
     let ctx;
     try {
-        ctx = await requireRole("member")();
+        ctx = await requireRole("viewer")();
     } catch (error) {
         if (error instanceof AuthError) return NextResponse.json({ error: error.message }, { status: error.statusCode });
         throw error;
     }
+    // Resource-aware (0.20): a viewer with "Can edit" somewhere gets through; each task is checked below.
+    if (!(await mayEditSomewhere(ctx))) return editNowhereResponse();
 
     const parsed = parseTaskIdList(await req.json().catch(() => null));
     if ("error" in parsed) return NextResponse.json({ error: parsed.error }, { status: 400 });

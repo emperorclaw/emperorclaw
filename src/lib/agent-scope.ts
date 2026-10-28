@@ -41,16 +41,67 @@ export function isAgentAllowed(allowedAgentIds: ReadonlySet<string> | null, agen
     return Boolean(agentId) && allowedAgentIds.has(agentId as string);
 }
 
-/** null = unrestricted (no scoping row, or mode isn't 'restricted'). */
+/**
+ * The owner's member scope as a ceiling for an 'owner' agent (0.20): null =
+ * no ceiling (the owner is unrestricted, an admin or the owner), "none" = the
+ * owner is gone or no longer a member (fail closed: the agent sees nothing).
+ * Read on every call, so an owner's scope change applies on the next request.
+ */
+async function ownerCeiling(companyId: string, ownerUserId: string | null): Promise<import("@/lib/member-scope").MemberScope | null | "none"> {
+    if (!ownerUserId) return "none";
+    const { companyMembers, users } = await import("@/db/schema");
+    const { resolveMemberScope } = await import("@/lib/member-scope");
+    const [row] = await db.select({ role: companyMembers.role, scopeJson: companyMembers.scopeJson, instanceRole: users.instanceRole })
+        .from(companyMembers).innerJoin(users, eq(users.id, companyMembers.userId))
+        .where(and(eq(companyMembers.companyId, companyId), eq(companyMembers.userId, ownerUserId), isNull(users.deletedAt))).limit(1);
+    if (!row) return "none";
+    if (row.instanceRole === "instance_admin" || row.role === "owner" || row.role === "admin") return null;
+    return resolveMemberScope(companyId, ownerUserId, row.scopeJson);
+}
+
+/**
+ * The scope an agent actually works with. For an agent whose access is
+ * 'owner' (lib/agent-access.ts) it is its own scope intersected with its
+ * owner's member scope: such an agent never sees more data than its owner.
+ * Everyone else's agents: the stored scope, unchanged. `raw` keeps agentIds
+ * whatever the mode (it is independent of the customer/project mode).
+ */
+export async function effectiveAgentScope(
+    companyId: string,
+    row: { scopeJson: unknown; access?: string | null; ownerUserId?: string | null } | undefined,
+): Promise<{ scope: AgentScope | null; raw: AgentScope | undefined }> {
+    const raw = row?.scopeJson && typeof row.scopeJson === "object" ? row.scopeJson as AgentScope : undefined;
+    const scope = raw && raw.mode === "restricted" ? raw : null;
+    if (!row || row.access !== "owner") return { scope, raw };
+    const ceiling = await ownerCeiling(companyId, row.ownerUserId ?? null);
+    if (ceiling === null) return { scope, raw };
+    if (ceiling === "none") {
+        const none: AgentScope = { mode: "restricted", customerIds: [], projectIds: [], agentIds: [] };
+        return { scope: none, raw: none };
+    }
+    const { memberVisibleProjectIds } = await import("@/lib/member-scope");
+    const [ownerProjects, agentProjects] = await Promise.all([
+        memberVisibleProjectIds(companyId, ceiling),
+        getAllowedProjectIds(companyId, scope),
+    ]);
+    const owned = ownerProjects ?? new Set<string>();
+    const ownerCustomers = new Set(ceiling.customerIds ?? []);
+    const ownerAgents = new Set(ceiling.agentIds ?? []);
+    const projectIds = agentProjects ? [...agentProjects].filter((id) => owned.has(id)) : [...owned];
+    const customerIds = scope ? (scope.customerIds ?? []).filter((id) => ownerCustomers.has(id)) : [...ownerCustomers];
+    const agentIds = Array.isArray(raw?.agentIds) ? raw.agentIds.filter((id) => ownerAgents.has(id)) : [...ownerAgents];
+    const capped: AgentScope = { mode: "restricted", customerIds, projectIds, agentIds };
+    return { scope: capped, raw: capped };
+}
+
+/** null = unrestricted (no scoping row, or mode isn't 'restricted'). Includes the owner ceiling (effectiveAgentScope). */
 export async function getAgentScope(companyId: string, agentId: string): Promise<AgentScope | null> {
-    const [row] = await db.select({ scopeJson: agents.scopeJson }).from(agents).where(and(
+    const [row] = await db.select({ scopeJson: agents.scopeJson, access: agents.access, ownerUserId: agents.ownerUserId }).from(agents).where(and(
         eq(agents.id, agentId),
         eq(agents.companyId, companyId),
         isNull(agents.deletedAt),
     )).limit(1);
-    const scope = row?.scopeJson as AgentScope | undefined;
-    if (!scope || scope.mode !== "restricted") return null;
-    return scope;
+    return (await effectiveAgentScope(companyId, row)).scope;
 }
 
 /**
@@ -102,11 +153,10 @@ export async function loadAgentScopeContext(companyId: string, resolvedAgentId: 
     if (!resolvedAgentId) {
         return { scope: null, allowedProjectIds: null, allowedCustomerIds: null, allowedAgentIds: null };
     }
-    const [row] = await db.select({ scopeJson: agents.scopeJson }).from(agents).where(and(
+    const [row] = await db.select({ scopeJson: agents.scopeJson, access: agents.access, ownerUserId: agents.ownerUserId }).from(agents).where(and(
         eq(agents.id, resolvedAgentId), eq(agents.companyId, companyId), isNull(agents.deletedAt),
     )).limit(1);
-    const raw = row?.scopeJson as AgentScope | undefined;
-    const scope = raw && raw.mode === "restricted" ? raw : null;
+    const { scope, raw } = await effectiveAgentScope(companyId, row);
     const [allowedProjectIds, allowedCustomerIds] = await Promise.all([
         getAllowedProjectIds(companyId, scope),
         getAllowedCustomerIds(companyId, scope),

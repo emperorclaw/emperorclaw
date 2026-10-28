@@ -4,6 +4,7 @@ import { db } from "@/db";
 import { artifacts } from "@/db/schema";
 import { requireCompanyFromSession } from "@/lib/company-session";
 import { memberMaySeeRecord } from "@/lib/member-scope";
+import { recordResource, resourceWriteDenied } from "@/lib/resource-access";
 import { findActiveFolder } from "@/lib/artifact-folders";
 import { buildChildPath, deriveArtifactLogicalPath, sanitizePathSegment } from "@/lib/path-utils";
 import { storageAdapter } from "@/lib/storage";
@@ -19,7 +20,8 @@ import {
 
 export async function PATCH(req: NextRequest, context: RouteContext<"/api/ui/artifacts/[id]/replace">) {
     try {
-        const { companyId, scope } = await requireCompanyFromSession("member");
+        const session = await requireCompanyFromSession("viewer");
+        const { companyId, scope } = session;
         const { id: artifactId } = await context.params;
         const [artifact] = await db.select().from(artifacts).where(and(
             eq(artifacts.id, artifactId),
@@ -30,6 +32,9 @@ export async function PATCH(req: NextRequest, context: RouteContext<"/api/ui/art
         if (!artifact || !(await memberMaySeeRecord(companyId, scope, artifact))) {
             return NextResponse.json({ error: "Artifact not found" }, { status: 404 });
         }
+        // Resource-aware (0.20): edit access to the file's project or customer.
+        const denied = await resourceWriteDenied(session, await recordResource(companyId, artifact), "member", "Artifact");
+        if (denied) return denied;
 
         const form = await req.formData();
         const fileEntry = form.get("file");

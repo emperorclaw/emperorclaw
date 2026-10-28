@@ -114,3 +114,19 @@ export async function seedAgent(companyId: string, overrides: Record<string, unk
     }).returning();
     return agent;
 }
+
+/**
+ * Fixtures written in the pre-0.20 shape (company_members.scope_json with
+ * customerIds) go through migration 0072's data block, exactly as a deployed
+ * database does: the customer lists become resource memberships.
+ */
+export async function migrateLegacyMemberScopes() {
+    const db = await getDb();
+    const { sql } = await import("drizzle-orm");
+    const { readFileSync } = await import("node:fs");
+    const path = await import("node:path");
+    const migration = readFileSync(path.join(process.cwd(), "src/db/migrations/0072_access-roles.sql"), "utf8");
+    const statements = migration.split("--> statement-breakpoint").map((s) => s.trim())
+        .filter((s) => s.includes('INSERT INTO "resource_memberships"') || s.includes('UPDATE "company_members"'));
+    for (const statement of statements) await db.execute(sql.raw(statement));
+}

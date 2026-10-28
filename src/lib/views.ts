@@ -26,7 +26,7 @@ import { broadcastMcpEvent, broadcastUserEvent } from "@/lib/pubsub";
 import { NextResponse } from "next/server";
 import { mcpAccessErrorResponse, mcpMayUseResource, mcpMayWriteResourceScope, type McpAgentAccess } from "@/lib/mcp-access";
 import { consumeRateLimit } from "@/lib/rate-limit";
-import { getScopedCustomerIds, memberMaySeeResource, memberVisibleProjectIds, normalizeMemberScope, type MemberScope } from "@/lib/member-scope";
+import { getScopedCustomerIds, memberMaySeeResource, memberVisibleProjectIds, resolveMemberScope, type MemberScope } from "@/lib/member-scope";
 import type { Role } from "@/lib/role-matrix";
 import {
     jsonBytes, parsePanelData, parseViewDescription, parseViewPanels, parseViewTitle, planViewVersion, storedPanelData, storedViewSpec,
@@ -223,7 +223,7 @@ async function companyPerson(companyId: string, userId: unknown): Promise<{ user
         .where(and(eq(companyMembers.companyId, companyId), eq(companyMembers.userId, userId), isNull(users.deletedAt))).limit(1);
     if (!row) return null;
     const unrestricted = row.role === "owner" || row.role === "admin" || row.instanceRole === "instance_admin";
-    return { userId, scope: unrestricted ? null : normalizeMemberScope(row.scopeJson), name: row.name || row.email.split("@")[0] };
+    return { userId, scope: unrestricted ? null : await resolveMemberScope(companyId, userId, row.scopeJson), name: row.name || row.email.split("@")[0] };
 }
 
 /** A person who may own or be shared a view filed under this scope. */
@@ -661,7 +661,7 @@ async function membersInScope(companyId: string, scope: { scopeType: string; sco
     for (const m of members) {
         if (exclude.includes(m.userId)) continue;
         const unrestricted = m.role === "owner" || m.role === "admin" || m.instanceRole === "instance_admin";
-        if (await memberMaySeeResource(companyId, unrestricted ? null : normalizeMemberScope(m.scopeJson), scope)) {
+        if (await memberMaySeeResource(companyId, unrestricted ? null : await resolveMemberScope(companyId, m.userId, m.scopeJson), scope)) {
             out.push({ id: m.userId, name: m.name || m.email.split("@")[0] });
         }
     }

@@ -44,7 +44,11 @@ export interface RoutableMessage {
     metadataJson?: unknown;
 }
 
-/** Server-only metadata: agents an agent's message mentioned but may not reach. */
+/**
+ * Server-only metadata: agents a message's sender may not reach. For an agent
+ * sender, the agents it @mentioned outside its agent scope; for a person, the
+ * agents limited to other people (0.20, lib/agent-access.ts). Never routed to.
+ */
 export const UNREACHABLE_MENTIONS_KEY = "unreachableMentions";
 
 /** The agents a stored message's sender could not reach (never routed to them). */
@@ -274,6 +278,12 @@ export function decideDelivery(input: {
     const threadType = (input.threadType || "").toLowerCase();
 
     if (senderType === "agent" && message.senderId === agentId) return { addressedToYou: false, routeReason: "self" };
+
+    // A person never wakes an agent they may not use (0.20 "Who can use it"):
+    // not by mention, @all, target or a group they share with it.
+    if (senderType === "human" && unreachableMentionsOf(message.metadataJson).has(agentId)) {
+        return { addressedToYou: false, routeReason: "out_of_scope" };
+    }
 
     // A task assigned to this agent is addressed to it, with its own reason.
     // Only a genuine system notice carries this flag — a caller that stamps

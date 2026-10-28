@@ -5,6 +5,7 @@ import { db } from "@/db";
 import { and, eq, isNull } from "drizzle-orm";
 import { requireCompanyFromSession } from "@/lib/company-session";
 import { memberMaySeeRecord } from "@/lib/member-scope";
+import { recordResource, resourceWriteDenied } from "@/lib/resource-access";
 import { storageAdapter, getStorageProviderName } from "@/lib/storage";
 import { findActiveFolder } from "@/lib/artifact-folders";
 import { prepareArtifactRecord } from "@/lib/artifacts";
@@ -20,7 +21,8 @@ import {
 
 export async function POST(req: NextRequest) {
     try {
-        const { companyId, userId, scope } = await requireCompanyFromSession("member");
+        const session = await requireCompanyFromSession("viewer");
+        const { companyId, userId, scope } = session;
         const body = await req.json();
         const {
             projectId,
@@ -71,9 +73,18 @@ export async function POST(req: NextRequest) {
         if (!(await memberMaySeeRecord(companyId, scope, { projectId: project?.id ?? null, customerId: project?.customerId ?? customer?.id ?? null }))) {
             return NextResponse.json({ error: project ? "Project not found" : "Customer not found" }, { status: 404 });
         }
+        const denied = await resourceWriteDenied(session, await recordResource(companyId, { projectId: project?.id ?? null, customerId: project?.customerId ?? customer?.id ?? null }), "member", project ? "Project" : "Customer");
+        if (denied) return denied;
         const folder = folderId ? await findActiveFolder(companyId, folderId) : null;
         if (folderId && !folder) {
             return NextResponse.json({ error: "Folder not found" }, { status: 404 });
+        }
+        // The folder lives in a project/customer too: it must be visible and editable (0.20).
+        if (folder) {
+            const folderRecord = { projectId: folder.projectId as string | null, customerId: folder.customerId as string | null };
+            if (!(await memberMaySeeRecord(companyId, scope, folderRecord))) return NextResponse.json({ error: "Folder not found" }, { status: 404 });
+            const folderDenied = await resourceWriteDenied(session, await recordResource(companyId, folderRecord), "member", "Folder");
+            if (folderDenied) return folderDenied;
         }
 
         const fallbackName = filename || title || "artifact";

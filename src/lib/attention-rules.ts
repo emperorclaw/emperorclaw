@@ -64,6 +64,8 @@ export function sortAttention(entries: readonly AttentionEntry[]): AttentionEntr
 export interface AttentionScope {
     agentIds?: readonly string[];
     customerIds?: readonly string[];
+    /** Projects granted directly (0.20 project Access), visible whatever their customer. */
+    projectIds?: readonly string[];
 }
 
 /** The agent an entry is about, from its explicit agent id or its member key. */
@@ -75,18 +77,20 @@ export function entryAgentId(entry: AttentionEntry): string | null {
 /**
  * Drop entries a restricted member must not see: anything about an agent
  * outside their agent list, and anything in a project whose customer is
- * outside their customer list (a project with no customer is outside too).
+ * outside their customer list (a project with no customer is outside too),
+ * unless the project itself is on their project list.
  * Entries tied to neither an agent nor a project pass.
  */
 export function applyAttentionScope(entries: readonly AttentionEntry[], scope: AttentionScope | null | undefined): AttentionEntry[] {
     if (!scope) return [...entries];
     const agents = scope.agentIds ? new Set(scope.agentIds) : null;
     const customers = scope.customerIds ? new Set(scope.customerIds) : null;
+    const projects = new Set(scope.projectIds ?? []);
     if (!agents && !customers) return [...entries];
     return entries.filter((entry) => {
         const agentId = entryAgentId(entry);
         if (agents && agentId && !agents.has(agentId)) return false;
-        if (customers && entry.projectId && !(entry.customerId && customers.has(entry.customerId))) return false;
+        if (customers && entry.projectId && !(entry.customerId && customers.has(entry.customerId)) && !projects.has(entry.projectId)) return false;
         return true;
     });
 }

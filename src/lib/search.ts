@@ -25,6 +25,7 @@ import { db } from "@/db";
 import { directThreadLink } from "@/lib/direct-chat-mode";
 import { AGENT_PAIR_DESCRIPTION } from "@/lib/groups";
 import type { MemberScope } from "@/lib/member-scope";
+import { agentsNotUsableBy } from "@/lib/agent-access-server";
 import {
     buildTsQuery, encodeSearchCursor, HEADLINE_START, HEADLINE_STOP, parseHeadline, plainText, SEARCH_MAX_OFFSET,
     SEARCH_TYPES, type SearchResponse, type SearchResult, type SearchType,
@@ -66,14 +67,19 @@ function score(vector: SQL, updatedAt: SQL): SQL {
 type Branch = { type: SearchType; sql: SQL };
 
 /** Every branch selects the same columns: type, id, title, body, context, a1..a3 (href parts), updated_at, score. */
-function branches(viewer: SearchViewer, perBranch: number): Branch[] {
+function branches(viewer: SearchViewer, perBranch: number, limited: { hidden: ReadonlySet<string>; metadata: ReadonlySet<string> }): Branch[] {
     const { companyId, userId, scope } = viewer;
+    // Agents limited to other people (0.20): never their messages; their names
+    // only for owners/admins (who see them as metadata).
+    const unusable = uuidArray([...limited.hidden]);
+    const unlisted = uuidArray([...limited.hidden].filter((id) => !(viewer.isAdmin && limited.metadata.has(id))));
     const agents = uuidArray(scope?.agentIds);
     const customers = uuidArray(scope?.customerIds);
+    const grantedProjects = uuidArray(scope?.projectIds);
     const restricted = Boolean(scope);
     const when = (condition: SQL) => (restricted ? sql`AND ${condition}` : sql``);
     const taskTitle = sql`coalesce(nullif(btrim(t.input_json->>'title'), ''), t.task_type)`;
-    const taskInScope = when(sql`p.customer_id = ANY(${customers}) AND (t.assigned_agent_id IS NULL OR t.assigned_agent_id = ANY(${agents}))`);
+    const taskInScope = when(sql`(p.customer_id = ANY(${customers}) OR p.id = ANY(${grantedProjects})) AND (t.assigned_agent_id IS NULL OR t.assigned_agent_id = ANY(${agents}))`);
     const limit = sql`LIMIT ${perBranch}`;
 
     return [
@@ -132,6 +138,9 @@ function branches(viewer: SearchViewer, perBranch: number): Branch[] {
                     OR (th.type = 'direct' AND (NOT (th.is_private OR th.owner_user_id IS NOT NULL) OR th.owner_user_id = ${userId}::uuid))
                     OR (th.type = 'group' AND ${viewer.isAdmin ? sql`TRUE` : sql`NOT (th.description IS NOT DISTINCT FROM ${AGENT_PAIR_DESCRIPTION} AND th.created_by_type = 'system')`})
                   )
+                  AND (th.direct_agent_id IS NULL OR NOT (th.direct_agent_id = ANY(${unusable})))
+                  AND (tm.target_agent_id IS NULL OR NOT (tm.target_agent_id = ANY(${unusable})))
+                  AND (tm.sender_type <> 'agent' OR NOT (tm.sender_id = ANY(${unusable}::text[])))
                   ${when(sql`(th.direct_agent_id IS NULL OR th.direct_agent_id = ANY(${agents}))
                     AND (tm.target_agent_id IS NULL OR tm.target_agent_id = ANY(${agents}))
                     AND (tm.sender_type <> 'agent' OR tm.sender_id = ANY(${agents}::text[]))
@@ -153,7 +162,7 @@ function branches(viewer: SearchViewer, perBranch: number): Branch[] {
                 WHERE sr.company_id = ${companyId}::uuid AND sr.deleted_at IS NULL AND sr.search_vector @@ q.query
                   ${when(sql`coalesce(CASE sr.scope_type
                         WHEN 'customer' THEN sr.scope_id = ANY(${customers})
-                        WHEN 'project' THEN EXISTS (SELECT 1 FROM projects sp WHERE sp.id = sr.scope_id AND sp.company_id = ${companyId}::uuid AND sp.customer_id = ANY(${customers}))
+                        WHEN 'project' THEN EXISTS (SELECT 1 FROM projects sp WHERE sp.id = sr.scope_id AND sp.company_id = ${companyId}::uuid AND (sp.customer_id = ANY(${customers}) OR sp.id = ANY(${grantedProjects})))
                         WHEN 'agent' THEN sr.scope_id = ANY(${agents})
                         ELSE TRUE
                     END, FALSE)`)}
@@ -170,7 +179,7 @@ function branches(viewer: SearchViewer, perBranch: number): Branch[] {
                 CROSS JOIN q
                 WHERE a.company_id = ${companyId}::uuid AND a.deleted_at IS NULL AND a.search_vector @@ q.query
                   AND (a.project_id IS NULL OR p.deleted_at IS NULL)
-                  ${when(sql`((a.project_id IS NULL AND a.customer_id IS NULL) OR a.customer_id = ANY(${customers}) OR p.customer_id = ANY(${customers}))`)}
+                  ${when(sql`((a.project_id IS NULL AND a.customer_id IS NULL) OR a.customer_id = ANY(${customers}) OR p.customer_id = ANY(${customers}) OR a.project_id = ANY(${grantedProjects}))`)}
                 ORDER BY score DESC ${limit})`,
         },
         {
@@ -182,7 +191,7 @@ function branches(viewer: SearchViewer, perBranch: number): Branch[] {
                 LEFT JOIN customers c ON c.id = p.customer_id
                 CROSS JOIN q
                 WHERE p.company_id = ${companyId}::uuid AND p.deleted_at IS NULL AND p.search_vector @@ q.query
-                  ${when(sql`p.customer_id = ANY(${customers})`)}
+                  ${when(sql`(p.customer_id = ANY(${customers}) OR p.id = ANY(${grantedProjects}))`)}
                 ORDER BY score DESC ${limit})`,
         },
         {
@@ -204,6 +213,7 @@ function branches(viewer: SearchViewer, perBranch: number): Branch[] {
                 FROM agents ag
                 CROSS JOIN q
                 WHERE ag.company_id = ${companyId}::uuid AND ag.deleted_at IS NULL AND ag.search_vector @@ q.query
+                  AND NOT (ag.id = ANY(${unlisted}))
                   ${when(sql`ag.id = ANY(${agents})`)}
                 ORDER BY score DESC ${limit})`,
         },
@@ -262,7 +272,8 @@ export async function searchCompany(viewer: SearchViewer, options: SearchOptions
     const limit = Math.max(1, options.limit);
     // One extra row says whether another page exists.
     const take = limit + 1;
-    const selected = branches(viewer, offset + take).filter((branch) => types.has(branch.type));
+    const limited = await agentsNotUsableBy({ companyId: viewer.companyId, userId: viewer.userId, role: viewer.isAdmin ? "admin" : "member", scope: viewer.scope });
+    const selected = branches(viewer, offset + take, limited).filter((branch) => types.has(branch.type));
 
     const result = await db.execute(sql`
         WITH q AS (SELECT to_tsquery(${CONFIG}, ${tsQuery}) AS query),

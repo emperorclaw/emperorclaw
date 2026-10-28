@@ -14,7 +14,7 @@ import {
     getRegistrationMode,
     clearInstanceCompanyCache,
 } from "@/lib/instance";
-import { validateInviteToken, InvitationError } from "@/lib/invitations";
+import { addInvitedMember, validateInviteToken, InvitationError } from "@/lib/invitations";
 
 interface RegisterRequestBody {
     email: string;
@@ -221,11 +221,8 @@ export async function POST(req: NextRequest) {
                     if (new Date() > invitation.expiresAt) throw new Error("Invitation expired");
                     if (invitation.useCount >= invitation.maxUses) throw new Error("Invitation already used");
 
-                    await tx.insert(companyMembers).values({
-                        companyId: invitation.companyId,
-                        userId: newUser.id,
-                        role: invitation.role,
-                    });
+                    // A client/project invitation joins as a restricted member of that one resource.
+                    await addInvitedMember(tx, invitation, newUser.id);
 
                     await tx
                         .update(invitations)

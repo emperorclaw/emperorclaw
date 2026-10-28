@@ -69,3 +69,21 @@ export async function memberResourceDenied(
   }
   return null;
 }
+
+/**
+ * Changing a note (0.20, resource-aware): it must be visible, and the caller
+ * needs edit access to the customer/project it is filed under (company role
+ * for company and agent notes). Missing reads as 404.
+ */
+export async function memberResourceWriteDenied(
+  ctx: import("@/lib/roles").GuardContext,
+  resourceId: string,
+): Promise<NextResponse | null> {
+  const hidden = await memberResourceDenied(ctx, resourceId);
+  if (hidden) return hidden;
+  const { getScopedResource } = await import("@/lib/resources");
+  const { resourceWriteDenied, scopeResource } = await import("@/lib/resource-access");
+  const resource = await getScopedResource(ctx.companyId, resourceId);
+  if (!resource) return NextResponse.json({ error: "Resource not found" }, { status: 404 });
+  return resourceWriteDenied(ctx, await scopeResource(ctx.companyId, resource), "member", "Resource");
+}

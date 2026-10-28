@@ -3,6 +3,7 @@ import { companyRouteAccess } from "@/lib/company-access";
 import { canAdmin } from "@/lib/role-matrix";
 import { loadRunThoughts } from "@/lib/dashboard-live";
 import { getScopedAgentIds } from "@/lib/member-scope";
+import { agentsNotUsableBy } from "@/lib/agent-access-server";
 
 export const dynamic = "force-dynamic";
 
@@ -28,5 +29,7 @@ export async function GET() {
         viewerUserId: access.ctx.userId,
         includePairThreads,
     });
-    return NextResponse.json({ ts: now.toISOString(), thoughts });
+    // An agent limited to other people (0.20): its live reasoning stays with them.
+    const { hidden } = await agentsNotUsableBy(access.ctx);
+    return NextResponse.json({ ts: now.toISOString(), thoughts: thoughts.filter((t) => !hidden.has(t.memberKey.replace(/^agent:/, ""))) });
 }

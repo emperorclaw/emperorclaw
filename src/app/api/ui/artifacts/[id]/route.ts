@@ -6,6 +6,7 @@ import { prepareArtifactRecord } from "@/lib/artifacts";
 import { sanitizeArtifactClientPayload } from "@/lib/artifacts";
 import { requireCompanyFromSession } from "@/lib/company-session";
 import { memberMaySeeRecord } from "@/lib/member-scope";
+import { recordResource, resourceWriteDenied } from "@/lib/resource-access";
 
 type ArtifactRecord = InferModel<typeof artifacts>;
 
@@ -91,7 +92,8 @@ export async function PATCH(
     { params }: { params: Promise<{ id: string }> }
 ) {
     try {
-        const { companyId, scope } = await requireCompanyFromSession("member");
+        const session = await requireCompanyFromSession("viewer");
+        const { companyId, scope } = session;
         const { id: artifactId } = await params;
         const [artifact] = await db.select().from(artifacts).where(and(
             eq(artifacts.id, artifactId),
@@ -101,6 +103,9 @@ export async function PATCH(
         if (!artifact || !(await memberMaySeeRecord(companyId, scope, artifact))) {
             return NextResponse.json({ error: "Artifact not found" }, { status: 404 });
         }
+        // Resource-aware (0.20): edit access to the file's project or customer.
+        const denied = await resourceWriteDenied(session, await recordResource(companyId, artifact), "member", "Artifact");
+        if (denied) return denied;
         const artifactRecord = artifact as ArtifactRecord;
 
         const body = await req.json();
@@ -122,6 +127,8 @@ export async function PATCH(
         if (!projectId && !customerId) {
             throw new Error("customerId or projectId is required");
         }
+        const deniedTarget = await resourceWriteDenied(session, await recordResource(companyId, { projectId, customerId }), "member", projectId ? "Project" : "Customer");
+        if (deniedTarget) return deniedTarget;
 
         const metadataJson = body.metadataJson ?? artifactRecord.metadataJson;
         const contentType = (body.contentType ?? artifactRecord.contentType) as string;

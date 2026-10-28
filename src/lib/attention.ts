@@ -21,7 +21,7 @@ import { isActionApproval, storedActionArgs } from "@/lib/action-policy-rules";
 import { actionLabel } from "@/lib/action-policy";
 import { directThreadLink, userMayUseThread } from "@/lib/direct-chat-mode";
 import { isAgentPairThread } from "@/lib/groups";
-import { getScopedAgentIds, getScopedCustomerIds } from "@/lib/member-scope";
+import { getScopedAgentIds, getScopedCustomerIds, getScopedProjectIds } from "@/lib/member-scope";
 import { requireRole, type GuardContext } from "@/lib/roles";
 import { canAdmin, canWrite } from "@/lib/role-matrix";
 import { isMissingSchemaError } from "@/lib/schema-compat";
@@ -53,12 +53,12 @@ export function attentionAccessFromGuard(ctx: GuardContext): AttentionAccess {
         userId: ctx.userId,
         isOwnerOrAdmin: canAdmin(ctx.role),
         canAct: canWrite(ctx.role),
-        scope: ctx.scope ? { agentIds: getScopedAgentIds(ctx.scope), customerIds: getScopedCustomerIds(ctx.scope) } : null,
+        scope: ctx.scope ? { agentIds: getScopedAgentIds(ctx.scope), customerIds: getScopedCustomerIds(ctx.scope), projectIds: getScopedProjectIds(ctx.scope) } : null,
     };
 }
 
 /** Nothing visible, nothing allowed: used when the viewer cannot be resolved. */
-const NO_ATTENTION_ACCESS: AttentionAccess = { userId: null, isOwnerOrAdmin: false, canAct: false, scope: { agentIds: [], customerIds: [] } };
+const NO_ATTENTION_ACCESS: AttentionAccess = { userId: null, isOwnerOrAdmin: false, canAct: false, scope: { agentIds: [], customerIds: [], projectIds: [] } };
 
 /**
  * The signed-in viewer's access. Role and scope come from requireRole (the

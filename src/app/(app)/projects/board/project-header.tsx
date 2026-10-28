@@ -1,7 +1,7 @@
 "use client";
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import { IconBrain, IconCircleCheck, IconDots, IconPencil, IconRotate, IconTrash, IconX } from "@tabler/icons-react";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import type { ProjectTitle } from "@/lib/project-title";
@@ -35,6 +35,7 @@ export function ProjectHeader({
     onComplete,
     onReopen,
     onArchive,
+    accessSlot,
 }: {
     project: any;
     title: ProjectTitle;
@@ -50,6 +51,8 @@ export function ProjectHeader({
     onComplete: () => void;
     onReopen: () => void;
     onArchive: () => void;
+    /** The project's Access button (0.20). */
+    accessSlot?: ReactNode;
 }) {
     const [showAll, setShowAll] = useState(false);
     const finished = project.status === "completed" || project.status === "killed";
@@ -78,6 +81,7 @@ export function ProjectHeader({
                 </p>
             </div>
             <div className="flex shrink-0 items-center gap-1.5">
+                {accessSlot}
                 <button type="button" onClick={onNotes} className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-zinc-800 bg-zinc-950/60 px-3 text-sm text-zinc-200 transition-colors hover:border-zinc-700 hover:bg-zinc-900">
                     <IconBrain className="h-4 w-4 text-cyan-300" aria-hidden="true" />
                     Notes

@@ -5,6 +5,8 @@ import { eq, and, isNull } from "drizzle-orm";
 import { redirect } from "next/navigation";
 import { getCurrentUserEffectiveRole } from "@/lib/roles";
 import MembersClient from "./members-client";
+import { loadCustomAccess } from "@/lib/resource-access-api";
+import { customAccessSummary } from "@/lib/resource-roles";
 
 export const dynamic = "force-dynamic";
 
@@ -39,7 +41,10 @@ export default async function MembersPage() {
         .innerJoin(users, eq(companyMembers.userId, users.id))
         .where(eq(companyMembers.companyId, roleCtx.companyId));
 
+    // "Custom access": each person's roles on clients and projects (0.20).
+    const customAccess = await loadCustomAccess(roleCtx.companyId, memberships.map((m) => m.id));
     const members = memberships.map((m) => ({
+        customAccess: customAccessSummary(customAccess.get(m.id) ?? []) || null,
         id: m.id,
         email: m.email,
         displayName: m.displayName,

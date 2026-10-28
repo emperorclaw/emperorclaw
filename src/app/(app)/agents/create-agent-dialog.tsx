@@ -10,6 +10,7 @@ import { getAvailableProviders, getProvider, type AgentProvider } from "@/lib/ag
 import { ModelSearchSelect } from "@/components/model-search-select";
 import { CharacterAvatar } from "@/components/character/character-avatar";
 import { cn } from "@/lib/utils";
+import { EVERYONE_ACCESS, WhoCanUseField, hireAccessBody, useAccessPeople, type AgentAccessValue } from "@/components/access/agent-access-control";
 
 type Step = "role" | "provider" | "name";
 
@@ -63,6 +64,8 @@ export function CreateAgentDialog({
     const [pricingOptions, setPricingOptions] = useState<PricingOption[]>([]);
     const [isSaving, setIsSaving] = useState(false);
     const [error, setError] = useState<string | null>(null);
+    const [whoCanUse, setWhoCanUse] = useState<AgentAccessValue>(EVERYONE_ACCESS);
+    const accessPeople = useAccessPeople(step === "name");
 
     useEffect(() => {
         if (open) {
@@ -122,6 +125,7 @@ export function CreateAgentDialog({
                     llmProvider: llmProvider || undefined,
                     llmModel: llmModel || undefined,
                     doctrineJson: doctrine,
+                    ...hireAccessBody(whoCanUse),
                 }),
             });
 
@@ -149,6 +153,7 @@ export function CreateAgentDialog({
         setMonthlyBudget("");
         setLlmProvider("");
         setLlmModel("");
+        setWhoCanUse(EVERYONE_ACCESS);
         setError(null);
     };
 
@@ -332,6 +337,8 @@ export function CreateAgentDialog({
                                 <span className="text-[10px] text-zinc-400">Leave empty for unlimited</span>
                             </div>
                         </div>
+
+                        <WhoCanUseField value={whoCanUse} onChange={setWhoCanUse} people={accessPeople.people} me={accessPeople.me} />
 
                         {/* LLM Provider — only for runtimes that read it (Hermes) */}
                         {selectedProvider.supportsLlmProvider && (

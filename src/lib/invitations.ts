@@ -1,6 +1,7 @@
 import crypto from "node:crypto";
 import { db } from "@/db";
-import { invitations, companies, companyMembers, users } from "@/db/schema";
+import { invitations, companies, companyMembers, resourceMemberships, users } from "@/db/schema";
+import { isResourceRole, isResourceType, type ResourceRole, type ResourceType } from "@/lib/resource-roles";
 import { and, eq, isNull, lt, gt, sql } from "drizzle-orm";
 
 const VALID_INVITATION_ROLES = ["member", "admin", "viewer"] as const;
@@ -25,6 +26,12 @@ export interface CreateInvitationParams {
     role: string;
     companyId: string;
     createdByUserId: string;
+    /**
+     * Invite to one client or project (0.20): the person joins as a
+     * restricted company viewer holding this one membership (see
+     * addInvitedMember), so they see only that customer or project.
+     */
+    resource?: { type: ResourceType; id: string; role: ResourceRole } | null;
 }
 
 export interface InvitationResult {
@@ -38,7 +45,12 @@ export interface InvitationResult {
 export async function createInvitation(
     params: CreateInvitationParams
 ): Promise<InvitationResult> {
-    const { email: rawEmail, role, companyId, createdByUserId } = params;
+    const { email: rawEmail, companyId, createdByUserId, resource } = params;
+    // A client/project invite always joins at the lowest company role; the membership decides.
+    const role = resource ? "viewer" : params.role;
+    if (resource && (!isResourceType(resource.type) || !isResourceRole(resource.role) || typeof resource.id !== "string")) {
+        throw new InvitationError("Invalid resource invitation.", 400);
+    }
 
     // Normalize email (FR-11)
     const email = rawEmail.trim().toLowerCase();
@@ -92,6 +104,9 @@ export async function createInvitation(
             email,
             tokenHash,
             role,
+            resourceType: resource?.type ?? null,
+            resourceId: resource?.id ?? null,
+            resourceRole: resource?.role ?? null,
             maxUses: 1,
             useCount: 0,
             expiresAt,
@@ -231,12 +246,7 @@ export async function consumeInvite(
                 .where(eq(invitations.id, invitation.id));
         }
 
-        // Create company membership with the invitation's role
-        await tx.insert(companyMembers).values({
-            companyId: invitation.companyId,
-            userId,
-            role: invitation.role,
-        });
+        await addInvitedMember(tx, invitation, userId);
 
         // Set instance_role on user. The instance level only distinguishes
         // instance_admin from member; the company role carries owner/admin/etc.,
@@ -254,6 +264,36 @@ export async function consumeInvite(
     });
 }
 
+type InvitationRow0 = typeof invitations.$inferSelect;
+type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
+
+/**
+ * The company membership an accepted invitation creates. A client/project
+ * invitation (resource_type set) makes a restricted viewer with no agents and
+ * one resource membership, so the person sees only that customer or project.
+ */
+export async function addInvitedMember(tx: Tx, invitation: InvitationRow0, userId: string): Promise<void> {
+    const resource = invitation.resourceType && invitation.resourceId && isResourceType(invitation.resourceType) && isResourceRole(invitation.resourceRole)
+        ? { type: invitation.resourceType, id: invitation.resourceId, role: invitation.resourceRole }
+        : null;
+    await tx.insert(companyMembers).values({
+        companyId: invitation.companyId,
+        userId,
+        role: resource ? "viewer" : invitation.role,
+        ...(resource ? { scopeJson: { mode: "restricted", agentIds: [] } } : {}),
+    });
+    if (resource) {
+        await tx.insert(resourceMemberships).values({
+            companyId: invitation.companyId,
+            userId,
+            resourceType: resource.type,
+            resourceId: resource.id,
+            role: resource.role,
+            createdByUserId: invitation.createdByUserId,
+        }).onConflictDoNothing();
+    }
+}
+
 // ── List invitations for a company ────────────────────────────────────────
 
 export type InvitationStatus = "pending" | "expired" | "consumed";
@@ -262,6 +302,9 @@ export interface InvitationRow {
     id: string;
     email: string;
     role: string;
+    resourceType: string | null;
+    resourceId: string | null;
+    resourceRole: string | null;
     createdAt: Date;
     expiresAt: Date;
     maxUses: number;
@@ -295,6 +338,9 @@ export async function getInvitations(companyId: string): Promise<InvitationRow[]
             id: row.id,
             email: row.email,
             role: row.role,
+            resourceType: row.resourceType,
+            resourceId: row.resourceId,
+            resourceRole: row.resourceRole,
             createdAt: row.createdAt,
             expiresAt: row.expiresAt,
             maxUses: row.maxUses,

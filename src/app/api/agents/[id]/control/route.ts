@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { companyRouteAccess } from "@/lib/company-access";
-import { memberMaySeeAgent } from "@/lib/member-scope";
+import { memberMayUseAgent } from "@/lib/agent-access-server";
 import { AuthError } from "@/lib/roles";
 import { DirectThreadNotAllowedError, requestAgentControl } from "@/lib/agent-control";
 import { validateAgentControl, type AgentControlAction } from "@/lib/agent-control-command";
@@ -10,7 +10,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     if (access.response) return access.response;
     const { companyId, userId } = access.ctx;
     const agentId = (await params).id;
-    if (!memberMaySeeAgent(access.ctx.scope, agentId)) return NextResponse.json({ error: "Agent not found" }, { status: 404 });
+    if (!(await memberMayUseAgent(access.ctx, agentId))) return NextResponse.json({ error: "Agent not found" }, { status: 404 });
     const body = await req.json().catch(() => null);
     const error = validateAgentControl(body?.action, body?.prompt);
     if (error) return NextResponse.json({ error }, { status: 400 });

@@ -9,7 +9,6 @@ import {
     groupStoryByDay,
     mergeStory,
     pageStory,
-    parseMemberScope,
     RUN_OUTCOME_LABEL,
     runOutcome,
     scopedAgentIds,
@@ -170,6 +169,9 @@ test("taskVisibleToScope follows the project's customer, like member-scope", () 
     // Internal projects (no customer) are hidden from restricted members.
     assert.equal(taskVisibleToScope({ customerId: null }, { mode: "restricted", agentIds: ["a1"], customerIds: ["c1"] }), false);
     assert.equal(taskVisibleToScope({ customerId: "c1" }, { mode: "restricted" }), false);
+    // 0.20: a project granted directly (project Access) is visible without its customer.
+    assert.equal(taskVisibleToScope({ customerId: "c9", projectId: "p1" }, { mode: "restricted", customerIds: [], projectIds: ["p1"] }), true);
+    assert.equal(taskVisibleToScope({ customerId: null, projectId: "p2" }, { mode: "restricted", customerIds: [], projectIds: ["p1"] }), false);
 });
 
 test("scopedAgentIds: null when unrestricted, [] means none", () => {
@@ -177,13 +179,6 @@ test("scopedAgentIds: null when unrestricted, [] means none", () => {
     assert.equal(scopedAgentIds({ mode: "all", agentIds: ["a1"] }), null);
     assert.deepEqual(scopedAgentIds({ mode: "restricted", agentIds: ["a1"] }), ["a1"]);
     assert.deepEqual(scopedAgentIds({ mode: "restricted" }), []);
-});
-
-test("parseMemberScope only restricts on an explicit restricted mode", () => {
-    assert.equal(parseMemberScope(null), null);
-    assert.equal(parseMemberScope({}), null);
-    assert.equal(parseMemberScope({ mode: "all", agentIds: ["a"] }), null);
-    assert.deepEqual(parseMemberScope({ mode: "restricted", agentIds: ["a", 3, ""], customerIds: "nope" }), { mode: "restricted", agentIds: ["a"], customerIds: [] });
 });
 
 // ─── Copy ───────────────────────────────────────────────────────────────────

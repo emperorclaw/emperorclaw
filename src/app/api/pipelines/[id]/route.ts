@@ -3,14 +3,19 @@ export const dynamic = "force-dynamic";
 import { NextRequest, NextResponse } from "next/server";
 import { companyRouteAccess } from "@/lib/company-access";
 import { memberMaySeeRecord } from "@/lib/member-scope";
+import { recordsWriteDenied } from "@/lib/resource-access";
 import { db } from "@/db";
 import { pipelines } from "@/db/schema";
 import { eq, and, isNull } from "drizzle-orm";
 import { validateForActivation, PIPELINE_STATUSES, PipelineStatus } from "@/lib/pipelines";
 
-/** Pipeline status changes are writes: members and up, never viewers. */
+/**
+ * Pipeline status changes are writes: the company role for company-wide
+ * pipelines, "Can edit" or Admin on the pipeline's project/customer otherwise
+ * (0.20, checked per pipeline below), never "Can view".
+ */
 async function getMembership() {
-    const access = await companyRouteAccess("member", { module: "automations" });
+    const access = await companyRouteAccess("viewer", { module: "automations" });
     if (access.response) return { error: access.response };
     return { membership: access.ctx };
 }
@@ -39,6 +44,8 @@ export async function PATCH(
         if (!pipeline || !(await memberMaySeeRecord(membership.companyId, membership.scope, pipeline))) {
             return NextResponse.json({ error: "Pipeline not found" }, { status: 404 });
         }
+        const denied = await recordsWriteDenied(membership, [pipeline], "member", "Pipeline");
+        if (denied) return denied;
 
         if (status === "active") {
             const activationError = validateForActivation(pipeline);
@@ -77,6 +84,8 @@ export async function DELETE(
         if (!pipeline || !(await memberMaySeeRecord(membership.companyId, membership.scope, pipeline))) {
             return NextResponse.json({ error: "Pipeline not found" }, { status: 404 });
         }
+        const denied = await recordsWriteDenied(membership, [pipeline], "member", "Pipeline");
+        if (denied) return denied;
 
         const [deleted] = await db.update(pipelines).set({
             status: "retired",

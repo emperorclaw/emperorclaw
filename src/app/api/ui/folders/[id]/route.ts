@@ -4,18 +4,23 @@ import { db } from "@/db";
 import { and, eq, isNull, like, or, sql } from "drizzle-orm";
 import { requireCompanyFromSession } from "@/lib/company-session";
 import { memberMaySeeRecord } from "@/lib/member-scope";
+import { recordsWriteDenied } from "@/lib/resource-access";
 import { buildFolderPath, findActiveFolder, isDescendantPath, sanitizeFolderName } from "@/lib/artifact-folders";
 import { moveFolderArtifactBlobs } from "@/lib/folder-artifact-moves";
 import { storageAdapter } from "@/lib/storage";
 
 export async function PATCH(req: NextRequest, context: RouteContext<"/api/ui/folders/[id]">) {
     try {
-        const { companyId, scope } = await requireCompanyFromSession("member");
+        const session = await requireCompanyFromSession("viewer");
+        const { companyId, scope } = session;
         const { id: folderId } = await context.params;
         const folder = await findActiveFolder(companyId, folderId);
         if (!folder || !(await memberMaySeeRecord(companyId, scope, { projectId: folder.projectId as string | null, customerId: folder.customerId as string | null }))) {
             return NextResponse.json({ error: "Folder not found" }, { status: 404 });
         }
+        // Resource-aware (0.20): edit access to the folder's project/customer.
+        const denied = await recordsWriteDenied(session, [{ projectId: folder.projectId as string | null, customerId: folder.customerId as string | null }], "member", "Folder");
+        if (denied) return denied;
 
         const body = await req.json();
         const newName = body.name ? sanitizeFolderName(body.name) : folder.name;
@@ -45,6 +50,13 @@ export async function PATCH(req: NextRequest, context: RouteContext<"/api/ui/fol
 
         const resolvedProjectId = await resolveProjectUpdate(companyId, body.projectId);
         const resolvedCustomerId = await resolveCustomerUpdate(companyId, body.customerId);
+        const movedDenied = await recordsWriteDenied(session, [
+            parentFolder ? { projectId: parentFolder.projectId as string | null, customerId: parentFolder.customerId as string | null } : null,
+            resolvedProjectId !== undefined || resolvedCustomerId !== undefined
+                ? { projectId: resolvedProjectId === undefined ? folder.projectId as string | null : resolvedProjectId, customerId: resolvedCustomerId === undefined ? folder.customerId as string | null : resolvedCustomerId }
+                : null,
+        ], "member", "Folder");
+        if (movedDenied) return movedDenied;
         const affectedArtifacts = pathChanged
             ? await db.select({
                 id: artifacts.id,
@@ -159,12 +171,16 @@ function mapErrorStatus(error: unknown) {
 
 export async function DELETE(req: NextRequest, context: RouteContext<"/api/ui/folders/[id]">) {
     try {
-        const { companyId, scope } = await requireCompanyFromSession("member");
+        const session = await requireCompanyFromSession("viewer");
+        const { companyId, scope } = session;
         const { id: folderId } = await context.params;
         const folder = await findActiveFolder(companyId, folderId);
         if (!folder || !(await memberMaySeeRecord(companyId, scope, { projectId: folder.projectId as string | null, customerId: folder.customerId as string | null }))) {
             return NextResponse.json({ error: "Folder not found" }, { status: 404 });
         }
+        // Resource-aware (0.20): edit access to the folder's project/customer.
+        const denied = await recordsWriteDenied(session, [{ projectId: folder.projectId as string | null, customerId: folder.customerId as string | null }], "member", "Folder");
+        if (denied) return denied;
 
         const now = new Date();
         const matchPattern = `${folder.path}/%`;

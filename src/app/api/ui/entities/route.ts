@@ -15,6 +15,7 @@ import {
     type EntitySummary,
 } from "@/lib/emperor-entities";
 import { companyRouteAccess } from "@/lib/company-access";
+import { agentsNotUsableBy } from "@/lib/agent-access-server";
 
 export const dynamic = "force-dynamic";
 
@@ -60,6 +61,9 @@ export async function GET(req: NextRequest) {
         const allowed = new Set(scopedAgentIds);
         agentIds = agentIds.filter((id) => allowed.has(id));
     }
+    // An agent limited to other people (0.20): null for members, its name and status for owners/admins.
+    const limited = await agentsNotUsableBy(access.ctx);
+    agentIds = agentIds.filter((id) => !limited.hidden.has(id.toLowerCase()) || limited.metadata.has(id.toLowerCase()));
 
     try {
         const [taskRows, projectRows, agentRows] = await Promise.all([

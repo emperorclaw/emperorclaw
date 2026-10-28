@@ -33,6 +33,7 @@ export async function loadPaletteData(companyId: string, scope: AttentionScope |
     // undefined = unrestricted; an empty list grants nothing (fail closed).
     const agentScope = scope?.agentIds ? [...scope.agentIds] : null;
     const customerScope = scope?.customerIds ? [...scope.customerIds] : null;
+    const projectScope = scope?.projectIds ? [...scope.projectIds] : [];
     const q = query.trim().slice(0, 100);
     const none = <T,>(): Promise<T[]> => Promise.resolve([]);
 
@@ -43,8 +44,10 @@ export async function loadPaletteData(companyId: string, scope: AttentionScope |
         customerScope?.length === 0 ? none<{ id: string; name: string }>() : db.select({ id: customers.id, name: customers.name }).from(customers)
             .where(and(eq(customers.companyId, companyId), isNull(customers.deletedAt), customerScope ? inArray(customers.id, customerScope) : undefined))
             .orderBy(customers.name).limit(LIST_LIMIT),
-        customerScope?.length === 0 ? none<{ id: string; name: string; customerId: string | null }>() : db.select({ id: projects.id, name: projects.goal, customerId: projects.customerId }).from(projects)
-            .where(and(eq(projects.companyId, companyId), isNull(projects.deletedAt), customerScope ? inArray(projects.customerId, customerScope) : undefined))
+        customerScope?.length === 0 && projectScope.length === 0 ? none<{ id: string; name: string; customerId: string | null }>() : db.select({ id: projects.id, name: projects.goal, customerId: projects.customerId }).from(projects)
+            .where(and(eq(projects.companyId, companyId), isNull(projects.deletedAt), customerScope
+                ? or(customerScope.length ? inArray(projects.customerId, customerScope) : undefined, projectScope.length ? inArray(projects.id, projectScope) : undefined)
+                : undefined))
             .orderBy(desc(projects.updatedAt)).limit(LIST_LIMIT),
     ]);
     const customerName = new Map(customerRows.map((c) => [c.id, c.name]));

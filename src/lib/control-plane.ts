@@ -858,6 +858,30 @@ export async function appendThreadMessage(input: {
             const unreachable = await unreachableMentionedAgents(input.companyId, input.senderId, input.text);
             if (unreachable.length > 0) metadata[UNREACHABLE_MENTIONS_KEY] = unreachable.map((a) => a.id);
         }
+    }
+    if (input.senderType === "human" && input.senderId) {
+        // A person's message never wakes an agent limited to other people
+        // (0.20): in a group or the team chat it is posted, but routing skips
+        // those agents (message-routing decideDelivery "out_of_scope").
+        // A company with no limited agent pays one small query and nothing else.
+        // An unknown sender (an inbound webhook's free-form id) may use none of
+        // them. A lookup failure never loses the post: it falls back to "none
+        // of the limited agents" when that list is known.
+        let limitedIds: string[] | null = null;
+        try {
+            const { agentsNotUsableBy, loadLimitedAgents, viewerForUser } = await import("@/lib/agent-access-server");
+            limitedIds = [...(await loadLimitedAgents(input.companyId)).keys()];
+            if (limitedIds.length > 0) {
+                const viewer = await viewerForUser(input.companyId, input.senderId);
+                const hidden = viewer ? [...(await agentsNotUsableBy(viewer)).hidden] : limitedIds;
+                if (hidden.length > 0) metadata[UNREACHABLE_MENTIONS_KEY] = hidden;
+            }
+        } catch (error) {
+            console.error("[control-plane] agent access lookup for a human message failed:", error);
+            if (limitedIds && limitedIds.length > 0) metadata[UNREACHABLE_MENTIONS_KEY] = limitedIds;
+        }
+    }
+    if (input.senderType === "agent") {
         const { marker, strippedText } = parseObjectiveStatusMarker(text);
         if (marker) {
             text = strippedText;

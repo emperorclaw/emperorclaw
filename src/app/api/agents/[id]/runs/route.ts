@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { companyRouteAccess } from "@/lib/company-access";
 import { getScopedAgentIds } from "@/lib/member-scope";
+import { memberMayUseAgent } from "@/lib/agent-access-server";
 import { loadAgentRunsPage } from "@/lib/run-ledger-reads";
 
 export const dynamic = "force-dynamic";
@@ -22,7 +23,8 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
     if (!UUID_RE.test(id)) return NextResponse.json({ error: "Invalid agent id" }, { status: 400 });
 
     const scopedAgentIds = getScopedAgentIds(access.ctx.scope);
-    if (scopedAgentIds && !scopedAgentIds.includes(id)) {
+    // An agent limited to other people (0.20): its runs are not theirs to read.
+    if ((scopedAgentIds && !scopedAgentIds.includes(id)) || !(await memberMayUseAgent(access.ctx, id))) {
         return NextResponse.json({ error: "Agent not found" }, { status: 404 });
     }
 

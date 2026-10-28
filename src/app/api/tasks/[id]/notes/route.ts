@@ -5,11 +5,13 @@ import { eq } from "drizzle-orm";
 import { broadcastMcpEvent } from "@/lib/pubsub";
 import { requireCompanyFromSession } from "@/lib/company-session";
 import { memberMaySeeTaskId } from "@/lib/member-scope";
+import { taskWriteDenied } from "@/lib/resource-access";
 
 export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
     try {
         // Require authenticated session and resolve company
-        const { companyId, userId, scope } = await requireCompanyFromSession("member");
+        const session = await requireCompanyFromSession("viewer");
+        const { companyId, userId, scope } = session;
 
         const resolvedParams = await params;
         const taskId = resolvedParams.id;
@@ -26,6 +28,9 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
         if (task.companyId !== companyId || !(await memberMaySeeTaskId(companyId, scope, taskId))) {
             return NextResponse.json({ error: "Task not found" }, { status: 404 });
         }
+        // Resource-aware (0.20): edit access to the task's project or its customer.
+        const denied = await taskWriteDenied(session, taskId);
+        if (denied) return denied;
 
         const [newEvent] = await db.insert(taskEvents).values({
             companyId: task.companyId,

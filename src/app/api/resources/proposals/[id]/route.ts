@@ -4,10 +4,11 @@ import { companyRouteAccess } from "@/lib/company-access";
 import { and, eq } from "drizzle-orm";
 import { db } from "@/db";
 import { resourceProposals } from "@/db/schema";
-import { memberMaySeeProposal } from "../../_shared";
+import { memberMaySeeProposal, memberResourceWriteDenied } from "../../_shared";
+import { resourceWriteDenied, scopeResource } from "@/lib/resource-access";
 
 export async function PATCH(request: Request, { params }: { params: Promise<{ id: string }> }) {
-  const access = await companyRouteAccess("member");
+  const access = await companyRouteAccess("viewer");
   if (access.response) return access.response;
   const membership = access.ctx;
   const { id } = await params;
@@ -21,6 +22,13 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
   if (!proposal || !(await memberMaySeeProposal(membership, proposal))) {
     return NextResponse.json({ error: "Proposal not found" }, { status: 404 });
   }
+  // Resource-aware (0.20): reviewing needs edit access to the proposal's scope;
+  // approving or merging writes the target note too, so it needs edit access
+  // there as well. Rejecting never touches the note (it may even be gone).
+  const writesNote = body.status === "approved" || body.status === "merged";
+  const denied = await resourceWriteDenied(membership, await scopeResource(membership.companyId, proposal), "member", "Proposal")
+    ?? (writesNote && proposal.targetResourceId ? await memberResourceWriteDenied(membership, proposal.targetResourceId) : null);
+  if (denied) return denied;
   const result = await reviewResourceProposal({
     companyId: membership.companyId,
     proposalId: id,

@@ -3,6 +3,9 @@ import { agents, tasks } from "@/db/schema";
 import { eq, and, sql, isNull, inArray } from "drizzle-orm";
 import { getCompanyId, getValidatedServerSession } from "@/lib/auth";
 import { getMemberScopeForSession, getScopedAgentIds } from "@/lib/member-scope";
+import { agentsNotUsableBy, ownerNames, usableAgentCondition } from "@/lib/agent-access-server";
+import { requireRole } from "@/lib/roles";
+import { canAdmin } from "@/lib/role-matrix";
 import { redirect } from "next/navigation";
 import { Suspense } from "react";
 import { AgentsClient } from "./agents-client";
@@ -20,7 +23,16 @@ export default async function AgentsPage() {
     const agentConditions: any[] = [eq(agents.companyId, companyId), isNull(agents.deletedAt)];
     if (scopedAgentIds) agentConditions.push(inArray(agents.id, scopedAgentIds));
 
+    // Agents limited to other people (0.20): hidden from members, a locked card for owners/admins.
+    const guard = await requireRole("viewer")().catch(() => null);
+    const { hidden, metadata } = guard ? await agentsNotUsableBy({ ...guard, scope }) : { hidden: new Set<string>(), metadata: new Set<string>() };
+    if (!guard || !canAdmin(guard.role)) {
+        const condition = usableAgentCondition(hidden, agents.id);
+        if (condition) agentConditions.push(condition);
+    }
+
     const allAgents = await db.select().from(agents).where(and(...agentConditions));
+    const owners = await ownerNames(allAgents.filter((agent) => agent.access !== "everyone").map((agent) => agent.ownerUserId));
     const tasksCompletedByAgent = await db.select({
         agentId: tasks.assignedAgentId,
         count: sql<number>`count(*)`,
@@ -62,6 +74,9 @@ export default async function AgentsPage() {
                     currentLoad: agent.concurrencyLimit > 0 ? Math.round((agent.currentLoad / agent.concurrencyLimit) * 100) : 0,
                     deadLetterCount: failures?.dead || 0,
                     failedCount: failures?.failed || 0,
+                    access: agent.access,
+                    ownerName: agent.ownerUserId ? owners.get(agent.ownerUserId) ?? null : null,
+                    use: metadata.has(agent.id) ? "metadata" as const : "full" as const,
                 };
             })}
         />

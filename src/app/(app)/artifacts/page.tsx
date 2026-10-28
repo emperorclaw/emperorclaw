@@ -1,5 +1,5 @@
 import { getValidatedServerSession } from "@/lib/auth";
-import { getMemberScopeForSession, getScopedCustomerIds } from "@/lib/member-scope";
+import { getMemberScopeForSession, getScopedCustomerIds, memberProjectCondition } from "@/lib/member-scope";
 import { db } from "@/db";
 import { projects, tasks, companyMembers, customers } from "@/db/schema";
 import { eq, and, isNull, inArray } from "drizzle-orm";
@@ -28,7 +28,7 @@ export default async function ArtifactsPage() {
     const scopedCustomerIds = getScopedCustomerIds(scope);
 
     const projectConditions: any[] = [eq(projects.companyId, companyId), isNull(projects.deletedAt)];
-    if (scopedCustomerIds) projectConditions.push(inArray(projects.customerId, scopedCustomerIds));
+    if (scopedCustomerIds) projectConditions.push(memberProjectCondition(scope, { id: projects.id, customerId: projects.customerId }));
 
     const projectOptions = await db.select({
         id: projects.id,

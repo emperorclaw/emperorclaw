@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireRole, AuthError } from "@/lib/roles";
+import { memberMayUseAgent } from "@/lib/agent-access-server";
 import { db } from "@/db";
 import { agents, companyTokens } from "@/db/schema";
 import { and, eq, isNull } from "drizzle-orm";
@@ -42,7 +43,9 @@ export async function POST(
         and(eq(agents.id, id), eq(agents.companyId, companyId), isNull(agents.deletedAt))
     ).limit(1);
 
-    if (!agent) return NextResponse.json({ error: "Agent not found" }, { status: 404 });
+    // It mints a token that acts as the agent (and reads its chats): full use
+    // only (0.20), never an admin who sees a limited agent as metadata.
+    if (!agent || !(await memberMayUseAgent(ctx, agent.id))) return NextResponse.json({ error: "Agent not found" }, { status: 404 });
     if (agent.deploymentMode !== "local") {
         return NextResponse.json({ error: "This agent is deployed remotely." }, { status: 400 });
     }

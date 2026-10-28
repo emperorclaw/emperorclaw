@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { pgTable, text, timestamp, boolean, jsonb, uuid, integer, uniqueIndex, index, check, doublePrecision, date } from "drizzle-orm/pg-core";
+import { pgTable, text, timestamp, boolean, jsonb, uuid, integer, uniqueIndex, index, check, doublePrecision, date, primaryKey } from "drizzle-orm/pg-core";
 
 // --- Auth Tables ---
 export const users = pgTable("users", {
@@ -289,9 +289,16 @@ export const agents = pgTable("agents", {
     status: text("status").notNull().default('offline'),
     lastSeenAt: timestamp("last_seen_at"),
     currentLoad: integer("current_load").default(0).notNull(),
+    // Who may use the agent (0.20, lib/agent-access.ts): 'everyone' (the
+    // behavior before 0.20), 'people' (the owner plus agent_access) or 'owner'.
+    // An 'owner' agent never sees more data than its owner (lib/agent-scope.ts).
+    ownerUserId: uuid("owner_user_id").references(() => users.id, { onDelete: 'set null' }),
+    access: text("access").default("everyone").notNull(),
     createdAt: timestamp("created_at").defaultNow().notNull(),
     deletedAt: timestamp("deleted_at"),
-});
+}, (table) => ({
+    accessCheck: check("agents_access_check", sql`${table.access} IN ('everyone', 'people', 'owner')`),
+}));
 
 // ---- LLM Pricing & Usage Tracking ----
 
@@ -1090,6 +1097,11 @@ export const invitations = pgTable("invitations", {
     email: text("email").notNull(),
     tokenHash: text("token_hash").notNull(),
     role: text("role").notNull(), // 'admin' | 'member' | 'viewer'
+    // Invite to one client or project (0.20): accepting makes the person a
+    // restricted member with a single resource_memberships row.
+    resourceType: text("resource_type"), // 'customer' | 'project'
+    resourceId: uuid("resource_id"),
+    resourceRole: text("resource_role"), // 'admin' | 'editor' | 'viewer'
     maxUses: integer("max_uses").default(1).notNull(),
     useCount: integer("use_count").default(0).notNull(),
     expiresAt: timestamp("expires_at").notNull(),
@@ -1444,4 +1456,38 @@ export const viewPanelData = pgTable("view_panel_data", {
     updatedAt: timestamp("updated_at").defaultNow().notNull(),
 }, (table) => ({
     viewPanelUnique: uniqueIndex("view_panel_data_view_panel_unique").on(table.viewId, table.panelId),
+}));
+
+// Access per client and project (0.20, lib/resource-roles.ts). A row gives one
+// person a role on one customer or project: it can ELEVATE their company role
+// inside that resource (company viewer + 'editor' on a project = can edit
+// there) and is the allow-list of a restricted member (company_members
+// .scope_json mode 'restricted'): they see only the customers and projects
+// they hold a row for. Never touches company-wide permissions.
+export const resourceMemberships = pgTable("resource_memberships", {
+    id: uuid("id").primaryKey().defaultRandom(),
+    companyId: uuid("company_id").notNull().references(() => companies.id, { onDelete: 'cascade' }),
+    userId: uuid("user_id").notNull().references(() => users.id, { onDelete: 'cascade' }),
+    resourceType: text("resource_type").notNull(), // 'customer' | 'project'
+    resourceId: uuid("resource_id").notNull(),
+    role: text("role").notNull(), // 'admin' | 'editor' | 'viewer'
+    createdByUserId: uuid("created_by_user_id").references(() => users.id, { onDelete: 'set null' }),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (table) => ({
+    memberResourceUnique: uniqueIndex("resource_memberships_member_resource_unique").on(table.companyId, table.userId, table.resourceType, table.resourceId),
+    resourceIdx: index("resource_memberships_resource_idx").on(table.companyId, table.resourceType, table.resourceId),
+    resourceTypeCheck: check("resource_memberships_resource_type_check", sql`${table.resourceType} IN ('customer', 'project')`),
+    roleCheck: check("resource_memberships_role_check", sql`${table.role} IN ('admin', 'editor', 'viewer')`),
+}));
+
+// The people who may use an agent whose access is 'people' (besides its
+// owner), lib/agent-access.ts. Mirrors view_shares.
+export const agentAccess = pgTable("agent_access", {
+    agentId: uuid("agent_id").notNull().references(() => agents.id, { onDelete: 'cascade' }),
+    userId: uuid("user_id").notNull().references(() => users.id, { onDelete: 'cascade' }),
+    companyId: uuid("company_id").notNull().references(() => companies.id, { onDelete: 'cascade' }),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (table) => ({
+    pk: primaryKey({ columns: [table.agentId, table.userId] }),
+    companyUserIdx: index("agent_access_company_user_idx").on(table.companyId, table.userId),
 }));

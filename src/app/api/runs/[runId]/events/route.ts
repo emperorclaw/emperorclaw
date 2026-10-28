@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { companyRouteAccess } from "@/lib/company-access";
 import { getScopedAgentIds } from "@/lib/member-scope";
 import { loadRunTimeline } from "@/lib/run-ledger-reads";
+import { usableAgentIdList } from "@/lib/agent-access-server";
 
 export const dynamic = "force-dynamic";
 
@@ -22,7 +23,8 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ run
     const { runId } = await params;
     if (!UUID_RE.test(runId)) return NextResponse.json({ error: "Invalid run id" }, { status: 400 });
 
-    const agentIds = getScopedAgentIds(access.ctx.scope);
+    // A run of an agent limited to other people (0.20) reads as missing: its steps and reasoning are theirs.
+    const agentIds = await usableAgentIdList(access.ctx, getScopedAgentIds(access.ctx.scope));
     const view = await loadRunTimeline(companyId, runId, { viewerUserId: access.ctx.userId, agentIds });
     if (!view) return NextResponse.json({ error: "Run not found" }, { status: 404 });
     return NextResponse.json(view, { headers: { "Cache-Control": "no-store" } });

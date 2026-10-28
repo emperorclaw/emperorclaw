@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { and, eq, isNull } from "drizzle-orm";
 import { db } from "@/db";
 import { customers } from "@/db/schema";
-import { companyRouteAccess } from "@/lib/company-access";
+import { resourceRouteAccess } from "@/lib/resource-access";
 import { memberMaySeeCustomer } from "@/lib/member-scope";
 import { humanActor, recordAudit } from "@/lib/audit";
 import { lengthError, NAME_MAX } from "@/lib/input-limits";
@@ -11,12 +11,13 @@ export async function PATCH(
     req: NextRequest,
     { params }: { params: Promise<{ id: string }> }
 ) {
-    const access = await companyRouteAccess("member", { module: "customers" });
+    const { id } = await params;
+    // Resource-aware (0.20): editors and admins of this customer may rename it.
+    const access = await resourceRouteAccess({ type: "customer", id }, "member", { module: "customers" });
     if (access.response) return access.response;
     const companyId = access.ctx.companyId;
 
     try {
-        const { id } = await params;
         const body = await req.json();
         const { name, notes } = body;
         const tooLong = lengthError("name", name, NAME_MAX);

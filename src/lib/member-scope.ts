@@ -1,37 +1,68 @@
-import { and, eq, inArray, isNull, or, type AnyColumn, type SQL } from "drizzle-orm";
+import { and, eq, inArray, isNull, or, sql, type AnyColumn, type SQL } from "drizzle-orm";
 import type { SessionWithUserId } from "@/lib/auth";
 
 /**
- * A restricted member's access scope (company_members.scope_json), set by an
- * admin in Settings -> Members -> Access scope.
+ * A restricted member's access scope, set by an admin in Settings -> Members
+ * -> Access scope and in a client's or project's Access dialog.
  *
- * Model: `mode: "restricted"` turns the scope on; `agentIds` and `customerIds`
- * are then two independent allow-lists. An EMPTY list grants NOTHING on that
- * axis (fail closed, the same rule agent scopes use): "restricted" with no
- * agents ticked means the member sees no agents, not every agent.
+ * Model: `mode: "restricted"` (company_members.scope_json) turns the scope on;
+ * `agentIds` (also scope_json) and the member's customers and projects are
+ * then independent allow-lists. An EMPTY list grants NOTHING on that axis
+ * (fail closed, the same rule agent scopes use): "restricted" with no agents
+ * ticked means the member sees no agents, not every agent.
  *
- * Projects (and their tasks, approvals, files) follow their customer: a
- * restricted member sees a project only when its customer is allowed, so
- * internal projects without a customer are hidden too.
+ * Since 0.20 `customerIds` and `projectIds` come from resource_memberships
+ * (lib/resource-roles.ts), never from scope_json. A project (and its tasks,
+ * approvals, files, views, notes) is visible when its customer is in
+ * customerIds OR the project itself is in projectIds, so internal projects
+ * without a customer are hidden unless granted directly.
  *
  * Owners/admins are never scoped (roles.ts drops the scope for them).
  */
 export type MemberScope = {
     agentIds?: string[];
     customerIds?: string[];
+    projectIds?: string[];
     mode?: "all" | "restricted";
 };
+
+/** A resource_memberships row, reduced to what the scope needs. */
+export type ScopeMembership = { resourceType: string; resourceId: string };
 
 function asIdList(value: unknown): string[] {
     return Array.isArray(value) ? value.filter((id): id is string => typeof id === "string" && id.length > 0) : [];
 }
 
-/** null = unrestricted. A restricted scope always carries both arrays. */
-export function normalizeMemberScope(raw: unknown): MemberScope | null {
+/**
+ * null = unrestricted. A restricted scope always carries all three arrays; the
+ * customer and project lists come from the member's resource memberships (a
+ * legacy scope_json.customerIds is ignored: migration 0072 moved it).
+ */
+export function normalizeMemberScope(raw: unknown, memberships: readonly ScopeMembership[] = []): MemberScope | null {
     if (!raw || typeof raw !== "object") return null;
     const scope = raw as MemberScope;
     if (scope.mode !== "restricted") return null;
-    return { mode: "restricted", agentIds: asIdList(scope.agentIds), customerIds: asIdList(scope.customerIds) };
+    const ids = (type: string) => [...new Set(memberships.filter((m) => m.resourceType === type).map((m) => m.resourceId))];
+    return { mode: "restricted", agentIds: asIdList(scope.agentIds), customerIds: ids("customer"), projectIds: ids("project") };
+}
+
+/** A member's resource memberships in one company (customer and project rows). */
+export async function loadScopeMemberships(companyId: string, userId: string): Promise<{ resourceType: string; resourceId: string; role: string }[]> {
+    const { db } = await import("@/db");
+    const { resourceMemberships } = await import("@/db/schema");
+    return db.select({ resourceType: resourceMemberships.resourceType, resourceId: resourceMemberships.resourceId, role: resourceMemberships.role })
+        .from(resourceMemberships)
+        .where(and(eq(resourceMemberships.companyId, companyId), eq(resourceMemberships.userId, userId)));
+}
+
+/**
+ * A member's scope from their stored scope_json plus their memberships. Only
+ * a restricted scope needs the memberships, so unrestricted members cost no
+ * extra query.
+ */
+export async function resolveMemberScope(companyId: string, userId: string, scopeJson: unknown): Promise<MemberScope | null> {
+    if (!normalizeMemberScope(scopeJson)) return null;
+    return normalizeMemberScope(scopeJson, await loadScopeMemberships(companyId, userId));
 }
 
 /**
@@ -41,7 +72,7 @@ export function normalizeMemberScope(raw: unknown): MemberScope | null {
 export async function loadMemberScope(userId: string, companyId?: string | null): Promise<MemberScope | null> {
     const { db } = await import("@/db");
     const { companyMembers, users } = await import("@/db/schema");
-    const [row] = await db.select({ scopeJson: companyMembers.scopeJson, role: companyMembers.role, instanceRole: users.instanceRole })
+    const [row] = await db.select({ scopeJson: companyMembers.scopeJson, role: companyMembers.role, instanceRole: users.instanceRole, companyId: companyMembers.companyId })
         .from(companyMembers)
         .innerJoin(users, eq(users.id, companyMembers.userId))
         .where(companyId ? and(eq(companyMembers.userId, userId), eq(companyMembers.companyId, companyId)) : eq(companyMembers.userId, userId))
@@ -49,7 +80,7 @@ export async function loadMemberScope(userId: string, companyId?: string | null)
         .limit(1);
     if (!row) return null;
     if (row.instanceRole === "instance_admin" || row.role === "owner" || row.role === "admin") return null;
-    return normalizeMemberScope(row.scopeJson);
+    return resolveMemberScope(row.companyId, userId, row.scopeJson);
 }
 
 /** Server pages: the viewer's scope from the DB, keyed by their session. */
@@ -57,14 +88,6 @@ export async function getMemberScopeForSession(session: SessionWithUserId | null
     const userId = session?.user?.id;
     if (!userId) return null;
     return loadMemberScope(userId);
-}
-
-/**
- * @deprecated The JWT copy is stale after an admin edits the scope; use
- * getMemberScopeForSession / requireRole().scope instead.
- */
-export function getScopeFromSession(session: SessionWithUserId): MemberScope | null {
-    return normalizeMemberScope((session.user as { scopeJson?: unknown } | undefined)?.scopeJson);
 }
 
 /** Apply a scope allow-list in memory (undefined = unrestricted). */
@@ -89,6 +112,12 @@ export function getScopedCustomerIds(scope: MemberScope | null): string[] | unde
     return scope.customerIds ?? [];
 }
 
+/** Projects granted directly (project memberships), or undefined when unrestricted. [] = none. */
+export function getScopedProjectIds(scope: MemberScope | null): string[] | undefined {
+    if (!scope) return undefined;
+    return scope.projectIds ?? [];
+}
+
 export function memberMaySeeAgent(scope: MemberScope | null, agentId: string | null | undefined): boolean {
     if (!scope) return true;
     return Boolean(agentId) && (scope.agentIds ?? []).includes(agentId as string);
@@ -99,10 +128,12 @@ export function memberMaySeeCustomer(scope: MemberScope | null, customerId: stri
     return Boolean(customerId) && (scope.customerIds ?? []).includes(customerId as string);
 }
 
-/** A project is visible through its customer. */
-export function memberMaySeeProject(scope: MemberScope | null, project: { customerId: string | null | undefined } | null | undefined): boolean {
+/** A project is visible through its customer or its own membership. */
+export function memberMaySeeProject(scope: MemberScope | null, project: { id?: string | null; customerId: string | null | undefined } | null | undefined): boolean {
     if (!scope) return true;
-    return Boolean(project) && memberMaySeeCustomer(scope, project!.customerId);
+    if (!project) return false;
+    return memberMaySeeCustomer(scope, project.customerId)
+        || (Boolean(project.id) && (scope.projectIds ?? []).includes(project.id as string));
 }
 
 /** SQL filter on an agent-id column (undefined = no filter). */
@@ -117,15 +148,29 @@ export function memberCustomerCondition(scope: MemberScope | null, column: AnyCo
     return ids ? inArray(column, ids) : undefined;
 }
 
-/** Ids of the projects a restricted member may see (via their customers); null = unrestricted. */
+/**
+ * SQL filter on a project: its customer is granted or the project itself is
+ * (undefined = no filter). `customerId` is the project's customer column.
+ */
+export function memberProjectCondition(scope: MemberScope | null, columns: { id: AnyColumn; customerId: AnyColumn }): SQL | undefined {
+    if (!scope) return undefined;
+    const customerIds = scope.customerIds ?? [];
+    const projectIds = scope.projectIds ?? [];
+    if (customerIds.length === 0 && projectIds.length === 0) return sql`false`;
+    return or(
+        customerIds.length ? inArray(columns.customerId, customerIds) : undefined,
+        projectIds.length ? inArray(columns.id, projectIds) : undefined,
+    );
+}
+
+/** Ids of the projects a restricted member may see (via their customers or a project membership); null = unrestricted. */
 export async function memberVisibleProjectIds(companyId: string, scope: MemberScope | null): Promise<Set<string> | null> {
     if (!scope) return null;
-    const customerIds = scope.customerIds ?? [];
-    if (customerIds.length === 0) return new Set();
+    if ((scope.customerIds ?? []).length === 0 && (scope.projectIds ?? []).length === 0) return new Set();
     const { db } = await import("@/db");
     const { projects } = await import("@/db/schema");
     const rows = await db.select({ id: projects.id }).from(projects)
-        .where(and(eq(projects.companyId, companyId), inArray(projects.customerId, customerIds)));
+        .where(and(eq(projects.companyId, companyId), memberProjectCondition(scope, { id: projects.id, customerId: projects.customerId })));
     return new Set(rows.map((row) => row.id));
 }
 
@@ -160,8 +205,9 @@ export async function memberMaySeeTaskId(companyId: string, scope: MemberScope |
 
 /**
  * Records that may hang off a project and/or customer (artifacts, folders,
- * pipelines): visible when their customer (direct or via the project) is in
- * scope; a record with neither is company-wide and visible to every member.
+ * pipelines): visible when their customer (direct or via the project) or
+ * their project is in scope; a record with neither is company-wide and
+ * visible to every member.
  */
 export async function memberMaySeeRecord(
     companyId: string,
@@ -182,10 +228,12 @@ export function memberRecordCondition(
 ): SQL | undefined {
     const ids = getScopedCustomerIds(scope);
     if (!ids) return undefined;
+    const projectIds = getScopedProjectIds(scope) ?? [];
     return or(
         and(isNull(columns.projectId), isNull(columns.customerId)),
-        inArray(columns.customerId, ids),
-        columns.projectCustomerId ? inArray(columns.projectCustomerId, ids) : undefined,
+        ids.length ? inArray(columns.customerId, ids) : undefined,
+        columns.projectCustomerId && ids.length ? inArray(columns.projectCustomerId, ids) : undefined,
+        projectIds.length ? inArray(columns.projectId, projectIds) : undefined,
     );
 }
 
@@ -279,9 +327,14 @@ export async function filterNotificationsForMember<T extends { sourceType: strin
  */
 export function memberMayAssignAgents(scope: MemberScope | null, body: { assignedAgentId?: unknown; assignee?: unknown }): boolean {
     if (!scope) return true;
+    return assignedAgentIds(body).every((id) => memberMaySeeAgent(scope, id));
+}
+
+/** The agent ids a create/update body would hand work to. */
+export function assignedAgentIds(body: { assignedAgentId?: unknown; assignee?: unknown }): string[] {
     const ids: string[] = [];
     if (typeof body.assignedAgentId === "string" && body.assignedAgentId) ids.push(body.assignedAgentId);
     const assignee = body.assignee as { type?: unknown; id?: unknown } | null | undefined;
     if (assignee && assignee.type === "agent" && typeof assignee.id === "string") ids.push(assignee.id);
-    return ids.every((id) => memberMaySeeAgent(scope, id));
+    return ids;
 }

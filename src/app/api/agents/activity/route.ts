@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { companyRouteAccess } from "@/lib/company-access";
 import { loadAgentActivity } from "@/lib/agent-activity";
 import { getScopedAgentIds } from "@/lib/member-scope";
+import { agentsNotUsableBy } from "@/lib/agent-access-server";
 
 export const dynamic = "force-dynamic";
 
@@ -18,5 +19,7 @@ export async function GET() {
 
     const agentIds = getScopedAgentIds(access.ctx.scope);
     const agents = await loadAgentActivity(companyId, { viewerUserId: access.ctx.userId, agentIds, scope: access.ctx.scope });
-    return NextResponse.json({ ts: new Date().toISOString(), agents });
+    // An agent limited to other people (0.20): what it is doing stays with them.
+    const { hidden } = await agentsNotUsableBy(access.ctx);
+    return NextResponse.json({ ts: new Date().toISOString(), agents: agents.filter((agent) => !hidden.has(agent.agentId)) });
 }

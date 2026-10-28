@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { companyRouteAccess } from "@/lib/company-access";
+import { resourceWriteDenied, scopeResource } from "@/lib/resource-access";
 import { createView, listViews, memberViewCaller, viewErrorResponse } from "@/lib/views";
 import { VIEW_SCOPE_TYPES, type ViewScopeType } from "@/lib/view-spec";
 
@@ -35,11 +36,18 @@ export async function GET(req: NextRequest) {
  * then fills in the panels; people can also pass a full panel list.
  */
 export async function POST(req: NextRequest) {
-    const access = await companyRouteAccess("member", { module: "views" });
+    const access = await companyRouteAccess("viewer", { module: "views" });
     if (access.response) return access.response;
     try {
         const body = await req.json().catch(() => null) as Record<string, unknown> | null;
         if (!body || typeof body !== "object") return NextResponse.json({ error: "A JSON object body is required" }, { status: 400 });
+        // Resource-aware (0.20): edit access to the customer/project it is filed under.
+        const denied = await resourceWriteDenied(access.ctx, await scopeResource(access.ctx.companyId, {
+            scopeType: typeof body.scopeType === "string" ? body.scopeType : null,
+            scopeId: typeof body.scopeId === "string" ? body.scopeId : null,
+        }), "member", "Scope");
+        // A scope they cannot see is createView's own 400 below, as before 0.20.
+        if (denied && denied.status !== 404) return denied;
         const view = await createView(access.ctx.companyId, memberViewCaller(access.ctx), {
             title: body.title, description: body.description, scopeType: body.scopeType, scopeId: body.scopeId, panels: body.panels ?? [],
             visibility: body.visibility, refreshEveryMinutes: body.refreshEveryMinutes,

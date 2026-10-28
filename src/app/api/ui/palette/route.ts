@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { companyRouteAccess } from "@/lib/company-access";
 import { attentionAccessFromGuard } from "@/lib/attention";
 import { loadPaletteData } from "@/lib/palette";
+import { agentsNotUsableBy } from "@/lib/agent-access-server";
 import { roleGte } from "@/lib/roles";
 import { searchCompany } from "@/lib/search";
 import { PALETTE_MATCH_LIMIT } from "@/lib/search-query";
@@ -19,7 +20,7 @@ export async function GET(req: NextRequest) {
     const { companyId, userId, role, scope } = guard.ctx;
     const q = req.nextUrl.searchParams.get("q") ?? "";
     try {
-        const [data, search] = await Promise.all([
+        const [data, search, limited] = await Promise.all([
             loadPaletteData(companyId, attentionAccessFromGuard(guard.ctx).scope, q),
             q.trim()
                 ? searchCompany({ companyId, userId, isAdmin: roleGte(role, "admin"), scope }, { q, limit: PALETTE_MATCH_LIMIT }).catch((error) => {
@@ -28,8 +29,12 @@ export async function GET(req: NextRequest) {
                     return null;
                 })
                 : Promise.resolve(null),
+            agentsNotUsableBy(guard.ctx),
         ]);
-        return NextResponse.json(search ? { ...data, matches: search.results } : data, { headers: { "Cache-Control": "private, no-store" } });
+        // The palette opens chats: agents limited to other people are left out (0.20).
+        const agents = data.agents.filter((agent) => !limited.hidden.has(agent.id));
+        const shown = { ...data, agents };
+        return NextResponse.json(search ? { ...shown, matches: search.results } : shown, { headers: { "Cache-Control": "private, no-store" } });
     } catch (error) {
         console.error("[/api/ui/palette] GET error:", error);
         return NextResponse.json({ error: "Internal Server Error" }, { status: 500 });

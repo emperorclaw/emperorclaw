@@ -15,7 +15,7 @@ import {
     type InstanceRole,
     type Role,
 } from "@/lib/role-matrix";
-import { normalizeMemberScope, type MemberScope } from "@/lib/member-scope";
+import { loadScopeMemberships, normalizeMemberScope, type MemberScope } from "@/lib/member-scope";
 
 export {
     PERMISSION_MATRIX,
@@ -32,7 +32,7 @@ export type { CompanyRole, InstanceRole, Permission, Role } from "@/lib/role-mat
 
 export class AuthError extends Error {
     public statusCode: number;
-    constructor(message: string, statusCode: 401 | 403 = 403) {
+    constructor(message: string, statusCode: 401 | 403 | 404 = 403) {
         super(message);
         this.name = "AuthError";
         this.statusCode = statusCode;
@@ -56,6 +56,12 @@ export interface GuardContext {
      * unrestricted; always null for admins and owners.
      */
     scope: MemberScope | null;
+    /**
+     * The member's resource memberships when they were already loaded (a
+     * restricted member's scope needs them), so lib/resource-access.ts roleFor
+     * does not query again. Absent = not loaded yet.
+     */
+    memberships?: readonly { resourceType: string; resourceId: string; role: string }[];
 }
 
 type RequestIdentity = {
@@ -122,8 +128,11 @@ export function requireRole(...requiredRoles: Role[]) {
             );
         }
 
-        const scope = roleGte(effective, "admin") ? null : normalizeMemberScope(identity.scopeJson);
-        return { userId, companyId, role: effective, scope };
+        if (roleGte(effective, "admin")) return { userId, companyId, role: effective, scope: null };
+        const restricted = normalizeMemberScope(identity.scopeJson);
+        if (!restricted) return { userId, companyId, role: effective, scope: null };
+        const memberships = await loadScopeMemberships(companyId, userId);
+        return { userId, companyId, role: effective, scope: normalizeMemberScope(identity.scopeJson, memberships), memberships };
     };
 }
 

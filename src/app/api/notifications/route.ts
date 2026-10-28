@@ -5,6 +5,7 @@ import { notifications } from "@/db/schema";
 import { isMissingSchemaError } from "@/lib/schema-compat";
 import { companyRouteAccess } from "@/lib/company-access";
 import { filterNotificationsForMember } from "@/lib/member-scope";
+import { agentsNotUsableBy, filterNotificationsForAgentUse } from "@/lib/agent-access-server";
 
 export const dynamic = "force-dynamic";
 
@@ -18,11 +19,13 @@ export async function GET(req: NextRequest) {
     try {
         const mine = and(eq(notifications.companyId, companyId), eq(notifications.userId, userId));
         const scope = access.ctx.scope;
-        if (scope) {
+        // Agents limited to other people (0.20) filter like an out-of-scope agent.
+        const { hidden } = await agentsNotUsableBy(access.ctx);
+        if (scope || hidden.size > 0) {
             // A restricted member only sees notifications about agents, tasks,
             // approvals and messages inside their scope; the unread count matches.
             const all = await db.select().from(notifications).where(mine).orderBy(desc(notifications.createdAt)).limit(500);
-            const visible = await filterNotificationsForMember(companyId, scope, all);
+            const visible = await filterNotificationsForAgentUse(access.ctx, await filterNotificationsForMember(companyId, scope, all));
             return NextResponse.json({ notifications: visible.slice(0, limit), unreadCount: visible.filter((n) => !n.readAt).length },
                 { headers: { "Cache-Control": "private, no-store" } });
         }

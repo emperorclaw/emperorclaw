@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
-import { dbAvailable, getDb, getSchema, resetDb, seedAgent, seedCompanyWithToken } from "./_helper";
+import { dbAvailable, getDb, getSchema, resetDb, seedAgent, seedCompanyWithToken, migrateLegacyMemberScopes } from "./_helper";
 
 /**
  * The task page read side (slices 10.4–10.6): loadTaskStory merges task
@@ -41,6 +41,7 @@ async function seedStory() {
         { companyId, userId: scoped.id, role: "member", scopeJson: { mode: "restricted", agentIds: [atlas.id], customerIds: [harbor.id] } },
         { companyId, userId: customerOnly.id, role: "member", scopeJson: { mode: "restricted", agentIds: [], customerIds: [other.id] } },
     ]);
+    await migrateLegacyMemberScopes();
 
     const [task] = await db.insert(s.tasks).values({
         companyId, projectId: project.id, taskType: "reporting", state: "review", assignedAgentId: atlas.id,

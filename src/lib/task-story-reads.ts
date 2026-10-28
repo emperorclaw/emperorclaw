@@ -19,7 +19,9 @@ import {
 import { loadThreadVisibility, PRIVATE_ACTIVITY, PRIVATE_RUN_ERROR } from "@/lib/agent-activity";
 import { userMayUseThread } from "@/lib/direct-chat-mode";
 import { isAgentPairThread } from "@/lib/groups";
-import type { MemberScope } from "@/lib/member-scope";
+import { resolveMemberScope, type MemberScope } from "@/lib/member-scope";
+import { agentsNotUsableBy } from "@/lib/agent-access-server";
+import type { Role } from "@/lib/role-matrix";
 import type { GuardContext } from "@/lib/roles";
 import { buildRunLive, loadRunEventsTail, type RunLive } from "@/lib/run-events";
 import { runThreadLink } from "@/lib/run-ledger-copy";
@@ -30,7 +32,6 @@ import {
     excerpt,
     mergeStory,
     pageStory,
-    parseMemberScope,
     runOutcome,
     scopedAgentIds,
     taskVisibleToScope,
@@ -77,9 +78,9 @@ export async function loadTaskViewer(companyId: string, userId: string | null): 
         .where(and(eq(companyMembers.companyId, companyId), eq(companyMembers.userId, userId)))
         .limit(1);
     // Not a member of this company: nothing in scope (fail closed).
-    if (!member) return { userId, memberId: null, role: "viewer", scope: { mode: "restricted", agentIds: [], customerIds: [] } };
+    if (!member) return { userId, memberId: null, role: "viewer", scope: { mode: "restricted", agentIds: [], customerIds: [], projectIds: [] } };
     const unscoped = member.instanceRole === "instance_admin" || ADMIN_ROLES.has(member.role);
-    return { userId, memberId: member.id, role: member.role, scope: unscoped ? null : parseMemberScope(member.scopeJson) };
+    return { userId, memberId: member.id, role: member.role, scope: unscoped ? null : await resolveMemberScope(companyId, userId, member.scopeJson) };
 }
 
 /**
@@ -178,7 +179,7 @@ async function loadScopedTask(companyId: string, taskId: string, viewer: TaskVie
         .where(and(eq(tasks.id, taskId), eq(tasks.companyId, companyId), isNull(tasks.deletedAt)))
         .limit(1);
     if (!row) return null;
-    if (!taskVisibleToScope({ customerId: row.customerId }, viewer.scope)) return null;
+    if (!taskVisibleToScope({ customerId: row.customerId, projectId: row.projectId }, viewer.scope)) return null;
     return row;
 }
 
@@ -188,8 +189,13 @@ function inputField(inputJson: unknown, key: string): string | null {
     return typeof value === "string" && value.trim() ? value.trim() : null;
 }
 
-/** Agents (by id) and members (by member id and by user id) named in the story. */
-async function loadNames(companyId: string): Promise<StoryNames & { agentList: { id: string; name: string }[]; memberList: { id: string; name: string }[] }> {
+/**
+ * Agents (by id) and members (by member id and by user id) named in the story.
+ * An agent limited to other people (0.20) is "🔒 name" for an owner/admin who
+ * sees it as metadata and "Private agent" for everyone else, and is never
+ * offered as an assignee.
+ */
+async function loadNames(companyId: string, viewer: TaskViewer): Promise<StoryNames & { agentList: { id: string; name: string }[]; memberList: { id: string; name: string }[] }> {
     const [agentRows, memberRows] = await Promise.all([
         db.select({ id: agents.id, name: agents.name, deletedAt: agents.deletedAt }).from(agents).where(eq(agents.companyId, companyId)),
         db.select({ id: companyMembers.id, userId: users.id, displayName: users.displayName, email: users.email })
@@ -197,7 +203,12 @@ async function loadNames(companyId: string): Promise<StoryNames & { agentList: {
             .innerJoin(users, eq(users.id, companyMembers.userId))
             .where(eq(companyMembers.companyId, companyId)),
     ]);
-    const agentNames = new Map(agentRows.map((row) => [row.id, row.name]));
+    const limited = viewer.userId
+        ? await agentsNotUsableBy({ companyId, userId: viewer.userId, role: viewer.role as Role, scope: viewer.scope })
+        : { hidden: new Set(agentRows.map((row) => row.id)), metadata: new Set<string>() };
+    const shownName = (row: { id: string; name: string }) => !limited.hidden.has(row.id) ? row.name
+        : limited.metadata.has(row.id) ? `🔒 ${row.name}` : "Private agent";
+    const agentNames = new Map(agentRows.map((row) => [row.id, shownName(row)]));
     const memberNames = new Map<string, string>();
     for (const row of memberRows) {
         const name = row.displayName?.trim() || row.email;
@@ -207,7 +218,7 @@ async function loadNames(companyId: string): Promise<StoryNames & { agentList: {
     return {
         agent: (id) => (id ? agentNames.get(id) ?? null : null),
         member: (id) => (id ? memberNames.get(id) ?? null : null),
-        agentList: agentRows.filter((row) => !row.deletedAt).map((row) => ({ id: row.id, name: row.name })),
+        agentList: agentRows.filter((row) => !row.deletedAt && !limited.hidden.has(row.id)).map((row) => ({ id: row.id, name: row.name })),
         memberList: memberRows.map((row) => ({ id: row.id, name: row.displayName?.trim() || row.email })),
     };
 }
@@ -290,7 +301,7 @@ export async function loadTaskStory(
     const agentScope = scopedAgentIds(viewer.scope);
 
     const [names, eventRows, approvalRows, artifactRows, runRows, requestRows] = await Promise.all([
-        loadNames(companyId),
+        loadNames(companyId, viewer),
         db.select().from(taskEvents)
             .where(and(eq(taskEvents.companyId, companyId), eq(taskEvents.taskId, taskId), olderThan(taskEvents.createdAt)))
             .orderBy(desc(taskEvents.createdAt))
@@ -597,7 +608,7 @@ export async function loadTaskLive(companyId: string, taskId: string, viewer: Ta
     )).orderBy(desc(agentRuns.startedAt)).limit(5);
     if (running.length === 0) return { runs: [], state: task.state, serverNow: now.toISOString() };
     const [names, threads, visibility] = await Promise.all([
-        loadNames(companyId),
+        loadNames(companyId, viewer),
         loadThreads(companyId, running.map((run) => run.threadId)),
         loadThreadVisibility(companyId, running.map((run) => run.threadId), viewer.userId),
     ]);

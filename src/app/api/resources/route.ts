@@ -5,6 +5,7 @@ import { buildResourceFolderTree, createScopedResource, listScopedResources, res
 import { companyRouteAccess } from "@/lib/company-access";
 import { filterResourcesForMember, memberMaySeeResource } from "@/lib/member-scope";
 import { humanActor } from "@/lib/audit";
+import { resourceWriteDenied, scopeResource } from "@/lib/resource-access";
 
 
 export async function GET() {
@@ -33,7 +34,7 @@ export async function GET() {
 
 export async function POST(request: Request) {
   try {
-    const access = await companyRouteAccess("member");
+    const access = await companyRouteAccess("viewer");
     if (access.response) return access.response;
     const membership = access.ctx;
 
@@ -56,6 +57,9 @@ export async function POST(request: Request) {
     if (!(await memberMaySeeResource(membership.companyId, membership.scope, targetScope))) {
       return NextResponse.json({ error: "That scope is outside your access" }, { status: 403 });
     }
+    // Resource-aware (0.20): edit access to the customer/project it is filed under.
+    const denied = await resourceWriteDenied(membership, await scopeResource(membership.companyId, targetScope), "member", "Scope");
+    if (denied) return denied;
 
     const resource = await createScopedResource({
       companyId: membership.companyId,

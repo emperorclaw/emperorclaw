@@ -9,6 +9,8 @@ import { listGroupsForUser } from "@/lib/groups";
 import { isMissingSchemaError } from "@/lib/schema-compat";
 import { userMayUseThread } from "@/lib/direct-chat-mode";
 import { loadMemberScope, memberAgentCondition } from "@/lib/member-scope";
+import { agentsNotUsableBy, usableAgentCondition } from "@/lib/agent-access-server";
+import { requireRole } from "@/lib/roles";
 import { memberMaySeeGroup } from "@/lib/group-route";
 
 export const dynamic = "force-dynamic";
@@ -36,8 +38,11 @@ export default async function MessagesPage() {
     const directChatMode = await getDirectChatMode(companyId);
     // A restricted member only sees (and chats with) the agents in their scope.
     const memberScope = await loadMemberScope(userId, companyId);
+    // Nor the DMs of an agent limited to other people (0.20), admins included.
+    const guard = await requireRole("viewer")().catch(() => null);
+    const { hidden } = guard ? await agentsNotUsableBy({ companyId, userId, role: guard.role, scope: memberScope }) : { hidden: new Set<string>() };
     const allAgents = await db.select().from(agents).where(
-        and(eq(agents.companyId, companyId), isNull(agents.deletedAt), memberAgentCondition(memberScope, agents.id))
+        and(eq(agents.companyId, companyId), isNull(agents.deletedAt), memberAgentCondition(memberScope, agents.id), usableAgentCondition(hidden, agents.id))
     );
 
     const directThreads = await db.select().from(messageThreads).where(

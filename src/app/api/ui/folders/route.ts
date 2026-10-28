@@ -4,6 +4,7 @@ import { db } from "@/db";
 import { and, eq, isNull, type InferModel } from "drizzle-orm";
 import { requireCompanyFromSession } from "@/lib/company-session";
 import { memberMaySeeRecord } from "@/lib/member-scope";
+import { recordsWriteDenied } from "@/lib/resource-access";
 import { buildFolderPath, sanitizeFolderName, findActiveFolder } from "@/lib/artifact-folders";
 import { storageAdapter } from "@/lib/storage";
 
@@ -11,7 +12,8 @@ type ArtifactFolderRecord = InferModel<typeof artifactFolders>;
 
 export async function POST(req: NextRequest) {
     try {
-        const { companyId, scope } = await requireCompanyFromSession("member");
+        const session = await requireCompanyFromSession("viewer");
+        const { companyId, scope } = session;
         const body = await req.json();
         const name = sanitizeFolderName(body.name);
         if (!name) {
@@ -31,6 +33,10 @@ export async function POST(req: NextRequest) {
             || (parentFolder && !(await memberMaySeeRecord(companyId, scope, { projectId: parentFolder.projectId as string | null, customerId: parentFolder.customerId as string | null })))) {
             return NextResponse.json({ error: projectId ? "Project not found" : customerId ? "Customer not found" : "Folder not found" }, { status: 404 });
         }
+        // Resource-aware (0.20): edit access where the folder goes ("Can view" never writes).
+        const denied = await recordsWriteDenied(session, [{ projectId, customerId },
+            parentFolder ? { projectId: parentFolder.projectId as string | null, customerId: parentFolder.customerId as string | null } : null], "member", "Folder");
+        if (denied) return denied;
 
         const parentPathValue = parentFolder && typeof parentFolder.path === "string" ? parentFolder.path : null;
         const safeName = typeof name === "string" ? name : "";

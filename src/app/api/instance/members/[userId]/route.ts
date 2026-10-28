@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireRole, AuthError } from "@/lib/roles";
 import { db } from "@/db";
-import { companyMembers, companyTokens, sessions, tasks, users } from "@/db/schema";
+import { agentAccess, agents, companyMembers, companyTokens, resourceMemberships, sessions, tasks, users } from "@/db/schema";
 import { and, eq, isNull, ne } from "drizzle-orm";
 import { isSelfHosted } from "@/lib/instance";
 import { archivePrivateThreadsOf } from "@/lib/control-plane";
@@ -259,6 +259,13 @@ export async function DELETE(
                 eq(companyMembers.userId, userId),
                 eq(companyMembers.companyId, ctx.companyId),
             ));
+            // Their roles on clients/projects and their place on agents' "Who can
+            // use it" lists go too (0.20): a later re-invite starts from nothing.
+            await tx.delete(resourceMemberships).where(and(eq(resourceMemberships.companyId, ctx.companyId), eq(resourceMemberships.userId, userId)));
+            await tx.delete(agentAccess).where(and(eq(agentAccess.companyId, ctx.companyId), eq(agentAccess.userId, userId)));
+            // Agents they own lose their owner: a limited one becomes an orphan
+            // an admin can recover (lib/agent-access.ts), never theirs again.
+            await tx.update(agents).set({ ownerUserId: null }).where(and(eq(agents.companyId, ctx.companyId), eq(agents.ownerUserId, userId)));
             // Their private chats with agents are kept but hidden from everyone.
             await archivePrivateThreadsOf(ctx.companyId, userId, tx);
             // Tokens they minted (screens, integrations) stop working too.

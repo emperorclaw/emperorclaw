@@ -1,55 +1,39 @@
-import { db } from "@/db";
-import { tasks, projects, agents, customers, artifacts, taskEvents, projectMemory, recurringTaskDefinitions, companyMembers, users } from "@/db/schema";
-import { eq, and, isNull } from "drizzle-orm";
-import { getCompanyId, getValidatedServerSession } from "@/lib/auth";
 import { redirect } from "next/navigation";
 import { RealtimeRefresh } from "@/lib/use-realtime";
 import ProjectsClient from "./projects-client";
+import { requireRole } from "@/lib/roles";
+import { loadProjectsBoard } from "@/lib/projects-board-reads";
 
 export const dynamic = "force-dynamic";
 
 export default async function ProjectsPage() {
-    const companyId = await getCompanyId();
-    if (!companyId) redirect("/login");
+    // Role and member scope from the DB (requireRole), never the login-time
+    // JWT copy; the board shows only what this person may see (0.20).
+    const guard = await requireRole("viewer")().catch(() => null);
+    if (!guard) redirect("/login");
 
-    const session = await getValidatedServerSession();
-    const companyRole = (session?.user as any)?.companyRole ?? "member";
-
-    const allTasks = await db.select().from(tasks).where(and(eq(tasks.companyId, companyId), isNull(tasks.deletedAt)));
-    const allProjects = await db.select().from(projects).where(and(eq(projects.companyId, companyId), isNull(projects.deletedAt)));
-    const allAgents = await db.select().from(agents).where(and(eq(agents.companyId, companyId), isNull(agents.deletedAt)));
-    const allCustomers = await db.select().from(customers).where(and(eq(customers.companyId, companyId), isNull(customers.deletedAt)));
-    const allArtifacts = await db.select().from(artifacts).where(and(eq(artifacts.companyId, companyId), isNull(artifacts.deletedAt)));
-    const allEvents = await db.select().from(taskEvents).where(eq(taskEvents.companyId, companyId));
-    const allProjectMemory = await db.select().from(projectMemory).where(eq(projectMemory.companyId, companyId));
-    const allRecurringTaskDefinitions = await db.select().from(recurringTaskDefinitions).where(and(eq(recurringTaskDefinitions.companyId, companyId), isNull(recurringTaskDefinitions.deletedAt)));
-    const members = await db.select({
-        id: companyMembers.id,
-        userId: users.id,
-        displayName: users.displayName,
-        email: users.email,
-        roleTitle: users.roleTitle,
-        companyRole: companyMembers.role,
-    }).from(companyMembers)
-        .innerJoin(users, eq(users.id, companyMembers.userId))
-        .where(and(eq(companyMembers.companyId, companyId), isNull(users.deletedAt)));
-    const currentMemberId = members.find((member) => member.userId === session?.user?.id)?.id || null;
+    const board = await loadProjectsBoard(guard);
+    const currentMemberId = board.members.find((member) => member.userId === guard.userId)?.id || null;
 
     return (
         <>
             <RealtimeRefresh topics={["projects"]} />
             <ProjectsClient
-                initialTasks={allTasks}
-                projects={allProjects}
-                agents={allAgents}
-                customers={allCustomers}
-                artifacts={allArtifacts}
-                taskEvents={allEvents}
-                initialProjectMemory={allProjectMemory}
-                recurringDefinitions={allRecurringTaskDefinitions}
-                members={members}
+                initialTasks={board.tasks}
+                projects={board.projects}
+                agents={board.agents}
+                limitedAgents={board.limitedAgents}
+                customers={board.customers}
+                artifacts={board.artifacts}
+                taskEvents={board.taskEvents}
+                initialProjectMemory={board.projectMemory}
+                recurringDefinitions={board.recurringDefinitions}
+                members={board.members}
                 currentMemberId={currentMemberId}
-                companyRole={companyRole}
+                // Edit everywhere only when the company role does (and no restriction):
+                // otherwise the board edits inside editableProjectIds only.
+                companyRole={board.canEditAll ? guard.role : "viewer"}
+                editableProjectIds={board.editableProjectIds}
             />
         </>
     );

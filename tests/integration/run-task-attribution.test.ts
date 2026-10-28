@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import { createHash, randomUUID } from "node:crypto";
-import { dbAvailable, getDb, getSchema, makeRequest, resetDb, seedAgent, seedCompanyWithToken } from "./_helper";
+import { dbAvailable, getDb, getSchema, makeRequest, resetDb, seedAgent, seedCompanyWithToken, migrateLegacyMemberScopes } from "./_helper";
 
 /**
  * Run → task attribution (src/lib/run-task-attribution*.ts): a run started by
@@ -504,6 +504,7 @@ maybe("the Projects view and time summary respect a restricted member's scope an
 
     const [scopedUser] = await db.insert(s.users).values({ email: `scoped-${randomUUID()}@example.com`, passwordHash: "x", displayName: "Sam" }).returning();
     await db.insert(s.companyMembers).values({ companyId, userId: scopedUser.id, role: "member", scopeJson: { mode: "restricted", agentIds: [builder.id], customerIds: [harbor.id] } });
+    await migrateLegacyMemberScopes();
     const [otherUser] = await db.insert(s.users).values({ email: `other-${randomUUID()}@example.com`, passwordHash: "x", displayName: "Olive" }).returning();
     await db.insert(s.companyMembers).values({ companyId, userId: otherUser.id, role: "member" });
     const { ensureDirectThread } = await import("@/lib/control-plane");

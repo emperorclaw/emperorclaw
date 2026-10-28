@@ -4,17 +4,17 @@ import { db } from "@/db";
 import { projectMemory, projects } from "@/db/schema";
 import { getCompanyId, getUserId } from "@/lib/auth";
 import { broadcastMcpEvent } from "@/lib/pubsub";
-import { companyRouteAccess } from "@/lib/company-access";
+import { resourceRouteAccess } from "@/lib/resource-access";
 import { memberMaySeeProject } from "@/lib/member-scope";
 
 export async function POST(req: NextRequest, { params }: { params: Promise<{ projectId: string }> }) {
-    const access = await companyRouteAccess("member");
+    const { projectId } = await params;
+    const access = await resourceRouteAccess({ type: "project", id: projectId }, "member");
     if (access.response) return access.response;
     const companyId = access.ctx.companyId;
     const userId = access.ctx.userId;
 
     try {
-        const { projectId } = await params;
         const body = await req.json();
         const { content, tags } = body;
 

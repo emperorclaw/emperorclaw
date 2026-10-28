@@ -505,6 +505,13 @@
       "when": 1793190076953,
       "tag": "0071_views-privacy",
       "breakpoints": true
+    },
+    {
+      "idx": 72,
+      "version": "7",
+      "when": 1793213975342,
+      "tag": "0072_access-roles",
+      "breakpoints": true
     }
   ]
 }

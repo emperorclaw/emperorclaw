@@ -376,10 +376,15 @@ export async function resolveAgentId(
         if (existing) return existing.id;
     }
 
-    // 2. Otherwise by the agent's name
-    const [agent] = await db.select({ id: agents.id }).from(agents).where(
+    // 2. Otherwise by the agent's name. Names are not unique: a name shared by
+    //    several agents resolves to none (never an arbitrary one, which could
+    //    be an agent the caller may not use). The message keeps the "Agent not
+    //    found" prefix every caller already maps to 404.
+    const named = await db.select({ id: agents.id }).from(agents).where(
         and(eq(agents.companyId, companyId), eq(agents.name, ref), isNull(agents.deletedAt))
-    ).limit(1);
+    ).limit(2);
+    if (named.length > 1) throw new Error(`Agent not found: the name "${ref}" is used by more than one agent; use its id`);
+    const [agent] = named;
 
     if (agent) return agent.id;
 

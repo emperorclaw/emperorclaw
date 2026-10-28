@@ -346,26 +346,20 @@ export function groupStoryByDay<T extends { at: string }>(entries: readonly T[],
  * (memberMaySeeProject / memberMaySeeTaskId), kept here without its database
  * imports so client code can use it: unrestricted viewers (null scope, which
  * includes owners and admins) see every task of their company; a restricted
- * member sees a task when its project's customer is in their scope. Internal
- * projects without a customer are hidden from them, as everywhere else.
+ * member sees a task when its project's customer, or the project itself, is in
+ * their scope. Internal projects without a customer are hidden from them
+ * unless granted directly, as everywhere else.
  */
-export function taskVisibleToScope(task: { customerId: string | null }, scope: MemberScope | null): boolean {
+export function taskVisibleToScope(task: { customerId: string | null; projectId?: string | null }, scope: MemberScope | null): boolean {
     if (!scope || scope.mode !== "restricted") return true;
-    return Boolean(task.customerId) && (scope.customerIds ?? []).includes(task.customerId as string);
+    if (task.customerId && (scope.customerIds ?? []).includes(task.customerId)) return true;
+    return Boolean(task.projectId) && (scope.projectIds ?? []).includes(task.projectId as string);
 }
 
 /** Agent ids a scoped viewer may see runs of; null = unrestricted, [] = none. */
 export function scopedAgentIds(scope: MemberScope | null): string[] | null {
     if (!scope || scope.mode !== "restricted") return null;
     return scope.agentIds ?? [];
-}
-
-/** Normalize a company_members.scope_json value; anything not explicitly restricted is unrestricted. */
-export function parseMemberScope(value: unknown): MemberScope | null {
-    const raw = record(value);
-    if (raw.mode !== "restricted") return null;
-    const ids = (list: unknown) => Array.isArray(list) ? list.filter((id): id is string => typeof id === "string" && id.length > 0) : [];
-    return { mode: "restricted", agentIds: ids(raw.agentIds), customerIds: ids(raw.customerIds) };
 }
 
 // ─── Copy ───────────────────────────────────────────────────────────────────

@@ -4,7 +4,7 @@
 import { useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { IconBuilding, IconDeviceFloppy, IconSearch, IconSparkles } from "@tabler/icons-react";
+import { IconBuilding, IconDeviceFloppy, IconSearch } from "@tabler/icons-react";
 import { toast } from "sonner";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { PageHeader } from "@/components/page-header";
@@ -12,6 +12,7 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { cn } from "@/lib/utils";
 import { splitProjectTitle } from "@/lib/project-title";
 import { ScopeViewsSection } from "@/components/views/scope-views-section";
+import { ResourceAccessButton } from "@/components/access/resource-access-dialog";
 
 type CustomerSummary = any;
 
@@ -198,7 +199,7 @@ export default function CustomersClient({ initialData: customerData }: { initial
                                         <Tag label={`${selectedCustomer.pipelineCount || 0} pipelines`} tone="cyan" />
                                     </div>
                                 </div>
-                                <IconSparkles className="mt-1 h-5 w-5 text-cyan-300/70" />
+                                <ResourceAccessButton type="customer" id={selectedCustomer.id} />
                             </div>
                             {selectedCustomer.attention?.length > 0 && (
                                 <section className="mt-4 rounded-xl border border-amber-400/20 bg-amber-400/[0.04] p-3 sm:p-4" aria-label="Needs attention">

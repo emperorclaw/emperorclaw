@@ -4,6 +4,7 @@ import { db } from "@/db";
 import { messageThreads, threadMessages } from "@/db/schema";
 import { canUseDirectThread, getThreadMessageReasoning } from "@/lib/control-plane";
 import { companyRouteAccess } from "@/lib/company-access";
+import { memberMayUseAllAgents } from "@/lib/agent-access-server";
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -28,12 +29,15 @@ export async function GET(req: NextRequest) {
     try {
         // Someone else's private direct thread: answer as if there were no reasoning,
         // so the endpoint does not confirm the message exists.
-        const [thread] = await db.select({ type: messageThreads.type, ownerUserId: messageThreads.ownerUserId, isPrivate: messageThreads.isPrivate })
+        const [thread] = await db.select({ type: messageThreads.type, ownerUserId: messageThreads.ownerUserId, isPrivate: messageThreads.isPrivate, directAgentId: messageThreads.directAgentId, senderType: threadMessages.senderType, senderId: threadMessages.senderId })
             .from(threadMessages)
             .innerJoin(messageThreads, eq(messageThreads.id, threadMessages.threadId))
             .where(and(eq(threadMessages.id, messageId), eq(threadMessages.companyId, companyId)))
             .limit(1);
         if (thread && !canUseDirectThread(thread, userId)) return NextResponse.json({ messageId, reasoning: null });
+        // Nor the reasoning of (or in the DM of) an agent this person may not use (0.20).
+        const agentIds = thread ? [thread.directAgentId, thread.senderType === "agent" ? thread.senderId : null].filter((id): id is string => Boolean(id)) : [];
+        if (agentIds.length && !(await memberMayUseAllAgents(access.ctx, agentIds))) return NextResponse.json({ messageId, reasoning: null });
 
         const row = await getThreadMessageReasoning(companyId, messageId);
         if (!row) return NextResponse.json({ messageId, reasoning: null });

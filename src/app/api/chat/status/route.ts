@@ -8,6 +8,7 @@ import { canUseDirectThread, markThreadRead, updateThreadExecutionState } from "
 import { isAgentPairThread, isCompanyOwnerOrAdmin } from "@/lib/groups";
 import { companyRouteAccess } from "@/lib/company-access";
 import { canWrite } from "@/lib/role-matrix";
+import { memberMayUseAgent } from "@/lib/agent-access-server";
 
 export async function POST(req: NextRequest) {
     // Read receipts and typing are the viewer's own presence (any role);
@@ -25,11 +26,15 @@ export async function POST(req: NextRequest) {
         }
 
         // Someone else's private direct thread: no read, typing or state changes.
-        const [privateThread] = await db.select({ type: messageThreads.type, ownerUserId: messageThreads.ownerUserId, isPrivate: messageThreads.isPrivate })
+        const [privateThread] = await db.select({ type: messageThreads.type, ownerUserId: messageThreads.ownerUserId, isPrivate: messageThreads.isPrivate, directAgentId: messageThreads.directAgentId })
             .from(messageThreads)
             .where(and(eq(messageThreads.id, threadId), eq(messageThreads.companyId, companyId)))
             .limit(1);
         if (privateThread && !canUseDirectThread(privateThread, userId)) {
+            return NextResponse.json({ error: "Access denied: that conversation is private" }, { status: 403 });
+        }
+        // An agent limited to other people (0.20): its DM is not theirs to read, mark or steer.
+        if (privateThread?.directAgentId && !(await memberMayUseAgent(access.ctx, privateThread.directAgentId))) {
             return NextResponse.json({ error: "Access denied: that conversation is private" }, { status: 403 });
         }
 

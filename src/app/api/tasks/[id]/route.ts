@@ -2,13 +2,15 @@ import { NextRequest, NextResponse } from "next/server";
 import { AuthError, requireRole } from "@/lib/roles";
 import { updateTaskForCompany } from "@/lib/openclaw/tasks";
 import { serializeTaskWithAssignee } from "@/lib/task-assignee";
-import { memberMayAssignAgents, memberMaySeeTaskId } from "@/lib/member-scope";
+import { assignedAgentIds, memberMayAssignAgents, memberMaySeeTaskId } from "@/lib/member-scope";
+import { memberMayUseAllAgents } from "@/lib/agent-access-server";
 import { archiveTasksForCaller } from "@/lib/task-archive";
+import { taskWriteDenied } from "@/lib/resource-access";
 
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
     let ctx;
     try {
-        ctx = await requireRole("member")();
+        ctx = await requireRole("viewer")();
     } catch (error) {
         if (error instanceof AuthError) return NextResponse.json({ error: error.message }, { status: error.statusCode });
         throw error;
@@ -18,10 +20,13 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     if (!(await memberMaySeeTaskId(ctx.companyId, ctx.scope, taskId))) {
         return NextResponse.json({ error: "Task not found" }, { status: 404 });
     }
+    // Resource-aware (0.20): edit access to the task's project or its customer.
+    const denied = await taskWriteDenied(ctx, taskId);
+    if (denied) return denied;
     try {
         const body = await req.json();
         // A restricted member reassigns work only to agents in their scope.
-        if (!memberMayAssignAgents(ctx.scope, body)) {
+        if (!memberMayAssignAgents(ctx.scope, body) || !(await memberMayUseAllAgents(ctx, assignedAgentIds(body)))) {
             return NextResponse.json({ error: "Agent not found" }, { status: 404 });
         }
         const inputJson = body.inputJson && typeof body.inputJson === "object" ? body.inputJson : undefined;
@@ -55,13 +60,15 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
 export async function DELETE(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
     let ctx;
     try {
-        ctx = await requireRole("member")();
+        ctx = await requireRole("viewer")();
     } catch (error) {
         if (error instanceof AuthError) return NextResponse.json({ error: error.message }, { status: error.statusCode });
         throw error;
     }
 
     const { id: taskId } = await params;
+    const denied = await taskWriteDenied(ctx, taskId);
+    if (denied) return denied;
     try {
         // Same checks as the bulk archive: company, then the member's scope.
         const { tasks: [task] } = await archiveTasksForCaller(ctx, [taskId]);
