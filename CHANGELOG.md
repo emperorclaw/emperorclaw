@@ -4,10 +4,20 @@ All notable changes to EmperorClaw are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project aims
 to follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-At release time, rename the `## [Unreleased]` heading below to the version being
+At release time, rename the `## [0.18.0] — 2026-10-28` heading below to the version being
 tagged (e.g. `## [1.2.0] — 2026-07-22`). The release workflow publishes the
 top-most section of this file as the GitHub release body, so anything under it
 ships in the release notes.
+
+## [Unreleased]
+
+### Added
+- **Modules.** Owners and admins switch parts of Emperor on and off per company in Settings → Modules: Customers, Automations, Timeline, Costs, Approval history, Views and Display screens. A module that is off disappears from the menu, the command palette and the phone menu; its pages and API answer that it is off; and agents lose its tools and its lines in the Emperor manual, so prompts get shorter. Its data is kept: turning it back on restores everything. Every change shows in Activity with before and after. Existing companies keep every module on.
+- **Company templates.** The setup assistant asks how you will use Emperor (Agency, Product / solo or Operations) and turns on the matching modules. Settings → Modules can apply a template later; it only changes modules.
+- Approval history off hides only the history page: "ask first" permissions, project sign-off and `request_approval` keep sending approvals to the Inbox.
+
+### Fixed
+- Timeline, Views and Activity had the same folder icon as Projects in the menu; each now has its own.
 
 ## [0.17.0] — 2026-10-28
 
