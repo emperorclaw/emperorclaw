@@ -9,6 +9,22 @@ tagged (e.g. `## [1.2.0] — 2026-07-22`). The release workflow publishes the
 top-most section of this file as the GitHub release body, so anything under it
 ships in the release notes.
 
+## [0.21.0] — 2026-10-29
+
+### Added
+- **Runtime hosts.** Connect each machine that runs your Hermes agents once, from Settings → Runtime hosts: Emperor shows a one-use code and the command to run on the machine (`emperor-hermes host connect CODE`). A small service on the machine then keeps Emperor up to date with its memory, disk, CPU, whether it can run a browser, its versions and which model providers it has. API keys never leave the machine; only provider names are reported.
+- **Agents already on a machine are picked up automatically** when they belong to this Emperor; the agent page shows where it runs.
+- **Restart an agent from Emperor.** Restart its bridge or its gateway from the host card or the agent page and watch the progress live, with no SSH. On a machine whose agents share one gateway (like a Raspberry Pi), a gateway restart waits until they are idle unless you choose "restart now", and Emperor warns that every agent on it restarts.
+- **Revoke a host** to cut it off immediately.
+- The machine only runs a fixed list of commands Emperor may ask for; it never runs arbitrary commands. Every action is admin-only and audited.
+- Installer: `emperor-hermes status --json`, `emperor-hermes remove --profile NAME` and non-interactive installs.
+
+### Fixed
+- The manual setup instructions on an agent's page pointed to the 0.9.0 installer; they now use the current release and verify its checksum.
+
+### Changed
+- Hermes bridge 0.21.0, which includes the host service. Update with `emperor-hermes update` after downloading the 0.21.0 installer; connecting the machine as a host is optional.
+
 ## [0.20.0] — 2026-10-28
 
 ### Added
