@@ -1,5 +1,6 @@
 "use client";
 
+import { useTranslations } from "next-intl";
 import { cn } from "@/lib/utils";
 import { livePillCopy } from "@/lib/agent-visibility";
 import { useRealtimeStatus } from "@/lib/use-realtime";
@@ -11,8 +12,11 @@ import { useRealtimeStatus } from "@/lib/use-realtime";
  * every N s", the real fallback interval of the surface).
  */
 export function LivePill({ fallbackSeconds = 15, className }: { fallbackSeconds?: number; className?: string }) {
+    const t = useTranslations("shell.livePill");
     const { status } = useRealtimeStatus();
+    // livePillCopy decides the state; the words come from the messages.
     const copy = livePillCopy(status, fallbackSeconds);
+    const label = copy.live ? t("live") : t("reconnecting", { seconds: fallbackSeconds });
     return (
         <span className={cn(
             "inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-xs font-medium tabular-nums ring-1 ring-inset",
@@ -20,8 +24,8 @@ export function LivePill({ fallbackSeconds = 15, className }: { fallbackSeconds?
             className,
         )}>
             <span className={cn("h-1.5 w-1.5 rounded-full", copy.live ? "bg-emerald-500" : "bg-amber-500")} aria-hidden="true" />
-            <span aria-hidden="true">{copy.label}</span>
-            <span role="status" className="sr-only">{copy.live ? "Live" : "Reconnecting"}</span>
+            <span aria-hidden="true">{label}</span>
+            <span role="status" className="sr-only">{copy.live ? t("live") : t("reconnectingStatus")}</span>
         </span>
     );
 }

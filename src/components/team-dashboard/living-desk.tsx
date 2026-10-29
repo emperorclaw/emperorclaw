@@ -1,12 +1,14 @@
 "use client";
 
 import { forwardRef, useEffect, useRef, useState, type CSSProperties } from "react";
+import { useTranslations } from "next-intl";
 import { IconActivity, IconAlertTriangle, IconBellRinging, IconCoffee, IconConfetti, IconEye, IconMoon, IconPlugConnectedX } from "@tabler/icons-react";
 import { agentMotion, expressionForActivity, type CompanyLeader, type SceneActivity, type SceneAgent } from "@/lib/team-scene";
 import { resolveAppearance, resolveAvatarPhoto } from "@/lib/character/model";
 import { bubbleText, deskStateLabel, leaderMemberKey, urgencyBucket, type DeskStatus, type UrgencyBucket } from "@/lib/live-office";
 import { CharacterFigureView, moodForStatus } from "@/components/character/character-avatar";
 import { ActivityCue } from "./character-activity";
+import { useSceneCopy } from "./use-scene-copy";
 import { cn } from "@/lib/utils";
 
 const BUCKET_ICON: Record<UrgencyBucket, typeof IconActivity> = {
@@ -71,6 +73,8 @@ export interface DeskProps {
 /** One desk: the agent acting out its work, its name, a state label and the real task line. */
 export const LivingDesk = forwardRef<HTMLLIElement, DeskProps>(function LivingDesk(props, ref) {
     const { agent, bucket, label, status, activity, actions, ghost, selected, linked, celebrating, burst, pulse, still, thought, thoughtLabel = null, bubbleAlign, ariaLabel, onSelect, onPoint } = props;
+    const t = useTranslations("home.desk");
+    const scene = useSceneCopy();
     const m = agent.member;
     const appearance = resolveAppearance({ id: m.id, avatarUrl: m.avatarUrl, avatarAppearance: m.avatarAppearance });
     const photo = resolveAvatarPhoto({ avatarUrl: m.avatarUrl });
@@ -93,7 +97,7 @@ export const LivingDesk = forwardRef<HTMLLIElement, DeskProps>(function LivingDe
     const statusId = `desk-status-${m.id}`;
 
     return <li ref={ref} className={cn("living-desk relative min-w-0", ghost && "living-ghost")} data-bucket={bucket} style={vars}>
-        {(thought || thoughtLabel) && <ThoughtBubble key={`${thoughtLabel ?? ""}|${thought ?? ""}`} label={thoughtLabel ?? "Thinking"} text={thought ?? ""} still={still} align={bubbleAlign} />}
+        {(thought || thoughtLabel) && <ThoughtBubble key={`${thoughtLabel ?? ""}|${thought ?? ""}`} label={thoughtLabel ?? t("thinking")} text={thought ?? ""} still={still} align={bubbleAlign} />}
         <button type="button" onClick={() => onSelect(m.key)}
             onMouseEnter={() => onPoint(m.key)} onMouseLeave={() => onPoint(null)} onFocus={() => onPoint(m.key)} onBlur={() => onPoint(null)}
             aria-haspopup="dialog" aria-pressed={selected} aria-label={ariaLabel} aria-describedby={statusId}
@@ -124,11 +128,11 @@ export const LivingDesk = forwardRef<HTMLLIElement, DeskProps>(function LivingDe
                 {actions > 0 && <span className="grid h-[18px] min-w-[18px] shrink-0 place-items-center rounded-md bg-amber-300 px-1 text-[11px] font-bold tabular-nums leading-none text-amber-950">{actions}</span>}
             </span>
             <span className={cn("flex max-w-full items-center gap-1 text-[11px] font-medium leading-4", armsUp ? "text-lime-200" : BUCKET_TONE[bucket])}>
-                <Icon className="h-3 w-3 shrink-0" stroke={2} aria-hidden="true" /><span className="truncate">{label}</span>
+                <Icon className="h-3 w-3 shrink-0" stroke={2} aria-hidden="true" /><span className="truncate">{scene.caption(label)}</span>
             </span>
             {/* The elapsed time never truncates; the title gives way. */}
-            <span id={statusId} className="mt-0.5 flex w-full min-w-0 justify-center text-xs leading-4 text-slate-300" title={status.text}>
-                <span className="truncate">{status.task ?? status.text}</span>
+            <span id={statusId} className="mt-0.5 flex w-full min-w-0 justify-center text-xs leading-4 text-slate-300" title={status.task ? status.text : scene.caption(status.text)}>
+                <span className="truncate">{status.task ?? scene.caption(status.text)}</span>
                 {status.task && status.elapsed && <span className="shrink-0 whitespace-pre tabular-nums text-slate-400">{` · ${status.elapsed}`}</span>}
             </span>
         </button>
@@ -199,9 +203,12 @@ const NO_KEYS: ReadonlySet<string> = new Set();
  * "decisions waiting" badge opens the Action inbox.
  */
 export function Throne({ pending, onOpen, still, leader = null, leaderAgent = null, actionKeys = NO_KEYS, ghost = false, selected = false, onSelectLeader }: ThroneProps) {
+    const t = useTranslations("home.desk");
+    const scene = useSceneCopy();
     const waiting = pending > 0;
+    const inboxLabel = waiting ? t("inboxWaiting", { count: pending }) : t("inboxClear");
 
-    if (!leader) return <button type="button" onClick={onOpen} aria-label={waiting ? `Action inbox: ${pending} ${pending === 1 ? "decision" : "decisions"} waiting for you` : "Action inbox: all clear"}
+    if (!leader) return <button type="button" onClick={onOpen} aria-label={inboxLabel}
         className="group relative mx-auto flex flex-col items-center rounded-2xl px-4 pb-1 pt-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300">
         <svg viewBox="-90 -78 180 92" className="h-[70px] w-[137px] overflow-visible" aria-hidden="true">
             <defs>
@@ -221,14 +228,14 @@ export function Throne({ pending, onOpen, still, leader = null, leaderAgent = nu
             <image href="/crown.png" x="-19" y="-62" width="38" height="29" preserveAspectRatio="xMidYMid meet" />
         </svg>
         {waiting
-            ? <span className="mt-0.5 inline-flex items-center gap-1.5 rounded-full bg-amber-300 px-2.5 py-0.5 text-xs font-semibold text-amber-950"><IconBellRinging className="h-3.5 w-3.5" stroke={2} aria-hidden="true" />{pending} {pending === 1 ? "decision" : "decisions"} waiting</span>
-            : <span className="mt-0.5 inline-flex items-center rounded-full bg-white/[0.06] px-2.5 py-0.5 text-xs font-semibold text-slate-300">All clear</span>}
+            ? <span className="mt-0.5 inline-flex items-center gap-1.5 rounded-full bg-amber-300 px-2.5 py-0.5 text-xs font-semibold text-amber-950"><IconBellRinging className="h-3.5 w-3.5" stroke={2} aria-hidden="true" />{t("decisionsWaiting", { count: pending })}</span>
+            : <span className="mt-0.5 inline-flex items-center rounded-full bg-white/[0.06] px-2.5 py-0.5 text-xs font-semibold text-slate-300">{t("allClear")}</span>}
     </button>;
 
     const leaderKey = leaderMemberKey(leader);
     const bucket: UrgencyBucket = leaderAgent ? urgencyBucket(leaderAgent, actionKeys) : "idle";
-    const label = leaderAgent ? deskStateLabel(leaderAgent, bucket) : leader.kind === "human" ? "Company leader" : "Offline";
-    const aria = leaderAgent ? `Company leader: ${leader.name}, ${label}` : `Company leader: ${leader.name}`;
+    const label = leaderAgent ? scene.caption(deskStateLabel(leaderAgent, bucket)) : leader.kind === "human" ? t("companyLeader") : t("offline");
+    const aria = leaderAgent ? t("leaderAria", { name: leader.name, label }) : t("leaderAriaShort", { name: leader.name });
     const m = leaderAgent?.member ?? null;
     const appearance = leader.kind === "human"
         ? resolveAppearance({ id: leader.id, kind: "human" })
@@ -290,11 +297,11 @@ export function Throne({ pending, onOpen, still, leader = null, leaderAgent = nu
                 {leaderAgent && <Icon className="h-3 w-3 shrink-0" stroke={2} aria-hidden="true" />}<span className="truncate">{label}</span>
             </span>
         </div>
-        <button type="button" onClick={onOpen} aria-label={waiting ? `Action inbox: ${pending} ${pending === 1 ? "decision" : "decisions"} waiting for you` : "Action inbox: all clear"}
+        <button type="button" onClick={onOpen} aria-label={inboxLabel}
             className="mt-1 rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300">
             {waiting
-                ? <span className="inline-flex items-center gap-1.5 rounded-full bg-amber-300 px-2.5 py-0.5 text-xs font-semibold text-amber-950"><IconBellRinging className="h-3.5 w-3.5" stroke={2} aria-hidden="true" />{pending} {pending === 1 ? "decision" : "decisions"} waiting</span>
-                : <span className="inline-flex items-center rounded-full bg-white/[0.06] px-2.5 py-0.5 text-xs font-semibold text-slate-300">All clear</span>}
+                ? <span className="inline-flex items-center gap-1.5 rounded-full bg-amber-300 px-2.5 py-0.5 text-xs font-semibold text-amber-950"><IconBellRinging className="h-3.5 w-3.5" stroke={2} aria-hidden="true" />{t("decisionsWaiting", { count: pending })}</span>
+                : <span className="inline-flex items-center rounded-full bg-white/[0.06] px-2.5 py-0.5 text-xs font-semibold text-slate-300">{t("allClear")}</span>}
         </button>
     </div>;
 }

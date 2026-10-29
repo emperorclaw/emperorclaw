@@ -1,4 +1,8 @@
 import type { NextConfig } from "next";
+import createNextIntlPlugin from "next-intl/plugin";
+
+// next-intl without i18n routing: the locale comes from the request (src/i18n/request.ts), never the URL.
+const withNextIntl = createNextIntlPlugin("./src/i18n/request.ts");
 
 // Google Analytics is opt-in: the GA script and its CSP allowances only ship
 // when NEXT_PUBLIC_GA_ID is set. Self-hosted instances default to zero analytics.
@@ -104,4 +108,4 @@ const nextConfig: NextConfig = {
   },
 };
 
-export default nextConfig;
+export default withNextIntl(nextConfig);

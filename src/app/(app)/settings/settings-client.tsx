@@ -1,10 +1,11 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { IconAlertTriangle, IconArrowRight, IconPlugConnected, IconCircleCheck, IconCopy, IconKey, IconPlus, IconSettings, IconTrash, IconUsers } from "@tabler/icons-react";
+import { IconAlertTriangle, IconArrowRight, IconPlugConnected, IconCircleCheck, IconCopy, IconKey, IconPlus, IconSettings, IconTrash } from "@tabler/icons-react";
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { toast } from "sonner";
+import { useTranslations } from "next-intl";
 import { PageHeader } from "@/components/page-header";
 import { SampleDataCard } from "@/components/sample-client";
 import { Button } from "@/components/ui/button";
@@ -18,6 +19,7 @@ import { DirectChatSettingsTab } from "./direct-chat-settings-tab";
 import { DisplaysTab } from "./displays-tab";
 import { ModulesSettingsTab } from "./modules-settings-tab";
 import { RuntimeHostsTab } from "./runtime-hosts-tab";
+import { ProfileTab } from "./profile-tab";
 import type { ModuleState } from "@/lib/modules";
 
 type SettingsToken = {
@@ -32,7 +34,8 @@ type SettingsToken = {
     includeAgentThoughts?: boolean;
 };
 
-import { resolveSettingsTab, settingsSections, type SettingsTab } from "@/lib/settings-navigation";
+import { resolveSettingsTab, settingsItemKey, settingsSections, type SettingsTab } from "@/lib/settings-navigation";
+import type { Locale } from "@/i18n/config";
 
 type Member = {
     id: string;
@@ -98,6 +101,7 @@ export default function SettingsClient({
     /** Tabs that belong to a module (Displays) hide while it is off. */
     modules?: ModuleState;
 }) {
+    const tSettings = useTranslations("settings");
     const searchParams = useSearchParams();
     const router = useRouter();
     const pathname = usePathname();
@@ -116,6 +120,7 @@ export default function SettingsClient({
     const [confirmingRevokeId, setConfirmingRevokeId] = useState<string | null>(null);
     const [profileDisplayName, setProfileDisplayName] = useState("");
     const [profileRoleTitle, setProfileRoleTitle] = useState("");
+    const [profileLocale, setProfileLocale] = useState<Locale | null>(null);
     const [savingProfile, setSavingProfile] = useState(false);
     const [profileLoaded, setProfileLoaded] = useState(false);
     const [profileLoading, setProfileLoading] = useState(false);
@@ -141,6 +146,7 @@ export default function SettingsClient({
                 const data = await res.json();
                 setProfileDisplayName(data.displayName || "");
                 setProfileRoleTitle(data.roleTitle || "");
+                setProfileLocale(data.locale ?? null);
             }
         } catch { setProfileError(true); return; }
         finally { setProfileLoading(false); }
@@ -157,9 +163,9 @@ export default function SettingsClient({
                 body: JSON.stringify({ displayName: profileDisplayName, roleTitle: profileRoleTitle }),
             });
             if (!res.ok) throw new Error("Failed");
-            toast.success("Profile updated");
+            toast.success(tSettings("profile.updated"));
         } catch {
-            toast.error("Failed to save profile");
+            toast.error(tSettings("profile.saveFailed"));
         } finally {
             setSavingProfile(false);
         }
@@ -267,14 +273,14 @@ export default function SettingsClient({
             {isAdmin && <SampleDataCard />}
             <div className="grid min-w-0 gap-6 @min-[900px]:grid-cols-[200px_minmax(0,1fr)]">
                 <aside className="min-w-0">
-                    <label className="block space-y-2 @min-[900px]:hidden"><span className="text-sm font-medium">Settings section</span><select aria-label="Settings section" value={activeTab} onChange={event => setActiveTab(event.target.value as SettingsTab)} className="min-h-11 w-full rounded-xl border border-border bg-card px-3 text-base">{sections.map(section => <optgroup key={section.label} label={section.label}>{section.items.map(item => <option key={item.id} value={item.id}>{item.label}</option>)}</optgroup>)}</select></label>
+                    <label className="block space-y-2 @min-[900px]:hidden"><span className="text-sm font-medium">Settings section</span><select aria-label="Settings section" value={activeTab} onChange={event => setActiveTab(event.target.value as SettingsTab)} className="min-h-11 w-full rounded-xl border border-border bg-card px-3 text-base">{sections.map(section => <optgroup key={section.id} label={tSettings(`sections.${section.id}`)}>{section.items.map(item => <option key={item.id} value={item.id}>{tSettings(`items.${settingsItemKey(item.id)}`)}</option>)}</optgroup>)}</select></label>
                     <nav aria-label="Settings sections" className="hidden space-y-5 @min-[900px]:block">
-                        {sections.map(section => <div key={section.label}><p className="mb-3 flex items-center gap-3 px-3 text-[11px] font-bold uppercase tracking-[0.16em] text-muted-foreground"><span>{section.label}</span><span aria-hidden="true" className="h-px flex-1 bg-border" /></p><div className="space-y-1">{section.items.map(item => <Link key={item.id} href={`${pathname}?tab=${item.id}`} scroll={false} aria-current={activeTab === item.id ? 'page' : undefined} className={cn('flex min-h-11 items-center rounded-xl px-3 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',activeTab === item.id ? 'bg-primary/10 text-primary' : 'text-muted-foreground hover:bg-muted hover:text-foreground')}>{item.label}</Link>)}</div></div>)}
+                        {sections.map(section => <div key={section.id}><p className="mb-3 flex items-center gap-3 px-3 text-[11px] font-bold uppercase tracking-[0.16em] text-muted-foreground"><span>{tSettings(`sections.${section.id}`)}</span><span aria-hidden="true" className="h-px flex-1 bg-border" /></p><div className="space-y-1">{section.items.map(item => <Link key={item.id} href={`${pathname}?tab=${item.id}`} scroll={false} aria-current={activeTab === item.id ? 'page' : undefined} className={cn('flex min-h-11 items-center rounded-xl px-3 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',activeTab === item.id ? 'bg-primary/10 text-primary' : 'text-muted-foreground hover:bg-muted hover:text-foreground')}>{tSettings(`items.${settingsItemKey(item.id)}`)}</Link>)}</div></div>)}
                         {isPlatformAdmin && <Link href="/ops" className="flex min-h-11 items-center rounded-xl border-t border-border px-3 text-sm text-muted-foreground hover:text-foreground">Platform operations ↗</Link>}
                     </nav>
                 </aside>
-                <div className="min-w-0 space-y-5" aria-label={currentSection.label}>
-                    <p className="text-sm leading-6 text-muted-foreground">{currentSection.description}</p>
+                <div className="min-w-0 space-y-5" aria-label={tSettings(`items.${settingsItemKey(currentSection.id)}`)}>
+                    <p className="text-sm leading-6 text-muted-foreground">{tSettings(`items.${settingsItemKey(currentSection.id)}Description`)}</p>
             {activeTab === "profile" && (
                 <ProfileTab
                     displayName={profileDisplayName}
@@ -287,6 +293,8 @@ export default function SettingsClient({
                     loaded={profileLoaded}
                     error={profileError}
                     onRetry={() => void loadProfile(true)}
+                    locale={profileLocale}
+                    onLocaleChange={setProfileLocale}
                 />
             )}
 
@@ -675,34 +683,6 @@ Walk me through step by step.`}</pre>
                 </div>
             </div>
         </div>
-    );
-}
-
-function ProfileTab({ displayName, setDisplayName, roleTitle, setRoleTitle, onSave, saving, onLoad, loaded, error, onRetry }: { displayName: string; setDisplayName: (v: string) => void; roleTitle: string; setRoleTitle: (v: string) => void; onSave: () => void; saving: boolean; onLoad: () => void; loaded: boolean; error:boolean; onRetry:()=>void }) {
-    useEffect(() => { if (!loaded) onLoad(); }, [loaded, onLoad]);
-    return (
-        <section className="emperor-panel rounded-2xl sm:rounded-2xl p-4 sm:p-6 max-w-lg">
-            <h2 className="flex items-center text-lg font-semibold text-foreground mb-4">
-                <IconUsers className="mr-2 h-5 w-5 text-primary" /> Your Profile
-            </h2>
-            <p className="text-sm text-muted-foreground mb-6">Agents can see this info to know who to contact for what.</p>
-            {error && <p role="alert" className="mb-4 text-sm text-destructive">Could not load your profile. <button type="button" onClick={onRetry} className="min-h-11 underline">Retry</button></p>}
-            {!loaded && !error && <p role="status" className="mb-4 text-sm text-muted-foreground">Loading your profile…</p>}
-            <div className="space-y-4">
-                <label className="block">
-                    <span className="text-sm font-medium text-foreground">Display Name</span>
-                    <input disabled={!loaded} value={displayName} onChange={(e) => setDisplayName(e.target.value)} placeholder="Your full name" className="mt-1 w-full rounded-xl border border-border bg-background px-3 py-2.5 text-sm text-foreground outline-none focus:border-cyan-400" />
-                </label>
-                <label className="block">
-                    <span className="text-sm font-medium text-foreground">Role / Title</span>
-                    <input disabled={!loaded} value={roleTitle} onChange={(e) => setRoleTitle(e.target.value)} placeholder="e.g. SEO Lead, Project Manager, Client Contact" className="mt-1 w-full rounded-xl border border-border bg-background px-3 py-2.5 text-sm text-foreground outline-none focus:border-cyan-400" />
-                    <p className="mt-1 text-xs text-muted-foreground">Free text — helps agents know what you&apos;re responsible for.</p>
-                </label>
-                <button onClick={onSave} disabled={saving || !loaded} className="min-h-11 cursor-pointer rounded-xl bg-primary px-4 py-2.5 text-sm font-semibold text-white hover:bg-cyan-400 disabled:opacity-50 disabled:cursor-not-allowed transition-colors">
-                    {saving ? "Saving..." : "Save Profile"}
-                </button>
-            </div>
-        </section>
     );
 }
 

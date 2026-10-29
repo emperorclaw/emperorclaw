@@ -9,7 +9,8 @@
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
+  /* Simplified Chinese falls back to the system CJK fonts (no webfont download). */
+  --font-sans: var(--font-geist-sans), "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", "Noto Sans CJK SC", sans-serif;
   --font-mono: var(--font-geist-mono);
   --color-sidebar-ring: var(--sidebar-ring);
   --color-sidebar-border: var(--sidebar-border);
@@ -972,4 +973,15 @@
     padding-right: max(0.75rem, env(safe-area-inset-right));
     padding-bottom: max(5rem, calc(1rem + env(safe-area-inset-bottom)));
   }
+}
+
+/*
+ * Chinese text: letter-spacing built for Latin capitals (uppercase eyebrows,
+ * tracking-* utilities) breaks up CJK characters, so it resets under zh-CN.
+ * Unlayered on purpose, so it wins over the Tailwind utilities. Brand marks
+ * that stay English opt out with lang="en".
+ */
+/* :lang() follows inheritance, so an element inside lang="en" never matches. */
+:is([class*="tracking-"], .uppercase):lang(zh-CN) {
+  letter-spacing: normal;
 }

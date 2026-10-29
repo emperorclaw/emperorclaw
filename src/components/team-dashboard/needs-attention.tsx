@@ -4,16 +4,20 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { toast } from "sonner";
+import { useTranslations } from "next-intl";
 import {
     IconAlertTriangle, IconArchive, IconArrowRight, IconAt, IconHourglassLow, IconBan, IconBolt, IconInbox, IconMessageQuestion, IconCheck, IconChevronRight, IconCircleCheck, IconClock, IconFileText, IconMessageCircle, IconPlugConnectedX, IconRefresh, IconX, IconPlayerPlay,
 } from "@tabler/icons-react";
-import { timeAgo, type AttentionEntry, type AttentionKind, type DashboardMember } from "@/lib/team-scene";
+import type { AttentionEntry, AttentionKind, DashboardMember } from "@/lib/team-scene";
+import { useTimeAgo } from "@/lib/i18n/format";
 import { approvalAgeDays, isStaleApproval } from "@/lib/approval-status";
 import { cn } from "@/lib/utils";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { useInboxState } from "@/components/use-inbox-state";
 import { useLiveLink } from "./live-link";
+import { useSceneCopy } from "./use-scene-copy";
 
+/** Icon and tone per kind; `verb` is the English label (the UI shows `scene.kind.<kind>`). */
 export const KIND_STYLE: Record<AttentionKind, { icon: typeof IconFileText; tile: string; verb: string }> = {
     approval: { icon: IconFileText, tile: "bg-sky-500/10 text-sky-500 ring-sky-500/25 dark:text-sky-300", verb: "Approve" },
     message: { icon: IconMessageCircle, tile: "bg-amber-500/10 text-amber-600 ring-amber-500/25 dark:text-amber-300", verb: "Delivery" },
@@ -40,6 +44,10 @@ export function NeedsAttention({ entries: listed, now, onFocusMember, canAct, ag
     agents: DashboardMember[];
     watchlist?: boolean;
 }) {
+    const t = useTranslations("home.attention");
+    const tCommon = useTranslations("common");
+    const timeAgo = useTimeAgo();
+    const scene = useSceneCopy();
     const router = useRouter();
     const titleId = watchlist ? "watchlist-title" : "needs-attention-title";
     const [busyId, setBusyId] = useState<string | null>(null);
@@ -57,7 +65,7 @@ export function NeedsAttention({ entries: listed, now, onFocusMember, canAct, ag
             toast.success(success);
             router.refresh();
         } catch (error) {
-            toast.error(error instanceof Error ? error.message : "Something went wrong");
+            toast.error(error instanceof Error ? error.message : tCommon("somethingWentWrong"));
         } finally {
             setBusyId(null);
         }
@@ -65,61 +73,61 @@ export function NeedsAttention({ entries: listed, now, onFocusMember, canAct, ag
 
     const approve = (entry: AttentionEntry, decision: "approved" | "rejected" | "dismissed") =>
         run(entry.id, async () => {
-            if (!entry.approvalId) throw new Error("Approval id missing");
+            if (!entry.approvalId) throw new Error(t("approvalMissing"));
             const res = await fetch(`/api/approvals/${entry.approvalId}`, {
                 method: "PATCH", headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({ status: decision }),
             });
-            if (!res.ok) throw new Error("Couldn't record the decision");
+            if (!res.ok) throw new Error(t("decisionFailed"));
             // A decision is final: report what actually stands if it was already resolved.
             const stored = ((await res.json().catch(() => ({}))) as { approval?: { status?: string } }).approval?.status;
             if (stored && stored !== decision) {
                 router.refresh();
-                throw new Error(`Already ${stored} — your decision was not applied.`);
+                throw new Error(t("alreadyDecided", { status: stored }));
             }
         },
-            decision === "approved" ? "Approved."
-                : decision === "dismissed" ? `Dismissed. ${entry.memberName ?? "The agent"} has been told not to do it.`
-                    : "Sent back.");
+            decision === "approved" ? t("approved")
+                : decision === "dismissed" ? t("dismissed", { name: entry.memberName ?? t("theAgent") })
+                    : t("sentBack"));
 
     const resume = (entry: AttentionEntry) =>
         run(entry.id, async () => {
-            if (!entry.threadId) throw new Error("Thread missing");
+            if (!entry.threadId) throw new Error(t("threadMissing"));
             const res = await fetch("/api/chat/loop-resume", {
                 method: "POST", headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({ threadId: entry.threadId }),
             });
             if (!res.ok) {
                 const data = await res.json().catch(() => ({})) as { error?: string };
-                throw new Error(data.error || "Couldn't resume");
+                throw new Error(data.error || t("resumeFailed"));
             }
-        }, "Resumed the conversation.");
+        }, t("resumed"));
 
     const restart = (entry: AttentionEntry) =>
         run(entry.id, async () => {
-            if (!entry.agentId) throw new Error("Agent id missing");
+            if (!entry.agentId) throw new Error(t("agentMissing"));
             const res = await fetch(`/api/agents/${entry.agentId}/recreate-runtime`, { method: "POST" });
             const data = await res.json().catch(() => ({})) as { error?: string; success?: boolean; message?: string };
-            if (!res.ok || data.success === false) throw new Error(data.error || data.message || "Couldn't restart the runtime");
-        }, "Restarting runtime…");
+            if (!res.ok || data.success === false) throw new Error(data.error || data.message || t("restartFailed"));
+        }, t("restarting"));
 
     const reassign = (entry: AttentionEntry, target: { type: "agent" | "human"; id: string }) =>
         run(entry.id, async () => {
-            if (!entry.taskId) throw new Error("Task missing");
+            if (!entry.taskId) throw new Error(t("taskMissing"));
             const res = await fetch(`/api/tasks/${entry.taskId}`, {
                 method: "PATCH", headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({ assignee: target }),
             });
-            if (!res.ok) throw new Error("Couldn't reassign the task");
-        }, "Task reassigned.");
+            if (!res.ok) throw new Error(t("reassignFailed"));
+        }, t("reassigned"));
 
     return (
         <section aria-labelledby={titleId} className="emperor-panel rounded-2xl p-4">
             <header className="flex items-start gap-2.5">
                 <IconAlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-muted-foreground" stroke={1.8} />
                 <div className="min-w-0 flex-1">
-                    <h2 id={titleId} className="text-base font-semibold text-foreground">{watchlist ? "FYI" : "Needs you"}</h2>
-                    <p className="text-xs text-muted-foreground">{watchlist ? "Timing and response signals. Nothing is waiting on you." : "The same items as your Inbox, most urgent first."}</p>
+                    <h2 id={titleId} className="text-base font-semibold text-foreground">{watchlist ? t("fyi") : t("needsYou")}</h2>
+                    <p className="text-xs text-muted-foreground">{watchlist ? t("fyiHint") : t("needsHint")}</p>
                 </div>
                 {entries.length > 0 && (
                     <span className="grid h-6 min-w-6 place-items-center rounded-md bg-amber-400/15 px-1.5 text-xs font-bold tabular-nums text-amber-600 ring-1 ring-inset ring-amber-400/30 dark:text-amber-300">{entries.length}</span>
@@ -129,7 +137,7 @@ export function NeedsAttention({ entries: listed, now, onFocusMember, canAct, ag
             {entries.length === 0 ? (
                 <div className="mt-4 flex items-center gap-3 rounded-xl border border-dashed border-border px-3 py-4">
                     <IconCircleCheck className="h-5 w-5 shrink-0 text-emerald-500 dark:text-emerald-300" />
-                    <div className="text-sm text-muted-foreground"><span className="font-medium text-foreground">All clear.</span> {watchlist ? "No timing or response warnings." : "No decisions or interventions are pending."}</div>
+                    <div className="text-sm text-muted-foreground"><span className="font-medium text-foreground">{t("allClear")}</span> {watchlist ? t("fyiClear") : t("needsClear")}</div>
                 </div>
             ) : (
                 <ul className="mt-3 space-y-2">
@@ -146,11 +154,11 @@ export function NeedsAttention({ entries: listed, now, onFocusMember, canAct, ag
                                     <div className="min-w-0 flex-1">
                                         <div className="flex items-start gap-2">
                                             <Link href={entry.href} onClick={() => inbox.markRead(entry)} className={cn("min-w-0 flex-1 break-words text-sm text-foreground after:absolute after:inset-0 after:content-[''] focus-visible:outline-none focus-visible:rounded-lg focus-visible:ring-2 focus-visible:ring-cyan-400", unread ? "font-bold" : "font-medium")}>
-                                                {unread && <><span aria-hidden className="mr-1.5 inline-block h-2 w-2 rounded-full bg-cyan-500 align-middle" /><span className="sr-only">Unread: </span></>}
-                                                <span className="mr-1.5 inline-flex items-center rounded bg-muted/70 px-1 py-px text-[10px] font-semibold uppercase tracking-wide text-muted-foreground dark:bg-white/[0.06]">{style.verb}</span>
+                                                {unread && <><span aria-hidden className="mr-1.5 inline-block h-2 w-2 rounded-full bg-cyan-500 align-middle" /><span className="sr-only">{t("unreadPrefix")}</span></>}
+                                                <span className="mr-1.5 inline-flex items-center rounded bg-muted/70 px-1 py-px text-[10px] font-semibold uppercase tracking-wide text-muted-foreground dark:bg-white/[0.06]">{scene.kind(entry.kind)}</span>
                                                 {entry.title}
                                             </Link>
-                                            <button type="button" onClick={() => void inbox.archive(entry)} title="Archive until something changes" aria-label={`Archive: ${entry.title}`}
+                                            <button type="button" onClick={() => void inbox.archive(entry)} title={t("archiveTitle")} aria-label={t("archiveLabel", { title: entry.title })}
                                                 className="relative z-10 -my-2 -mr-1 grid h-11 w-11 shrink-0 place-items-center rounded-lg text-muted-foreground transition hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400 md:h-8 md:w-8">
                                                 <IconArchive className="h-4 w-4" />
                                             </button>
@@ -183,7 +191,7 @@ export function NeedsAttention({ entries: listed, now, onFocusMember, canAct, ag
             )}
             {entries.length > VISIBLE && (
                 <Link href={watchlist ? "/inbox?filter=fyi" : "/inbox"} className="relative z-10 mt-3 inline-flex min-h-11 items-center gap-1.5 rounded-lg px-2 text-sm font-medium text-primary hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400">
-                    View all {entries.length} in Inbox<IconArrowRight className="h-4 w-4" />
+                    {t("viewAll", { count: entries.length })}<IconArrowRight className="h-4 w-4" />
                 </Link>
             )}
         </section>
@@ -201,6 +209,8 @@ function Actions({ entry, busy, agents, onApprove, onReject, onDismiss, onResume
     onRestart: (e: AttentionEntry) => void;
     onReassign: (e: AttentionEntry, target: { type: "agent" | "human"; id: string }) => void;
 }) {
+    const t = useTranslations("home.attention");
+    const tCommon = useTranslations("common");
     const [confirming, setConfirming] = useState(false);
     const [confirmDays, setConfirmDays] = useState(0);
     const disabled = busy;
@@ -223,34 +233,34 @@ function Actions({ entry, busy, agents, onApprove, onReject, onDismiss, onResume
     switch (entry.kind) {
         case "approval":
             // A task that requires approval but has no request yet is decided on the Approvals page.
-            if (!entry.approvalId) return <Link href={entry.href} className={cn(btn, primary)}>{entry.actionLabel || "Review"}</Link>;
+            if (!entry.approvalId) return <Link href={entry.href} className={cn(btn, primary)}>{entry.actionLabel || t("review")}</Link>;
             if (confirming) {
                 return (
-                    <span role="alertdialog" aria-label="Confirm approving a stale request" className="relative z-10 flex flex-col gap-1.5 rounded-lg border border-amber-500/40 bg-amber-400/10 p-2 text-left dark:bg-amber-300/[0.07]">
-                        <span className="text-xs text-amber-700 dark:text-amber-200">This request is {confirmDays} days old. Approve and let {entry.memberName ?? "the agent"} act now?</span>
+                    <span role="alertdialog" aria-label={t("confirmStale")} className="relative z-10 flex flex-col gap-1.5 rounded-lg border border-amber-500/40 bg-amber-400/10 p-2 text-left dark:bg-amber-300/[0.07]">
+                        <span className="text-xs text-amber-700 dark:text-amber-200">{t("staleQuestion", { days: confirmDays, name: entry.memberName ?? t("theAgentLower") })}</span>
                         <span className="flex flex-wrap items-center gap-1.5">
-                            <button type="button" disabled={disabled} onClick={() => onApprove(entry)} className={cn(btn, primary)}><IconCheck className="h-3.5 w-3.5" />Approve anyway</button>
-                            <button type="button" disabled={disabled} onClick={() => onDismiss(entry)} className={cn(btn, neutral)}><IconArchive className="h-3.5 w-3.5" />Dismiss instead</button>
-                            <button type="button" onClick={() => setConfirming(false)} className="relative z-10 inline-flex min-h-11 items-center rounded-lg px-2 text-xs font-medium text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400">Cancel</button>
+                            <button type="button" disabled={disabled} onClick={() => onApprove(entry)} className={cn(btn, primary)}><IconCheck className="h-3.5 w-3.5" />{t("approveAnyway")}</button>
+                            <button type="button" disabled={disabled} onClick={() => onDismiss(entry)} className={cn(btn, neutral)}><IconArchive className="h-3.5 w-3.5" />{t("dismissInstead")}</button>
+                            <button type="button" onClick={() => setConfirming(false)} className="relative z-10 inline-flex min-h-11 items-center rounded-lg px-2 text-xs font-medium text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400">{tCommon("cancel")}</button>
                         </span>
                     </span>
                 );
             }
             return (
                 <span className="relative z-10 flex flex-wrap items-center gap-1.5">
-                    <button type="button" disabled={disabled} onClick={approveClick} className={cn(btn, primary)}><IconCheck className="h-3.5 w-3.5" />Approve</button>
-                    <button type="button" disabled={disabled} onClick={() => onReject(entry)} className={cn(btn, danger)}><IconX className="h-3.5 w-3.5" />Reject</button>
-                    <button type="button" disabled={disabled} onClick={() => onDismiss(entry)} title="Obsolete — the agent won't do it" aria-label="Dismiss (obsolete — the agent won't do it)" className={cn(btn, neutral)}><IconArchive className="h-3.5 w-3.5" />Dismiss</button>
+                    <button type="button" disabled={disabled} onClick={approveClick} className={cn(btn, primary)}><IconCheck className="h-3.5 w-3.5" />{t("approve")}</button>
+                    <button type="button" disabled={disabled} onClick={() => onReject(entry)} className={cn(btn, danger)}><IconX className="h-3.5 w-3.5" />{t("reject")}</button>
+                    <button type="button" disabled={disabled} onClick={() => onDismiss(entry)} title={t("dismissTitle")} aria-label={t("dismissLabel")} className={cn(btn, neutral)}><IconArchive className="h-3.5 w-3.5" />{t("dismiss")}</button>
                 </span>
             );
         case "paused":
-            return <button type="button" disabled={disabled} onClick={() => onResume(entry)} className={cn(btn, primary)}><IconPlayerPlay className="h-3.5 w-3.5" />Resume</button>;
+            return <button type="button" disabled={disabled} onClick={() => onResume(entry)} className={cn(btn, primary)}><IconPlayerPlay className="h-3.5 w-3.5" />{t("resume")}</button>;
         case "agent":
         case "run_failed":
-            if (!entry.canRestartRuntime) return <Link href={entry.href} className={cn(btn, primary)}>{entry.actionLabel || "Inspect connection"}</Link>;
+            if (!entry.canRestartRuntime) return <Link href={entry.href} className={cn(btn, primary)}>{entry.actionLabel || t("inspectConnection")}</Link>;
             return (
                 <span className="relative z-10 flex flex-wrap items-center gap-1.5">
-                    <button type="button" disabled={disabled} onClick={() => onRestart(entry)} className={cn(btn, primary)}><IconRefresh className="h-3.5 w-3.5" />Restart</button>
+                    <button type="button" disabled={disabled} onClick={() => onRestart(entry)} className={cn(btn, primary)}><IconRefresh className="h-3.5 w-3.5" />{t("restart")}</button>
                 </span>
             );
         case "incident":
@@ -258,17 +268,17 @@ function Actions({ entry, busy, agents, onApprove, onReject, onDismiss, onResume
         case "task_blocked":
         case "request":
         case "stalled":
-            if (!entry.taskId) return <Link href={entry.href} className={cn(btn, primary)}>{entry.actionLabel || "Inspect issue"}</Link>;
+            if (!entry.taskId) return <Link href={entry.href} className={cn(btn, primary)}>{entry.actionLabel || t("inspectIssue")}</Link>;
             return (
                 <span className="relative z-10 flex flex-wrap items-center gap-1.5">
-                    <Link href={entry.href} className={cn(btn, primary)}>{entry.actionLabel || "Open task"}</Link>
+                    <Link href={entry.href} className={cn(btn, primary)}>{entry.actionLabel || t("openTask")}</Link>
                     {agents.some((agent) => agent.key !== entry.memberKey) && <ReassignMenu entry={entry} disabled={disabled} agents={agents} onReassign={onReassign} />}
                 </span>
             );
         default:
             return (
                 <Link href={entry.href} className={cn(btn, primary)}>
-                    {entry.actionLabel || "Open"}
+                    {entry.actionLabel || tCommon("open")}
                 </Link>
             );
     }
@@ -280,17 +290,19 @@ function ReassignMenu({ entry, disabled, agents, onReassign }: {
     agents: DashboardMember[];
     onReassign: (e: AttentionEntry, target: { type: "agent"; id: string }) => void;
 }) {
+    const t = useTranslations("home.attention");
+    const tCommon = useTranslations("common");
     const pickable = agents.filter((a) => a.kind === "agent" && a.key !== entry.memberKey);
     return (
         <DropdownMenu>
             <DropdownMenuTrigger asChild>
                 <button type="button" disabled={disabled} className="relative z-10 inline-flex min-h-11 items-center gap-1 rounded-lg bg-cyan-500/15 px-2.5 text-xs font-semibold text-cyan-700 ring-1 ring-inset ring-cyan-500/40 transition hover:bg-cyan-500/25 disabled:cursor-not-allowed disabled:opacity-50 dark:text-cyan-200">
-                    Reassign
+                    {t("reassign")}
                 </button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="start" className="max-h-72 w-52 overflow-y-auto">
                 {pickable.length === 0 ? (
-                    <span className="block px-2 py-1.5 text-xs text-muted-foreground">No other agents.</span>
+                    <span className="block px-2 py-1.5 text-xs text-muted-foreground">{tCommon("noOtherAgents")}</span>
                 ) : pickable.map((a) => (
                     <DropdownMenuItem key={a.key} onSelect={() => onReassign(entry, { type: "agent", id: a.id })}>
                         <span className="flex min-w-0 items-center gap-2">

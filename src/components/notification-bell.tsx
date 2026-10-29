@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import { useTranslations } from "next-intl";
 import {
     IconAlertTriangle,
     IconAt,
@@ -20,6 +21,7 @@ import {
 import { cn } from "@/lib/utils";
 import { richMessagePreview } from "@/lib/rich-preview";
 import { EmptyState } from "@/components/ui/empty-state";
+import { useCompactAgo } from "@/lib/i18n/format";
 
 type Notification = {
     id: string;
@@ -43,20 +45,14 @@ const KIND_ICON: Record<string, typeof IconBell> = {
 
 const POLL_MS = 30_000;
 
-function ago(value: string): string {
-    const minutes = Math.round((Date.now() - new Date(value).getTime()) / 60_000);
-    if (!Number.isFinite(minutes) || minutes < 1) return "just now";
-    if (minutes < 60) return `${minutes}m`;
-    if (minutes < 60 * 24) return `${Math.round(minutes / 60)}h`;
-    return `${Math.round(minutes / 1440)}d`;
-}
-
 /**
  * The in-app inbox: what needs you (mentions, decisions, approvals, tasks
  * assigned to you, agent failures, serious incidents). Polls quietly; the tab
  * title is left alone so the badge is the only signal.
  */
 export function NotificationBell({ collapsed, variant = "sidebar" }: { collapsed: boolean; variant?: "sidebar" | "header" }) {
+    const t = useTranslations("shell.notifications");
+    const ago = useCompactAgo();
     const header = variant === "header";
     const router = useRouter();
     const [items, setItems] = useState<Notification[]>([]);
@@ -102,7 +98,7 @@ export function NotificationBell({ collapsed, variant = "sidebar" }: { collapsed
             <DropdownMenuTrigger asChild>
                 <button
                     type="button"
-                    aria-label={unread ? `Notifications, ${unread} unread` : "Notifications"}
+                    aria-label={unread ? t("labelUnread", { count: unread }) : t("label")}
                     className={cn(
                         "relative flex cursor-pointer items-center rounded-xl text-sm font-medium text-muted-foreground transition-all duration-200 hover:bg-accent hover:text-foreground",
                         header ? "h-10 w-10 justify-center" : "w-full",
@@ -110,7 +106,7 @@ export function NotificationBell({ collapsed, variant = "sidebar" }: { collapsed
                     )}
                 >
                     <IconBell className={cn(header ? "h-5 w-5" : "h-4 w-4", unread > 0 && "text-cyan-300")} />
-                    <span className={cn("flex-1 text-left", collapsed ? "hidden" : "hidden md:inline")}>Notifications</span>
+                    <span className={cn("flex-1 text-left", collapsed ? "hidden" : "hidden md:inline")}>{t("label")}</span>
                     {unread > 0 && header && <span className="absolute right-2 top-2 h-2 w-2 rounded-full bg-rose-500 ring-2 ring-background" />}
                     {unread > 0 && !header && (
                         <span className={cn(
@@ -124,18 +120,18 @@ export function NotificationBell({ collapsed, variant = "sidebar" }: { collapsed
             </DropdownMenuTrigger>
             <DropdownMenuContent side={header ? "bottom" : "right"} align="end" sideOffset={header ? 8 : 12} className="w-[22rem] max-w-[calc(100vw-2rem)] rounded-xl border-zinc-800 bg-zinc-950 p-0 text-zinc-200 shadow-2xl shadow-black/50">
                 <div className="flex items-center justify-between border-b border-zinc-800 px-3.5 py-2.5">
-                    <span className="text-sm font-semibold text-zinc-100">Notifications</span>
+                    <span className="text-sm font-semibold text-zinc-100">{t("label")}</span>
                     <span className="flex items-center gap-1">
                         {unread > 0 && (
                             <button type="button" onClick={() => void markRead({ all: true })} className="rounded-md px-2 py-1 text-xs text-zinc-400 hover:bg-zinc-800 hover:text-zinc-100">
-                                Mark all read
+                                {t("markAllRead")}
                             </button>
                         )}
                         <button
                             type="button"
                             onClick={() => { setOpen(false); router.push("/settings?tab=notifications"); }}
-                            aria-label="Notification settings"
-                            title="Notification settings"
+                            aria-label={t("settings")}
+                            title={t("settings")}
                             className="grid h-7 w-7 place-items-center rounded-md text-zinc-500 hover:bg-zinc-800 hover:text-zinc-200"
                         >
                             <IconSettings className="h-4 w-4" />
@@ -144,7 +140,7 @@ export function NotificationBell({ collapsed, variant = "sidebar" }: { collapsed
                 </div>
                 <div className="max-h-[60vh] overflow-y-auto p-1">
                     {items.length === 0 && (
-                        <EmptyState compact bordered={false} icon={IconBell} title="Nothing needs you right now" description="Mentions, decisions, approvals and failures show up here." className="py-8" />
+                        <EmptyState compact bordered={false} icon={IconBell} title={t("emptyTitle")} description={t("emptyDescription")} className="py-8" />
                     )}
                     {items.map((item) => {
                         const Icon = KIND_ICON[item.kind] ?? IconBell;
@@ -170,7 +166,7 @@ export function NotificationBell({ collapsed, variant = "sidebar" }: { collapsed
                                 </span>
                                 <span className="flex shrink-0 flex-col items-end gap-1.5">
                                     <span className="text-[10px] text-zinc-600">{ago(item.createdAt)}</span>
-                                    {!item.readAt && <span className="h-2 w-2 rounded-full bg-cyan-400" aria-label="Unread" />}
+                                    {!item.readAt && <span className="h-2 w-2 rounded-full bg-cyan-400" aria-label={t("unread")} />}
                                 </span>
                             </button>
                         );

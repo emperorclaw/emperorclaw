@@ -3,6 +3,8 @@
 import { useEffect, useState } from "react";
 import { IconArrowUp, IconX, IconExternalLink } from "@tabler/icons-react";
 import Link from "next/link";
+import { useTranslations } from "next-intl";
+import { useFormatDate } from "@/lib/i18n/format";
 
 const DISMISS_KEY = "emperor-update-banner-dismissed";
 
@@ -15,6 +17,9 @@ interface UpdateInfo {
 }
 
 export function UpdateBanner() {
+    const t = useTranslations("shell.updateBanner");
+    // Shown only after a client-side check, so the browser's own zone is safe (the same day as before).
+    const formatDate = useFormatDate({ inBrowserZone: true });
     const [update, setUpdate] = useState<UpdateInfo | null>(null);
     const [dismissed, setDismissed] = useState(true);
 
@@ -76,13 +81,7 @@ export function UpdateBanner() {
 
     if (!update || !update.isUpdateAvailable || dismissed) return null;
 
-    const publishedDate = update.publishedAt
-        ? new Date(update.publishedAt).toLocaleDateString("en-US", {
-              year: "numeric",
-              month: "short",
-              day: "numeric",
-          })
-        : "";
+    const publishedDate = update.publishedAt ? formatDate(update.publishedAt) : "";
 
     return (
         <div className="mx-auto mb-4 flex w-full max-w-[1800px] items-center gap-3 rounded-2xl border border-cyan-400/20 bg-cyan-400/8 px-4 py-3 sm:px-5">
@@ -91,9 +90,9 @@ export function UpdateBanner() {
             </div>
             <div className="min-w-0 flex-1">
                 <p className="text-sm font-medium text-cyan-100">
-                    EmperorClaw <span className="font-bold">{update.latestVersion}</span> is available
+                    {t.rich("available", { version: update.latestVersion, strong: (chunks) => <span className="font-bold">{chunks}</span> })}
                     {" — "}
-                    <span className="text-cyan-200/70">you&apos;re on v{update.currentVersion}</span>
+                    <span className="text-cyan-200/70">{t("currentVersion", { version: update.currentVersion })}</span>
                     {publishedDate && (
                         <span className="text-cyan-200/50"> · {publishedDate}</span>
                     )}
@@ -103,14 +102,14 @@ export function UpdateBanner() {
                 href="/settings?tab=updates"
                 className="inline-flex shrink-0 items-center gap-1.5 rounded-xl bg-cyan-400/15 px-3 py-1.5 text-xs font-semibold text-cyan-200 transition-colors hover:bg-cyan-400/25"
             >
-                View update
+                {t("viewUpdate")}
                 <IconExternalLink className="h-3 w-3" />
             </Link>
             <button
                 type="button"
                 onClick={handleDismiss}
                 className="grid h-7 w-7 shrink-0 place-items-center rounded-lg text-cyan-300/50 transition-colors hover:bg-black/[0.04] dark:hover:bg-white/5 hover:text-cyan-200"
-                aria-label="Dismiss update notification"
+                aria-label={t("dismiss")}
             >
                 <IconX className="h-4 w-4" />
             </button>

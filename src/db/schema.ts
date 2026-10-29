@@ -12,6 +12,8 @@ export const users = pgTable("users", {
     instanceRole: text("instance_role").notNull().default("member"), // 'instance_admin' | 'member'
     onboardingCompletedAt: timestamp("onboarding_completed_at"),
     onboardingDismissedAt: timestamp("onboarding_dismissed_at"),
+    // UI language preference: 'en' | 'zh-CN'; null = Automatic (the browser's language). Never shown to agents.
+    locale: text("locale"),
     createdAt: timestamp("created_at").defaultNow().notNull(),
     deletedAt: timestamp("deleted_at"),
 });

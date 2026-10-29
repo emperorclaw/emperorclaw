@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
+import { useTranslations } from "next-intl";
 import {
     IconArrowRight, IconFileText, IconBug, IconChartBar, IconCheck, IconChevronRight, IconCode, IconCoffee, IconListDetails, IconPencil, IconPlus, IconSettings,
 } from "@tabler/icons-react";
@@ -19,9 +20,9 @@ export const ZONE_ICON: Record<ZoneId, typeof IconCode> = {
 };
 
 const COLUMNS = [
-    { id: "inProgress", label: "In progress", dot: "bg-sky-400" },
-    { id: "review", label: "In review", dot: "bg-violet-400" },
-    { id: "done", label: "Done in 24h", dot: "bg-emerald-400" },
+    { id: "inProgress", dot: "bg-sky-400" },
+    { id: "review", dot: "bg-violet-400" },
+    { id: "done", dot: "bg-emerald-400" },
 ] as const;
 
 const ROWS_PER_COLUMN = 4;
@@ -33,6 +34,7 @@ export function WorkBoard({ columns, assignees, canAct }: {
     assignees: Map<string, BoardAssignee>;
     canAct: boolean;
 }) {
+    const t = useTranslations("home.board");
     const [expanded, setExpanded] = useState<Record<string, boolean>>({});
     return (
         <section aria-labelledby="work-in-motion-title" className="emperor-panel rounded-2xl p-4">
@@ -40,12 +42,12 @@ export function WorkBoard({ columns, assignees, canAct }: {
                 <div className="flex items-start gap-2.5">
                     <IconListDetails className="mt-0.5 h-5 w-5 shrink-0 text-muted-foreground" stroke={1.8} />
                     <div>
-                        <h2 id="work-in-motion-title" className="text-base font-semibold text-foreground">Work in motion</h2>
-                        <p className="text-xs text-muted-foreground">Latest tasks by status. Up to 100 per column; Projects has the full board.</p>
+                        <h2 id="work-in-motion-title" className="text-base font-semibold text-foreground">{t("title")}</h2>
+                        <p className="text-xs text-muted-foreground">{t("subtitle")}</p>
                     </div>
                 </div>
                 {canAct && <Link href="/projects" className="inline-flex min-h-11 shrink-0 items-center gap-1.5 rounded-lg border border-border px-3 text-sm font-medium text-foreground transition hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400">
-                    <IconPlus className="h-4 w-4" />New task
+                    <IconPlus className="h-4 w-4" />{t("newTask")}
                 </Link>}
             </header>
 
@@ -55,11 +57,11 @@ export function WorkBoard({ columns, assignees, canAct }: {
                     return (
                         <div key={col.id} className="min-w-0 rounded-xl border border-border/70 bg-muted/30 p-2 dark:bg-white/[0.015]">
                             <h3 className="flex items-center gap-2 px-1.5 py-1 text-sm font-semibold text-foreground">
-                                <span className={cn("h-2 w-2 rounded-full", col.dot)} />{col.label}
+                                <span className={cn("h-2 w-2 rounded-full", col.dot)} />{t(col.id)}
                                 <span className="rounded-md bg-muted px-1.5 text-[11px] font-semibold tabular-nums text-muted-foreground dark:bg-white/[0.06]">{tasks.length}</span>
                             </h3>
                             {tasks.length === 0 ? (
-                                <p className="px-2 py-4 text-xs text-muted-foreground">Nothing here right now.</p>
+                                <p className="px-2 py-4 text-xs text-muted-foreground">{t("empty")}</p>
                             ) : (
                                 <ul className="mt-1 space-y-1.5">
                                     {tasks.slice(0, expanded[col.id] ? tasks.length : ROWS_PER_COLUMN).map((task) => <TaskRow key={task.id} task={task} assignee={task.assigneeKey ? assignees.get(task.assigneeKey) ?? null : null} />)}
@@ -67,7 +69,7 @@ export function WorkBoard({ columns, assignees, canAct }: {
                             )}
                             {tasks.length > ROWS_PER_COLUMN && (
                                 <button type="button" aria-expanded={Boolean(expanded[col.id])} onClick={() => setExpanded((current) => ({ ...current, [col.id]: !current[col.id] }))} className="mt-1.5 flex min-h-11 items-center gap-1 rounded-lg px-2 text-xs font-medium text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-cyan-400">
-                                    {expanded[col.id] ? "Show fewer" : `Show all ${tasks.length} tasks`}<IconChevronRight className="h-3.5 w-3.5" />
+                                    {expanded[col.id] ? t("showFewer") : t("showAll", { count: tasks.length })}<IconChevronRight className="h-3.5 w-3.5" />
                                 </button>
                             )}
                         </div>
@@ -76,14 +78,15 @@ export function WorkBoard({ columns, assignees, canAct }: {
             </div>
 
             <footer className="mt-3 flex flex-wrap items-center justify-between gap-2 border-t border-border/70 pt-3 text-xs">
-                <span className="text-muted-foreground">{`${columns.inProgress.length + columns.review.length + columns.done.length} tasks loaded in this snapshot.`}</span>
-                <Link href="/projects" className="inline-flex items-center gap-1 font-medium text-muted-foreground hover:text-foreground">View all activity<IconArrowRight className="h-3.5 w-3.5" /></Link>
+                <span className="text-muted-foreground">{t("loaded", { count: columns.inProgress.length + columns.review.length + columns.done.length })}</span>
+                <Link href="/projects" className="inline-flex items-center gap-1 font-medium text-muted-foreground hover:text-foreground">{t("viewAll")}<IconArrowRight className="h-3.5 w-3.5" /></Link>
             </footer>
         </section>
     );
 }
 
 function TaskRow({ task, assignee }: { task: DashboardTask; assignee: BoardAssignee | null }) {
+    const t = useTranslations("home.board");
     const Icon = assignee ? ZONE_ICON[assignee.zone] : IconFileText;
     return (
         <li>
@@ -98,7 +101,7 @@ function TaskRow({ task, assignee }: { task: DashboardTask; assignee: BoardAssig
                                 <AgentAvatar id={assignee.member.id} kind={assignee.member.kind} name={assignee.member.name} avatarUrl={assignee.member.avatarUrl} avatarAppearance={assignee.member.avatarAppearance} size={16} />
                                 <span className="truncate">{assignee.member.name}</span>
                             </>
-                        ) : <span>Unassigned</span>}
+                        ) : <span>{t("unassigned")}</span>}
                         {task.projectName && <span title={task.projectName} className="min-w-0 max-w-[8rem] truncate rounded-md bg-cyan-500/10 px-1.5 py-px text-[10px] font-medium text-cyan-700 ring-1 ring-inset ring-cyan-500/20 dark:text-cyan-200">{task.projectName}</span>}
                     </span>
                 </span>
@@ -110,14 +113,15 @@ function TaskRow({ task, assignee }: { task: DashboardTask; assignee: BoardAssig
 }
 
 function StepMark({ state }: { state: string }) {
+    const t = useTranslations("home.board");
     const { step, total } = taskStep(state);
     if (step >= total) {
-        return <span className="grid h-5 w-5 shrink-0 place-items-center rounded-full bg-emerald-500 text-white shadow-[0_0_10px_rgba(16,185,129,0.5)]" aria-label="Done"><IconCheck className="h-3.5 w-3.5" stroke={3} /></span>;
+        return <span className="grid h-5 w-5 shrink-0 place-items-center rounded-full bg-emerald-500 text-white shadow-[0_0_10px_rgba(16,185,129,0.5)]" aria-label={t("doneLabel")}><IconCheck className="h-3.5 w-3.5" stroke={3} /></span>;
     }
     const r = 7;
     const c = 2 * Math.PI * r;
     return (
-        <span className="flex shrink-0 items-center gap-1 text-[11px] tabular-nums text-muted-foreground" aria-label={`Step ${step} of ${total}`}>
+        <span className="flex shrink-0 items-center gap-1 text-[11px] tabular-nums text-muted-foreground" aria-label={t("step", { step, total })}>
             <svg viewBox="0 0 18 18" className="h-[18px] w-[18px] -rotate-90">
                 <circle cx={9} cy={9} r={r} fill="none" stroke="currentColor" strokeOpacity={0.2} strokeWidth={2} />
                 <circle cx={9} cy={9} r={r} fill="none" stroke={state === "review" ? "#a78bfa" : "#38bdf8"} strokeWidth={2} strokeDasharray={`${(c * step) / total} ${c}`} strokeLinecap="round" />

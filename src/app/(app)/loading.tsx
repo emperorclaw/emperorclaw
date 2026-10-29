@@ -1,4 +1,7 @@
+import { useTranslations } from "next-intl";
+
 export default function Loading() {
+    const t = useTranslations("errors");
     return (
         <div className="min-h-screen w-full bg-gradient-to-br from-zinc-950 via-zinc-900 to-zinc-950 text-zinc-200">
             <div className="max-w-6xl mx-auto px-8 py-10">
@@ -23,7 +26,7 @@ export default function Loading() {
 
                 <div className="mt-10 flex items-center space-x-3 text-sm text-zinc-400">
                     <div className="h-2.5 w-2.5 rounded-full bg-indigo-400 animate-pulse" />
-                    <span>Loading workspace...</span>
+                    <span>{t("loadingWorkspace")}</span>
                 </div>
             </div>
         </div>

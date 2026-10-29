@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import { useTranslations } from "next-intl";
 import { cn } from "@/lib/utils";
 
 /**
@@ -67,10 +68,11 @@ export function SkeletonHeader({ action = true }: { action?: boolean }) {
 }
 
 /** The route-level wrapper: one polite "Loading…" for assistive tech. */
-export function SkeletonPage({ label = "Loading", children, className }: { label?: string; children: ReactNode; className?: string }) {
+export function SkeletonPage({ label, children, className }: { label?: string; children: ReactNode; className?: string }) {
+    const t = useTranslations("common");
     return (
         <div role="status" aria-live="polite" aria-busy="true" className={cn("mx-auto w-full max-w-[1600px] space-y-6", className)}>
-            <span className="sr-only">{label}…</span>
+            <span className="sr-only">{label ?? t("loading")}…</span>
             {children}
         </div>
     );

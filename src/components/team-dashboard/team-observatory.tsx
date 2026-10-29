@@ -1,17 +1,19 @@
 "use client";
 
 import Link from "next/link";
+import { useTranslations } from "next-intl";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type CSSProperties } from "react";
 import { IconBubbleText, IconLayoutList, IconMessageCircle, IconUsersGroup } from "@tabler/icons-react";
 import { assignIdleRoutines, requiresHumanAction, type CompanyLeader, type DashboardTeam, type SceneActivity, type SceneAgent, type SceneCommunication, type SceneLiveEvent, type SceneThought } from "@/lib/team-scene";
 import { visibleCommunications, sceneMessagePreview } from "@/lib/observatory";
 import {
-    bubbleCandidates, deskColumns, deskStateLabel, deskStatusLine, eventsToPlay, ghostKeys, holdThoughts, leaderMemberKey, orderDesks, plural, rotateSpeakers, thoughtKeys, urgencyBucket, visibleDesks, MAX_DESKS,
+    bubbleCandidates, deskColumns, deskStateLabel, deskStatusLine, eventsToPlay, ghostKeys, holdThoughts, leaderMemberKey, orderDesks, rotateSpeakers, thoughtKeys, urgencyBucket, visibleDesks, MAX_DESKS,
 } from "@/lib/live-office";
 import { chatPollDelayMs } from "@/lib/live-activity";
 import { useLivePoll } from "@/lib/use-realtime";
 import { LivingDesk, Throne } from "./living-desk";
 import { useLiveLink } from "./live-link";
+import { useSceneCopy } from "./use-scene-copy";
 import { cn } from "@/lib/utils";
 
 const THOUGHTS_KEY = "emperor.scene.showThoughts";
@@ -70,6 +72,8 @@ export function TeamObservatory({ agents, teams, communications, thoughts, liveE
     reducedMotion: boolean;
     fresh: boolean;
 }) {
+    const t = useTranslations("home.observatory");
+    const scene = useSceneCopy();
     const link = useLiveLink();
     const [group, setGroup] = useState("all");
     const [frameWidth, setFrameWidth] = useState(0);
@@ -220,15 +224,15 @@ export function TeamObservatory({ agents, teams, communications, thoughts, liveE
 
     return <div className={cn("observatory office-scene living-office", !awake && "office-paused", still && "living-still")}>
         <div className="mb-3 flex flex-wrap items-center justify-between gap-x-3 gap-y-2">
-            <label className="flex min-w-0 items-center gap-2 text-xs text-muted-foreground"><IconUsersGroup className="h-4 w-4 shrink-0" aria-hidden="true" />Team chat
-                <select aria-label="Scene team" value={team?.id ?? "all"} onChange={(e) => setGroup(e.target.value)} className="min-h-11 max-w-52 rounded-lg border border-border bg-card px-3 text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400"><option value="all">Whole company</option>{teams.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}</select>
+            <label className="flex min-w-0 items-center gap-2 text-xs text-muted-foreground"><IconUsersGroup className="h-4 w-4 shrink-0" aria-hidden="true" />{t("teamChat")}
+                <select aria-label={t("sceneTeam")} value={team?.id ?? "all"} onChange={(e) => setGroup(e.target.value)} className="min-h-11 max-w-52 rounded-lg border border-border bg-card px-3 text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400"><option value="all">{t("wholeCompany")}</option>{teams.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}</select>
             </label>
             <div className="flex flex-wrap items-center gap-2">
-                <span className="text-xs text-muted-foreground">{team ? `${plural(teamCount, "agent")} in ${team.name} · others dimmed` : `${plural(agents.length, "agent")} · most urgent nearest the throne`}</span>
+                <span className="text-xs text-muted-foreground">{team ? t("teamSummary", { count: teamCount, team: team.name }) : t("allSummary", { count: agents.length })}</span>
                 <button type="button" aria-pressed={showThoughts} onClick={() => writeShowThoughts(!showThoughts)}
                     className={cn("inline-flex min-h-11 items-center gap-1.5 rounded-lg border px-3 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400",
                         showThoughts ? "border-cyan-500/40 bg-cyan-500/10 text-cyan-700 dark:text-cyan-200" : "border-border text-muted-foreground hover:text-foreground")}>
-                    <IconBubbleText className="h-4 w-4" aria-hidden="true" />Show thoughts
+                    <IconBubbleText className="h-4 w-4" aria-hidden="true" />{t("showThoughts")}
                 </button>
             </div>
         </div>
@@ -236,7 +240,7 @@ export function TeamObservatory({ agents, teams, communications, thoughts, liveE
             <div className="observatory-stars pointer-events-none absolute inset-0" aria-hidden="true" />
             <div className="living-floor-glow pointer-events-none absolute inset-x-0 bottom-0 top-24" aria-hidden="true" />
             <div className="relative flex justify-center"><Throne pending={pendingActions} onOpen={onOpenInbox} still={still} leader={leader} leaderAgent={leaderAgent} actionKeys={actionKeys} ghost={leaderGhost} selected={Boolean(leaderKey && selectedKey === leaderKey)} onSelectLeader={onSelect} /></div>
-            <ol ref={floorRef} aria-label="Agents, most urgent first" className="mt-2 grid gap-x-2 gap-y-2" style={{ gridTemplateColumns: `repeat(${columns}, minmax(0, 1fr))` }}>
+            <ol ref={floorRef} aria-label={t("agentsList")} className="mt-2 grid gap-x-2 gap-y-2" style={{ gridTemplateColumns: `repeat(${columns}, minmax(0, 1fr))` }}>
                 {shown.map((agent, index) => {
                     const m = agent.member;
                     const bucket = urgencyBucket(agent, actionKeys);
@@ -249,14 +253,14 @@ export function TeamObservatory({ agents, teams, communications, thoughts, liveE
                         actions={actions} ghost={ghost} selected={selectedKey === m.key} linked={link.from === "inbox" && link.key === m.key}
                         celebrating={celebrating.has(m.key)} burst={confetti.has(m.key)} pulse={pulsing.has(m.key)} still={still}
                         thought={ghost ? null : speaking.get(m.key)?.text ?? null} thoughtLabel={ghost ? null : speaking.get(m.key)?.label ?? null} bubbleAlign={column === 0 ? "start" : column === columns - 1 ? "end" : "center"}
-                        ariaLabel={`${m.name}: ${agent.behavior.caption}${actions ? `, ${plural(actions, "pending action")}` : ""}${ghost ? ", outside this team chat" : ""}`}
+                        ariaLabel={`${t("deskAria", { name: m.name, caption: scene.caption(agent.behavior.caption) })}${actions ? t("deskAriaActions", { count: actions }) : ""}${ghost ? t("deskAriaGhost") : ""}`}
                         onSelect={onSelect} onPoint={(key) => pointDesk(key, actions > 0)} />;
                 })}
                 {hidden > 0 && <li className="flex min-h-[140px] items-center justify-center">
                     <button type="button" onClick={onShowAll} className="flex h-full w-full flex-col items-center justify-center gap-1 rounded-xl border border-dashed border-cyan-300/30 px-2 text-center text-slate-200 hover:bg-white/[0.04] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300">
                         <IconLayoutList className="h-5 w-5 text-cyan-300" aria-hidden="true" />
-                        <span className="text-[13px] font-semibold">+{hidden} more</span>
-                        <span className="text-xs text-slate-400">Open the list</span>
+                        <span className="text-[13px] font-semibold">{t("more", { count: hidden })}</span>
+                        <span className="text-xs text-slate-400">{t("openList")}</span>
                     </button>
                 </li>}
             </ol>
@@ -266,8 +270,8 @@ export function TeamObservatory({ agents, teams, communications, thoughts, liveE
                     <svg viewBox="-12 -9 24 18" className="h-5 w-6"><path d="M-11 -1 L11 -8 L4 8 L1 2 Z" fill="#ecfeff" /><path d="M1 2 L11 -8 L-3 3 Z" fill="#67e8f9" /></svg>
                 </span>)}
             </div>}
-            {shown.length === 0 && <p className="py-10 text-center text-sm text-slate-300">No agents match this view. Clear the filters to see your team.</p>}
+            {shown.length === 0 && <p className="py-10 text-center text-sm text-slate-300">{t("empty")}</p>}
         </div>
-        {(message || team) && <div className="mt-3 flex items-start gap-2 rounded-xl border border-border bg-muted/20 px-3 py-3 text-xs text-muted-foreground"><IconMessageCircle className="mt-0.5 h-4 w-4 shrink-0 text-cyan-600 dark:text-cyan-300" aria-hidden="true" /><div className="min-w-0 flex-1">{message ? <><span className="font-semibold text-foreground">{agents.find((a) => a.member.key === message.actorKey)?.member.name}</span>{message.teamId && <span> in {teams.find((t) => t.id === message.teamId)?.name ?? "team chat"}</span>}{message.targetKey && <span> → {agents.find((a) => a.member.key === message.targetKey)?.member.name}</span>}<p className="mt-1 line-clamp-2">{sceneMessagePreview(message.text)}</p><Link href={message.href} className="mt-1 inline-flex min-h-11 items-center font-medium text-cyan-700 dark:text-cyan-300">Open conversation →</Link></> : <><span className="font-medium text-foreground">Conversation channel</span><p className="mt-1">New team messages appear here. Agents who just spoke show a speech cue at their desk.</p></>}</div>{team && <Link href={`/messages?group=${team.id}`} className="inline-flex min-h-11 shrink-0 items-center text-cyan-700 dark:text-cyan-300">Team chat →</Link>}</div>}
+        {(message || team) && <div className="mt-3 flex items-start gap-2 rounded-xl border border-border bg-muted/20 px-3 py-3 text-xs text-muted-foreground"><IconMessageCircle className="mt-0.5 h-4 w-4 shrink-0 text-cyan-600 dark:text-cyan-300" aria-hidden="true" /><div className="min-w-0 flex-1">{message ? <><span className="font-semibold text-foreground">{agents.find((a) => a.member.key === message.actorKey)?.member.name}</span>{message.teamId && <span>{t("messageIn", { team: teams.find((candidate) => candidate.id === message.teamId)?.name ?? t("teamChatFallback") })}</span>}{message.targetKey && <span> → {agents.find((a) => a.member.key === message.targetKey)?.member.name}</span>}<p className="mt-1 line-clamp-2">{sceneMessagePreview(message.text)}</p><Link href={message.href} className="mt-1 inline-flex min-h-11 items-center font-medium text-cyan-700 dark:text-cyan-300">{t("openConversation")}</Link></> : <><span className="font-medium text-foreground">{t("channel")}</span><p className="mt-1">{t("channelHint")}</p></>}</div>{team && <Link href={`/messages?group=${team.id}`} className="inline-flex min-h-11 shrink-0 items-center text-cyan-700 dark:text-cyan-300">{t("teamChatLink")}</Link>}</div>}
     </div>;
 }

@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useSession } from "next-auth/react";
+import { useTranslations } from "next-intl";
 import { createPortal } from "react-dom";
 import {
     IconBook, IconBuildingStore, IconChevronDown, IconCoin, IconDeviceSdCard, IconFileText, IconFolder, IconGitBranch, IconHierarchy2, IconHistory, IconHome, IconInbox, IconKey,
@@ -25,7 +26,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Dialog, DialogContent, DialogTitle, DialogDescription, DialogTrigger, DialogClose } from "@/components/ui/dialog";
 import type { ModuleState } from "@/lib/modules";
-import { activeNavHref, NAV_SECTIONS_STORAGE_KEY, navSections, readCollapsedSections, type NavBadgeKey, type NavItem } from "@/lib/navigation";
+import { activeNavHref, NAV_SECTIONS_STORAGE_KEY, navSections, readCollapsedSections, type NavBadgeKey, type NavId, type NavItem, type NavSection } from "@/lib/navigation";
 
 function cn(...inputs: ClassValue[]) {
     return twMerge(clsx(inputs));
@@ -35,7 +36,7 @@ const SIDEBAR_COLLAPSE_KEY = "emperor-sidebar-collapsed";
 
 const UTILITY_BUTTON = "flex h-6 w-6 cursor-pointer items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-accent hover:text-foreground";
 
-const NAV_ICONS: Record<string, typeof IconFolder> = {
+const NAV_ICONS: Record<NavId, typeof IconFolder> = {
     home: IconHome,
     inbox: IconInbox,
     messages: IconMessage,
@@ -56,13 +57,14 @@ const NAV_ICONS: Record<string, typeof IconFolder> = {
 };
 
 type Badges = ReturnType<typeof useNavBadges>;
+type SidebarT = ReturnType<typeof useTranslations<"shell.sidebar">>;
 
 /** The badge one nav item shows: live work in cyan, inbox amber (red when something failed), unread messages. */
-function badgeFor(key: NavBadgeKey | undefined, badges: Badges): { text: string; tone: "live" | "warn" | "fail" | "unread"; label: string } | null {
+function badgeFor(key: NavBadgeKey | undefined, badges: Badges, t: SidebarT): { text: string; tone: "live" | "warn" | "fail" | "unread"; label: string } | null {
     const cap = (n: number) => (n > 99 ? "99+" : String(n));
-    if (key === "live" && badges.workingNow > 0) return { text: `${badges.workingNow} working`, tone: "live", label: `${badges.workingNow} agents working now` };
-    if (key === "inbox" && badges.inbox > 0) return { text: cap(badges.inbox), tone: badges.inboxHasFailures ? "fail" : "warn", label: `${badges.inbox} unread ${badges.inbox === 1 ? "item needs" : "items need"} you${badges.inboxHasFailures ? ", some failed" : ""}` };
-    if (key === "messages" && badges.unreadMessages > 0) return { text: cap(badges.unreadMessages), tone: "unread", label: `${badges.unreadMessages} unread messages` };
+    if (key === "live" && badges.workingNow > 0) return { text: t("badgeWorking", { count: badges.workingNow }), tone: "live", label: t("badgeWorkingLabel", { count: badges.workingNow }) };
+    if (key === "inbox" && badges.inbox > 0) return { text: cap(badges.inbox), tone: badges.inboxHasFailures ? "fail" : "warn", label: t("badgeInboxLabel", { count: badges.inbox, failed: badges.inboxHasFailures ? "yes" : "no" }) };
+    if (key === "messages" && badges.unreadMessages > 0) return { text: cap(badges.unreadMessages), tone: "unread", label: t("badgeMessagesLabel", { count: badges.unreadMessages }) };
     return null;
 }
 
@@ -90,6 +92,9 @@ function NavBadge({ badge }: { badge: NonNullable<ReturnType<typeof badgeFor>> }
 }
 
 export function AppSidebar({ isPlatformAdmin = false, isCompanyAdmin = false, canAct = true, appVersion, modules }: { isPlatformAdmin?: boolean; isCompanyAdmin?: boolean; canAct?: boolean; appVersion?: string; modules?: ModuleState | null }) {
+    const t = useTranslations("shell.sidebar");
+    const tNav = useTranslations("nav");
+    const tSections = useTranslations("navSections");
     const pathname = usePathname();
     const { data: session } = useSession();
     const [collapsed, setCollapsed] = useState(false);
@@ -146,10 +151,13 @@ export function AppSidebar({ isPlatformAdmin = false, isCompanyAdmin = false, ca
         });
     };
 
+    const sectionTitle = (id: NavSection["id"]) => (id === "attention" || id === "system" ? "" : tSections(id));
+
     const renderLink = (link: NavItem) => {
         const Icon = NAV_ICONS[link.id] ?? IconFolder;
         const isActive = activeHref === link.href;
-        const badge = badgeFor(link.badge, badges);
+        const badge = badgeFor(link.badge, badges, t);
+        const name = tNav(link.id);
         return (
             <Link
                 key={link.id}
@@ -159,7 +167,7 @@ export function AppSidebar({ isPlatformAdmin = false, isCompanyAdmin = false, ca
                     if (!collapsed) return;
                     const rect = e.currentTarget.getBoundingClientRect();
                     setTooltipPos({ top: rect.top + rect.height / 2, left: rect.right + 12 });
-                    setHoveredNav(badge ? `${link.name} (${badge.text})` : link.name);
+                    setHoveredNav(badge ? t("tooltipWithBadge", { name, badge: badge.text }) : name);
                 }}
                 onMouseLeave={() => { setHoveredNav(null); setTooltipPos(null); }}
                 className={cn(
@@ -176,7 +184,7 @@ export function AppSidebar({ isPlatformAdmin = false, isCompanyAdmin = false, ca
                         <span aria-hidden className={cn("absolute -right-1.5 -top-1.5 h-2 w-2 rounded-full ring-2 ring-sidebar", DOT_TONE[badge.tone])} />
                     )}
                 </span>
-                <span className={cn("hidden min-w-0 flex-1 truncate", collapsed ? "" : "md:inline")}>{link.name}</span>
+                <span className={cn("hidden min-w-0 flex-1 truncate", collapsed ? "" : "md:inline")}>{name}</span>
                 {badge && !collapsed && <span className="hidden md:inline-flex"><NavBadge badge={badge} /></span>}
                 {badge && collapsed && <span className="sr-only">{badge.label}</span>}
             </Link>
@@ -186,26 +194,26 @@ export function AppSidebar({ isPlatformAdmin = false, isCompanyAdmin = false, ca
     return (
         <>
         <header className="flex shrink-0 items-center justify-between gap-2 border-b border-border bg-sidebar px-4 py-2 md:hidden" style={{ paddingTop: "max(0.5rem, env(safe-area-inset-top))" }}>
-            <Link href="/" className="flex min-h-11 items-center gap-2 text-sm font-semibold"><CustomLogo className="h-7 w-7" /> Emperor Claw</Link>
+            <Link href="/" lang="en" className="flex min-h-11 items-center gap-2 text-sm font-semibold"><CustomLogo className="h-7 w-7" /> Emperor Claw</Link>
             <div className="flex items-center gap-2">
-                <button type="button" onClick={openCommandPalette} aria-label="Search and jump" className="flex min-h-11 min-w-11 items-center justify-center rounded-xl border border-border text-muted-foreground hover:text-foreground"><IconSearch className="h-5 w-5" /></button>
+                <button type="button" onClick={openCommandPalette} aria-label={t("searchAndJump")} className="flex min-h-11 min-w-11 items-center justify-center rounded-xl border border-border text-muted-foreground hover:text-foreground"><IconSearch className="h-5 w-5" /></button>
                 <Dialog>
                     <DialogTrigger asChild>
-                        <button aria-label="Open navigation" className="flex min-h-11 min-w-11 items-center justify-center rounded-xl border border-border"><IconMenu2 className="h-5 w-5" /></button>
+                        <button aria-label={t("openNavigation")} className="flex min-h-11 min-w-11 items-center justify-center rounded-xl border border-border"><IconMenu2 className="h-5 w-5" /></button>
                     </DialogTrigger>
                     <DialogContent className="max-h-[85dvh] overflow-y-auto border-border bg-popover text-foreground dark:bg-zinc-950/95">
-                        <DialogTitle className="text-foreground">Navigation</DialogTitle>
-                        <DialogDescription className="sr-only">Every page in your workspace.</DialogDescription>
-                        <nav aria-label="Mobile navigation" className="space-y-3">
+                        <DialogTitle className="text-foreground">{t("navigation")}</DialogTitle>
+                        <DialogDescription className="sr-only">{t("navigationDescription")}</DialogDescription>
+                        <nav aria-label={t("mobileNavigation")} className="space-y-3">
                             {sections.map((section) => <div key={section.id}>
-                                {section.title && <p className="mb-1 px-1 text-[11px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">{section.title}</p>}
+                                {section.title && <p className="mb-1 px-1 text-[11px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">{sectionTitle(section.id)}</p>}
                                 {section.items.map((link) => {
                                     const Icon = NAV_ICONS[link.id] ?? IconFolder;
-                                    const badge = badgeFor(link.badge, badges);
+                                    const badge = badgeFor(link.badge, badges, t);
                                     return (
                                         <DialogClose asChild key={link.id}>
                                             <Link href={link.href} aria-current={activeHref === link.href ? "page" : undefined} className={cn("flex min-h-11 items-center gap-3 rounded-xl px-3 text-sm", activeHref === link.href ? "bg-primary/10 text-primary" : "text-foreground")}>
-                                                <Icon className="h-5 w-5 shrink-0" /><span className="flex-1">{link.name}</span>
+                                                <Icon className="h-5 w-5 shrink-0" /><span className="flex-1">{tNav(link.id)}</span>
                                                 {badge && <NavBadge badge={badge} />}
                                             </Link>
                                         </DialogClose>
@@ -213,7 +221,7 @@ export function AppSidebar({ isPlatformAdmin = false, isCompanyAdmin = false, ca
                                 })}
                             </div>)}
                         </nav>
-                        <div className="flex items-center justify-between border-t border-border pt-3"><ThemeToggle /><button onClick={() => signOut()} className="min-h-11 px-3 text-sm">Sign out</button></div>
+                        <div className="flex items-center justify-between border-t border-border pt-3"><ThemeToggle /><button onClick={() => signOut()} className="min-h-11 px-3 text-sm">{t("signOut")}</button></div>
                     </DialogContent>
                 </Dialog>
             </div>
@@ -225,7 +233,7 @@ export function AppSidebar({ isPlatformAdmin = false, isCompanyAdmin = false, ca
                 ) : (
                     <>
                         <CustomLogo className="h-7 w-7 md:hidden" />
-                        <Link href="/" className="hidden min-w-0 truncate text-[13px] tracking-[0.14em] text-foreground md:block" style={{ fontFamily: "var(--font-silkscreen)" }}>
+                        <Link href="/" lang="en" className="hidden min-w-0 truncate text-[13px] tracking-[0.14em] text-foreground md:block" style={{ fontFamily: "var(--font-silkscreen)" }}>
                             EMPEROR<span className="text-primary">CLAW</span>
                         </Link>
                     </>
@@ -237,23 +245,23 @@ export function AppSidebar({ isPlatformAdmin = false, isCompanyAdmin = false, ca
                 <button
                     type="button"
                     onClick={openCommandPalette}
-                    aria-label="Search and jump"
+                    aria-label={t("searchAndJump")}
                     aria-keyshortcuts="Control+K Meta+K"
-                    title={collapsed ? `Search (${modKey} K)` : undefined}
+                    title={collapsed ? t("searchTitle", { key: modKey }) : undefined}
                     className={cn(
                         "group flex h-9 items-center rounded-xl border border-border bg-muted/40 text-sm text-muted-foreground transition-colors hover:border-primary/30 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400/70 dark:bg-white/[0.03]",
                         collapsed ? "w-9 justify-center" : "min-w-0 flex-1 gap-2 px-2.5",
                     )}
                 >
                     <IconSearch className="h-4 w-4 shrink-0" />
-                    {!collapsed && <span className="flex-1 truncate text-left">Search</span>}
+                    {!collapsed && <span className="flex-1 truncate text-left">{t("search")}</span>}
                     {!collapsed && <kbd className="rounded-md border border-border bg-background/60 px-1.5 font-mono text-[10px] leading-5 text-muted-foreground">{modKey} K</kbd>}
                 </button>
                 {canAct && (
                     <Link
                         href="/projects?new=task"
-                        aria-label="New task"
-                        title="New task"
+                        aria-label={t("newTask")}
+                        title={t("newTask")}
                         className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-primary text-primary-foreground shadow-sm shadow-primary/20 transition hover:brightness-110 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400/70"
                     >
                         <IconPlus className="h-4 w-4" stroke={2.4} />
@@ -261,7 +269,7 @@ export function AppSidebar({ isPlatformAdmin = false, isCompanyAdmin = false, ca
                 )}
             </div>
 
-            <nav aria-label="Main" className="flex-1 overflow-y-auto overflow-x-visible px-1.5 py-2 sm:px-3">
+            <nav aria-label={t("mainNavigation")} className="flex-1 overflow-y-auto overflow-x-visible px-1.5 py-2 sm:px-3">
                 {sections.map((section) => {
                     const sectionFolded = !collapsed && section.collapsible ? isFolded(section.id, section.defaultCollapsed) : false;
                     const listId = `nav-section-${section.id}`;
@@ -275,7 +283,7 @@ export function AppSidebar({ isPlatformAdmin = false, isCompanyAdmin = false, ca
                                     aria-controls={listId}
                                     className="group hidden w-full items-center gap-1 rounded-md px-2.5 pb-1 pt-2 text-[10px] font-bold uppercase tracking-[0.14em] text-muted-foreground/85 transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400/70 md:flex"
                                 >
-                                    <span className="flex-1 text-left">{section.title}</span>
+                                    <span className="flex-1 text-left">{sectionTitle(section.id)}</span>
                                     <IconChevronDown className={cn("h-3 w-3 opacity-0 transition-[transform,opacity] group-hover:opacity-100 group-focus-visible:opacity-100", sectionFolded && "-rotate-90 opacity-100")} />
                                 </button>
                             )}
@@ -309,7 +317,7 @@ export function AppSidebar({ isPlatformAdmin = false, isCompanyAdmin = false, ca
                             <DropdownMenuItem asChild className="gap-2 text-foreground focus:bg-accent">
                                 <Link href="/settings">
                                     <IconUser className="h-4 w-4 text-muted-foreground" />
-                                    <span>Workspace Settings</span>
+                                    <span>{t("workspaceSettings")}</span>
                                 </Link>
                             </DropdownMenuItem>
                             <DropdownMenuItem
@@ -317,7 +325,7 @@ export function AppSidebar({ isPlatformAdmin = false, isCompanyAdmin = false, ca
                                 onClick={() => signOut({ callbackUrl: "/login" })}
                             >
                                 <IconLogout className="h-4 w-4 text-muted-foreground" />
-                                <span>Logout</span>
+                                <span>{t("logout")}</span>
                             </DropdownMenuItem>
                         </DropdownMenuContent>
                     </DropdownMenu>
@@ -331,8 +339,8 @@ export function AppSidebar({ isPlatformAdmin = false, isCompanyAdmin = false, ca
                         <div className={cn("flex items-center gap-0.5", collapsed ? "flex-col" : "flex-col md:flex-row")}>
                             <Link
                                 href="/docs"
-                                aria-label="Documentation"
-                                title="Documentation"
+                                aria-label={t("documentation")}
+                                title={t("documentation")}
                                 className={cn(UTILITY_BUTTON, pathname?.startsWith("/docs") && "bg-primary/10 text-primary")}
                             >
                                 <IconBook className="h-3.5 w-3.5" />
@@ -341,8 +349,8 @@ export function AppSidebar({ isPlatformAdmin = false, isCompanyAdmin = false, ca
                             <button
                                 type="button"
                                 onClick={toggleCollapsed}
-                                aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
-                                title={collapsed ? "Expand sidebar" : "Collapse sidebar"}
+                                aria-label={collapsed ? t("expandSidebar") : t("collapseSidebar")}
+                                title={collapsed ? t("expandSidebar") : t("collapseSidebar")}
                                 className={cn(UTILITY_BUTTON, "hidden md:flex")}
                             >
                                 {collapsed ? <IconLayoutSidebarLeftExpand className="h-3.5 w-3.5" /> : <IconLayoutSidebarLeftCollapse className="h-3.5 w-3.5" />}

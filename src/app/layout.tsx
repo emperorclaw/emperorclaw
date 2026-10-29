@@ -6,6 +6,7 @@ import { ThemeProvider } from "@/components/theme-provider";
 import { SessionProvider } from "@/components/session-provider";
 import { VersionBanner } from "@/components/version-banner";
 import { Toaster } from "@/components/ui/sonner";
+import { PublicIntlProvider } from "@/components/intl-provider";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -42,6 +43,8 @@ export const metadata: Metadata = {
   },
 };
 
+// The root layout reads no cookies or headers, so public pages stay static.
+// The signed-in app sets the document language itself (src/app/(app)/layout.tsx).
 export default function RootLayout({
   children,
 }: Readonly<{
@@ -54,19 +57,21 @@ export default function RootLayout({
         className={`${geistSans.variable} ${geistMono.variable} ${silkscreen.variable} font-sans min-h-screen bg-background text-foreground antialiased`}
       >
         {gaTagId && <GoogleAnalytics tagId={gaTagId} />}
-        <SessionProvider>
-          <ThemeProvider
-            attribute="class"
-            defaultTheme="dark"
-            enableSystem
-            disableTransitionOnChange
-            storageKey="emperor-theme"
-          >
-            {children}
-            <VersionBanner />
-            <Toaster />
-          </ThemeProvider>
-        </SessionProvider>
+        <PublicIntlProvider>
+          <SessionProvider>
+            <ThemeProvider
+              attribute="class"
+              defaultTheme="dark"
+              enableSystem
+              disableTransitionOnChange
+              storageKey="emperor-theme"
+            >
+              {children}
+              <VersionBanner />
+              <Toaster />
+            </ThemeProvider>
+          </SessionProvider>
+        </PublicIntlProvider>
       </body>
     </html>
   );

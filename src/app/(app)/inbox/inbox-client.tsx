@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { toast } from "sonner";
+import { useTranslations } from "next-intl";
 import {
     IconArchive, IconArchiveOff, IconArrowRight, IconBuildingStore, IconCheck, IconChecks, IconClock, IconFolder, IconHistory, IconInbox, IconMessage,
     IconPlayerPlay, IconRefresh, IconRobot, IconSearch, IconUser, IconX,
@@ -15,13 +16,15 @@ import { useInboxState } from "@/components/use-inbox-state";
 import { refreshNavBadges } from "@/components/use-nav-badges";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import {
-    ATTENTION_GROUP_LABEL, ATTENTION_GROUPS, attentionGroup, matchesInboxFilter,
-    type AttentionGroup, type InboxFilter,
+    ATTENTION_GROUPS, attentionGroup, matchesInboxFilter,
+    type InboxFilter,
 } from "@/lib/attention-rules";
 import { approvalAgeDays, isStaleApproval } from "@/lib/approval-status";
 import { matchesInboxSearch } from "@/lib/inbox-state-rules";
 import { isPlainKey, isTypingTarget } from "@/lib/keyboard-shortcuts";
-import { timeAgo, type AttentionEntry } from "@/lib/team-scene";
+import type { AttentionEntry } from "@/lib/team-scene";
+import { useTimeAgo } from "@/lib/i18n/format";
+import { useSceneCopy } from "@/components/team-dashboard/use-scene-copy";
 import { cn } from "@/lib/utils";
 import { useModuleEnabled } from "@/components/modules-provider";
 
@@ -31,18 +34,8 @@ type Decision = "approved" | "rejected" | "dismissed";
 type InboxView = InboxFilter | "archived";
 
 // "Decisions" + "Blocked" = "Needs you" (the header and the badge); FYI is counted apart.
-const FILTERS: { id: InboxFilter; label: string; hint: string }[] = [
-    { id: "needs", label: "Needs you", hint: "Everything waiting on you" },
-    { id: "decide", label: "Decisions", hint: "Part of Needs you: approvals and questions" },
-    { id: "blocked", label: "Blocked", hint: "Part of Needs you: stopped or failing work" },
-    { id: "fyi", label: "FYI", hint: "Signals only, not counted as needing you" },
-];
-
-const GROUP_HINT: Record<AttentionGroup, string> = {
-    decide: "Agents are waiting on your call.",
-    blocked: "Work that stopped and needs a hand.",
-    fyi: "Worth knowing. Nothing is waiting on you.",
-};
+// Labels and hints: inbox.filters.<id> / <id>Hint; group headings: inbox.groups.<group>.
+const FILTERS: InboxFilter[] = ["needs", "decide", "blocked", "fyi"];
 
 const BTN = "inline-flex min-h-11 items-center gap-1.5 rounded-lg px-3 text-xs font-semibold ring-1 ring-inset transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400 disabled:cursor-not-allowed disabled:opacity-50 md:min-h-9";
 const PRIMARY = "bg-cyan-500/15 text-cyan-700 ring-cyan-500/40 hover:bg-cyan-500/25 dark:text-cyan-200";
@@ -60,6 +53,8 @@ export function InboxClient({ entries, archived, agents, generatedAt, canAct, fi
 }) {
     // Approval history off hides only its page: decisions stay here in the Inbox.
     const approvalHistory = useModuleEnabled("approvals");
+    const t = useTranslations("inbox");
+    const tCommon = useTranslations("common");
     const router = useRouter();
     const now = useMemo(() => new Date(generatedAt), [generatedAt]);
     const [busyId, setBusyId] = useState<string | null>(null);
@@ -102,68 +97,68 @@ export function InboxClient({ entries, archived, agents, generatedAt, canAct, fi
             setRejectingId(null);
             void settle();
         } catch (error) {
-            toast.error(error instanceof Error ? error.message : "Something went wrong");
+            toast.error(error instanceof Error ? error.message : tCommon("somethingWentWrong"));
         } finally {
             setBusyId(null);
         }
-    }, [settle]);
+    }, [settle, tCommon]);
 
     const decide = useCallback((entry: AttentionEntry, decision: Decision, note = "") => run(entry, async () => {
         let approvalId = entry.approvalId ?? null;
         // A task that requires approval but was never asked about: create the request, then decide it.
         if (!approvalId) {
-            if (!entry.taskId || !entry.projectId) throw new Error("Open the task to decide it");
+            if (!entry.taskId || !entry.projectId) throw new Error(t("errors.openTask"));
             const created = await fetch("/api/approvals", {
                 method: "POST", headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({ projectId: entry.projectId, taskIds: [entry.taskId], rationale: "Approval decided directly in Emperor." }),
             });
-            if (!created.ok) throw new Error("Couldn't create the approval");
+            if (!created.ok) throw new Error(t("errors.createFailed"));
             approvalId = ((await created.json()) as { approval?: { id?: string } }).approval?.id ?? null;
         }
-        if (!approvalId) throw new Error("Approval id missing");
+        if (!approvalId) throw new Error(t("errors.approvalMissing"));
         const res = await fetch(`/api/approvals/${approvalId}`, {
             method: "PATCH", headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ status: decision, resolutionNote: note.trim() || null }),
         });
-        if (!res.ok) throw new Error("Couldn't record the decision");
+        if (!res.ok) throw new Error(t("errors.decisionFailed"));
         const stored = ((await res.json().catch(() => ({}))) as { approval?: { status?: string } }).approval?.status;
         if (stored && stored !== decision) {
             void settle();
-            throw new Error(`Already ${stored}. Your decision was not applied.`);
+            throw new Error(t("errors.alreadyDecided", { status: stored }));
         }
-    }, decision === "approved" ? `Approved. ${entry.memberName ?? "The agent"} has been told.`
-        : decision === "dismissed" ? `Dismissed. ${entry.memberName ?? "The agent"} has been told not to do it.`
-            : `Sent back to ${entry.memberName ?? "the agent"} with your note.`), [run, settle]);
+    }, decision === "approved" ? t("toasts.approved", { name: entry.memberName ?? t("theAgent") })
+        : decision === "dismissed" ? t("toasts.dismissed", { name: entry.memberName ?? t("theAgent") })
+            : t("toasts.sentBack", { name: entry.memberName ?? t("theAgentLower") })), [run, settle, t]);
 
     const resume = (entry: AttentionEntry) => run(entry, async () => {
         const res = await fetch("/api/chat/loop-resume", {
             method: "POST", headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ threadId: entry.threadId }),
         });
-        if (!res.ok) throw new Error(((await res.json().catch(() => ({}))) as { error?: string }).error || "Couldn't resume");
-    }, "Resumed the conversation.");
+        if (!res.ok) throw new Error(((await res.json().catch(() => ({}))) as { error?: string }).error || t("errors.resumeFailed"));
+    }, t("toasts.resumed"));
 
     const restart = (entry: AttentionEntry) => run(entry, async () => {
         const res = await fetch(`/api/agents/${entry.agentId}/recreate-runtime`, { method: "POST" });
         const data = await res.json().catch(() => ({})) as { error?: string; success?: boolean; message?: string };
-        if (!res.ok || data.success === false) throw new Error(data.error || data.message || "Couldn't restart the runtime");
-    }, "Restarting the runtime.", false);
+        if (!res.ok || data.success === false) throw new Error(data.error || data.message || t("errors.restartFailed"));
+    }, t("toasts.restarting"), false);
 
     const reassign = (entry: AttentionEntry, agent: Agent) => run(entry, async () => {
         const res = await fetch(`/api/tasks/${entry.taskId}`, {
             method: "PATCH", headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ assignee: { type: "agent", id: agent.id } }),
         });
-        if (!res.ok) throw new Error("Couldn't reassign the task");
-    }, `Reassigned to ${agent.name}.`, false);
+        if (!res.ok) throw new Error(t("errors.reassignFailed"));
+    }, t("toasts.reassigned", { name: agent.name }), false);
 
     const markRead = (entry: AttentionEntry) => run(entry, async () => {
         const res = await fetch("/api/notifications/read", {
             method: "POST", headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ ids: [entry.notificationId] }),
         });
-        if (!res.ok) throw new Error("Couldn't mark it read");
-    }, "Marked read.");
+        if (!res.ok) throw new Error(t("errors.markReadFailed"));
+    }, t("toasts.markedRead"));
 
     const setFilter = (next: InboxView) => {
         router.replace(next === "needs" ? "/inbox" : `/inbox?filter=${next}`, { scroll: false });
@@ -220,7 +215,7 @@ export function InboxClient({ entries, archived, agents, generatedAt, canAct, fi
                 event.preventDefault();
                 const at = new Date(current.at).getTime();
                 if (isStaleApproval(at, Date.now())) {
-                    toast.message(`This request is ${approvalAgeDays(at, Date.now())} days old. Use the Approve button to confirm.`);
+                    toast.message(t("toasts.staleKey", { days: approvalAgeDays(at, Date.now()) }));
                     return;
                 }
                 void decide(current, "approved");
@@ -231,24 +226,24 @@ export function InboxClient({ entries, archived, agents, generatedAt, canAct, fi
         };
         window.addEventListener("keydown", onKey);
         return () => window.removeEventListener("keydown", onKey);
-    }, [ordered, selectedId, canAct, busyId, decide, focusRow, toggleArchive]);
+    }, [ordered, selectedId, canAct, busyId, decide, focusRow, toggleArchive, t]);
 
     return (
         <div className="mx-auto max-w-[1100px] space-y-5 pb-20 animate-in fade-in duration-500">
             <PageHeader
-                eyebrow="Inbox"
-                title={needsYou === 0 ? "Nothing needs you" : needsYou === 1 ? "1 thing needs you" : `${needsYou} things need you`}
-                description={unreadNeedsYou > 0 ? `${unreadNeedsYou} unread. Decisions and blockers from your agents, most urgent first.` : "Decisions and blockers from your agents, most urgent first. FYI signals are kept apart."}
+                eyebrow={t("eyebrow")}
+                title={t("title", { count: needsYou })}
+                description={unreadNeedsYou > 0 ? t("descriptionUnread", { count: unreadNeedsYou }) : t("description")}
                 actions={
                     <>
                         {unread > 0 && !showingArchived && (
                             <button type="button" onClick={() => void inbox.markAllRead()} className={cn(BTN, NEUTRAL, "text-sm font-medium")}>
-                                <IconChecks className="h-4 w-4" />Mark all as read
+                                <IconChecks className="h-4 w-4" />{t("markAllRead")}
                             </button>
                         )}
                         {approvalHistory && (
                             <Link href="/approvals" className={cn(BTN, NEUTRAL, "text-sm font-medium")}>
-                                <IconHistory className="h-4 w-4" />Approval history
+                                <IconHistory className="h-4 w-4" />{t("approvalHistory")}
                             </Link>
                         )}
                     </>
@@ -256,17 +251,17 @@ export function InboxClient({ entries, archived, agents, generatedAt, canAct, fi
             />
 
             {/* Phone: four equal cells, count over label (never overflows). Desktop: one row, FYI set apart. */}
-            <div role="toolbar" aria-label="Filter the inbox" className="grid grid-cols-4 gap-1 rounded-xl border border-border bg-muted/40 p-1 sm:inline-flex sm:w-max dark:bg-white/[0.02]">
-                {FILTERS.map((f) => {
-                    const active = filter === f.id;
-                    const n = filterCount(f.id);
+            <div role="toolbar" aria-label={t("filterToolbar")} className="grid grid-cols-4 gap-1 rounded-xl border border-border bg-muted/40 p-1 sm:inline-flex sm:w-max dark:bg-white/[0.02]">
+                {FILTERS.map((id) => {
+                    const active = filter === id;
+                    const n = filterCount(id);
                     return (
-                        <Fragment key={f.id}>
-                            {f.id === "fyi" && <span aria-hidden className="mx-1 my-1.5 hidden w-px bg-border sm:block" />}
-                            <button type="button" aria-pressed={active} title={f.hint} onClick={() => setFilter(f.id)}
+                        <Fragment key={id}>
+                            {id === "fyi" && <span aria-hidden className="mx-1 my-1.5 hidden w-px bg-border sm:block" />}
+                            <button type="button" aria-pressed={active} title={t(`filters.${id}Hint`)} onClick={() => setFilter(id)}
                                 className={cn("flex min-h-12 min-w-0 flex-col-reverse items-center justify-center gap-0.5 rounded-lg px-1 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400 sm:min-h-9 sm:flex-row sm:gap-2 sm:px-3.5 sm:text-sm",
                                     active ? "bg-background text-foreground shadow-sm ring-1 ring-border dark:bg-white/[0.07]" : "text-muted-foreground hover:text-foreground")}>
-                                <span className="truncate">{f.label}</span>
+                                <span className="truncate">{t(`filters.${id}`)}</span>
                                 <span className={cn("rounded-md px-1.5 text-sm font-semibold tabular-nums sm:text-[11px]", active ? "bg-primary/15 text-primary" : "text-foreground/80 sm:bg-muted sm:text-muted-foreground sm:dark:bg-white/[0.05]")}>{n}</span>
                             </button>
                         </Fragment>
@@ -276,22 +271,22 @@ export function InboxClient({ entries, archived, agents, generatedAt, canAct, fi
 
             <div className="flex flex-wrap items-center gap-2">
                 <label className="relative min-w-0 flex-1 sm:max-w-sm">
-                    <span className="sr-only">Search the inbox</span>
+                    <span className="sr-only">{t("searchLabel")}</span>
                     <IconSearch aria-hidden className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
                     <input
                         type="search"
                         value={query}
                         onChange={(e) => setQuery(e.target.value)}
                         onKeyDown={(e) => { if (e.key === "Escape") { e.stopPropagation(); setQuery(""); e.currentTarget.blur(); } }}
-                        placeholder="Search by title, agent or project"
+                        placeholder={t("searchPlaceholder")}
                         className="min-h-11 w-full rounded-lg border border-border bg-background pl-9 pr-3 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-cyan-400/60 md:min-h-9"
                     />
                 </label>
                 <button type="button" aria-pressed={showingArchived} onClick={() => setFilter(showingArchived ? "needs" : "archived")}
-                    title={showingArchived ? "Back to the inbox" : "Items you archived. They come back on their own when something changes."}
+                    title={showingArchived ? t("backTitle") : t("archivedTitle")}
                     className={cn(BTN, showingArchived ? PRIMARY : NEUTRAL, "text-sm font-medium")}>
                     {showingArchived ? <IconInbox className="h-4 w-4" /> : <IconArchive className="h-4 w-4" />}
-                    {showingArchived ? "Back to inbox" : "Archived"}
+                    {showingArchived ? t("backToInbox") : t("archived")}
                     <span className="tabular-nums text-muted-foreground">{archivedLive.length}</span>
                 </button>
             </div>
@@ -303,10 +298,10 @@ export function InboxClient({ entries, archived, agents, generatedAt, canAct, fi
                     <section key={group} aria-labelledby={`inbox-${group}`}>
                         <header className="mb-2.5 flex items-baseline gap-2 px-1">
                             <h2 id={`inbox-${group}`} className={cn("text-sm font-semibold", group === "blocked" ? "text-rose-600 dark:text-rose-300" : group === "decide" ? "text-foreground" : "text-muted-foreground")}>
-                                {ATTENTION_GROUP_LABEL[group]}
+                                {t(`groups.${group}`)}
                             </h2>
                             <span className="text-xs tabular-nums text-muted-foreground">{items.length}</span>
-                            <span className="hidden truncate text-xs text-muted-foreground/80 sm:inline">{GROUP_HINT[group]}</span>
+                            <span className="hidden truncate text-xs text-muted-foreground/80 sm:inline">{t(`groups.${group}Hint`)}</span>
                         </header>
                         <ul className="space-y-2">
                             {items.map((entry) => (
@@ -339,12 +334,12 @@ export function InboxClient({ entries, archived, agents, generatedAt, canAct, fi
 
             {ordered.length > 0 && (
                 <p className="hidden items-center gap-4 px-1 text-xs text-muted-foreground md:flex">
-                    <Hint keys={["j", "k"]}>move</Hint>
-                    <Hint keys={["Enter"]}>open</Hint>
-                    <Hint keys={["e"]}>{showingArchived ? "move back" : "archive"}</Hint>
-                    {canAct && <Hint keys={["a"]}>approve</Hint>}
-                    {canAct && <Hint keys={["r"]}>reject</Hint>}
-                    <span className="ml-auto">Updates every few seconds</span>
+                    <Hint keys={["j", "k"]}>{t("hintMove")}</Hint>
+                    <Hint keys={["Enter"]}>{t("hintOpen")}</Hint>
+                    <Hint keys={["e"]}>{showingArchived ? t("hintMoveBack") : t("hintArchive")}</Hint>
+                    {canAct && <Hint keys={["a"]}>{t("hintApprove")}</Hint>}
+                    {canAct && <Hint keys={["r"]}>{t("hintReject")}</Hint>}
+                    <span className="ml-auto">{t("updates")}</span>
                 </p>
             )}
         </div>
@@ -361,20 +356,21 @@ function Hint({ keys, children }: { keys: string[]; children: ReactNode }) {
 }
 
 function EmptyState({ filter, query, fyiCount, onShow, onClearSearch }: { filter: InboxView; query: string; fyiCount: number; onShow: (filter: InboxView) => void; onClearSearch: () => void }) {
+    const t = useTranslations("inbox.empty");
     const filtered = filter !== "needs";
     const search = query.trim();
     if (search || filter === "archived") {
         // A search miss or an empty archive is a quiet note, not the celebration below.
         return (
             <div className="rounded-2xl border border-dashed border-border px-6 py-10 text-center">
-                <p className="text-sm font-medium text-foreground">{search ? `Nothing matches \u201c${search}\u201d` : "Nothing archived"}</p>
+                <p className="text-sm font-medium text-foreground">{search ? t("noMatch", { query: search }) : t("nothingArchived")}</p>
                 <p className="mx-auto mt-1 max-w-sm text-sm text-muted-foreground">
-                    {search ? "Search looks at titles, agents, people, projects and customers in this view." : "Archive an item with its button or the e key. It stays here until something about it changes."}
+                    {search ? t("searchScope") : t("archiveHelp")}
                 </p>
                 <div className="mt-4 flex justify-center gap-2">
                     {search
-                        ? <button type="button" onClick={onClearSearch} className={cn(BTN, NEUTRAL, "text-sm font-medium")}>Clear search</button>
-                        : <button type="button" onClick={() => onShow("needs")} className={cn(BTN, PRIMARY, "text-sm")}>Back to the inbox</button>}
+                        ? <button type="button" onClick={onClearSearch} className={cn(BTN, NEUTRAL, "text-sm font-medium")}>{t("clearSearch")}</button>
+                        : <button type="button" onClick={() => onShow("needs")} className={cn(BTN, PRIMARY, "text-sm")}>{t("backToTheInbox")}</button>}
                 </div>
             </div>
         );
@@ -385,19 +381,19 @@ function EmptyState({ filter, query, fyiCount, onShow, onClearSearch }: { filter
             <div className="relative mx-auto grid h-14 w-14 place-items-center rounded-2xl bg-emerald-500/10 text-emerald-600 ring-1 ring-inset ring-emerald-500/25 dark:text-emerald-300">
                 <IconChecks className="h-7 w-7" stroke={1.7} />
             </div>
-            <h2 className="relative mt-4 text-lg font-semibold text-foreground">{filter === "fyi" ? "No FYI signals" : filtered ? "Nothing here" : "Inbox zero."}</h2>
+            <h2 className="relative mt-4 text-lg font-semibold text-foreground">{filter === "fyi" ? t("noFyi") : filtered ? t("nothingHere") : t("inboxZero")}</h2>
             <p className="relative mx-auto mt-1 max-w-sm text-sm leading-6 text-muted-foreground">
-                {filter === "fyi" ? "Slow replies, late work and mentions show up here." : filtered ? "Nothing of this kind is waiting on you." : "No decisions, blockers or failures. When an agent needs you, it lands here first."}
+                {filter === "fyi" ? t("fyiBody") : filtered ? t("filteredBody") : t("zeroBody")}
             </p>
             <div className="relative mt-5 flex flex-wrap justify-center gap-2">
                 {filtered ? (
-                    <button type="button" onClick={() => onShow("needs")} className={cn(BTN, PRIMARY, "text-sm")}>Back to Needs you</button>
+                    <button type="button" onClick={() => onShow("needs")} className={cn(BTN, PRIMARY, "text-sm")}>{t("backToNeeds")}</button>
                 ) : (
                     <>
-                        <Link href="/" className={cn(BTN, PRIMARY, "text-sm")}>See who&apos;s working<IconArrowRight className="h-4 w-4" /></Link>
+                        <Link href="/" className={cn(BTN, PRIMARY, "text-sm")}>{t("seeWorking")}<IconArrowRight className="h-4 w-4" /></Link>
                         {fyiCount > 0
-                            ? <button type="button" onClick={() => onShow("fyi")} className={cn(BTN, NEUTRAL, "text-sm font-medium")}>See {fyiCount} FYI {fyiCount === 1 ? "signal" : "signals"}</button>
-                            : <Link href="/messages" className={cn(BTN, NEUTRAL, "text-sm font-medium")}><IconMessage className="h-4 w-4" />Messages</Link>}
+                            ? <button type="button" onClick={() => onShow("fyi")} className={cn(BTN, NEUTRAL, "text-sm font-medium")}>{t("seeFyi", { count: fyiCount })}</button>
+                            : <Link href="/messages" className={cn(BTN, NEUTRAL, "text-sm font-medium")}><IconMessage className="h-4 w-4" />{t("messages")}</Link>}
                     </>
                 )}
             </div>
@@ -434,16 +430,19 @@ function InboxRow({ entry, now, selected, unread, archivedView, onSelect, onArch
     onReassign: (entry: AttentionEntry, agent: Agent) => void;
     onMarkRead: (entry: AttentionEntry) => void;
 }) {
+    const t = useTranslations("inbox.row");
+    const timeAgo = useTimeAgo();
+    const scene = useSceneCopy();
     const style = KIND_STYLE[entry.kind];
     const group = attentionGroup(entry);
     const isAgentArea = entry.kind === "agent" || entry.kind === "run_failed";
     const project = isAgentArea ? null : entry.area;
     const archiveButton = (
         <button type="button" onClick={(e) => { e.stopPropagation(); onArchive(); }} aria-keyshortcuts="e"
-            title={archivedView ? "Move back to the inbox (e)" : "Archive until something changes (e)"} aria-label={archivedView ? "Move back to the inbox" : "Archive"}
+            title={archivedView ? t("moveBackTitle") : t("archiveTitle")} aria-label={archivedView ? t("moveBackLabel") : t("archive")}
             className={cn(BTN, NEUTRAL, "px-2.5")}>
             {archivedView ? <IconArchiveOff className="h-3.5 w-3.5" /> : <IconArchive className="h-3.5 w-3.5" />}
-            <span className="sr-only md:not-sr-only">{archivedView ? "Unarchive" : "Archive"}</span>
+            <span className="sr-only md:not-sr-only">{archivedView ? t("unarchive") : t("archive")}</span>
         </button>
     );
     return (
@@ -467,9 +466,9 @@ function InboxRow({ entry, now, selected, unread, archivedView, onSelect, onArch
                         <div className="min-w-0 flex-1">
                             <div className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
                                 {unread && <span aria-hidden className="h-2 w-2 shrink-0 rounded-full bg-cyan-500" />}
-                                <span>{style.verb}</span>
-                                {unread && <span className="sr-only">Unread</span>}
-                                {entry.taskCount && entry.taskCount > 1 ? <span className="rounded-md bg-amber-400/15 px-1.5 py-px normal-case tracking-normal text-amber-700 dark:text-amber-200">Covers {entry.taskCount} tasks</span> : null}
+                                <span>{scene.kind(entry.kind)}</span>
+                                {unread && <span className="sr-only">{t("unread")}</span>}
+                                {entry.taskCount && entry.taskCount > 1 ? <span className="rounded-md bg-amber-400/15 px-1.5 py-px normal-case tracking-normal text-amber-700 dark:text-amber-200">{t("coversTasks", { count: entry.taskCount })}</span> : null}
                             </div>
                             <Link data-entry-link href={entry.href} className={cn("mt-0.5 block break-words text-[15px] leading-snug text-foreground hover:text-primary focus-visible:rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400", unread ? "font-bold" : "font-medium")}>
                                 {entry.title}
@@ -482,7 +481,7 @@ function InboxRow({ entry, now, selected, unread, archivedView, onSelect, onArch
                                 // Every argument in full: approving here lets exactly this call run once.
                                 <details className="mt-1.5 text-sm" open={entry.actionArgs.length <= 4}>
                                     <summary className="cursor-pointer select-none text-xs text-muted-foreground hover:text-foreground">
-                                        {entry.actionArgs.length === 0 ? "No details given" : `Details (${entry.actionArgs.length})`}
+                                        {entry.actionArgs.length === 0 ? t("noDetails") : t("details", { count: entry.actionArgs.length })}
                                     </summary>
                                     <dl className="mt-1 grid grid-cols-[minmax(0,auto)_minmax(0,1fr)] gap-x-3 gap-y-0.5 rounded-lg border border-border/70 bg-muted/30 px-2.5 py-1.5">
                                         {entry.actionArgs.map((arg, i) => (
@@ -496,8 +495,8 @@ function InboxRow({ entry, now, selected, unread, archivedView, onSelect, onArch
                             )}
                             <div className="mt-2 flex flex-wrap items-center gap-x-3.5 gap-y-1 text-xs text-muted-foreground">
                                 {entry.memberName && <Meta icon={entry.memberKey?.startsWith("human:") ? IconUser : IconRobot}>{entry.memberName}</Meta>}
-                                {entry.customerName && <Meta icon={IconBuildingStore} title="Customer">{entry.customerName}</Meta>}
-                                {project && <Meta icon={IconFolder} title="Project">{project}</Meta>}
+                                {entry.customerName && <Meta icon={IconBuildingStore} title={t("customer")}>{entry.customerName}</Meta>}
+                                {project && <Meta icon={IconFolder} title={t("project")}>{project}</Meta>}
                                 <Meta icon={IconClock}><time dateTime={entry.at}>{timeAgo(entry.at, now)}</time></Meta>
                             </div>
                         </div>
@@ -510,7 +509,7 @@ function InboxRow({ entry, now, selected, unread, archivedView, onSelect, onArch
                         )}
                         {!canAct && (
                             <div className="flex shrink-0 items-center gap-1.5 self-start">
-                                <Link href={entry.href} tabIndex={-1} className={cn(BTN, NEUTRAL)}>Open<IconArrowRight className="h-3.5 w-3.5" /></Link>
+                                <Link href={entry.href} tabIndex={-1} className={cn(BTN, NEUTRAL)}>{t("open")}<IconArrowRight className="h-3.5 w-3.5" /></Link>
                                 {archiveButton}
                             </div>
                         )}
@@ -523,6 +522,7 @@ function InboxRow({ entry, now, selected, unread, archivedView, onSelect, onArch
 }
 
 function RejectForm({ entry, busy, onCancel, onSend }: { entry: AttentionEntry; busy: boolean; onCancel: () => void; onSend: (note: string) => void }) {
+    const t = useTranslations("inbox");
     const [note, setNote] = useState("");
     return (
         <form
@@ -534,13 +534,13 @@ function RejectForm({ entry, busy, onCancel, onSend }: { entry: AttentionEntry; 
                 value={note}
                 onChange={(e) => setNote(e.target.value)}
                 onKeyDown={(e) => { if (e.key === "Escape") { e.stopPropagation(); onCancel(); } }}
-                placeholder={`What should ${entry.memberName ?? "the agent"} change?`}
-                aria-label="Reason for rejecting, sent to the agent"
+                placeholder={t("reject.placeholder", { name: entry.memberName ?? t("theAgentLower") })}
+                aria-label={t("reject.label")}
                 className="min-h-11 min-w-0 flex-1 rounded-lg border border-rose-500/40 bg-background px-3 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-cyan-400/60 md:min-h-9"
             />
             <div className="flex gap-1.5">
-                <button type="submit" disabled={busy || !note.trim()} className={cn(BTN, DANGER)}><IconX className="h-3.5 w-3.5" />Send back</button>
-                <button type="button" onClick={onCancel} className={cn(BTN, NEUTRAL, "ring-0")}>Cancel</button>
+                <button type="submit" disabled={busy || !note.trim()} className={cn(BTN, DANGER)}><IconX className="h-3.5 w-3.5" />{t("reject.sendBack")}</button>
+                <button type="button" onClick={onCancel} className={cn(BTN, NEUTRAL, "ring-0")}>{t("reject.cancel")}</button>
             </div>
         </form>
     );
@@ -558,8 +558,9 @@ function RowActions({ entry, busy, disabled, agents, onReject, onDecide, onResum
     onReassign: (entry: AttentionEntry, agent: Agent) => void;
     onMarkRead: (entry: AttentionEntry) => void;
 }) {
+    const t = useTranslations("inbox");
     const [confirmDays, setConfirmDays] = useState<number | null>(null);
-    const open = <Link href={entry.href} className={cn(BTN, NEUTRAL)}>{entry.actionLabel || "Open"}<IconArrowRight className="h-3.5 w-3.5" /></Link>;
+    const open = <Link href={entry.href} className={cn(BTN, NEUTRAL)}>{entry.actionLabel || t("actions.open")}<IconArrowRight className="h-3.5 w-3.5" /></Link>;
     // A failure's one fix (already filtered for this viewer's role) leads; the rest step back.
     const fix = entry.failure?.fix ?? null;
     const fixButton = fix ? <FailureFixButton fix={fix} disabled={disabled} onDone={() => void refreshNavBadges()} className={cn(BTN, PRIMARY)} /> : null;
@@ -568,12 +569,12 @@ function RowActions({ entry, busy, disabled, agents, onReject, onDecide, onResum
         case "approval": {
             if (confirmDays !== null) {
                 return (
-                    <span role="alertdialog" aria-label="Confirm approving an old request" className="flex flex-col gap-2 rounded-xl border border-amber-500/40 bg-amber-400/10 p-2.5 dark:bg-amber-300/[0.06]">
-                        <span className="text-xs text-amber-800 dark:text-amber-100">This request is {confirmDays} days old. Approve and let {entry.memberName ?? "the agent"} act now?</span>
+                    <span role="alertdialog" aria-label={t("actions.confirmOld")} className="flex flex-col gap-2 rounded-xl border border-amber-500/40 bg-amber-400/10 p-2.5 dark:bg-amber-300/[0.06]">
+                        <span className="text-xs text-amber-800 dark:text-amber-100">{t("actions.staleQuestion", { days: confirmDays, name: entry.memberName ?? t("theAgentLower") })}</span>
                         <span className="flex flex-wrap gap-1.5">
-                            <button type="button" disabled={disabled} onClick={() => onDecide(entry, "approved")} className={cn(BTN, APPROVE)}><IconCheck className="h-3.5 w-3.5" />Approve anyway</button>
-                            <button type="button" disabled={disabled} onClick={() => onDecide(entry, "dismissed")} className={cn(BTN, NEUTRAL)}><IconArchive className="h-3.5 w-3.5" />Dismiss</button>
-                            <button type="button" onClick={() => setConfirmDays(null)} className={cn(BTN, NEUTRAL, "ring-0")}>Cancel</button>
+                            <button type="button" disabled={disabled} onClick={() => onDecide(entry, "approved")} className={cn(BTN, APPROVE)}><IconCheck className="h-3.5 w-3.5" />{t("actions.approveAnyway")}</button>
+                            <button type="button" disabled={disabled} onClick={() => onDecide(entry, "dismissed")} className={cn(BTN, NEUTRAL)}><IconArchive className="h-3.5 w-3.5" />{t("actions.dismiss")}</button>
+                            <button type="button" onClick={() => setConfirmDays(null)} className={cn(BTN, NEUTRAL, "ring-0")}>{t("actions.cancel")}</button>
                         </span>
                     </span>
                 );
@@ -587,19 +588,19 @@ function RowActions({ entry, busy, disabled, agents, onReject, onDecide, onResum
             return (
                 <>
                     <button type="button" disabled={disabled} onClick={approve} className={cn(BTN, APPROVE)} aria-keyshortcuts="a">
-                        {busy ? <IconRefresh className="h-3.5 w-3.5 animate-spin" /> : <IconCheck className="h-3.5 w-3.5" />}Approve
+                        {busy ? <IconRefresh className="h-3.5 w-3.5 animate-spin" /> : <IconCheck className="h-3.5 w-3.5" />}{t("actions.approve")}
                     </button>
-                    <button type="button" disabled={disabled} onClick={onReject} className={cn(BTN, DANGER)} aria-keyshortcuts="r"><IconX className="h-3.5 w-3.5" />Reject</button>
+                    <button type="button" disabled={disabled} onClick={onReject} className={cn(BTN, DANGER)} aria-keyshortcuts="r"><IconX className="h-3.5 w-3.5" />{t("actions.reject")}</button>
                     {entry.approvalId && (
-                        <button type="button" disabled={disabled} onClick={() => onDecide(entry, "dismissed")} title="Obsolete: the agent won't do it" aria-label="Dismiss as obsolete" className={cn(BTN, NEUTRAL, "px-2.5")}>
-                            <IconArchive className="h-3.5 w-3.5" /><span className="sr-only md:not-sr-only">Dismiss</span>
+                        <button type="button" disabled={disabled} onClick={() => onDecide(entry, "dismissed")} title={t("actions.dismissTitle")} aria-label={t("actions.dismissLabel")} className={cn(BTN, NEUTRAL, "px-2.5")}>
+                            <IconArchive className="h-3.5 w-3.5" /><span className="sr-only md:not-sr-only">{t("actions.dismiss")}</span>
                         </button>
                     )}
                 </>
             );
         }
         case "paused":
-            return <button type="button" disabled={disabled || !entry.threadId} onClick={() => onResume(entry)} className={cn(BTN, PRIMARY)}><IconPlayerPlay className="h-3.5 w-3.5" />Resume</button>;
+            return <button type="button" disabled={disabled || !entry.threadId} onClick={() => onResume(entry)} className={cn(BTN, PRIMARY)}><IconPlayerPlay className="h-3.5 w-3.5" />{t("actions.resume")}</button>;
         case "agent":
         case "run_failed":
             if (entry.failure) return <>{fixButton}{open}</>;
@@ -607,7 +608,7 @@ function RowActions({ entry, busy, disabled, agents, onReject, onDecide, onResum
                 <>
                     {entry.canRestartRuntime && entry.agentId && (
                         <button type="button" disabled={disabled} onClick={() => onRestart(entry)} className={cn(BTN, PRIMARY)}>
-                            <IconRefresh className={cn("h-3.5 w-3.5", busy && "animate-spin")} />Restart
+                            <IconRefresh className={cn("h-3.5 w-3.5", busy && "animate-spin")} />{t("actions.restart")}
                         </button>
                     )}
                     {open}
@@ -626,7 +627,7 @@ function RowActions({ entry, busy, disabled, agents, onReject, onDecide, onResum
                     {entry.taskId && pickable.length > 0 && (
                         <DropdownMenu>
                             <DropdownMenuTrigger asChild>
-                                <button type="button" disabled={disabled} className={cn(BTN, fixButton ? NEUTRAL : PRIMARY)}>{busy ? <IconRefresh className="h-3.5 w-3.5 animate-spin" /> : <IconRobot className="h-3.5 w-3.5" />}Reassign</button>
+                                <button type="button" disabled={disabled} className={cn(BTN, fixButton ? NEUTRAL : PRIMARY)}>{busy ? <IconRefresh className="h-3.5 w-3.5 animate-spin" /> : <IconRobot className="h-3.5 w-3.5" />}{t("actions.reassign")}</button>
                             </DropdownMenuTrigger>
                             <DropdownMenuContent align="end" className="max-h-72 w-56 overflow-y-auto">
                                 {pickable.map((a) => (
@@ -649,9 +650,9 @@ function RowActions({ entry, busy, disabled, agents, onReject, onDecide, onResum
             return (
                 <>
                     {entry.notificationId && (
-                        <button type="button" disabled={disabled} onClick={() => onMarkRead(entry)} className={cn(BTN, NEUTRAL)}><IconCheck className="h-3.5 w-3.5" />Mark read</button>
+                        <button type="button" disabled={disabled} onClick={() => onMarkRead(entry)} className={cn(BTN, NEUTRAL)}><IconCheck className="h-3.5 w-3.5" />{t("actions.markRead")}</button>
                     )}
-                    <Link href={entry.href} className={cn(BTN, PRIMARY)}><IconInbox className="h-3.5 w-3.5" />{entry.kind === "decision" ? "Answer" : "Open"}</Link>
+                    <Link href={entry.href} className={cn(BTN, PRIMARY)}><IconInbox className="h-3.5 w-3.5" />{entry.kind === "decision" ? t("actions.answer") : t("actions.open")}</Link>
                 </>
             );
         default:

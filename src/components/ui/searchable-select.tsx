@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
+import { useTranslations } from "next-intl";
 import { IconCheck, IconChevronDown, IconSearch } from "@tabler/icons-react";
 import { placeMenu, type MenuPosition } from "@/lib/menu-position";
 import { cn } from "@/lib/utils";
@@ -23,7 +24,7 @@ export function SearchableSelect({
     value,
     options,
     placeholder,
-    searchPlaceholder = "Search...",
+    searchPlaceholder,
     onChange,
     className,
 }: {
@@ -34,6 +35,7 @@ export function SearchableSelect({
     onChange: (value: string) => void;
     className?: string;
 }) {
+    const t = useTranslations("common");
     const [open, setOpen] = useState(false);
     const [query, setQuery] = useState("");
     const [position, setPosition] = useState<(MenuPosition & { listMaxHeight: number }) | null>(null);
@@ -139,13 +141,13 @@ export function SearchableSelect({
                             autoFocus
                             value={query}
                             onChange={(event) => setQuery(event.target.value)}
-                            placeholder={searchPlaceholder}
+                            placeholder={searchPlaceholder ?? t("searchEllipsis")}
                             className="w-full bg-transparent text-zinc-100 outline-none placeholder:text-zinc-500"
                         />
                     </label>
                     <div ref={listRef} style={{ maxHeight: position.listMaxHeight }} className="overflow-y-auto p-1">
                         {filtered.length === 0 ? (
-                            <div className="px-3 py-6 text-center text-sm text-zinc-500">No matches</div>
+                            <div className="px-3 py-6 text-center text-sm text-zinc-500">{t("noMatches")}</div>
                         ) : (
                             filtered.map((option) => (
                                 <button

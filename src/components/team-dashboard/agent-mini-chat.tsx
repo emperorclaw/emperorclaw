@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { IconSend } from "@tabler/icons-react";
+import { useTranslations } from "next-intl";
 import { cn } from "@/lib/utils";
 
 type MiniMessage = {
@@ -21,6 +22,7 @@ const POLL_MS = 3000;
  * composer and the same 3s polling cadence.
  */
 export function AgentMiniChat({ agentId, agentName, canSend = true }: { agentId: string; agentName: string; canSend?: boolean }) {
+    const t = useTranslations("home.miniChat");
     const [messages, setMessages] = useState<MiniMessage[]>([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
@@ -35,17 +37,17 @@ export function AgentMiniChat({ agentId, agentName, canSend = true }: { agentId:
     const load = useCallback(async () => {
         try {
             const res = await fetch(`/api/chat?${new URLSearchParams({ targetAgentId: agentId, limit: String(PAGE) })}`);
-            if (!res.ok) throw new Error("Failed to load messages");
+            if (!res.ok) throw new Error(t("loadFailed"));
             const data = (await res.json()) as { messages?: MiniMessage[] };
             if (!aliveRef.current) return;
             if (data.messages) setMessages(data.messages);
             setError(null);
         } catch (err) {
-            if (aliveRef.current) setError(err instanceof Error ? err.message : "Failed to load messages");
+            if (aliveRef.current) setError(err instanceof Error ? err.message : t("loadFailed"));
         } finally {
             if (aliveRef.current) setLoading(false);
         }
-    }, [agentId]);
+    }, [agentId, t]);
 
     useEffect(() => {
         aliveRef.current = true;
@@ -76,7 +78,7 @@ export function AgentMiniChat({ agentId, agentName, canSend = true }: { agentId:
             });
             if (!res.ok) {
                 const data = (await res.json().catch(() => ({}))) as { error?: string };
-                throw new Error(data.error || "Failed to send");
+                throw new Error(data.error || t("sendFailed"));
             }
             const data = (await res.json()) as { message?: MiniMessage };
             if (aliveRef.current && data.message) setMessages((prev) => (prev.some((m) => m.id === data.message!.id) ? prev : [...prev, data.message!]));
@@ -84,7 +86,7 @@ export function AgentMiniChat({ agentId, agentName, canSend = true }: { agentId:
         } catch (err) {
             if (aliveRef.current) {
                 setDraft(text);
-                setSendError(err instanceof Error ? err.message : "Failed to send");
+                setSendError(err instanceof Error ? err.message : t("sendFailed"));
             }
         } finally {
             sendingRef.current = false;
@@ -95,16 +97,16 @@ export function AgentMiniChat({ agentId, agentName, canSend = true }: { agentId:
     return (
         <div className="mt-3 overflow-hidden rounded-xl border border-border/80 bg-muted/20 dark:bg-white/[0.02]">
             <div className="flex items-center justify-between gap-2 border-b border-border/70 px-3 py-1.5">
-                <span className="text-xs font-semibold text-foreground">Chat with {agentName}</span>
-                <span className="text-[10px] uppercase tracking-wider text-muted-foreground">Direct</span>
+                <span className="text-xs font-semibold text-foreground">{t("title", { name: agentName })}</span>
+                <span className="text-[10px] uppercase tracking-wider text-muted-foreground">{t("direct")}</span>
             </div>
 
             {loading ? (
-                <div className="px-3 py-4 text-center text-xs text-muted-foreground animate-pulse">Loading messages…</div>
+                <div className="px-3 py-4 text-center text-xs text-muted-foreground animate-pulse">{t("loading")}</div>
             ) : error && messages.length === 0 ? (
                 <div className="px-3 py-4 text-center text-xs text-rose-500">{error}</div>
             ) : messages.length === 0 ? (
-                <div className="px-3 py-4 text-center text-xs text-muted-foreground">{canSend ? "No messages yet. Say hi." : "No messages yet."}</div>
+                <div className="px-3 py-4 text-center text-xs text-muted-foreground">{canSend ? t("emptyCanSend") : t("empty")}</div>
             ) : (
                 <div ref={listRef} className="max-h-44 space-y-2 overflow-y-auto px-3 py-2">
                     {messages.map((m) => {
@@ -128,11 +130,11 @@ export function AgentMiniChat({ agentId, agentName, canSend = true }: { agentId:
                     value={draft}
                     disabled={sending}
                     onChange={(e) => { setDraft(e.target.value); setSendError(null); }}
-                    placeholder={`Message ${agentName}…`}
-                    aria-label={`Message ${agentName}`}
+                    placeholder={t("placeholder", { name: agentName })}
+                    aria-label={t("label", { name: agentName })}
                     className="min-h-11 min-w-0 flex-1 rounded-lg border border-border bg-background/70 px-2.5 py-1.5 text-xs text-foreground outline-none placeholder:text-muted-foreground focus:border-cyan-400/60 focus:ring-1 focus:ring-cyan-400/30"
                 />
-                <button type="submit" disabled={sending || !draft.trim()} aria-label="Send"
+                <button type="submit" disabled={sending || !draft.trim()} aria-label={t("send")}
                     className="grid h-11 w-11 shrink-0 place-items-center rounded-lg bg-cyan-500/15 text-cyan-700 ring-1 ring-inset ring-cyan-500/40 transition hover:bg-cyan-500/25 disabled:cursor-not-allowed disabled:opacity-40 dark:text-cyan-200">
                     <IconSend className="h-3.5 w-3.5" />
                 </button>

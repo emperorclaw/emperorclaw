@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { IconPlus, IconZoomIn, IconZoomOut, IconArrowsMaximize } from "@tabler/icons-react";
+import { useTranslations } from "next-intl";
 import {
     arcPath, CHARACTER_SCALE, expressionForActivity, hashString, iso, labelLifts, WALL_H,
     requiresHumanAction, agentMotion, centerOn, fitCamera, panCamera, worldTransform, zoomAtPoint,
@@ -12,6 +13,7 @@ import { resolveAppearance } from "@/lib/character/model";
 import { cn } from "@/lib/utils";
 import { CharacterFigureView, moodForStatus } from "@/components/character/character-avatar";
 import { ActivityCue } from "./character-activity";
+import { useSceneCopy } from "./use-scene-copy";
 import { AgentAvatar, STATUS_COLOR } from "./agent-character";
 import {
     Box, Chair, CoffeeCounter, DeskFront, FloorEllipse, FloorLamp, Plant, PlaneGroup, RoundTable, Shelf, SofaArm, SofaBack, pts,
@@ -38,6 +40,8 @@ type Node = { row: number; depth: number; key: string; el: ReactNode };
 const clamp01 = (v: number) => Math.min(1, Math.max(0, v));
 
 export function OfficeScene({ layout, links, selectedKey, hoveredKey, isActive, reducedMotion, onSelect, onHover, onOverflow, emptyState }: OfficeSceneProps) {
+    const t = useTranslations("home.office");
+    const scene = useSceneCopy();
     const uid = useId().replace(/:/g, "");
     const { viewBox: vb, width: W, depth: D } = layout;
     const frameRef = useRef<HTMLDivElement>(null);
@@ -259,7 +263,7 @@ export function OfficeScene({ layout, links, selectedKey, hoveredKey, isActive, 
     const pct = (p: { x: number; y: number }) => ({ left: `${((p.x - vb.x) / vb.w) * 100}%`, top: `${((p.y - vb.y) / vb.h) * 100}%` });
 
     return (
-        <div ref={frameRef} tabIndex={0} aria-label="Live office. Drag to pan, scroll to zoom."
+        <div ref={frameRef} tabIndex={0} aria-label={t("label")}
             onKeyDown={onKeyDown}
             onPointerDown={onPointerDown} onPointerMove={onPointerMove} onPointerUp={onPointerUp} onPointerCancel={onPointerUp}
             onClickCapture={(e) => { if (movedRef.current) { e.preventDefault(); e.stopPropagation(); } }}
@@ -271,7 +275,7 @@ export function OfficeScene({ layout, links, selectedKey, hoveredKey, isActive, 
             style={{ aspectRatio: `${vb.w} / ${vb.h}`, width: `min(100%, ${Math.round(MAX_SCENE_HEIGHT * aspect)}px)` }}
         >
             <div ref={worldRef} className="absolute inset-0" style={{ transformOrigin: "0 0" }}>
-                <svg viewBox={`${vb.x} ${vb.y} ${vb.w} ${vb.h}`} className="absolute inset-0 h-full w-full select-none" role="img" aria-label={`Office floor with ${layout.agents.length} team member${layout.agents.length === 1 ? "" : "s"}`}>
+                <svg viewBox={`${vb.x} ${vb.y} ${vb.w} ${vb.h}`} className="absolute inset-0 h-full w-full select-none" role="img" aria-label={t("floor", { count: layout.agents.length })}>
                     <SceneDefs />
 
                     {/* walls */}
@@ -330,16 +334,16 @@ export function OfficeScene({ layout, links, selectedKey, hoveredKey, isActive, 
                     <button key={`ov-${z.meta.id}`} type="button" onClick={() => onOverflow(z.meta.id)}
                         style={pct(iso(z.gx + z.w / 2, z.gy + z.d - 0.5, 0))}
                         className="absolute z-20 -translate-x-1/2 -translate-y-1/2 inline-flex items-center gap-1 rounded-full border border-white/15 bg-[#0b1426]/85 px-2.5 py-1 text-[11px] font-semibold text-slate-100 shadow-lg shadow-black/40 backdrop-blur-md transition hover:border-cyan-300/60 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300">
-                        <IconPlus className="h-3 w-3" />{z.overflow.length} more in {z.meta.label}
+                        <IconPlus className="h-3 w-3" />{t("overflow", { count: z.overflow.length, zone: scene.zone(z.meta.id) })}
                     </button>
                 ))}
             </div>
 
             {/* Camera controls sit outside the transformed world so they stay fixed. */}
             <div className="absolute right-3 top-3 z-30 flex flex-col gap-1">
-                <CameraButton label="Zoom in" onClick={() => zoomBy(1.2)}><IconZoomIn className="h-4 w-4" /></CameraButton>
-                <CameraButton label="Zoom out" onClick={() => zoomBy(1 / 1.2)}><IconZoomOut className="h-4 w-4" /></CameraButton>
-                <CameraButton label="Fit all" onClick={fitAll}><IconArrowsMaximize className="h-4 w-4" /></CameraButton>
+                <CameraButton label={t("zoomIn")} onClick={() => zoomBy(1.2)}><IconZoomIn className="h-4 w-4" /></CameraButton>
+                <CameraButton label={t("zoomOut")} onClick={() => zoomBy(1 / 1.2)}><IconZoomOut className="h-4 w-4" /></CameraButton>
+                <CameraButton label={t("fitAll")} onClick={fitAll}><IconArrowsMaximize className="h-4 w-4" /></CameraButton>
             </div>
 
             {emptyState && <div className="absolute inset-0 z-30 grid place-items-center p-6">{emptyState}</div>}
@@ -628,6 +632,8 @@ function AgentLabel({ agent, mode, position, selected, hovered, active, onSelect
     onSelect: (key: string) => void;
     onHover: (key: string | null) => void;
 }) {
+    const scene = useSceneCopy();
+    const caption = scene.caption(agent.behavior.caption);
     const blocked = Boolean(agent.notices?.some((entry) => requiresHumanAction(entry)));
     const expanded = selected || hovered;
     const showName = mode !== "dot" || expanded || blocked;
@@ -640,7 +646,7 @@ function AgentLabel({ agent, mode, position, selected, hovered, active, onSelect
             onFocus={() => onHover(agent.member.key)}
             onBlur={() => onHover(null)}
             aria-pressed={selected}
-            aria-label={`${agent.member.name}: ${agent.behavior.caption}`}
+            aria-label={`${agent.member.name}: ${caption}`}
             style={position}
             className={cn(
                 "absolute -translate-x-1/2 -translate-y-full text-left transition-[opacity,transform,border-color,box-shadow] duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300",
@@ -658,7 +664,7 @@ function AgentLabel({ agent, mode, position, selected, hovered, active, onSelect
                         <AgentAvatar id={agent.member.id} kind={agent.member.kind} name={agent.member.name} avatarUrl={agent.member.avatarUrl} avatarAppearance={agent.member.avatarAppearance} size={24} />
                         <span className="truncate text-[12px] font-semibold leading-4 text-slate-50">{agent.member.name}</span>
                     </span>
-                    {showActivity && <span className="mt-0.5 block truncate text-[11px] leading-4 text-slate-300">{agent.behavior.caption}</span>}
+                    {showActivity && <span className="mt-0.5 block truncate text-[11px] leading-4 text-slate-300">{caption}</span>}
                     {blocked && (
                         <span aria-hidden className="office-alert absolute -right-2 -top-2 grid h-[18px] w-[18px] place-items-center rounded-full bg-amber-400 text-[11px] font-black text-amber-950 shadow-[0_0_10px_rgba(251,191,36,0.8)]">!</span>
                     )}
@@ -673,12 +679,13 @@ function AgentLabel({ agent, mode, position, selected, hovered, active, onSelect
 }
 
 export function SceneEmptyState() {
+    const t = useTranslations("home.office");
     return (
         <div className="max-w-sm rounded-2xl border border-white/10 bg-[#0a1324]/85 p-6 text-center shadow-2xl shadow-black/50 backdrop-blur-md">
-            <div className="text-base font-semibold text-slate-50">Your office is ready</div>
-            <p className="mt-1.5 text-sm text-slate-300">Hire an agent and it takes a desk here. You will see what it works on, live.</p>
+            <div className="text-base font-semibold text-slate-50">{t("emptyTitle")}</div>
+            <p className="mt-1.5 text-sm text-slate-300">{t("emptyBody")}</p>
             <Link href="/agents" className="mt-4 inline-flex min-h-9 items-center gap-1.5 rounded-lg bg-cyan-400 px-4 text-sm font-semibold text-cyan-950 transition hover:bg-cyan-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-200">
-                <IconPlus className="h-4 w-4" />Hire your first agent
+                <IconPlus className="h-4 w-4" />{t("hireFirst")}
             </Link>
         </div>
     );

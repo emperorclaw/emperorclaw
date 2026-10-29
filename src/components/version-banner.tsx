@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useCallback } from "react";
 import { toast } from "sonner";
+import { useTranslations } from "next-intl";
 import { IconArrowUpCircle, IconExternalLink } from "@tabler/icons-react";
 
 interface VersionInfo {
@@ -47,6 +48,7 @@ export function isNewerVersion(latest: string, current: string): boolean {
 }
 
 export function VersionBanner() {
+    const t = useTranslations("versionBanner");
     const [banner, setBanner] = useState<{
         current: string;
         latest: string;
@@ -104,10 +106,10 @@ export function VersionBanner() {
         toast(
             <div className="flex flex-col gap-1">
                 <span className="font-semibold text-sm">
-                    Update available: v{banner.latest}
+                    {t("title", { version: banner.latest })}
                 </span>
                 <span className="text-xs text-muted-foreground">
-                    You&apos;re running v{banner.current}. An admin can update from Settings → Updates.
+                    {t("body", { version: banner.current })}
                 </span>
             </div>,
             {
@@ -120,14 +122,14 @@ export function VersionBanner() {
                 action: {
                     label: (
                         <span className="flex items-center gap-1">
-                            Release notes <IconExternalLink className="h-3 w-3" />
+                            {t("releaseNotes")} <IconExternalLink className="h-3 w-3" />
                         </span>
                     ),
                     onClick: () => window.open(banner.url, "_blank"),
                 },
             },
         );
-    }, [banner]);
+    }, [banner, t]);
 
     // This component renders nothing in the DOM — it only shows toasts
     return null;

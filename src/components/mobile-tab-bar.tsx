@@ -2,9 +2,10 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { useTranslations } from "next-intl";
 import { IconFolder, IconHome, IconInbox, IconMessage, IconRobot } from "@tabler/icons-react";
 import { useNavBadges } from "@/components/use-nav-badges";
-import { activeNavHref, mobileTabs } from "@/lib/navigation";
+import { activeNavHref, mobileTabs, type NavId } from "@/lib/navigation";
 import type { ModuleState } from "@/lib/modules";
 import { cn } from "@/lib/utils";
 
@@ -23,6 +24,7 @@ const TAB_ICONS: Record<string, typeof IconHome> = {
  * fixed), so it never covers a chat composer.
  */
 export function MobileTabBar({ modules }: { modules?: ModuleState | null }) {
+    const t = useTranslations();
     const pathname = usePathname();
     const { unreadMessages, inbox, inboxHasFailures, workingNow } = useNavBadges();
     const tabs = mobileTabs(modules);
@@ -30,7 +32,7 @@ export function MobileTabBar({ modules }: { modules?: ModuleState | null }) {
 
     return (
         <nav
-            aria-label="Primary"
+            aria-label={t("shell.mobileTabs.primary")}
             className="grid shrink-0 grid-cols-5 border-t border-border bg-sidebar/95 backdrop-blur-xl md:hidden"
             style={{ paddingBottom: "env(safe-area-inset-bottom)" }}
         >
@@ -39,9 +41,10 @@ export function MobileTabBar({ modules }: { modules?: ModuleState | null }) {
                 const Icon = TAB_ICONS[tab.id] ?? IconHome;
                 const count = tab.badge === "inbox" ? inbox : tab.badge === "messages" ? unreadMessages : 0;
                 const live = tab.badge === "live" && workingNow > 0;
-                const label = tab.badge === "inbox" && count > 0 ? `${tab.name}, ${count} unread need you`
-                    : tab.badge === "messages" && count > 0 ? `${tab.name}, ${count} unread`
-                        : live ? `${tab.name}, ${workingNow} agents working now` : undefined;
+                const name = t(`nav.${tab.id as NavId}`);
+                const label = tab.badge === "inbox" && count > 0 ? t("shell.mobileTabs.inboxUnread", { name, count })
+                    : tab.badge === "messages" && count > 0 ? t("shell.mobileTabs.messagesUnread", { name, count })
+                        : live ? t("shell.mobileTabs.workingNow", { name, count: workingNow }) : undefined;
                 return (
                     <Link
                         key={tab.href}
@@ -66,7 +69,7 @@ export function MobileTabBar({ modules }: { modules?: ModuleState | null }) {
                             )}
                             {live && <span aria-hidden className="absolute -right-1 -top-0.5 h-2 w-2 rounded-full bg-cyan-400 ring-2 ring-sidebar" />}
                         </span>
-                        {tab.name}
+                        {name}
                     </Link>
                 );
             })}

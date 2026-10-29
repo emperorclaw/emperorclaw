@@ -1,6 +1,8 @@
 import Link from "next/link";
+import { useTranslations } from "next-intl";
 import { IconArrowRight, IconActivity, IconArrowRightBar, IconCheck, IconMessageCircle, IconNotebook, IconShare2 } from "@tabler/icons-react";
-import { timeAgo, type FeedEvent } from "@/lib/team-scene";
+import type { FeedEvent } from "@/lib/team-scene";
+import { useTimeAgo } from "@/lib/i18n/format";
 import { cn } from "@/lib/utils";
 
 const KIND_STYLE: Record<FeedEvent["kind"], { icon: typeof IconShare2; tone: string }> = {
@@ -15,21 +17,23 @@ const KIND_STYLE: Record<FeedEvent["kind"], { icon: typeof IconShare2; tone: str
 const MAX = 8;
 
 export function MovementFeed({ feed, now, isOwnerOrAdmin }: { feed: FeedEvent[]; now: Date; isOwnerOrAdmin: boolean }) {
+    const t = useTranslations("home.feed");
+    const timeAgo = useTimeAgo();
     return (
         <section aria-labelledby="movement-feed-title" className="emperor-panel rounded-2xl p-4">
             <header className="flex items-center justify-between gap-3">
                 <div className="flex items-center gap-2.5">
                     <IconActivity className="mt-0.5 h-5 w-5 shrink-0 text-muted-foreground" stroke={1.8} />
                     <div>
-                        <h2 id="movement-feed-title" className="text-base font-semibold text-foreground">What’s moving</h2>
-                        <p className="text-xs text-muted-foreground">Handoffs, reviews and conversations across your team.</p>
+                        <h2 id="movement-feed-title" className="text-base font-semibold text-foreground">{t("title")}</h2>
+                        <p className="text-xs text-muted-foreground">{t("subtitle")}</p>
                     </div>
                 </div>
-                <Link href="/projects" className="inline-flex items-center gap-1 text-xs font-medium text-muted-foreground hover:text-foreground">All activity<IconArrowRight className="h-3.5 w-3.5" /></Link>
+                <Link href="/projects" className="inline-flex items-center gap-1 text-xs font-medium text-muted-foreground hover:text-foreground">{t("allActivity")}<IconArrowRight className="h-3.5 w-3.5" /></Link>
             </header>
 
             {feed.length === 0 ? (
-                <p className="mt-3 rounded-xl border border-dashed border-border px-3 py-4 text-center text-xs text-muted-foreground">Nothing has moved yet today.</p>
+                <p className="mt-3 rounded-xl border border-dashed border-border px-3 py-4 text-center text-xs text-muted-foreground">{t("empty")}</p>
             ) : (
                 <ul className="mt-3 grid gap-1.5 sm:grid-cols-2">
                     {feed.slice(0, MAX).map((e) => {
@@ -58,7 +62,7 @@ export function MovementFeed({ feed, now, isOwnerOrAdmin }: { feed: FeedEvent[];
                             );
                         }
                         return (
-                            <li key={e.id} className={cn(cls, pairLocked && "opacity-70")} title={pairLocked ? "Only owners and admins can open agent pair threads" : undefined}>
+                            <li key={e.id} className={cn(cls, pairLocked && "opacity-70")} title={pairLocked ? t("pairLocked") : undefined}>
                                 {inner}
                             </li>
                         );

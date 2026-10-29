@@ -4,14 +4,26 @@
  * and the command palette. One shell, no feature flags: an item exists only
  * when its page exists (tests/unit/navigation.test.ts checks every href), and
  * only while its module is on (lib/modules.ts, Settings → Modules).
+ *
+ * `name`, `title` and `keywords` are the English source copy. The UI shows
+ * the translated label from messages (`nav.<id>`, `navSections.<id>`) and the
+ * command palette matches the English keywords plus the translated
+ * `navKeywords.<id>`; tests/unit/i18n-parity.test.ts keeps en.json in sync.
  */
 
 import { pathEnabled, type ModuleState } from "@/lib/modules";
 
 export type NavBadgeKey = "live" | "inbox" | "messages";
 
+export type NavId =
+    | "home" | "inbox" | "messages" | "projects" | "timeline" | "views" | "automations" | "files"
+    | "customers" | "knowledge" | "agents" | "org" | "people" | "costs" | "activity" | "ops" | "settings";
+
+/** Sections with a visible title (the attention cluster and Settings row have none). */
+export type NavSectionTitleId = "work" | "clients" | "team" | "admin";
+
 export interface NavItem {
-    id: string;
+    id: NavId;
     name: string;
     href: string;
     /** Other routes that light this item up. */
@@ -24,7 +36,7 @@ export interface NavItem {
 export interface NavSection {
     /** Empty for the unlabeled attention cluster and the Settings row. */
     title: string;
-    id: string;
+    id: NavSectionTitleId | "attention" | "system";
     items: NavItem[];
     collapsible?: boolean;
     /** Collapsed until the person opens it. */
@@ -46,8 +58,8 @@ export function navSections({ isCompanyAdmin, isPlatformAdmin, modules }: NavAcc
         ...(isCompanyAdmin ? [
             { id: "costs", name: "Costs", href: "/costs", activeFor: ["/budgets"], keywords: "budgets spend money tokens clients models" },
             { id: "activity", name: "Activity", href: "/activity", keywords: "audit log history who changed" },
-        ] : []),
-        ...(isPlatformAdmin ? [{ id: "ops", name: "Operations", href: "/ops", keywords: "platform runtimes companies users storage errors" }] : []),
+        ] satisfies NavItem[] : []),
+        ...(isPlatformAdmin ? [{ id: "ops", name: "Operations", href: "/ops", keywords: "platform runtimes companies users storage errors" }] satisfies NavItem[] : []),
     ];
     const sections: NavSection[] = [
         {
@@ -77,10 +89,10 @@ export function navSections({ isCompanyAdmin, isPlatformAdmin, modules }: NavAcc
                 // Costs is an Admin row for admins; everyone else reaches it from Agents.
                 { id: "agents", name: "Agents", href: "/agents", activeFor: isCompanyAdmin ? [] : ["/budgets", "/costs"], keywords: "hire workers bots" },
                 { id: "org", name: "Org chart", href: "/agents/organization", keywords: "organization structure reports" },
-                ...(isCompanyAdmin ? [{ id: "people", name: "People", href: "/settings/members", keywords: "members invite users roles" }] : []),
+                ...(isCompanyAdmin ? [{ id: "people", name: "People", href: "/settings/members", keywords: "members invite users roles" }] satisfies NavItem[] : []),
             ],
         },
-        ...(admin.length ? [{ title: "Admin", id: "admin", collapsible: true, defaultCollapsed: true, items: admin }] : []),
+        ...(admin.length ? [{ title: "Admin", id: "admin", collapsible: true, defaultCollapsed: true, items: admin }] satisfies NavSection[] : []),
         {
             title: "", id: "system", items: [
                 { id: "settings", name: "Settings", href: "/settings", keywords: "workspace preferences tokens notifications" },

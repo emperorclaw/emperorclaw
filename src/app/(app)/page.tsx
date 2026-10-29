@@ -1,4 +1,5 @@
 import { redirect } from "next/navigation";
+import { getTranslations } from "next-intl/server";
 import { and, desc, eq, gte, inArray, isNotNull, isNull, sql } from "drizzle-orm";
 import { db } from "@/db";
 import {
@@ -353,7 +354,7 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
 
     const data: DashboardData = {
         generatedAt: now.toISOString(),
-        companyName: company?.name ?? "Your company",
+        companyName: company?.name ?? (await getTranslations("home.dashboard"))("companyFallback"),
         leader,
         teams, communications,
         members: dashboardMembers,

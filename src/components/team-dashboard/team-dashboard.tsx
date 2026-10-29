@@ -2,11 +2,12 @@
 
 import Link from "next/link";
 import dynamic from "next/dynamic";
+import { useTranslations } from "next-intl";
 import { Dialog, DialogContent, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { IconRadar, IconBox, IconDotsVertical, IconLayoutList, IconSearch, IconX, IconHierarchy2 } from "@tabler/icons-react";
 import {
-    requiresHumanAction, filterDashboardBoard, snapshotFreshness, defaultSelection, deriveSceneAgents, kpiCounts, matchesKpi, matchesQuery, ZONES,
+    requiresHumanAction, filterDashboardBoard, snapshotFreshness, defaultSelection, deriveSceneAgents, kpiCounts, matchesKpi, matchesQuery,
     type DashboardData, type KpiFilter, type SceneAgent, type ZoneId,
 } from "@/lib/team-scene";
 import { NotificationBell } from "@/components/notification-bell";
@@ -25,6 +26,7 @@ import { NeedsAttention } from "./needs-attention";
 import { isPlainKey, isTypingTarget } from "@/lib/keyboard-shortcuts";
 import { SelectedAgent } from "./selected-agent";
 import { WorkBoard, type BoardAssignee } from "./work-board";
+import { useSceneCopy } from "./use-scene-copy";
 
 function subscribeReducedMotion(onChange: () => void) {
     const query = window.matchMedia("(prefers-reduced-motion: reduce)");
@@ -42,7 +44,11 @@ function subscribeClock(onChange: () => void) {
     window.addEventListener("offline", onChange);
     return () => { window.clearInterval(timer); window.removeEventListener("online", onChange); window.removeEventListener("offline", onChange); };
 }
-const AgentDirectChat = dynamic(() => import("@/components/agent-direct-chat").then((module) => module.AgentDirectChat), { loading: () => <p className="p-6 text-sm text-muted-foreground">Loading conversation…</p> });
+function LoadingConversation() {
+    const t = useTranslations("home.dashboard");
+    return <p className="p-6 text-sm text-muted-foreground">{t("loadingConversation")}</p>;
+}
+const AgentDirectChat = dynamic(() => import("@/components/agent-direct-chat").then((module) => module.AgentDirectChat), { loading: () => <LoadingConversation /> });
 
 /** Container: owns filters and selection, derives everything else from server data. */
 export function TeamDashboard({ data, initialView, canAct, isOwnerOrAdmin }: {
@@ -52,6 +58,8 @@ export function TeamDashboard({ data, initialView, canAct, isOwnerOrAdmin }: {
     canAct: boolean;
     isOwnerOrAdmin: boolean;
 }) {
+    const t = useTranslations("home.dashboard");
+    const scene = useSceneCopy();
     const [chosenView, setChosenView] = useState<"scene" | "pulse" | "list" | "teams" | null>(null);
     const setView = (nextView: "scene" | "pulse" | "list" | "teams") => {
         setChosenView(nextView);
@@ -159,18 +167,18 @@ export function TeamDashboard({ data, initialView, canAct, isOwnerOrAdmin }: {
         <div className="space-y-5">
             <header className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
                 <div className="min-w-0">
-                    <h1 className="text-balance text-3xl font-semibold tracking-tight text-foreground sm:text-[2.1rem]">Your team, in motion</h1>
-                    <p className="mt-1 text-base text-muted-foreground">Real work. Recognizable agents. Clear decisions.</p>
+                    <h1 className="text-balance text-3xl font-semibold tracking-tight text-foreground sm:text-[2.1rem]">{t("title")}</h1>
+                    <p className="mt-1 text-base text-muted-foreground">{t("subtitle")}</p>
                 </div>
                 <div className="flex items-center gap-2 lg:pt-1">
                     <label className="relative flex min-w-0 flex-1 items-center lg:w-[22rem] lg:flex-none">
-                        <span className="sr-only">Search agents, tasks, or projects</span>
+                        <span className="sr-only">{t("searchLabel")}</span>
                         <IconSearch className="pointer-events-none absolute left-3 h-4 w-4 text-muted-foreground" />
                         <input ref={searchRef} value={query} onChange={(e) => setQuery(e.target.value)} onKeyDown={(e) => { if (e.key === "Escape") setQuery(""); }}
-                            placeholder="Search agents, tasks, or projects…" type="search"
+                            placeholder={t("searchPlaceholder")} type="search"
                             className="h-10 w-full rounded-xl border border-border bg-card/70 pl-9 pr-16 text-sm text-foreground shadow-sm outline-none transition placeholder:text-muted-foreground focus:border-cyan-400/60 focus:ring-2 focus:ring-cyan-400/25 dark:bg-zinc-950/60 [&::-webkit-search-cancel-button]:hidden" />
                         {query ? (
-                            <button type="button" onClick={() => setQuery("")} aria-label="Clear search" className="absolute right-2 grid h-6 w-6 place-items-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground"><IconX className="h-3.5 w-3.5" /></button>
+                            <button type="button" onClick={() => setQuery("")} aria-label={t("clearSearch")} className="absolute right-2 grid h-6 w-6 place-items-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground"><IconX className="h-3.5 w-3.5" /></button>
                         ) : (
                             <kbd className="pointer-events-none absolute right-2.5 rounded-md border border-border bg-muted px-1.5 py-0.5 font-sans text-[10px] font-medium text-muted-foreground">{shortcut}</kbd>
                         )}
@@ -182,11 +190,11 @@ export function TeamDashboard({ data, initialView, canAct, isOwnerOrAdmin }: {
             <div className="grid grid-cols-1 gap-4 xl:grid-cols-[minmax(0,1fr)_21.5rem]">
                 <div className="min-w-0 space-y-4">
                     <KpiRow counts={counts} active={kpi} onToggle={toggleKpi} />
-                    <details className="emperor-panel rounded-2xl"><summary className="min-h-11 cursor-pointer px-4 py-3 text-sm text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400">Performance & reported costs</summary><MetricsRow cost={data.cost} throughput={data.throughput} onFilter={openFiltered} /></details>
+                    <details className="emperor-panel rounded-2xl"><summary className="min-h-11 cursor-pointer px-4 py-3 text-sm text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400">{t("performance")}</summary><MetricsRow cost={data.cost} throughput={data.throughput} onFilter={openFiltered} /></details>
 
                     {(kpi || query || zoneFilter) && <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-border bg-muted/30 px-3 py-2 text-sm">
-                        <span className="text-muted-foreground">{kpi === "attention" ? "Agents linked to the action inbox" : kpi === "done" ? "Agents that delivered in the last 24h" : kpi === "working" ? "Working agents and in-progress tasks" : kpi === "waiting" ? "Agents with work awaiting review" : "Filtered workspace"}{query && ` · “${query}”`}</span>
-                        <button type="button" onClick={() => { setKpi(null); setQuery(""); setZoneFilter(null); }} className="min-h-11 rounded-lg px-3 font-medium hover:bg-muted focus-visible:ring-2 focus-visible:ring-cyan-400">Clear filters</button>
+                        <span className="text-muted-foreground">{kpi === "attention" ? t("filterAttention") : kpi === "done" ? t("filterDone") : kpi === "working" ? t("filterWorking") : kpi === "waiting" ? t("filterWaiting") : t("filterOther")}{query && ` · “${query}”`}</span>
+                        <button type="button" onClick={() => { setKpi(null); setQuery(""); setZoneFilter(null); }} className="min-h-11 rounded-lg px-3 font-medium hover:bg-muted focus-visible:ring-2 focus-visible:ring-cyan-400">{t("clearFilters")}</button>
                     </div>}
                     <section aria-labelledby="live-workspace-title" className="emperor-panel rounded-2xl p-3 sm:p-4">
                         <header className="mb-3 flex flex-wrap items-start justify-between gap-3">
@@ -194,15 +202,15 @@ export function TeamDashboard({ data, initialView, canAct, isOwnerOrAdmin }: {
                                 <IconBox className="mt-0.5 h-5 w-5 shrink-0 text-muted-foreground" stroke={1.8} />
                                 <div className="min-w-0">
                                     <h2 id="live-workspace-title" className="flex items-center gap-2 text-base font-semibold text-foreground">
-                                        Live workspace
+                                        {t("liveWorkspace")}
                                         <LivePill />
                                     </h2>
-                                    <p className="text-xs text-muted-foreground">{`${agents.length} agents · work and connection shown separately`}</p>
+                                    <p className="text-xs text-muted-foreground">{t("liveWorkspaceSummary", { count: agents.length })}</p>
                                 </div>
                             </div>
                             <div className="flex w-full items-center gap-2 sm:w-auto">
-                                <div role="tablist" aria-label="Workspace view" className="grid flex-1 grid-cols-3 rounded-xl border border-border bg-muted/40 p-0.5 sm:flex sm:flex-none dark:bg-white/[0.03]">
-                                    {([["scene", "Scene", IconBox], ["pulse", "Pulse", IconRadar], ["list", "List", IconLayoutList]] as const).map(([id, label, Icon]) => (
+                                <div role="tablist" aria-label={t("viewTabs")} className="grid flex-1 grid-cols-3 rounded-xl border border-border bg-muted/40 p-0.5 sm:flex sm:flex-none dark:bg-white/[0.03]">
+                                    {([["scene", t("viewScene"), IconBox], ["pulse", t("viewPulse"), IconRadar], ["list", t("viewList"), IconLayoutList]] as const).map(([id, label, Icon]) => (
                                         <button key={id} type="button" role="tab" aria-selected={view === id} onClick={() => setView(id)}
                                             className={cn("inline-flex min-h-11 items-center justify-center gap-1.5 rounded-[10px] px-3 text-sm font-medium transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400",
                                                 view === id ? "bg-cyan-500/15 text-cyan-700 ring-1 ring-inset ring-cyan-500/40 dark:text-cyan-200" : "text-muted-foreground hover:text-foreground")}>
@@ -210,22 +218,22 @@ export function TeamDashboard({ data, initialView, canAct, isOwnerOrAdmin }: {
                                         </button>
                                     ))}
                                 </div>
-                                <Link href="/agents/organization" className="hidden min-h-11 items-center sm:inline-flex gap-1.5 rounded-xl border border-border px-3 text-sm text-muted-foreground hover:text-foreground"><IconHierarchy2 className="h-4 w-4" />Organization</Link>
+                                <Link href="/agents/organization" className="hidden min-h-11 items-center sm:inline-flex gap-1.5 rounded-xl border border-border px-3 text-sm text-muted-foreground hover:text-foreground"><IconHierarchy2 className="h-4 w-4" />{t("organization")}</Link>
                                 <DropdownMenu>
                                     <DropdownMenuTrigger asChild>
-                                        <button type="button" aria-label="Workspace options" className="grid h-11 w-11 place-items-center rounded-lg text-muted-foreground transition hover:bg-muted hover:text-foreground"><IconDotsVertical className="h-4 w-4" /></button>
+                                        <button type="button" aria-label={t("options")} className="grid h-11 w-11 place-items-center rounded-lg text-muted-foreground transition hover:bg-muted hover:text-foreground"><IconDotsVertical className="h-4 w-4" /></button>
                                     </DropdownMenuTrigger>
                                     <DropdownMenuContent align="end" className="w-52">
-                                        <DropdownMenuCheckboxItem checked={motionPaused} onCheckedChange={setMotionPaused}>Pause motion</DropdownMenuCheckboxItem>
+                                        <DropdownMenuCheckboxItem checked={motionPaused} onCheckedChange={setMotionPaused}>{t("pauseMotion")}</DropdownMenuCheckboxItem>
                                         <DropdownMenuSeparator />
-                                        <DropdownMenuItem asChild className="sm:hidden"><Link href="/agents/organization">Organization</Link></DropdownMenuItem>
-                                        <DropdownMenuItem asChild><Link href="/agents">Manage agents</Link></DropdownMenuItem>
-                                        <DropdownMenuItem asChild><Link href="/agents/health">Agent health</Link></DropdownMenuItem>
-                                        <DropdownMenuItem asChild><Link href="/projects">Open projects board</Link></DropdownMenuItem>
+                                        <DropdownMenuItem asChild className="sm:hidden"><Link href="/agents/organization">{t("organization")}</Link></DropdownMenuItem>
+                                        <DropdownMenuItem asChild><Link href="/agents">{t("manageAgents")}</Link></DropdownMenuItem>
+                                        <DropdownMenuItem asChild><Link href="/agents/health">{t("agentHealth")}</Link></DropdownMenuItem>
+                                        <DropdownMenuItem asChild><Link href="/projects">{t("openBoard")}</Link></DropdownMenuItem>
                                         {(kpi || query || zoneFilter) && (
                                             <>
                                                 <DropdownMenuSeparator />
-                                                <DropdownMenuItem onSelect={() => { setKpi(null); setQuery(""); setZoneFilter(null); }}>Clear filters</DropdownMenuItem>
+                                                <DropdownMenuItem onSelect={() => { setKpi(null); setQuery(""); setZoneFilter(null); }}>{t("clearFilters")}</DropdownMenuItem>
                                             </>
                                         )}
                                     </DropdownMenuContent>
@@ -235,9 +243,9 @@ export function TeamDashboard({ data, initialView, canAct, isOwnerOrAdmin }: {
 
                         {zoneFilter && (
                             <div className="mb-3 flex items-center gap-2 text-xs text-muted-foreground">
-                                Showing
+                                {t("showing")}
                                 <button type="button" onClick={() => setZoneFilter(null)} className="inline-flex items-center gap-1 rounded-md bg-cyan-500/10 px-2 py-0.5 font-medium text-cyan-700 ring-1 ring-inset ring-cyan-500/30 hover:bg-cyan-500/20 dark:text-cyan-200">
-                                    {ZONES[zoneFilter].label}<IconX className="h-3 w-3" />
+                                    {scene.zone(zoneFilter)}<IconX className="h-3 w-3" />
                                 </button>
                             </div>
                         )}
@@ -257,7 +265,7 @@ export function TeamDashboard({ data, initialView, canAct, isOwnerOrAdmin }: {
                     </section>
                 </div>
 
-                <aside aria-label="Decisions and observations" className="grid min-w-0 grid-cols-1 content-start gap-4 md:grid-cols-2 xl:grid-cols-1">
+                <aside aria-label={t("decisionsAside")} className="grid min-w-0 grid-cols-1 content-start gap-4 md:grid-cols-2 xl:grid-cols-1">
                     <div ref={inboxRef} tabIndex={-1} className="scroll-mt-4 rounded-2xl focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400"><NeedsAttention entries={actions} now={now} onFocusMember={focusMember} canAct={canAct} agents={agents.map((a) => a.member)} /></div>
 
                     {watchlist.length > 0 && <NeedsAttention entries={watchlist} watchlist now={now} onFocusMember={focusMember} canAct={canAct} agents={agents.map((a) => a.member)} />}
@@ -266,9 +274,9 @@ export function TeamDashboard({ data, initialView, canAct, isOwnerOrAdmin }: {
 
             <Dialog open={agentPanel !== null && !!selected && selectedAgent?.member.key === selected} onOpenChange={(open) => { if (!open) setAgentPanel(null); }}>
                 <DialogContent overlayClassName={agentPanel === "actions" ? "bg-black/40 backdrop-blur-none" : undefined} onCloseAutoFocus={(event) => { event.preventDefault(); if (selectionTriggerRef.current?.isConnected) selectionTriggerRef.current.focus(); else searchRef.current?.focus(); }} className={cn("dark motion-reduce:animate-none overflow-hidden [&_[data-slot=dialog-close]]:top-2 [&_[data-slot=dialog-close]]:right-2 [&_[data-slot=dialog-close]]:flex [&_[data-slot=dialog-close]]:h-11 [&_[data-slot=dialog-close]]:w-11 [&_[data-slot=dialog-close]]:items-center [&_[data-slot=dialog-close]]:justify-center", agentPanel === "chat" ? "flex h-[min(88dvh,850px)] max-w-[calc(100%-1rem)] flex-col gap-0 p-0 sm:max-w-3xl" : "flex max-h-[90dvh] top-auto bottom-0 left-0 max-w-full translate-x-0 translate-y-0 flex-col gap-0 rounded-b-none p-0 sm:top-4 sm:bottom-4 sm:right-4 sm:left-auto sm:max-h-none sm:w-[420px] sm:max-w-[calc(100%-2rem)] sm:rounded-2xl")}>
-                    <DialogTitle className={agentPanel === "chat" ? "border-b border-border px-4 py-4 pr-14 text-base" : "sr-only"}>{agentPanel === "chat" ? `Conversation with ${selectedAgent?.member.name}` : `Work briefing for ${selectedAgent?.member.name}`}</DialogTitle>
-                    <DialogDescription className="sr-only">{agentPanel === "chat" ? "Direct conversation using the same chat and rich message renderer as Messages." : "Current work, decisions and conversations for this teammate."}</DialogDescription>
-                    {agentPanel === "chat" && selectedAgent ? <><div className="flex min-h-0 flex-1 flex-col"><AgentDirectChat key={selectedAgent.member.id} agentId={selectedAgent.member.id} agentName={selectedAgent.member.name} hideHeader canSend={canAct} /></div><Link href={`/messages?agent=${selectedAgent.member.id}`} className="min-h-11 border-t border-border px-4 py-3 text-center text-sm text-cyan-300">Open in Messages</Link></> : <SelectedAgent key={selectedAgent?.member.key} agent={selectedAgent} canAct={canAct} now={now} teams={data.teams} communications={data.communications} onMessage={() => setAgentPanel("chat")} />}
+                    <DialogTitle className={agentPanel === "chat" ? "border-b border-border px-4 py-4 pr-14 text-base" : "sr-only"}>{agentPanel === "chat" ? t("conversationWith", { name: selectedAgent?.member.name ?? "" }) : t("briefingFor", { name: selectedAgent?.member.name ?? "" })}</DialogTitle>
+                    <DialogDescription className="sr-only">{agentPanel === "chat" ? t("chatDescription") : t("briefingDescription")}</DialogDescription>
+                    {agentPanel === "chat" && selectedAgent ? <><div className="flex min-h-0 flex-1 flex-col"><AgentDirectChat key={selectedAgent.member.id} agentId={selectedAgent.member.id} agentName={selectedAgent.member.name} hideHeader canSend={canAct} /></div><Link href={`/messages?agent=${selectedAgent.member.id}`} className="min-h-11 border-t border-border px-4 py-3 text-center text-sm text-cyan-300">{t("openInMessages")}</Link></> : <SelectedAgent key={selectedAgent?.member.key} agent={selectedAgent} canAct={canAct} now={now} teams={data.teams} communications={data.communications} onMessage={() => setAgentPanel("chat")} />}
                 </DialogContent>
             </Dialog>
 

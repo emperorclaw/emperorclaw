@@ -4,8 +4,11 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { toast } from "sonner";
+import { useTranslations } from "next-intl";
 import { IconChevronRight, IconMessage, IconRefresh } from "@tabler/icons-react";
-import { formatCents, timeAgo, type DashboardMember, type SceneAgent, type SceneStatus } from "@/lib/team-scene";
+import { formatCents, type DashboardMember, type SceneAgent, type SceneStatus } from "@/lib/team-scene";
+import { useTimeAgo } from "@/lib/i18n/format";
+import { useSceneCopy } from "./use-scene-copy";
 import { cn } from "@/lib/utils";
 import { AgentAvatar, STATUS_COLOR } from "./agent-character";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
@@ -21,6 +24,10 @@ export function AgentList({ agents, selectedKey, isActive, onSelect, canAct, mem
     members: DashboardMember[];
     now: Date;
 }) {
+    const t = useTranslations("home.list");
+    const tCommon = useTranslations("common");
+    const timeAgo = useTimeAgo();
+    const scene = useSceneCopy();
     const router = useRouter();
     const [busyKey, setBusyKey] = useState<string | null>(null);
     const [page, setPage] = useState(0);
@@ -29,7 +36,7 @@ export function AgentList({ agents, selectedKey, isActive, onSelect, canAct, mem
     const currentPage = Math.min(page, pages - 1);
     const rows = allRows.slice(currentPage * 25, (currentPage + 1) * 25);
     if (rows.length === 0) {
-        return <p className="rounded-xl border border-dashed border-border px-4 py-10 text-center text-sm text-muted-foreground">Nobody matches this view. Clear the filter or search to see everyone.</p>;
+        return <p className="rounded-xl border border-dashed border-border px-4 py-10 text-center text-sm text-muted-foreground">{t("empty")}</p>;
     }
     const pickable = members.filter((m) => m.kind === "agent");
 
@@ -42,11 +49,11 @@ export function AgentList({ agents, selectedKey, isActive, onSelect, canAct, mem
                 method: "PATCH", headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({ assignee: target }),
             });
-            if (!res.ok) throw new Error("Couldn't reassign the task");
-            toast.success(`Reassigned to ${pickable.find((a) => a.id === target.id)?.name ?? "agent"}.`);
+            if (!res.ok) throw new Error(t("reassignFailed"));
+            toast.success(t("reassigned", { name: pickable.find((a) => a.id === target.id)?.name ?? t("agentFallback") }));
             router.refresh();
         } catch (error) {
-            toast.error(error instanceof Error ? error.message : "Something went wrong");
+            toast.error(error instanceof Error ? error.message : tCommon("somethingWentWrong"));
         } finally {
             setBusyKey(null);
         }
@@ -61,21 +68,22 @@ export function AgentList({ agents, selectedKey, isActive, onSelect, canAct, mem
             <table className="hidden w-full table-fixed text-sm @min-[560px]:table">
                 <thead className="bg-muted/40 text-left text-[11px] font-semibold uppercase tracking-wider text-muted-foreground dark:bg-white/[0.02]">
                     <tr>
-                        <th scope="col" className="w-[24%] px-3 py-2">Member</th>
-                        <th scope="col" className="w-[18%] px-3 py-2">Status</th>
-                        <th scope="col" className="px-3 py-2">Current task</th>
-                        <th scope="col" className="hidden w-[14%] px-3 py-2 @min-[820px]:table-cell">Waiting on</th>
-                        <th scope="col" className="hidden w-[84px] px-3 py-2 @min-[700px]:table-cell">Last connection</th>
-                        <th scope="col" className="hidden w-[76px] px-3 py-2 text-right @min-[760px]:table-cell">Spend 24h</th>
-                        <th scope="col" className="w-[148px] px-2 py-2"><span className="sr-only">Actions</span></th>
+                        <th scope="col" className="w-[24%] px-3 py-2">{t("member")}</th>
+                        <th scope="col" className="w-[18%] px-3 py-2">{t("status")}</th>
+                        <th scope="col" className="px-3 py-2">{t("currentTask")}</th>
+                        <th scope="col" className="hidden w-[14%] px-3 py-2 @min-[820px]:table-cell">{t("waitingOn")}</th>
+                        <th scope="col" className="hidden w-[84px] px-3 py-2 @min-[700px]:table-cell">{t("lastConnection")}</th>
+                        <th scope="col" className="hidden w-[76px] px-3 py-2 text-right @min-[760px]:table-cell">{t("spend24h")}</th>
+                        <th scope="col" className="w-[148px] px-2 py-2"><span className="sr-only">{t("actions")}</span></th>
                     </tr>
                 </thead>
                 <tbody className="divide-y divide-border/60">
                     {rows.map((agent) => {
                         const m = agent.member;
                         const selected = m.key === selectedKey;
-                        const currentTask = m.working[0]?.title ?? (agent.status === "working" ? agent.activity : null) ?? "—";
-                        const waitingOn = m.waiting[0]?.title ?? (agent.status === "blocked" ? agent.activity : null) ?? "—";
+                        const currentTask = m.working[0]?.title ?? (agent.status === "working" ? scene.caption(agent.activity) : null) ?? "—";
+                        const waitingOn = m.waiting[0]?.title ?? (agent.status === "blocked" ? scene.caption(agent.activity) : null) ?? "—";
+                        const caption = scene.caption(agent.behavior.caption);
                         const taskToReassign = m.working[0] ?? m.next[0];
                         return (
                             <tr key={m.key} onClick={() => onSelect(m.key)} aria-selected={selected}
@@ -85,14 +93,14 @@ export function AgentList({ agents, selectedKey, isActive, onSelect, canAct, mem
                                         <AgentAvatar id={m.id} kind={m.kind} name={m.name} avatarUrl={m.avatarUrl} avatarAppearance={m.avatarAppearance} status={agent.status} size={30} />
                                         <span className="min-w-0 flex-1">
                                             <span className="block truncate font-semibold text-foreground" title={m.name}>{m.name}</span>
-                                            <span className="block truncate text-xs text-muted-foreground" title={m.role ?? ""}>{m.role || (m.kind === "human" ? "Teammate" : "Agent")}</span>
+                                            <span className="block truncate text-xs text-muted-foreground" title={m.role ?? ""}>{m.role || (m.kind === "human" ? tCommon("teammate") : tCommon("agent"))}</span>
                                         </span>
                                     </button>
                                 </td>
                                 <td className="px-3 py-2.5">
-                                    <span className="inline-flex max-w-full items-center gap-1.5 text-xs font-medium text-foreground/80" title={agent.behavior.caption}>
+                                    <span className="inline-flex max-w-full items-center gap-1.5 text-xs font-medium text-foreground/80" title={caption}>
                                         <span className="h-2 w-2 shrink-0 rounded-full" style={{ background: STATUS_COLOR[agent.status] }} />
-                                        <span className="truncate">{agent.behavior.caption}</span>
+                                        <span className="truncate">{caption}</span>
                                     </span>
                                 </td>
                                 <td className="truncate px-3 py-2.5 text-muted-foreground" title={currentTask}>{currentTask}</td>
@@ -102,14 +110,14 @@ export function AgentList({ agents, selectedKey, isActive, onSelect, canAct, mem
                                 <td className="px-2 py-2.5">
                                     <div className="flex items-center justify-end gap-1" onClick={(e) => e.stopPropagation()}>
                                         {m.kind === "agent" && (
-                                            <Link href={`/messages?agent=${m.id}`} aria-label={`Message ${m.name}`} className="grid h-11 w-11 place-items-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground">
+                                            <Link href={`/messages?agent=${m.id}`} aria-label={t("messageName", { name: m.name })} className="grid h-11 w-11 place-items-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground">
                                                 <IconMessage className="h-4 w-4" />
                                             </Link>
                                         )}
                                         {canAct && m.kind === "agent" && taskToReassign && (
                                             <ReassignMenu agent={agent} pickable={pickable} busy={busyKey === m.key} onReassign={reassign} />
                                         )}
-                                        <Link href={m.href} aria-label={`Open ${m.name}`} className="grid h-11 w-11 place-items-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground">
+                                        <Link href={m.href} aria-label={t("openName", { name: m.name })} className="grid h-11 w-11 place-items-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground">
                                             <IconChevronRight className="h-4 w-4" />
                                         </Link>
                                     </div>
@@ -125,18 +133,18 @@ export function AgentList({ agents, selectedKey, isActive, onSelect, canAct, mem
                 {rows.map((agent) => {
                     const m = agent.member;
                     const selected = m.key === selectedKey;
-                    const currentTask = m.working[0]?.title ?? (agent.status === "working" ? agent.activity : null) ?? "—";
-                    const waitingOn = m.waiting[0]?.title ?? (agent.status === "blocked" ? agent.activity : null) ?? null;
+                    const currentTask = m.working[0]?.title ?? (agent.status === "working" ? scene.caption(agent.activity) : null) ?? "—";
+                    const waitingOn = m.waiting[0]?.title ?? (agent.status === "blocked" ? scene.caption(agent.activity) : null) ?? null;
                     return (
                         <li key={m.key} className={cn("cursor-pointer px-3 py-3 transition-colors hover:bg-muted/50", selected && "bg-cyan-500/[0.07]")}>
                             <button type="button" aria-pressed={selected} onClick={() => onSelect(m.key)} className="flex min-h-11 w-full items-center gap-3 rounded-lg text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400">
                                 <AgentAvatar id={m.id} kind={m.kind} name={m.name} avatarUrl={m.avatarUrl} avatarAppearance={m.avatarAppearance} status={agent.status} size={36} />
                                 <div className="min-w-0 flex-1">
                                     <div className="truncate font-semibold text-foreground">{m.name}</div>
-                                    <div className="truncate text-xs text-muted-foreground">{m.role || (m.kind === "human" ? "Teammate" : "Agent")}</div>
+                                    <div className="truncate text-xs text-muted-foreground">{m.role || (m.kind === "human" ? tCommon("teammate") : tCommon("agent"))}</div>
                                 </div>
                                 <span className="inline-flex max-w-[40%] items-center gap-1.5 text-xs font-medium text-foreground/80">
-                                    <span className="h-2 w-2 rounded-full" style={{ background: STATUS_COLOR[agent.status] }} /><span className="min-w-0 break-words">{agent.behavior.caption}</span>
+                                    <span className="h-2 w-2 rounded-full" style={{ background: STATUS_COLOR[agent.status] }} /><span className="min-w-0 break-words">{scene.caption(agent.behavior.caption)}</span>
                                 </span>
                             </button>
                             <div className="mt-2 flex items-center justify-between gap-2 text-xs text-muted-foreground">
@@ -145,13 +153,13 @@ export function AgentList({ agents, selectedKey, isActive, onSelect, canAct, mem
                             </div>
                             {(waitingOn || m.lastActivityAt) && (
                                 <div className="mt-1 flex items-center justify-between gap-2 text-[11px] text-muted-foreground">
-                                    <span className="min-w-0 truncate">{waitingOn ? `Waiting: ${waitingOn}` : ""}</span>
-                                    <span className="shrink-0 tabular-nums">{m.lastActivityAt ? `seen ${timeAgo(m.lastActivityAt, now)}` : ""}</span>
+                                    <span className="min-w-0 truncate">{waitingOn ? t("waiting", { task: waitingOn }) : ""}</span>
+                                    <span className="shrink-0 tabular-nums">{m.lastActivityAt ? t("seen", { ago: timeAgo(m.lastActivityAt, now) }) : ""}</span>
                                 </div>
                             )}
                             <div className="mt-2 flex flex-wrap items-center gap-2">
-                                <Link href={m.href} className="inline-flex min-h-11 items-center rounded-lg border border-border px-3 text-xs font-medium hover:bg-muted focus-visible:ring-2 focus-visible:ring-cyan-400">View agent</Link>
-                                <Link href={`/messages?agent=${m.id}`} className="inline-flex min-h-11 items-center rounded-lg border border-border px-3 text-xs font-medium hover:bg-muted focus-visible:ring-2 focus-visible:ring-cyan-400">Message</Link>
+                                <Link href={m.href} className="inline-flex min-h-11 items-center rounded-lg border border-border px-3 text-xs font-medium hover:bg-muted focus-visible:ring-2 focus-visible:ring-cyan-400">{t("viewAgent")}</Link>
+                                <Link href={`/messages?agent=${m.id}`} className="inline-flex min-h-11 items-center rounded-lg border border-border px-3 text-xs font-medium hover:bg-muted focus-visible:ring-2 focus-visible:ring-cyan-400">{t("message")}</Link>
                                 {canAct && (m.working[0] || m.next[0]) && <ReassignMenu agent={agent} pickable={pickable} busy={busyKey === m.key} onReassign={reassign} />}
                             </div>
                         </li>
@@ -159,8 +167,8 @@ export function AgentList({ agents, selectedKey, isActive, onSelect, canAct, mem
                 })}
             </ul>
             {pages > 1 && <div className="flex flex-wrap items-center justify-between gap-2 border-t border-border px-3 py-2 text-xs text-muted-foreground">
-                <span>{currentPage * 25 + 1}–{Math.min((currentPage + 1) * 25, allRows.length)} of {allRows.length} agents</span>
-                <div className="flex gap-2"><button type="button" disabled={currentPage === 0} onClick={() => setPage(currentPage - 1)} className="min-h-11 rounded-lg border border-border px-3 disabled:opacity-40 focus-visible:ring-2 focus-visible:ring-cyan-400">Previous</button><button type="button" disabled={currentPage >= pages - 1} onClick={() => setPage(currentPage + 1)} className="min-h-11 rounded-lg border border-border px-3 disabled:opacity-40 focus-visible:ring-2 focus-visible:ring-cyan-400">Next</button></div>
+                <span>{t("range", { start: currentPage * 25 + 1, end: Math.min((currentPage + 1) * 25, allRows.length), total: allRows.length })}</span>
+                <div className="flex gap-2"><button type="button" disabled={currentPage === 0} onClick={() => setPage(currentPage - 1)} className="min-h-11 rounded-lg border border-border px-3 disabled:opacity-40 focus-visible:ring-2 focus-visible:ring-cyan-400">{tCommon("previous")}</button><button type="button" disabled={currentPage >= pages - 1} onClick={() => setPage(currentPage + 1)} className="min-h-11 rounded-lg border border-border px-3 disabled:opacity-40 focus-visible:ring-2 focus-visible:ring-cyan-400">{tCommon("next")}</button></div>
             </div>}
         </div>
     );
@@ -172,17 +180,19 @@ function ReassignMenu({ agent, pickable, busy, onReassign }: {
     busy: boolean;
     onReassign: (a: SceneAgent, target: { type: "agent"; id: string }) => void;
 }) {
+    const t = useTranslations("home.list");
+    const tCommon = useTranslations("common");
     const targets = pickable.filter((a) => a.key !== agent.member.key);
     return (
         <DropdownMenu>
             <DropdownMenuTrigger asChild>
-                <button type="button" disabled={busy} aria-label={`Reassign ${agent.member.name}`} className="grid h-11 w-11 place-items-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50">
+                <button type="button" disabled={busy} aria-label={t("reassignName", { name: agent.member.name })} className="grid h-11 w-11 place-items-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50">
                     <IconRefresh className="h-4 w-4" />
                 </button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="max-h-72 w-52 overflow-y-auto">
                 {targets.length === 0 ? (
-                    <span className="block px-2 py-1.5 text-xs text-muted-foreground">No other agents.</span>
+                    <span className="block px-2 py-1.5 text-xs text-muted-foreground">{tCommon("noOtherAgents")}</span>
                 ) : targets.map((a) => (
                     <DropdownMenuItem key={a.key} onSelect={() => onReassign(agent, { type: "agent", id: a.id })}>
                         <span className="flex min-w-0 items-center gap-2">

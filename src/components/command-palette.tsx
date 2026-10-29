@@ -1,6 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
+import { useTranslations } from "next-intl";
 import { useCallback, useEffect, useId, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from "react";
 import {
     IconArrowRight, IconBook, IconBuildingStore, IconCommand, IconFileText, IconFolder, IconInbox, IconKeyboard, IconListCheck, IconMessage, IconMessagePlus, IconPlus, IconRobot,
@@ -11,7 +12,7 @@ import { CHORD_TIMEOUT_MS, GO_CHORDS, isPlainKey, isTypingTarget, matchesQuery }
 import { navSections, type NavAccess } from "@/lib/navigation";
 import { pathEnabled } from "@/lib/modules";
 import type { PaletteData } from "@/lib/palette";
-import { SEARCH_TYPE_LABELS, snippetParts, type SearchResult, type SearchType } from "@/lib/search-query";
+import { snippetParts, type SearchResult, type SearchType } from "@/lib/search-query";
 import { cn } from "@/lib/utils";
 
 const OPEN_EVENT = "emperor:open-palette";
@@ -26,9 +27,11 @@ export function openShortcutSheet() {
     window.dispatchEvent(new Event(SHORTCUTS_EVENT));
 }
 
+type PaletteGroup = "actions" | "pages" | "agents" | "projects" | "customers" | "tasks" | "recentTasks" | "matches" | "search";
+
 type Option = {
     id: string;
-    group: string;
+    group: PaletteGroup;
     label: string;
     hint?: string | null;
     href: string;
@@ -56,6 +59,9 @@ function isMac() {
 }
 
 export function CommandPalette({ access, canAct }: { access: NavAccess; canAct: boolean }) {
+    const t = useTranslations("shell.palette");
+    const tNav = useTranslations("nav");
+    const tKeywords = useTranslations("navKeywords");
     const router = useRouter();
     const [open, setOpen] = useState(false);
     const [sheetOpen, setSheetOpen] = useState(false);
@@ -150,30 +156,32 @@ export function CommandPalette({ access, canAct }: { access: NavAccess; canAct: 
 
     const options = useMemo<Option[]>(() => {
         const q = query.trim();
+        // Keywords keep the English words, so an English query matches in any language.
         const actions: Option[] = [
-            { id: "action:inbox", group: "Actions", label: "Open inbox", href: "/inbox", icon: IconInbox, keywords: "needs me approvals" },
+            { id: "action:inbox", group: "actions", label: t("actions.openInbox"), href: "/inbox", icon: IconInbox, keywords: "open inbox needs me approvals" },
             ...(canAct ? [
-                { id: "action:new-task", group: "Actions", label: "New task", href: "/projects?new=task", icon: IconPlus, keywords: "create add task" },
-                { id: "action:message", group: "Actions", label: "Message an agent", href: "/messages", icon: IconMessagePlus, keywords: "chat send" },
-                { id: "action:hire", group: "Actions", label: "Hire agent", href: "/agents?hire=1", icon: IconUserPlus, keywords: "create new agent team" },
+                { id: "action:new-task", group: "actions" as const, label: t("actions.newTask"), href: "/projects?new=task", icon: IconPlus, keywords: "new task create add task" },
+                { id: "action:message", group: "actions" as const, label: t("actions.messageAgent"), href: "/messages", icon: IconMessagePlus, keywords: "message an agent chat send" },
+                { id: "action:hire", group: "actions" as const, label: t("actions.hireAgent"), href: "/agents?hire=1", icon: IconUserPlus, keywords: "hire agent create new agent team" },
             ] : []),
         ];
         const pages: Option[] = [
             ...navSections(access).flatMap((section) => section.items).map((item) => ({
-                id: `page:${item.href}`, group: "Pages", label: item.name, href: item.href, icon: IconArrowRight, keywords: item.keywords,
+                id: `page:${item.href}`, group: "pages" as const, label: tNav(item.id), href: item.href, icon: IconArrowRight,
+                keywords: `${item.name} ${item.keywords ?? ""} ${tKeywords(item.id)}`,
             })),
-            { id: "page:/approvals", group: "Pages", label: "Approval history", href: "/approvals", icon: IconArrowRight, keywords: "decisions decided" },
+            { id: "page:/approvals", group: "pages" as const, label: t("actions.approvalHistory"), href: "/approvals", icon: IconArrowRight, keywords: "approval history decisions decided" },
         ].filter((option) => pathEnabled(option.href, access.modules));
         const records: Option[] = [
-            ...data.agents.map((a) => ({ id: `agent:${a.id}`, group: "Agents", label: a.name, hint: a.role, href: `/agents?agent=${a.id}`, icon: IconRobot })),
-            ...data.projects.map((p) => ({ id: `project:${p.id}`, group: "Projects", label: p.name, hint: p.customerName, href: `/projects?project=${p.id}`, icon: IconFolder })),
-            ...(pathEnabled("/customers", access.modules) ? data.customers : []).map((c) => ({ id: `customer:${c.id}`, group: "Customers", label: c.name, href: "/customers", icon: IconBuildingStore })),
+            ...data.agents.map((a) => ({ id: `agent:${a.id}`, group: "agents" as const, label: a.name, hint: a.role, href: `/agents?agent=${a.id}`, icon: IconRobot })),
+            ...data.projects.map((p) => ({ id: `project:${p.id}`, group: "projects" as const, label: p.name, hint: p.customerName, href: `/projects?project=${p.id}`, icon: IconFolder })),
+            ...(pathEnabled("/customers", access.modules) ? data.customers : []).map((c) => ({ id: `customer:${c.id}`, group: "customers" as const, label: c.name, href: "/customers", icon: IconBuildingStore })),
         ];
         const tasks = q ? (found?.q === q ? found.tasks : []) : data.tasks;
-        const taskOptions: Option[] = tasks.map((t) => ({ id: `task:${t.id}`, group: "Tasks", label: t.title, hint: t.projectName, href: `/projects?project=${t.projectId}&task=${t.id}`, icon: IconListCheck }));
+        const taskOptions: Option[] = tasks.map((task) => ({ id: `task:${task.id}`, group: "tasks", label: task.title, hint: task.projectName, href: `/projects?project=${task.projectId}&task=${task.id}`, icon: IconListCheck }));
 
         // Nothing typed: actions, recent tasks, then the main pages.
-        if (!q) return [...actions, ...taskOptions.slice(0, 5).map((o) => ({ ...o, group: "Recent tasks" })), ...pages.filter((p) => ["/", "/inbox", "/messages", "/projects", "/agents"].includes(p.href))];
+        if (!q) return [...actions, ...taskOptions.slice(0, 5).map((o) => ({ ...o, group: "recentTasks" as const })), ...pages.filter((p) => ["/", "/inbox", "/messages", "/projects", "/agents"].includes(p.href))];
         const hit = (o: Option) => matchesQuery(`${o.label} ${o.hint ?? ""} ${o.keywords ?? ""}`, q);
         const limit = (list: Option[]) => {
             const counts = new Map<string, number>();
@@ -190,15 +198,15 @@ export function CommandPalette({ access, canAct }: { access: NavAccess; canAct: 
         const matches: Option[] = (found?.q === q ? found.matches : [])
             .filter((m) => !listedIds.has(`${m.type}:${m.id}`))
             .map((m) => ({
-                id: `match:${m.type}:${m.id}`, group: "Matches", label: m.title, hint: SEARCH_TYPE_LABELS[m.type], href: m.href, icon: MATCH_ICON[m.type],
+                id: `match:${m.type}:${m.id}`, group: "matches", label: m.title, hint: t(`types.${m.type}`), href: m.href, icon: MATCH_ICON[m.type],
                 snippet: m.snippet && m.highlights.length ? { text: m.snippet, highlights: m.highlights } : undefined,
             }));
-        const searchRow: Option = { id: "search:all", group: "Search", label: `Search for “${q}”`, href: `/search?q=${encodeURIComponent(q)}`, icon: IconSearch };
+        const searchRow: Option = { id: "search:all", group: "search", label: t("searchFor", { query: q }), href: `/search?q=${encodeURIComponent(q)}`, icon: IconSearch };
         return [...listed, ...matches, searchRow];
-    }, [query, data, found, access, canAct]);
+    }, [query, data, found, access, canAct, t, tNav, tKeywords]);
 
     const groups = useMemo(() => {
-        const out: { name: string; options: { option: Option; index: number }[] }[] = [];
+        const out: { name: PaletteGroup; options: { option: Option; index: number }[] }[] = [];
         options.forEach((option, index) => {
             const group = out.find((g) => g.name === option.group) ?? out[out.push({ name: option.group, options: [] }) - 1];
             group.options.push({ option, index });
@@ -245,7 +253,7 @@ export function CommandPalette({ access, canAct }: { access: NavAccess; canAct: 
                     onOpenAutoFocus={(event) => { event.preventDefault(); inputRef.current?.focus(); }}
                     className="top-3 flex max-h-[min(640px,calc(100dvh-1.5rem))] translate-y-0 flex-col gap-0 overflow-hidden border-border bg-popover p-0 text-foreground sm:top-[12vh] sm:max-w-xl dark:bg-zinc-950/95"
                 >
-                    <DialogTitle className="sr-only">Command palette</DialogTitle>
+                    <DialogTitle className="sr-only">{t("title")}</DialogTitle>
                     <div className="flex items-center gap-3 border-b border-border px-4">
                         <IconSearch className="h-5 w-5 shrink-0 text-muted-foreground" />
                         <input
@@ -255,21 +263,21 @@ export function CommandPalette({ access, canAct }: { access: NavAccess; canAct: 
                             aria-controls={listId}
                             aria-autocomplete="list"
                             aria-activedescendant={activeOption ? optionId(activeIndex) : undefined}
-                            aria-label="Search pages, agents, projects, customers, tasks and messages"
+                            aria-label={t("inputLabel")}
                             value={query}
                             onChange={(e) => { setQuery(e.target.value); setActive(0); }}
                             onKeyDown={onInputKey}
-                            placeholder="Jump to a page, or search everything"
+                            placeholder={t("placeholder")}
                             className="h-14 min-w-0 flex-1 bg-transparent text-base text-foreground outline-none placeholder:text-muted-foreground sm:text-[15px]"
                         />
                         <kbd className="hidden rounded-md border border-border px-1.5 py-0.5 font-mono text-[11px] text-muted-foreground sm:inline">Esc</kbd>
                     </div>
-                    <div ref={listRef} id={listId} role="listbox" aria-label="Results" className="min-h-0 flex-1 overflow-y-auto overscroll-contain p-2">
+                    <div ref={listRef} id={listId} role="listbox" aria-label={t("results")} className="min-h-0 flex-1 overflow-y-auto overscroll-contain p-2">
                         {options.length === 0 ? (
-                            <p className="px-3 py-10 text-center text-sm text-muted-foreground">{loading ? "Searching…" : `Nothing matches “${query.trim()}”.`}</p>
+                            <p className="px-3 py-10 text-center text-sm text-muted-foreground">{loading ? t("searching") : t("noResults", { query: query.trim() })}</p>
                         ) : groups.map((group) => (
-                            <div key={group.name} role="group" aria-label={group.name} className="pb-1">
-                                <div className="px-3 pb-1 pt-2 text-[11px] font-semibold uppercase tracking-[0.12em] text-muted-foreground/80">{group.name}</div>
+                            <div key={group.name} role="group" aria-label={t(`groups.${group.name}`)} className="pb-1">
+                                <div className="px-3 pb-1 pt-2 text-[11px] font-semibold uppercase tracking-[0.12em] text-muted-foreground/80">{t(`groups.${group.name}`)}</div>
                                 {group.options.map(({ option, index }) => {
                                     const selected = index === activeIndex;
                                     return (
@@ -305,10 +313,10 @@ export function CommandPalette({ access, canAct }: { access: NavAccess; canAct: 
                         ))}
                     </div>
                     <div className="hidden items-center gap-4 border-t border-border px-4 py-2.5 text-[11px] text-muted-foreground sm:flex">
-                        <span className="inline-flex items-center gap-1.5"><kbd className="rounded border border-border px-1 font-mono">↑</kbd><kbd className="rounded border border-border px-1 font-mono">↓</kbd>move</span>
-                        <span className="inline-flex items-center gap-1.5"><kbd className="rounded border border-border px-1 font-mono">↵</kbd>open</span>
+                        <span className="inline-flex items-center gap-1.5"><kbd className="rounded border border-border px-1 font-mono">↑</kbd><kbd className="rounded border border-border px-1 font-mono">↓</kbd>{t("move")}</span>
+                        <span className="inline-flex items-center gap-1.5"><kbd className="rounded border border-border px-1 font-mono">↵</kbd>{t("open")}</span>
                         <button type="button" onClick={() => { onOpenChange(false); setSheetOpen(true); }} className="ml-auto inline-flex items-center gap-1.5 rounded-md hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400">
-                            <IconKeyboard className="h-3.5 w-3.5" />All shortcuts<kbd className="rounded border border-border px-1 font-mono">?</kbd>
+                            <IconKeyboard className="h-3.5 w-3.5" />{t("allShortcuts")}<kbd className="rounded border border-border px-1 font-mono">?</kbd>
                         </button>
                     </div>
                 </DialogContent>
@@ -328,25 +336,28 @@ function Keys({ keys }: { keys: string[] }) {
     );
 }
 
+type ChordKey = "h" | "i" | "m" | "p" | "t" | "a";
+
 function ShortcutSheet({ open, onOpenChange }: { open: boolean; onOpenChange: (open: boolean) => void }) {
+    const t = useTranslations("shell.shortcuts");
     const mod = isMac() ? "⌘" : "Ctrl";
     const rows: { label: string; keys: string[] }[] = [
-        { label: "Open the command palette", keys: [mod, "K"] },
-        { label: "Show this sheet", keys: ["?"] },
-        ...Object.values(GO_CHORDS).map((c, i) => ({ label: `Go to ${c.label}`, keys: ["g", Object.keys(GO_CHORDS)[i]] })),
+        { label: t("openPalette"), keys: [mod, "K"] },
+        { label: t("showSheet"), keys: ["?"] },
+        ...Object.keys(GO_CHORDS).map((key) => ({ label: t(`goTo.${key as ChordKey}`), keys: ["g", key] })),
     ];
     const inbox: { label: string; keys: string[] }[] = [
-        { label: "Next or previous item", keys: ["j", "k"] },
-        { label: "Open the item", keys: ["Enter"] },
-        { label: "Approve", keys: ["a"] },
-        { label: "Reject with a note", keys: ["r"] },
+        { label: t("nextOrPrevious"), keys: ["j", "k"] },
+        { label: t("openItem"), keys: ["Enter"] },
+        { label: t("approve"), keys: ["a"] },
+        { label: t("rejectWithNote"), keys: ["r"] },
     ];
     return (
         <Dialog open={open} onOpenChange={onOpenChange}>
             <DialogContent className="max-h-[85dvh] overflow-y-auto border-border bg-popover text-foreground sm:max-w-md dark:bg-zinc-950/95">
-                <DialogTitle className="flex items-center gap-2 text-foreground"><IconCommand className="h-5 w-5 text-primary" />Keyboard shortcuts</DialogTitle>
-                <DialogDescription className="text-muted-foreground">Single keys work anywhere you are not typing.</DialogDescription>
-                {[{ title: "Everywhere", rows }, { title: "In the inbox", rows: inbox }].map((section) => (
+                <DialogTitle className="flex items-center gap-2 text-foreground"><IconCommand className="h-5 w-5 text-primary" />{t("title")}</DialogTitle>
+                <DialogDescription className="text-muted-foreground">{t("description")}</DialogDescription>
+                {[{ title: t("everywhere"), rows }, { title: t("inInbox"), rows: inbox }].map((section) => (
                     <section key={section.title}>
                         <h3 className="mb-1.5 text-[11px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">{section.title}</h3>
                         <ul className="divide-y divide-border/60 rounded-xl border border-border">
