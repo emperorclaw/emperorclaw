@@ -111,9 +111,9 @@ test("commands: the DB allowlist matches the code allowlist", () => {
     assert.deepEqual([...RUNTIME_HOST_JOB_STATUSES].sort(), [...JOB_STATUSES].sort());
 });
 
-test("commands: 0.21 queues only restart_agent and refresh_inventory", () => {
-    assert.deepEqual([...ENABLED_HOST_COMMANDS].sort(), ["refresh_inventory", "restart_agent"]);
-    for (const command of ["provision_agent", "update_runtime", "remove_agent", "rotate_agent_token", "disconnect"]) {
+test("commands: 0.22 queues restart, refresh, provision and remove only", () => {
+    assert.deepEqual([...ENABLED_HOST_COMMANDS].sort(), ["provision_agent", "refresh_inventory", "remove_agent", "restart_agent"]);
+    for (const command of ["update_runtime", "rotate_agent_token", "disconnect"]) {
         const plan = planHostCommand(command, {});
         assert.equal(plan.ok, false, `${command} is refused`);
         assert.match((plan as { error: string }).error, /not available/);

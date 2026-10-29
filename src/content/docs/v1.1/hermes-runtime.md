@@ -38,7 +38,7 @@ Requirements: Linux with systemd, `curl`, `git`, `tar`, `python3`, and a user ac
 
    ```bash
    mkdir -p ~/.local/bin
-   curl -fsSL https://github.com/emperorclaw/emperorclaw/releases/download/v0.21.0/emperor-hermes.sh -o ~/.local/bin/emperor-hermes
+   curl -fsSL https://github.com/emperorclaw/emperorclaw/releases/download/v0.22.0/emperor-hermes.sh -o ~/.local/bin/emperor-hermes
    chmod +x ~/.local/bin/emperor-hermes
    ```
 
@@ -139,6 +139,27 @@ Connecting the machine lets Emperor show it under **Settings → Runtime hosts**
 Use https. Plain `http://` is accepted only for `localhost` or a private IP address written as numbers (10.x, 172.16-31.x, 192.168.x, 127.x); anything else needs `--insecure`, because the host key would travel unencrypted.
 
 The host key is separate from the agents' tokens and works only for the host connection. Revoking the host in Emperor disconnects it at once; the daemon stops and does not restart. On a shared gateway (one Hermes for every agent, typical on a Raspberry Pi), restarting the gateway restarts all its agents, so Emperor waits until they are idle unless you choose otherwise.
+
+### Hire an agent on a host
+
+With a connected host (host daemon 0.22 or later), owners and admins hire agents onto it from Emperor; nothing has to be typed on the machine.
+
+1. **Agents → Hire Agent**, pick a role and **Hermes**, then **Another machine**.
+2. Pick the host. Each one shows its free memory against what a new agent needs, whether a browser is installed and how many agents it runs. A host that is offline, short of memory, without a model provider key, or still on the 0.21 daemon ("Update this host to hire here") cannot be picked.
+3. Choose the model provider (only the providers that host has a key for) and the model (the provider's default is filled in), and who can use the agent.
+4. **Hire and set up** shows the setup live until the agent is online, with a link to chat with it.
+
+What happens on the host:
+
+- The profile name comes from the agent's name (`Growth Hacker` becomes `growth-hacker`, `growth-hacker-2` if taken). An existing profile that belongs to another agent is never touched; one that already belongs to this agent is set up again (that is what **Retry** does).
+- `hermes profile create <p> --clone-from default` copies the default home's settings and skills. The profile `.env` is then written by the host daemon: the Emperor address comes only from the host's own `hostd.env`, the agent's token is minted by Emperor for this one job (it is bound to the agent and never stored by Emperor), and the model provider's API key line is copied from `~/.hermes/.env` (or else from another profile on the same machine). Keys never travel through Emperor. Without a key for the chosen provider the setup stops with "No `<provider>` API key on this host; add it to `~/.hermes/.env`".
+- The model is set with `hermes -p <p> config set model.provider` and `model.default`, then `emperor-hermes install --profile <p> --non-interactive` installs the plugin and units on the host's topology: standalone, or the shared gateway when all its agents share one (adding an agent there restarts the shared gateway). The setup ends when the bridge has registered with Emperor (at most two minutes after the install).
+
+If the setup fails, the agent's page says **Setup failed** with the reason and offers **Retry** (a new token; the earlier ones are revoked) or **Remove**. A profile a failed setup left half made is finished by Retry and deleted by Remove (the host daemon records which agent it created it for). When the agent does not register in time (two minutes, five on a Raspberry Pi or a machine with less than 6 GB of RAM), its standalone gateway and bridge are stopped until you retry.
+
+### Remove an agent from a host
+
+Deleting an agent that runs on a host (its page, or its row under **Settings → Runtime hosts**) offers **Also remove it from `<host>`**, on by default for owners and admins. The agent is deleted in Emperor and its tokens are revoked at once, so it can no longer act. Then the host runs `emperor-hermes remove --profile <p> --purge --yes`, only after checking that the profile's `.env` names that same agent. When the host is offline the removal waits until it is back (the host card lists it under **Pending removals**); revoking the host cancels it. A host still on the 0.21 daemon keeps the removal pending until it is updated. A removal that fails stays on the host card with **Retry removal** and **Dismiss**; a pending one can be canceled there (its profile then stays on the machine). Revoking a host with removals pending lists the profiles left on it. Without the option, or for an agent with no host link, the profile stays on the machine: remove it there with `emperor-hermes remove --profile <p>`.
 
 ## The Emperor Hermes Plugin
 
@@ -326,7 +347,7 @@ I need to connect a Hermes agent to Emperor Claw, an open-source AI workforce co
 
 Repository & docs: https://github.com/emperorclaw/emperorclaw
 Hermes runtime docs: docs/v1.1/hermes-runtime.md in that repository
-Installer: https://github.com/emperorclaw/emperorclaw/releases/download/v0.21.0/emperor-hermes.sh
+Installer: https://github.com/emperorclaw/emperorclaw/releases/download/v0.22.0/emperor-hermes.sh
 
 My agent role is: [DESCRIBE YOUR AGENT'S ROLE HERE, e.g. "SEO Specialist"]
 

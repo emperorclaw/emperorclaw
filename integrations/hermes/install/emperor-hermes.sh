@@ -16,7 +16,7 @@
 set -Eeuo pipefail
 umask 077
 
-readonly EMPEROR_HERMES_VERSION="0.21.0"
+readonly EMPEROR_HERMES_VERSION="0.22.0"
 readonly HERMES_REF="v0.22.4"
 readonly HERMES_SHA="4d04303818b61bf3aa09278af48356315515965b"
 readonly HERMES_CODE_VERSION="${HERMES_REF#v}"
@@ -747,8 +747,26 @@ host_state() { env_get "$HOST_STATE" "$1"; }
 
 sha256_of() { sha256sum "$1" | awk '{print $1}'; }
 
+tree_hash() { # dir -> one sha256 over every file's path and content (Python caches and our own stamps excluded)
+    (cd "$1" && find . -type f ! -name bundle.sha256 ! -name .unpacked ! -name '*.pyc' ! -path '*/__pycache__/*' -print0 |
+        LC_ALL=C sort -z | xargs -0 -r sha256sum | sha256sum | awk '{print $1}')
+}
+
+unpacked_intact() { # release dir -> 0 when its files are exactly what was unpacked (stamp written after the copy)
+    [ -s "$1/.unpacked" ] && [ "$(tree_hash "$1")" = "$(cat "$1/.unpacked")" ]
+}
+
 install_bundle() { # -> prints nothing; sets `current`
     local ver=${OPT_VERSION:-$EMPEROR_HERMES_VERSION} src=${OPT_BUNDLE:-} work tarball expected="" actual top dest prev
+    if [ -z "$src" ] && { [ "$CMD" = install ] || [ "$CMD" = host ]; } && [ "$(bridge_version)" = "$ver" ] &&
+        [ -s "$BRIDGE_ROOT/releases/$ver/bundle.sha256" ] && unpacked_intact "$BRIDGE_ROOT/releases/$ver"; then
+        # Installing one more profile (or connecting the host) on a machine that already runs this
+        # bundle, unchanged since it was verified and unpacked: no download. `update` always fetches
+        # and verifies again.
+        log "  bridge $ver already installed"
+        env_set "$HOST_STATE" bridge_version "$ver"
+        return 0
+    fi
     if [ -z "$src" ]; then src="$RELEASE_BASE/v$ver/emperor-hermes-bridge-$ver.tar.gz"; fi
     ensure_tmp
     work="$TMP_ROOT/bundle"
@@ -778,12 +796,13 @@ install_bundle() { # -> prints nothing; sets `current`
     if [ ! -d "$top/plugin/emperor-claw" ] || [ ! -d "$top/systemd" ]; then die "bundle $ver is incomplete"; fi
     dest="$BRIDGE_ROOT/releases/$ver"
     mkdir -p "$BRIDGE_ROOT/releases"
-    if [ -f "$dest/bundle.sha256" ] && [ "$(cat "$dest/bundle.sha256")" = "$actual" ]; then
+    if [ -f "$dest/bundle.sha256" ] && [ "$(cat "$dest/bundle.sha256")" = "$actual" ] && unpacked_intact "$dest"; then
         log "  bridge $ver already unpacked"
     else
         rm -rf "$dest.tmp"
         cp -R "$top" "$dest.tmp"
         printf '%s\n' "$actual" >"$dest.tmp/bundle.sha256"
+        tree_hash "$dest.tmp" >"$dest.tmp/.unpacked"
         rm -rf "$dest"
         mv "$dest.tmp" "$dest"
         log "  bridge $ver unpacked to $dest"

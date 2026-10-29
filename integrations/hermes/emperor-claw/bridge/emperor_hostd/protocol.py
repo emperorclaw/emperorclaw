@@ -160,7 +160,8 @@ def progress(job_id: str, seq: int, line: str, step: Optional[str] = None) -> di
 
 
 def result(job_id: str, ok: bool, exit_code: Optional[int], summary: str, log_tail: str = "",
-           error_code: Optional[str] = None, units: Optional[list[str]] = None) -> dict[str, Any]:
+           error_code: Optional[str] = None, units: Optional[list[str]] = None,
+           token_sha256: Optional[str] = None) -> dict[str, Any]:
     # The whole frame must stay under the server's 32 KiB limit for non-inventory frames:
     # an 8 KiB budget for the tail's JSON encoding, the rest is small and bounded.
     frame: dict[str, Any] = {"type": "result", "jobId": job_id, "ok": ok, "exitCode": exit_code,
@@ -169,4 +170,7 @@ def result(job_id: str, ok: bool, exit_code: Optional[int], summary: str, log_ta
         frame["errorCode"] = error_code[:80]
     if units:
         frame["units"] = list(units)[:20]
+    if token_sha256 and re.fullmatch(r"[0-9a-f]{64}", token_sha256):
+        # Which minted token the new profile holds (Emperor keeps that one, revokes any other).
+        frame["tokenSha256"] = token_sha256
     return frame

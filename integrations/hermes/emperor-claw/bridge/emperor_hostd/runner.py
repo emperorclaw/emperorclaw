@@ -176,12 +176,19 @@ class SystemdExecutor:
         except (OSError, subprocess.SubprocessError) as exc:
             return subprocess.CompletedProcess(argv, 127, "", str(exc))
 
-    def start(self, unit: str, argv: Sequence[str], log_path: Path, exit_path: Path) -> None:
+    def module_argv(self, module: str, spec_path: Path) -> list[str]:
+        """argv of a job that runs one of the daemon's own modules (same python, same package)."""
+        return [self.python, "-m", module, str(spec_path)]
+
+    def start(self, unit: str, argv: Sequence[str], log_path: Path, exit_path: Path, keep_pythonpath: bool = False) -> None:
+        # The job's own process gets PYTHONPATH only when it is one of our modules: the installer
+        # and systemctl never see the bundle on their path.
+        wrap = [str(exit_path)] + (["--pythonpath", self.pythonpath] if keep_pythonpath else [])
         cmd = [*self.systemd_run, "--user", "--unit", unit, "--collect", "--quiet",
                f"--property=StandardOutput=append:{log_path}", f"--property=StandardError=append:{log_path}",
                f"--working-directory={self.paths.home}", "--setenv=HOSTD_PROGRESS=1",
                f"--setenv=PYTHONPATH={self.pythonpath}", f"--setenv=PATH={self.env.get('PATH', '/usr/bin:/bin')}",
-               "--", self.python, "-m", "emperor_hostd.jobwrap", str(exit_path), "--", *argv]
+               "--", self.python, "-m", "emperor_hostd.jobwrap", *wrap, "--", *argv]
         proc = self._run(cmd)
         if proc.returncode != 0:
             raise RunnerError((proc.stderr or proc.stdout or f"systemd-run exited {proc.returncode}").strip()[:300])
@@ -210,19 +217,37 @@ class JobRunner:
         return running[0] if running else None
 
     def start(self, job_id: str, plan: Plan, deadline_sec: int) -> dict[str, Any]:
-        """Persist the job first (so a crash right after still knows it), then start its unit."""
+        """Persist the job first (so a crash right after still knows it), then start its unit.
+
+        A module job gets its arguments in ``<jobId>.spec`` (0600; it may hold a token): the module
+        deletes it as soon as it read it, and it is deleted here when the job ends or cannot start."""
         job = {"jobId": job_id, "command": plan.command, "args": {k: v for k, v in plan.args.items() if "token" not in k.lower()},
                "summary": plan.summary, "units": list(plan.units), "unit": unit_name(job_id), "state": "running",
                "startedAt": self.now(), "deadlineSec": int(deadline_sec), "lastSeq": 0, "logOffset": 0, "recent": []}
+        if plan.token_sha256:
+            job["tokenSha256"] = plan.token_sha256
+        if plan.exit_reasons:
+            job["exitReasons"] = {str(code): reason for code, reason in plan.exit_reasons}
         self.store.save(job)
         log_path = self.store.path(job_id, "log")
         fd = os.open(str(log_path), os.O_WRONLY | os.O_CREAT | os.O_APPEND, 0o600)
         os.close(fd)
+        argv = list(plan.argv or [])
         try:
-            self.executor.start(job["unit"], plan.argv or [], log_path, self.store.path(job_id, "exit"))
-        except RunnerError as exc:
+            if plan.module:
+                spec_path = self.store.path(job_id, "spec")
+                _write_private(spec_path, json.dumps({**(plan.secret_spec or {}), "jobId": job_id}, sort_keys=True))
+                argv = self.executor.module_argv(plan.module, spec_path)
+            self.executor.start(job["unit"], argv, log_path, self.store.path(job_id, "exit"), keep_pythonpath=bool(plan.module))
+        except (RunnerError, OSError) as exc:
             self.finish(job, ok=False, exit_code=None, error_code="start_failed", summary=f"could not start: {exc}")
         return job
+
+    def _drop_spec(self, job_id: str) -> None:
+        try:
+            self.store.path(job_id, "spec").unlink()
+        except OSError:
+            pass
 
     def finish_inline(self, job_id: str, plan: Plan, ok: bool = True) -> dict[str, Any]:
         """A command answered in-process (refresh_inventory): stored done right away."""
@@ -236,7 +261,11 @@ class JobRunner:
         job["finishedAt"] = self.now()
         job["result"] = {"ok": ok, "exitCode": exit_code, "errorCode": error_code, "summary": self.redactor.text(summary)[:500],
                          "logTail": self.redactor.text(clip_tail(self._tail_text(job["jobId"]))), "units": job.get("units") or []}
+        if ok and job.get("tokenSha256"):
+            job["result"]["tokenSha256"] = job["tokenSha256"]
         self.store.save(job)
+        # A spec the job never read (it crashed or never started) must not outlive it.
+        self._drop_spec(job["jobId"])
         self._inactive_polls.pop(job["jobId"], None)
         return job
 
@@ -246,7 +275,7 @@ class JobRunner:
                           "", "corrupt_state")
         r = job.get("result") or {}
         return result(job["jobId"], bool(r.get("ok")), r.get("exitCode"), str(r.get("summary") or ""), str(r.get("logTail") or ""),
-                      r.get("errorCode"), r.get("units") or None)
+                      r.get("errorCode"), r.get("units") or None, r.get("tokenSha256"))
 
     def _tail_text(self, job_id: str, limit: int = TAIL_BYTES) -> str:
         """The end of a job log only (logs can be large)."""
@@ -335,7 +364,9 @@ class JobRunner:
                 done = self.finish(job, ok=True, exit_code=code, error_code=None,
                                    summary=f"{label}: restarted, but the gateway was not ready in time (exit {code}); check emperor-hermes status")
             else:
-                done = self.finish(job, ok=False, exit_code=code, error_code=f"exit_{code}", summary=f"{label}: failed (exit {code})")
+                reason = (job.get("exitReasons") or {}).get(str(code))
+                done = self.finish(job, ok=False, exit_code=code, error_code=f"exit_{code}",
+                                   summary=f"{label}: failed: {reason} (exit {code})" if reason else f"{label}: failed (exit {code})")
             return frames, self.result_frame(done), offset, seq
         if self.now() > float(job.get("startedAt", 0)) + int(job.get("deadlineSec", 300)) + DEADLINE_GRACE_SEC:
             if job.get("unit"):

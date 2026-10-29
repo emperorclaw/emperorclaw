@@ -13,6 +13,8 @@ import { lengthError, NAME_MAX } from "@/lib/input-limits";
 import { memberAgentCondition } from "@/lib/member-scope";
 import { agentsNotUsableBy, applyHireAccess, ownerNames, usableAgentCondition } from "@/lib/agent-access-server";
 import { canAdmin } from "@/lib/role-matrix";
+import { HostJobError, checkHostedHire, queueAgentProvision, type HostedHireChoice } from "@/lib/runtime-hosts/agent-jobs";
+import { deleteAgentAndData } from "@/lib/agent-deletion";
 
 export const dynamic = "force-dynamic";
 
@@ -70,8 +72,13 @@ export async function POST(req: NextRequest) {
             return NextResponse.json({ error: "avatarAppearance is not a valid character appearance" }, { status: 400 });
         }
         const concurrencyLimit = Math.max(1, Number(body.concurrencyLimit) || 1);
-        const provider = typeof body.provider === "string" ? body.provider : "mcp";
-        const deploymentMode = typeof body.deploymentMode === "string" && body.deploymentMode === "local"
+        // On a runtime host (0.22): Emperor sets the agent up there (Hermes, remote).
+        const onHost = body.runtimeHostId !== undefined && body.runtimeHostId !== null && body.runtimeHostId !== "";
+        if (onHost && !canAdmin(access.ctx.role)) {
+            return NextResponse.json({ error: "Only owners and admins can set up an agent on a host" }, { status: 403 });
+        }
+        const provider = onHost ? "hermes" : typeof body.provider === "string" ? body.provider : "mcp";
+        const deploymentMode = !onHost && typeof body.deploymentMode === "string" && body.deploymentMode === "local"
             ? "local"
             : "remote";
         if (deploymentMode === "local" && provider !== "hermes") {
@@ -98,6 +105,18 @@ export async function POST(req: NextRequest) {
         const nameTooLong = lengthError("name", name, NAME_MAX);
         if (nameTooLong) return NextResponse.json({ error: nameTooLong }, { status: 400 });
 
+        let hosted: HostedHireChoice | null = null;
+        if (onHost) {
+            try {
+                hosted = await checkHostedHire(companyId, {
+                    runtimeHostId: body.runtimeHostId, llmProvider: body.llmProvider, model: body.model ?? body.llmModel, name,
+                });
+            } catch (error) {
+                if (error instanceof HostJobError) return NextResponse.json({ error: error.message }, { status: error.status });
+                throw error;
+            }
+        }
+
         const llmApiKey = typeof body.llmApiKey === "string" ? body.llmApiKey.trim() : "";
         let llmApiKeyEncrypted: string | null = null;
         let llmApiKeyVersion: string | null = null;
@@ -114,12 +133,14 @@ export async function POST(req: NextRequest) {
         }
 
         const pricing = await db.select({ provider: llmPricing.provider, model: llmPricing.model }).from(llmPricing);
-        const llmConfiguration = resolveAgentModelConfiguration({
-            current: { llmProvider: null, llmModel: null },
-            provider: requestedLlmProvider,
-            model: requestedLlmModel,
-            pricing,
-        });
+        const llmConfiguration = hosted
+            ? { llmProvider: hosted.llmProvider, llmModel: hosted.model }
+            : resolveAgentModelConfiguration({
+                current: { llmProvider: null, llmModel: null },
+                provider: requestedLlmProvider,
+                model: requestedLlmModel,
+                pricing,
+            });
 
         const legacyAppearance = legacyAvatarToAppearance(avatarUrl);
         const avatarAppearance = requestedAppearance ?? legacyAppearance ?? null;
@@ -163,11 +184,33 @@ export async function POST(req: NextRequest) {
             });
         }
 
+        // On a host: queue its setup there (idempotency key = the agent id). When that fails the hire is
+        // undone (the agent is deleted again), so nothing is left half linked: the admin just hires again.
+        let hostJob: { jobId: string; hostId: string; hostName: string } | null = null;
+        if (hosted) {
+            try {
+                const job = await queueAgentProvision({
+                    companyId, userId: access.ctx.userId, agent: { id: agent.id, name: agent.name }, choice: hosted, idempotencyKey: agent.id,
+                });
+                hostJob = { jobId: job.id, hostId: hosted.host.id, hostName: hosted.host.name };
+            } catch (error) {
+                console.error("Hosted hire: queueing the setup failed:", error);
+                await deleteAgentAndData({ companyId, agentId: agent.id, actorType: "system", actorId: null }).catch(() => null);
+                const message = error instanceof Error ? error.message : "Could not queue the setup on the host";
+                return NextResponse.json({ error: `Could not set ${agent.name} up on ${hosted.host.name}: ${message}` },
+                    { status: error instanceof HostJobError ? error.status : 500 });
+            }
+        }
+
         const { llmApiKeyEncrypted: _redactedEncrypted, llmApiKeyVersion: _redactedVersion, ...safeAgent } = agent;
         void _redactedEncrypted;
         void _redactedVersion;
 
-        return NextResponse.json({ agent: safeAgent, ...(accessError ? { accessError } : {}) }, { status: 201 });
+        return NextResponse.json({
+            agent: safeAgent,
+            ...(accessError ? { accessError } : {}),
+            ...(hostJob ? { jobId: hostJob.jobId, runtimeHost: { id: hostJob.hostId, name: hostJob.hostName } } : {}),
+        }, { status: 201 });
     } catch (error: unknown) {
         console.error("Agent create error:", error);
         const message = error instanceof Error ? error.message : "Internal Server Error";

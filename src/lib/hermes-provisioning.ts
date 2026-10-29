@@ -1,9 +1,9 @@
-import crypto from "crypto";
 import fs from "fs";
-import { and, eq, isNotNull, isNull, like, ne, sql } from "drizzle-orm";
+import { and, eq, isNotNull, isNull, sql } from "drizzle-orm";
 import pkg from "@/../package.json" assert { type: "json" };
 import { db } from "@/db";
-import { agents, companyTokens } from "@/db/schema";
+import { agents } from "@/db/schema";
+import { LOCAL_SETUP_TOKEN_SUFFIX, mintAgentRuntimeToken, revokeAgentRuntimeTokens } from "@/lib/agent-runtime-tokens";
 import { decryptSecretPayload } from "@/lib/secrets";
 import { CUSTOM_LLM_PROVIDER, DOCKER_HOST_ALIAS, llmEndpointHost, parseLlmSecret } from "@/lib/llm-endpoint";
 import type { RuntimeSetupRecord } from "@/lib/runtime-setup";
@@ -90,25 +90,14 @@ type AgentRow = typeof agents.$inferSelect;
 // Role doctrine for the bridge (env at start; read live by newer bridges).
 export { buildAgentInstructions };
 
-const SETUP_TOKEN_SUFFIX = "-local-setup";
-
 /**
  * Factors out the token-mint-and-store logic previously inlined in
  * setup-local/route.ts: a raw bearer token handed to the agent runtime, only
- * its sha256 hash is ever persisted.
+ * its sha256 hash is ever persisted (lib/agent-runtime-tokens.ts).
  */
 export async function mintAgentSetupToken(companyId: string, safeName: string, agentId?: string | null): Promise<{ rawToken: string; tokenHash: string }> {
-    const rawToken = `ec_${crypto.randomBytes(24).toString("hex")}`;
-    const tokenHash = crypto.createHash("sha256").update(rawToken).digest("hex");
-    await db.insert(companyTokens).values({
-        companyId,
-        // Bind the runtime token to its agent so it cannot act as a sibling.
-        agentId: agentId || null,
-        tokenHash,
-        name: `${safeName}${SETUP_TOKEN_SUFFIX}`,
-        scope: "mcp_full",
-    });
-    return { rawToken, tokenHash };
+    // Bind the runtime token to its agent so it cannot act as a sibling.
+    return mintAgentRuntimeToken({ companyId, agentId: agentId || null, name: `${safeName}${LOCAL_SETUP_TOKEN_SUFFIX}` });
 }
 
 /**
@@ -122,18 +111,7 @@ export async function revokeAgentSetupTokens(
     agentId: string,
     opts: { keepTokenHash?: string; onlyTokenHash?: string } = {},
 ): Promise<number> {
-    const conditions = [
-        eq(companyTokens.agentId, agentId),
-        like(companyTokens.name, `%${SETUP_TOKEN_SUFFIX}`),
-        isNull(companyTokens.revokedAt),
-    ];
-    if (opts.keepTokenHash) conditions.push(ne(companyTokens.tokenHash, opts.keepTokenHash));
-    if (opts.onlyTokenHash) conditions.push(eq(companyTokens.tokenHash, opts.onlyTokenHash));
-    const revoked = await db.update(companyTokens)
-        .set({ revokedAt: new Date() })
-        .where(and(...conditions))
-        .returning({ id: companyTokens.id });
-    return revoked.length;
+    return revokeAgentRuntimeTokens(agentId, { nameLike: `%${LOCAL_SETUP_TOKEN_SUFFIX}`, ...opts });
 }
 
 export type ProvisionHermesContainerInput = {

@@ -307,7 +307,7 @@ maybe("socket: hello, welcome, inventory adoption (cross-company refused), resta
         const welcome = await host.waitFor(() => host.frames.find((f) => f.type === "welcome"));
         assert.equal(welcome.hostId, hostId);
         assert.equal(welcome.heartbeatSec, 30);
-        assert.equal(welcome.bridge.latest, "0.21.0");
+        assert.equal(welcome.bridge.latest, "0.22.0");
         host.send(inventory(s));
         host.send({ type: "heartbeat", memAvailMiB: 19000, load1: 0.3, activeJobId: null });
 

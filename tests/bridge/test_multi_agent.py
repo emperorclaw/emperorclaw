@@ -117,7 +117,7 @@ class MultiAgentTests(unittest.TestCase):
         self.assertEqual((a.identity.agent_id, b.identity.agent_id), ("agent-a", "agent-b"))
         for rt in (a, b):
             health = json.loads(rt.cfg.health_path.read_text())
-            self.assertEqual((health["agentId"], health["bridgeVersion"]), (rt.identity.agent_id, "0.21.0"))
+            self.assertEqual((health["agentId"], health["bridgeVersion"]), (rt.identity.agent_id, "0.22.0"))
 
     def test_runtime_id_is_stable_across_restarts(self):
         fleet = Fleet(self.tmp.name, {"a": "tok"})
@@ -146,7 +146,7 @@ class MultiAgentTests(unittest.TestCase):
         health = json.loads(rt.cfg.health_path.read_text())
         self.assertEqual(health["duplicateRuntime"], {"runtimeId": "other"})
         body = [c[2] for c in rt.client.calls if c[1] == "/runtime/register"][0]
-        self.assertEqual((body["bridgeVersion"], body["gatewayTopology"], body["agentId"]), ("0.21.0", "standalone", "agent-a"))
+        self.assertEqual((body["bridgeVersion"], body["gatewayTopology"], body["agentId"]), ("0.22.0", "standalone", "agent-a"))
 
     def test_shared_host_refused_when_companies_differ(self):
         fleet = Fleet(self.tmp.name, {"a": "t1", "b": "t2"}, topology="shared")

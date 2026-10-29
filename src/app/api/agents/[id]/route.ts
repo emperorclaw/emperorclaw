@@ -30,6 +30,9 @@ import type { AgentUse } from "@/lib/agent-access";
 import { canAdmin } from "@/lib/role-matrix";
 import { humanActor, recordAgentChange } from "@/lib/audit";
 import { PROVIDER_TROUBLE_RUNS, providerTroubleFromRuns } from "@/lib/provider-trouble";
+import { HostJobError, provisionStateFor, queueAgentRemoval, type HostRemoval } from "@/lib/runtime-hosts/agent-jobs";
+import { hostCommandsFrom } from "@/lib/runtime-hosts/commands";
+import { cancelQueuedJobsForAgent } from "@/lib/runtime-hosts/store";
 
 function redactAgent<T extends { llmApiKeyEncrypted?: unknown; llmApiKeyVersion?: unknown }>(agent: T) {
     const { llmApiKeyEncrypted: _e, llmApiKeyVersion: _v, ...safe } = agent;
@@ -390,6 +393,9 @@ export async function GET(
             .from(runtimeHosts).where(and(eq(runtimeHosts.id, agent.runtimeHostId), eq(runtimeHosts.companyId, companyId), isNull(runtimeHosts.revokedAt))).limit(1)
         : [];
     const hostProfiles = ((runtimeHost?.inventoryJson as { profiles?: { profile?: string; topology?: string }[] } | null)?.profiles) ?? [];
+    // Its setup on a host (0.22): the latest provision job, for "Setting up" / "Setup failed — Retry / Remove".
+    // Also when a revoke or re-pair cleared the host link: a failed setup still offers Retry / Remove.
+    const provisioning = await provisionStateFor(companyId, id).catch(() => null);
 
     return NextResponse.json({
         agent: redactAgent(agent),
@@ -407,7 +413,9 @@ export async function GET(
                 return reported === "shared" || reported === "standalone" ? reported : "unknown";
             })(),
             sharedAgents: hostProfiles.filter((p) => p.topology === "shared").length,
+            commands: hostCommandsFrom((runtimeHost.inventoryJson as { commands?: unknown } | null)?.commands),
         } : null,
+        provisioning,
         directChatMode: await getDirectChatMode(companyId),
         latestSnapshot,
         memoryEntries,
@@ -439,6 +447,8 @@ export async function DELETE(
     }
     const body = await req.json().catch(() => ({}));
     const confirmName = typeof body.confirmName === "string" ? body.confirmName.trim() : "";
+    // On a runtime host (0.22): also remove its profile there (default on). Owners/admins only.
+    const removeFromHost = body.removeFromHost !== false;
 
     let deleted;
     try {
@@ -461,9 +471,25 @@ export async function DELETE(
     }
 
     const { agent: deletedAgent, cleanup } = deleted;
+    // Deleted and its tokens revoked (it can no longer act). Nothing more runs for it on a host;
+    // its profile there is removed by a job that waits for the host however long it is away.
+    let hostRemoval: HostRemoval = { status: "not_on_host" };
+    try {
+        await cancelQueuedJobsForAgent(companyId, id, "the agent was deleted");
+        if (deletedAgent.runtimeHostId && deletedAgent.runtimeProfile) {
+            if (!removeFromHost) hostRemoval = { status: "skipped" };
+            else if (!canAdmin(access.ctx.role)) hostRemoval = { status: "admin_required" };
+            else hostRemoval = await queueAgentRemoval({ companyId, userId, agent: deletedAgent });
+        }
+    } catch (error) {
+        console.error("Agent delete: host cleanup failed:", error);
+        if (error instanceof HostJobError) cleanup.warnings.push(`Could not queue the removal on its host: ${error.message}`);
+        else cleanup.warnings.push("Could not queue the removal on its host");
+    }
     return NextResponse.json({
         message: `Agent ${deletedAgent.name} deleted.`,
         agent: { id: deletedAgent.id, name: deletedAgent.name },
         cleanup,
+        hostRemoval,
     });
 }

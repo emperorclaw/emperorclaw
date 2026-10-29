@@ -15,6 +15,9 @@ import { getAgentTemplate } from "@/lib/agent-templates";
 import { TEAM_TEMPLATES, DEFAULT_AGENT_NAMES, type TeamTemplateId } from "@/lib/onboarding-shared";
 import { cn } from "@/lib/utils";
 import { CUSTOM_LLM_PROVIDER, normalizeLlmBaseUrl } from "@/lib/llm-endpoint";
+import { useHireHosts, type HostChoice } from "@/components/runtime-hosts/host-picker";
+import { JobProgress } from "@/components/runtime-hosts/job-progress";
+import { DEFAULT_HOST_MODEL, isHostLlmProvider, isValidHostModel } from "@/lib/runtime-hosts/commands";
 
 // Matches MAX_EASY_SETUP_AGENTS in src/app/api/agents/easy-setup/route.ts — kept
 // as a local constant (not imported) so this client component doesn't pull in
@@ -57,6 +60,8 @@ type AgentBatchResult = {
     message: string;
     outputs: SetupOutputEntry[];
     reused?: boolean;
+    /** Set up on a runtime host (0.22): its setup job, followed live. */
+    jobId?: string;
 };
 
 function makeSpec(index: number): AgentSpecState {
@@ -113,6 +118,12 @@ export function EasySetupDialog({
     const [sourceAgentId, setSourceAgentId] = useState("");
     const [whoCanUse, setWhoCanUse] = useState<AgentAccessValue>(EVERYONE_ACCESS);
     const accessPeople = useAccessPeople(open && step === "provider-key");
+    // Runtime hosts (0.22): a connected machine can take the agents instead of this server's Docker.
+    const { hosts } = useHireHosts(open && !localOnly);
+    const [hostTarget, setHostTarget] = useState<HostChoice | null>(null);
+    const [targetTouched, setTargetTouched] = useState(false);
+    const chosenHost = hostTarget ? hosts?.find((h) => h.id === hostTarget.hostId) ?? null : null;
+    const onHost = Boolean(hostTarget && chosenHost);
     const checkAvailability = useCallback(async () => {
         setAvailable(null);
         try {
@@ -131,6 +142,13 @@ export function EasySetupDialog({
         }
     }, []);
     useEffect(() => { if (open) void checkAvailability(); }, [open, checkAvailability]);
+    // Without Docker here, a connected host that can take agents is chosen for you (once).
+    useEffect(() => {
+        if (!hosts || targetTouched || hostTarget || available !== false) return;
+        const ready = hosts.find((h) => h.hire.ok && h.hire.providers.length > 0);
+        if (ready) setHostTarget({ hostId: ready.id, llmProvider: ready.hire.providers[0], model: DEFAULT_HOST_MODEL[ready.hire.providers[0]] });
+    }, [hosts, targetTouched, hostTarget, available]);
+    const pickTarget = (choice: HostChoice | null) => { setTargetTouched(true); setHostTarget(choice); };
 
     const resetForm = () => {
         setStep("count-and-roles");
@@ -151,6 +169,8 @@ export function EasySetupDialog({
         setError(null);
         setResults(null);
         setExpanded({});
+        setHostTarget(null);
+        setTargetTouched(false);
     };
 
     const handleCountChange = (nextCount: number) => {
@@ -217,7 +237,56 @@ export function EasySetupDialog({
         }
     };
 
+    /** On a runtime host: one hire per agent (POST /api/agents with the host); each setup runs there in turn. */
+    const handleCreateOnHost = async (requested: { spec: AgentSpecState; index: number }[]) => {
+        if (!hostTarget || !chosenHost) return;
+        setStep("provisioning");
+        setSubmitting(true);
+        setError(null);
+        try {
+            const returned: AgentBatchResult[] = [];
+            for (const { spec: s } of requested) {
+                const template = s.templateId ? getAgentTemplate(s.templateId) : null;
+                const name = s.name.trim() || s.role;
+                const res = await fetch("/api/agents", {
+                    method: "POST", headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({
+                        name, role: s.role, provider: "hermes", runtimeHostId: hostTarget.hostId, llmProvider: hostTarget.llmProvider,
+                        model: hostTarget.model.trim() || undefined, ...hireAccessBody(whoCanUse),
+                        doctrineJson: template ? { "SOUL.md": template.soul, "AGENTS.md": template.agents, "BOOTSTRAP.md": template.bootstrap, "IDENTITY.md": template.identity } : {},
+                    }),
+                });
+                const data = await res.json().catch(() => ({}));
+                returned.push(res.ok
+                    ? { name, agentId: data.agent?.id ?? null, success: true, message: `Setting up on ${chosenHost.name}. It is online in a few minutes.`, outputs: [], jobId: data.jobId }
+                    : { name, agentId: null, success: false, message: data.error || "Could not hire this agent", outputs: [] });
+            }
+            const batch = specs.map((spec, index) => {
+                const requestedIndex = requested.findIndex(item => item.index === index);
+                return requestedIndex < 0 ? results![index] : returned[requestedIndex];
+            });
+            setResults(batch);
+            setExpanded(Object.fromEntries(batch.map((r, i) => [i, true])));
+            setStep("done");
+            const created = batch.find((r) => r.agentId);
+            if (created?.agentId && !teamTemplateId) onAgentCreated?.(created.agentId);
+            await createTeamChat(batch);
+            router.refresh();
+        } catch (e) {
+            setError(e instanceof Error ? e.message : "Hiring failed");
+            setStep(results?.some(result => result.agentId) ? "done" : "provider-key");
+        } finally {
+            setSubmitting(false);
+        }
+    };
+
     const handleCreate = async () => {
+        if (onHost) {
+            if (submitting) return;
+            const requested = specs.map((spec, index) => ({ spec, index })).filter(({ index }) => !results?.[index]?.agentId);
+            if (requested.length) await handleCreateOnHost(requested);
+            return;
+        }
         if (submitting || available !== true) return;
         // Existing profiles are never recreated when a batch is retried.
         const requested = specs.map((spec, index) => ({ spec, index })).filter(({ index }) => !results?.[index]?.agentId);
@@ -297,6 +366,10 @@ export function EasySetupDialog({
         ? Boolean(baseUrlCheck?.ok) && Boolean(llmModel.trim())
         : Boolean(llmApiKey.trim()));
     const canContinueRoles = specs.every((s) => s.name.trim().length > 0) && (!teamTemplateId || (Boolean(teamName.trim()) && specs.some(spec => spec.id === teamLeadSpecId)));
+    // Where it runs decides what "ready" means: a host needs a provider it has a key for; this server needs Docker and a key.
+    const canRun = onHost ? Boolean(chosenHost?.hire.ok) : available === true;
+    const readyToCreate = onHost ? Boolean(hostTarget?.llmProvider) && (!hostTarget?.model.trim() || isValidHostModel(hostTarget.model.trim())) : connectionReady;
+    const hostOptions = (hosts ?? []).filter((h) => h.status !== "revoked");
 
     return (
         <Dialog open={open} onOpenChange={(o) => { if (submitting || teamBusy) return; setOpen(o); if (!o) resetForm(); }}>
@@ -307,20 +380,24 @@ export function EasySetupDialog({
                 <DialogHeader className="shrink-0">
                     <DialogTitle className="text-foreground">
                         {step === "count-and-roles" && "Hire an agent or a team"}
-                        {step === "provider-key" && "Connect an LLM provider"}
+                        {step === "provider-key" && (onHost ? "Choose the model" : "Connect an LLM provider")}
                         {step === "provisioning" && "Provisioning agents…"}
                         {step === "done" && "Setup results"}
                     </DialogTitle>
                     <DialogDescription className="text-muted-foreground">
-                        {step === "count-and-roles" && "Choose a role or a ready-made team. Emperor installs and connects Hermes on this server."}
-                        {step === "provider-key" && "Your provider runs the model and bills its usage. Emperor encrypts this key and configures the workers for you."}
+                        {step === "count-and-roles" && (onHost
+                            ? `Choose a role or a ready-made team. Emperor sets them up on ${chosenHost?.name}.`
+                            : "Choose a role or a ready-made team. Emperor installs and connects Hermes on this server.")}
+                        {step === "provider-key" && (onHost
+                            ? `The key already on ${chosenHost?.name} is used: it never passes through Emperor.`
+                            : "Your provider runs the model and bills its usage. Emperor encrypts this key and configures the workers for you.")}
                         {step === "provisioning" && "Keep this window open while each worker is installed and started. The first download may take a few minutes."}
                         {step === "done" && "Here's what happened for each agent in this batch."}
                     </DialogDescription>
                 </DialogHeader>
 
                 <div className="min-h-0 flex-1 overflow-y-auto px-1">
-                {step !== "provisioning" && step !== "done" && available !== true && (
+                {step !== "provisioning" && step !== "done" && !onHost && available !== true && (
                     <div className="rounded-lg border border-amber-500/20 px-3 py-2 text-sm text-amber-800 dark:text-amber-200" role="status">
                         {available === null ? "Checking local Hermes setup…" : <>
                             <p>{availabilityReason}</p>
@@ -335,6 +412,31 @@ export function EasySetupDialog({
                 {/* Step: count-and-roles */}
                 {step === "count-and-roles" && (
                     <div className="space-y-4 py-2">
+                        {hostOptions.length > 0 && (
+                            <div className="space-y-2">
+                                <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Where should it run?</p>
+                                <div role="radiogroup" aria-label="Where should it run?" className="grid gap-2 sm:grid-cols-2">
+                                    {hostOptions.map((h) => {
+                                        const active = hostTarget?.hostId === h.id;
+                                        return (
+                                            <button key={h.id} type="button" role="radio" aria-checked={active} disabled={!h.hire.ok}
+                                                onClick={() => h.hire.ok && pickTarget({ hostId: h.id, llmProvider: h.hire.providers[0], model: DEFAULT_HOST_MODEL[h.hire.providers[0]] })}
+                                                className={cn("min-h-14 rounded-lg border p-3 text-left text-sm", !h.hire.ok ? "cursor-not-allowed border-border opacity-60"
+                                                    : active ? "border-primary bg-primary/10" : "border-border hover:bg-muted")}>
+                                                <span className="block font-medium">{h.name}</span>
+                                                <span className="block text-xs text-muted-foreground">{h.hire.ok ? `${h.agents.length} agent${h.agents.length === 1 ? "" : "s"} · ${h.hire.providers.join(", ")}` : h.hire.reason}</span>
+                                            </button>
+                                        );
+                                    })}
+                                    <button type="button" role="radio" aria-checked={!hostTarget} disabled={available !== true} onClick={() => pickTarget(null)}
+                                        className={cn("min-h-14 rounded-lg border p-3 text-left text-sm", available !== true ? "cursor-not-allowed border-border opacity-60"
+                                            : !hostTarget ? "border-primary bg-primary/10" : "border-border hover:bg-muted")}>
+                                        <span className="block font-medium">This server</span>
+                                        <span className="block text-xs text-muted-foreground">{available === true ? "Docker, next to Emperor" : available === null ? "Checking Docker…" : "Docker is not available here"}</span>
+                                    </button>
+                                </div>
+                            </div>
+                        )}
                         <div className="flex gap-2" aria-label="Hiring setup">
                             <Button type="button" variant={!teamTemplateId ? "default" : "outline"} aria-pressed={!teamTemplateId} onClick={() => { if (!teamTemplateId) return; setTeamTemplateId(null); setTeamName(""); setSpecs([makeSpec(0)]); setCount(1); }}>One agent</Button>
                             <Button type="button" variant={teamTemplateId ? "default" : "outline"} aria-pressed={Boolean(teamTemplateId)} onClick={() => { if (!teamTemplateId) chooseTeam("development"); }}>A team</Button>
@@ -415,7 +517,28 @@ export function EasySetupDialog({
                 )}
 
                 {/* Step: provider-key */}
-                {step === "provider-key" && (
+                {step === "provider-key" && onHost && hostTarget && chosenHost && (
+                    <div className="space-y-4 py-2">
+                        <label className="block space-y-1.5 text-sm text-foreground">
+                            Model provider
+                            <select value={hostTarget.llmProvider} className="block w-full rounded-lg border border-border bg-muted p-2"
+                                onChange={(e) => { const next = e.target.value; if (isHostLlmProvider(next)) setHostTarget({ ...hostTarget, llmProvider: next, model: DEFAULT_HOST_MODEL[next] }); }}>
+                                {chosenHost.hire.providers.map((p) => <option key={p} value={p}>{p}</option>)}
+                            </select>
+                            <span className="block text-xs text-muted-foreground">Only the providers {chosenHost.name} has a key for.</span>
+                        </label>
+                        <label className="block space-y-1.5 text-sm text-foreground">
+                            Model
+                            <input value={hostTarget.model} onChange={(e) => setHostTarget({ ...hostTarget, model: e.target.value })} maxLength={128}
+                                placeholder={DEFAULT_HOST_MODEL[hostTarget.llmProvider]} className="block w-full rounded-lg border border-border bg-muted px-3 py-2 text-sm text-foreground" />
+                        </label>
+                        {specs.length > 1 && <p className="text-xs text-muted-foreground">The agents are set up on {chosenHost.name} one after the other.</p>}
+                        <WhoCanUseField value={whoCanUse} onChange={setWhoCanUse} people={accessPeople.people} me={accessPeople.me} />
+                        {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
+                    </div>
+                )}
+
+                {step === "provider-key" && !onHost && (
                     <div className="space-y-4 py-2">
                         {configurations.length > 0 && (
                             <label className="block space-y-2 text-sm text-foreground">
@@ -497,8 +620,8 @@ export function EasySetupDialog({
                 {step === "provisioning" && (
                     <div className="flex flex-col items-center justify-center gap-3 py-10 text-muted-foreground">
                         <div className="h-8 w-8 animate-spin rounded-full border-2 border-zinc-700 border-t-cyan-400" />
-                        <span className="text-sm">Provisioning {specs.length} agent{specs.length === 1 ? "" : "s"}…</span>
-                        <HermesImageProgress active className="w-full max-w-sm" />
+                        <span className="text-sm">{onHost ? `Hiring ${specs.length} agent${specs.length === 1 ? "" : "s"} on ${chosenHost?.name}…` : `Provisioning ${specs.length} agent${specs.length === 1 ? "" : "s"}…`}</span>
+                        {!onHost && <HermesImageProgress active className="w-full max-w-sm" />}
                     </div>
                 )}
 
@@ -529,13 +652,14 @@ export function EasySetupDialog({
                                             "rounded-full px-2 py-0.5 text-xs font-medium",
                                             r.reused && !r.success ? "bg-muted text-muted-foreground" : r.success ? "bg-emerald-500/15 text-emerald-700 dark:text-emerald-300" : "bg-rose-500/15 text-destructive"
                                         )}>
-                                            {r.reused && !r.success ? "Profile retained" : r.success ? "✓ started" : "✕ failed"}
+                                            {r.reused && !r.success ? "Profile retained" : r.jobId ? "setting up" : r.success ? "✓ started" : "✕ failed"}
                                         </span>
                                     </button>
                                     {expanded[i] && (
-                                        <div className="px-3 pb-3 space-y-2">
+                                        <div className="min-w-0 px-3 pb-3 space-y-2">
                                             <p className="text-xs text-muted-foreground">{r.message}</p>
-                                            {r.agentId && !r.success && <Button type="button" variant="outline" disabled={retryingRuntime !== null} onClick={() => void retryRuntime(r.agentId!)}>{retryingRuntime === r.agentId ? "Restarting…" : "Retry runtime"}</Button>}
+                                            {r.jobId && <JobProgress jobId={r.jobId} />}
+                                            {r.agentId && !r.success && !r.jobId && <Button type="button" variant="outline" disabled={retryingRuntime !== null} onClick={() => void retryRuntime(r.agentId!)}>{retryingRuntime === r.agentId ? "Restarting…" : "Retry runtime"}</Button>}
                                             {r.agentId && <Button asChild variant="outline"><Link href={`/agents?agent=${r.agentId}`}>Open agent</Link></Button>}
                                             <SetupOutputLog outputs={r.outputs} />
                                         </div>
@@ -564,15 +688,15 @@ export function EasySetupDialog({
                         </DisabledReason>
                     )}
                     {step === "provider-key" && (
-                        <Button type="button" onClick={handleCreate} disabled={submitting || available !== true || !connectionReady} className="min-h-11">
-                            Create &amp; start {specs.length === 1 ? "agent" : `${specs.length} agents`}
+                        <Button type="button" onClick={handleCreate} disabled={submitting || !canRun || !readyToCreate} className="min-h-11">
+                            {onHost ? `Hire and set up on ${chosenHost?.name}` : <>Create &amp; start {specs.length === 1 ? "agent" : `${specs.length} agents`}</>}
                         </Button>
                     )}
                     {step === "done" && results?.some(result => !result.agentId) && (
                         <Button
                             type="button"
                             onClick={handleCreate}
-                            disabled={submitting || available !== true || !connectionReady}
+                            disabled={submitting || !canRun || !readyToCreate}
                             className="min-h-11"
                         >
                             Retry provisioning

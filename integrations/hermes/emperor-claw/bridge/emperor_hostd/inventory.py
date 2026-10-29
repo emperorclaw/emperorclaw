@@ -18,6 +18,7 @@ from typing import Any, Callable, Optional, Sequence
 
 from emperor_bridge.config import host_fingerprint, read_env_file
 
+from .commands import ENABLED_COMMANDS
 from .config import HostPaths, url_origin
 from .protocol import Redactor
 from .version import HOSTD_VERSION, HOST_PROTOCOL
@@ -102,6 +103,9 @@ def build_hello(paths: HostPaths, jobs: list[dict[str, Any]], fingerprint: Optio
         "os": os_name(),
         "arch": platform.machine()[:40] or None,
         "jobs": jobs,
+        # What this daemon runs (0.22+): Emperor queues nothing else here. A 0.21 daemon sends no
+        # list and is treated as restart_agent + refresh_inventory only.
+        "commands": sorted(ENABLED_COMMANDS),
     }
 
 

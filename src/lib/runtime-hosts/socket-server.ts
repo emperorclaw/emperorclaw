@@ -1,4 +1,4 @@
-// The runtime host socket (/api/hosts/ws, 0.21): one socket per paired host,
+// The runtime host socket (/api/hosts/ws, 0.21+): one socket per paired host,
 // authenticated with the host token (never a company token), carrying real
 // upstream frames (lib/runtime-hosts/protocol.ts). It is NOT a CompanySocket:
 // it never receives mcp_events. server.ts mounts it; the integration tests
@@ -98,12 +98,18 @@ function send(ws: WebSocket, frame: ServerFrame) {
     if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify(frame));
 }
 
-function commandFrame(job: RuntimeHostJobRow): CommandFrame {
+/**
+ * The command frame of a job. `sendArgs` replaces args_json when the job was
+ * just claimed with a freshly minted token (provision_agent); a resend after a
+ * reconnect carries args_json only (the host replays a job it knows, it never
+ * runs it again, so it needs no token).
+ */
+function commandFrame(job: RuntimeHostJobRow, sendArgs: Record<string, unknown> | null = null): CommandFrame {
     return {
         type: "command",
         jobId: job.id,
         command: job.command,
-        args: (job.argsJson ?? {}) as Record<string, unknown>,
+        args: sendArgs ?? (job.argsJson ?? {}) as Record<string, unknown>,
         deadlineSec: isHostCommand(job.command) ? COMMAND_DEADLINE_SEC[job.command] : 300,
     };
 }
@@ -164,8 +170,8 @@ export function createHostSocketServer(options: {
         const ws = socketsFor(hostId).find((s) => s.helloDone && s.readyState === WebSocket.OPEN && !s.upgradeRequired);
         if (!ws) return;
         try {
-            const job = await claimNextJob(hostId);
-            if (job) send(ws, commandFrame(job));
+            const claimed = await claimNextJob(hostId);
+            if (claimed) send(ws, commandFrame(claimed.job, claimed.sendArgs));
         } catch (error) {
             log(`runtime host ${hostId}: dispatch failed`, error);
         }

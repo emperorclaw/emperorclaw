@@ -14,6 +14,7 @@ token) after 15 minutes. An unexpected error in a session is logged and retried,
 from __future__ import annotations
 
 import asyncio
+import dataclasses
 import logging
 import random
 import re
@@ -44,6 +45,8 @@ BACKOFF_MAX_SEC = 60.0
 SLOW_BACKOFF_MAX_SEC = 300.0
 #: A handshake 401 that persists this long ends the daemon (exit 78).
 UNAUTHORIZED_GIVE_UP_SEC = 30 * 60
+#: Jobs after which a fresh inventory is sent (a profile was added or removed).
+INVENTORY_AFTER = frozenset({"provision_agent", "remove_agent"})
 #: Pause between progress frames: at most ~14 frames/s, well inside the server's 20/s (burst 100) budget,
 #: together with runner.MAX_FRAMES_PER_POLL = 50 per poll.
 PROGRESS_PACE_SEC = 0.07
@@ -250,6 +253,11 @@ class HostSession:
             if result:
                 await self.send(result)
                 log.info("job %s finished: %s", job["jobId"], result.get("summary"))
+                if job.get("command") == "remove_agent" and result.get("ok") and isinstance((job.get("args") or {}).get("profile"), str):
+                    commands.drop_marker(self.ctx.paths, job["args"]["profile"])
+                if job.get("command") in INVENTORY_AFTER:
+                    # A profile came or went: Emperor sees it (and adopts or releases the agent) now.
+                    await self.send_inventory()
 
     async def handle_command(self, frame: dict[str, Any]) -> None:
         job_id = str(frame.get("jobId", ""))
@@ -276,8 +284,12 @@ class HostSession:
             await self.send(ack(job_id, False, "busy"))
             return
         command = str(frame.get("command", ""))
+        raw_args = frame.get("args")
+        if isinstance(raw_args, dict) and isinstance(raw_args.get("apiToken"), str):
+            # A token minted for this job: never in a frame, a log line or a result, whatever happens next.
+            self.ctx.redactor.add([raw_args["apiToken"]])
         try:
-            plan = commands.plan(self.ctx.paths, command, frame.get("args"))
+            plan = commands.plan(self.ctx.paths, command, raw_args)
         except CommandRefused as exc:
             log.warning("refused job %s (%s): %s", job_id, command[:40], exc)
             await self.send(ack(job_id, False, str(exc)[:200]))
@@ -288,9 +300,18 @@ class HostSession:
             deadline = 300
         log.info("job %s: %s", job_id, plan.summary)
         if plan.argv is None:
-            job = runner.finish_inline(job_id, plan)
+            ok = True
+            if plan.discard_profile:
+                # A profile a setup made but the installer never recorded: removed here, in-process.
+                try:
+                    done = await asyncio.to_thread(commands.discard_profile, self.ctx.paths, plan.discard_profile, bool(plan.args.get("purge", True)))
+                    plan = dataclasses.replace(plan, summary=f"{plan.summary}: {done}")
+                except OSError as exc:
+                    ok = False
+                    plan = dataclasses.replace(plan, summary=f"{plan.summary}: failed ({type(exc).__name__})")
+            job = runner.finish_inline(job_id, plan, ok=ok)
             await self.send(ack(job_id, True))
-            if plan.command == "refresh_inventory":
+            if plan.command == "refresh_inventory" or plan.command in INVENTORY_AFTER:
                 await self.send_inventory()
             await self.send(runner.result_frame(job))
             return

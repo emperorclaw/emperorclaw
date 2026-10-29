@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { ConnectHostDialog } from "@/components/runtime-hosts/connect-host-dialog";
 import { RestartAgentButton } from "@/components/runtime-hosts/restart-agent-button";
+import { DeleteAgentDialog } from "@/app/(app)/agents/delete-agent-dialog";
 import { cn } from "@/lib/utils";
 import type { SerializedHost } from "@/lib/runtime-hosts/serialize";
 
@@ -64,6 +65,33 @@ function HostCard({ host, onChanged }: { host: Host; onChanged: () => void }) {
     const sharedAgents = host.profiles.filter((p) => p.topology === "shared" && !p.legacy).length;
     const legacy = host.profiles.filter((p) => p.legacy);
     const runningJobs = host.activeJobs.filter((j) => ["queued", "sent", "running"].includes(j.status));
+    // Agents deleted in Emperor whose profile is still to be removed here (they wait for the host).
+    const pendingRemovals = runningJobs.filter((j) => j.command === "remove_agent");
+    const settingUp = runningJobs.filter((j) => j.command === "provision_agent");
+    const canProvision = host.commands.includes("provision_agent");
+    // Removals that did not succeed stay until an admin retries or dismisses them.
+    const failedRemovals = host.activeJobs.filter((j) => j.command === "remove_agent" && ["failed", "timed_out", "canceled", "lost"].includes(j.status));
+    const [confirmCancel, setConfirmCancel] = useState<(typeof pendingRemovals)[number] | null>(null);
+    const [acting, setActing] = useState<string | null>(null);
+    const profileArg = (j: { args: unknown }) => (j.args as { profile?: string } | null)?.profile ?? "?";
+
+    const jobAction = async (jobId: string, action: "retry" | "dismiss" | "cancel", done: string) => {
+        setActing(jobId);
+        try {
+            const res = await fetch(`/api/runtime-host-jobs/${encodeURIComponent(jobId)}`, {
+                method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action }),
+            });
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok) throw new Error(data.error || "That did not work");
+            toast.success(done);
+            setConfirmCancel(null);
+            onChanged();
+        } catch (err) {
+            toast.error(err instanceof Error ? err.message : "That did not work");
+        } finally {
+            setActing(null);
+        }
+    };
 
     const revoke = async () => {
         setRevoking(true);
@@ -71,7 +99,15 @@ function HostCard({ host, onChanged }: { host: Host; onChanged: () => void }) {
             const res = await fetch(`/api/runtime-hosts/${encodeURIComponent(host.id)}`, { method: "DELETE" });
             const data = await res.json().catch(() => ({}));
             if (!res.ok) throw new Error(data.error || "Could not revoke the host");
-            toast.success(`${host.name} was revoked`);
+            const left = (data.leftProfiles ?? []) as { agentName: string | null; profile: string | null }[];
+            if (left.length > 0) {
+                toast.warning(`${host.name} was revoked`, {
+                    description: `Left on ${host.name} (remove by hand with emperor-hermes remove): ${left.map((l) => `${l.agentName ?? "a deleted agent"} (profile ${l.profile ?? "?"})`).join(", ")}`,
+                    duration: 15000,
+                });
+            } else {
+                toast.success(`${host.name} was revoked`);
+            }
             setConfirmRevoke(false);
             onChanged();
         } catch (err) {
@@ -153,12 +189,64 @@ function HostCard({ host, onChanged }: { host: Host; onChanged: () => void }) {
                                         </div>
                                         <RestartAgentButton hostId={host.id} agentId={agent.id} agentName={agent.name} topology={topology}
                                             sharedAgents={sharedAgents} hostOnline={online} size="xs" onFinished={onChanged} />
+                                        <DeleteAgentDialog agentId={agent.id} agentName={agent.name} host={{ name: host.name, canRemove: true }} onDeleted={onChanged}
+                                            trigger={<Button type="button" variant="outline" size="xs" title={`Delete ${agent.name}`}><IconTrash className="h-3.5 w-3.5" aria-hidden="true" />Delete</Button>} />
                                     </li>
                                 );
                             })}
                         </ul>
                     )}
                     {runningJobs.length > 0 && <p className="mt-2 text-xs text-muted-foreground">{runningJobs.length} job{runningJobs.length === 1 ? "" : "s"} in progress…</p>}
+                    {settingUp.length > 0 && (
+                        <ul className="mt-2 space-y-0.5 text-xs text-muted-foreground">
+                            {settingUp.map((j) => <li key={j.id}>Setting up {j.agentName ?? "an agent"}{(j.args as { profile?: string } | null)?.profile ? ` (profile ${(j.args as { profile?: string }).profile})` : ""}…</li>)}
+                        </ul>
+                    )}
+                    {pendingRemovals.length > 0 && (
+                        <div className="mt-3">
+                            <h4 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Pending removals</h4>
+                            <ul className="mt-1 space-y-0.5 text-xs text-muted-foreground">
+                                {pendingRemovals.map((j) => (
+                                    <li key={j.id} className="flex flex-wrap items-center gap-2">
+                                        <span>
+                                            {j.agentName ?? "A deleted agent"} · profile {profileArg(j)} ·{" "}
+                                            {!canProvision ? "waits until this host is updated" : j.status === "queued" ? (online ? "starting…" : "waits for the host to come back") : "removing…"}
+                                        </span>
+                                        {j.status === "queued" && (
+                                            <Button type="button" variant="outline" size="xs" onClick={() => setConfirmCancel(j)} disabled={acting === j.id}>Cancel</Button>
+                                        )}
+                                    </li>
+                                ))}
+                            </ul>
+                        </div>
+                    )}
+                    {failedRemovals.length > 0 && (
+                        <div className="mt-3 rounded-xl border border-destructive/30 bg-destructive/5 p-3">
+                            <h4 className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-destructive">
+                                <IconAlertTriangle className="h-3.5 w-3.5" aria-hidden="true" />Removals that did not finish
+                            </h4>
+                            <ul className="mt-1 space-y-1 text-xs text-muted-foreground">
+                                {failedRemovals.map((j) => (
+                                    <li key={j.id} className="flex flex-wrap items-center gap-2">
+                                        <span className="min-w-0 flex-1">
+                                            {j.agentName ?? "A deleted agent"} · profile {profileArg(j)} · {j.status.replace("_", " ")}{j.error ? `: ${j.error}` : ""}
+                                        </span>
+                                        {j.status !== "canceled" && !revoked && (
+                                            <Button type="button" variant="outline" size="xs" disabled={acting === j.id}
+                                                onClick={() => void jobAction(j.id, "retry", `Removing profile ${profileArg(j)} from ${host.name} again`)}>Retry removal</Button>
+                                        )}
+                                        <Button type="button" variant="ghost" size="xs" disabled={acting === j.id}
+                                            onClick={() => void jobAction(j.id, "dismiss", "Dismissed")}>Dismiss</Button>
+                                    </li>
+                                ))}
+                            </ul>
+                        </div>
+                    )}
+                    {online && !canProvision && (
+                        <p className="mt-3 text-xs text-muted-foreground">
+                            This host runs the 0.21 host daemon: update it (emperor-hermes update) to hire agents here and remove them from Emperor.
+                        </p>
+                    )}
                 </div>
             )}
 
@@ -181,6 +269,22 @@ function HostCard({ host, onChanged }: { host: Host; onChanged: () => void }) {
                 </details>
             )}
 
+            <Dialog open={confirmCancel !== null} onOpenChange={(open) => { if (!open) setConfirmCancel(null); }}>
+                <DialogContent className="sm:max-w-md">
+                    <DialogHeader>
+                        <DialogTitle>Cancel this removal?</DialogTitle>
+                        <DialogDescription>
+                            {confirmCancel?.agentName ?? "The deleted agent"}&apos;s profile ({confirmCancel ? profileArg(confirmCancel) : "?"}) then stays on {host.name}, with its files and services. Its token no longer works. Remove it there by hand with emperor-hermes remove.
+                        </DialogDescription>
+                    </DialogHeader>
+                    <DialogFooter>
+                        <Button type="button" variant="outline" onClick={() => setConfirmCancel(null)}>Keep the removal</Button>
+                        <Button type="button" variant="destructive" disabled={!confirmCancel || acting === confirmCancel.id}
+                            onClick={() => confirmCancel && void jobAction(confirmCancel.id, "cancel", `The profile stays on ${host.name}`)}>Cancel the removal</Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
+
             <Dialog open={confirmRevoke} onOpenChange={setConfirmRevoke}>
                 <DialogContent className="sm:max-w-md">
                     <DialogHeader>
@@ -189,6 +293,14 @@ function HostCard({ host, onChanged }: { host: Host; onChanged: () => void }) {
                             Its host key stops working at once and its daemon disconnects. Agents keep running on the machine with their own tokens, but Emperor can no longer restart them there. To connect it again, create a new code.
                         </DialogDescription>
                     </DialogHeader>
+                    {pendingRemovals.length > 0 && (
+                        <div role="alert" className="rounded-xl border border-amber-500/30 bg-amber-500/10 p-3 text-xs text-foreground">
+                            <p className="font-medium">These removals will never run; the profiles stay on {host.name}:</p>
+                            <ul className="mt-1 list-disc pl-5 text-muted-foreground">
+                                {pendingRemovals.map((j) => <li key={j.id}>{j.agentName ?? "A deleted agent"} (profile {profileArg(j)})</li>)}
+                            </ul>
+                        </div>
+                    )}
                     <DialogFooter>
                         <Button type="button" variant="outline" onClick={() => setConfirmRevoke(false)}>Cancel</Button>
                         <Button type="button" variant="destructive" onClick={() => void revoke()} disabled={revoking}>{revoking ? "Revoking…" : "Revoke host"}</Button>

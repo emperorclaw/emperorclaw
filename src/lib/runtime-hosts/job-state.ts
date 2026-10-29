@@ -4,9 +4,11 @@
 //   queued --dispatch--> sent --ack(accepted)--> running --result--> succeeded | failed
 //     ^                   |  \--ack(busy) / no ack in 30 s (attempts < 3)--> queued
 //     |                   \--ack(refused) / no ack after 3 attempts--> failed
-//   queued --cancel/expire--> canceled
+//   queued --cancel/expire--> canceled          (a queued remove_agent never expires)
 //   running --past deadline + 60 s--> timed_out
 //   sent | running --host gone 15 min / unknown to the host after reconnect--> lost
+//                                               (a remove_agent goes back to the queue instead:
+//                                                the daemon replays or runs it when the host returns)
 
 export const JOB_STATUSES = ["queued", "sent", "running", "succeeded", "failed", "timed_out", "canceled", "lost"] as const;
 export type JobStatus = (typeof JOB_STATUSES)[number];
@@ -26,6 +28,22 @@ export const HOST_OFFLINE_AFTER_MS = 90_000;
 export const JOB_LOST_AFTER_MS = 15 * 60_000;
 /** A queued job nobody could run in this time is dropped (a restart hours later would surprise). */
 export const JOB_QUEUE_EXPIRY_MS = 60 * 60_000;
+
+/**
+ * Removals wait for their host however long it is away (until it is revoked):
+ * the agent is already deleted in Emperor and only the host still has its
+ * profile. Every other queued job expires after JOB_QUEUE_EXPIRY_MS.
+ */
+export const WAIT_FOR_HOST_COMMANDS: readonly string[] = ["remove_agent"];
+
+export function expiresInQueue(command: string): boolean {
+    return !WAIT_FOR_HOST_COMMANDS.includes(command);
+}
+
+/** A sent/running job of a long-gone host: lost, or (removals) back to the queue. */
+export function statusWhenHostLost(command: string): "lost" | "queued" {
+    return WAIT_FOR_HOST_COMMANDS.includes(command) ? "queued" : "lost";
+}
 
 export type JobEvent =
     | { type: "dispatch" }

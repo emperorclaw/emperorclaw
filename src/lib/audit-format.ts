@@ -115,6 +115,7 @@ export const AUDIT_FIELD_ALLOWLIST: Record<AuditTargetType, Record<string, Field
     runtime_host: {
         name: "label", os: "enum", arch: "enum", status: "enum", hostdVersion: "enum",
         command: "enum", jobId: "id", agentId: "id", profile: "enum", target: "enum",
+        gateway: "enum", llmProvider: "enum", model: "enum", purge: "bool", agentName: "label",
     },
 };
 
@@ -279,6 +280,9 @@ const VERBS: Record<string, string> = {
     "runtime_host.disconnected": "lost the connection to",
     "runtime_host.job_queued": "sent a command to",
     "runtime_host.job_finished": "finished a command on",
+    "runtime_host.job_dismissed": "dismissed a failed removal on",
+    "runtime_host.removal_canceled": "canceled the removal of an agent's profile from",
+    "runtime_host.removal_abandoned": "left an agent's profile on",
     // Rows written before 0.14 by lib/mcp.ts logAudit.
     register_agent: "created",
     delete_agent: "deleted",

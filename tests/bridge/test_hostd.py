@@ -98,7 +98,7 @@ class ValidatorTests(unittest.TestCase):
         with self.assertRaises(CommandRefused):
             commands.validate("update_runtime", {"version": "0.22.0;curl evil"})
 
-    def test_only_0_21_commands_run_and_only_managed_profiles(self):
+    def test_only_allowlisted_commands_run_and_only_managed_profiles(self):
         with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmp:
             home = FakeHome(tmp)
             for command in ("provision_agent", "update_runtime", "remove_agent", "rotate_agent_token", "disconnect"):
@@ -225,7 +225,7 @@ class InstantExecutor(SystemdExecutor):
         self.log, self.code, self.started = log, code, []
         self.active = False
 
-    def start(self, unit, argv, log_path, exit_path):
+    def start(self, unit, argv, log_path, exit_path, keep_pythonpath=False):
         self.started.append((unit, list(argv)))
         Path(log_path).write_text(self.log, encoding="utf-8")
         if not self.active:
@@ -509,7 +509,7 @@ class SessionTests(unittest.TestCase):
                 await _settle(t, lambda: t.of("result"))
                 # The same jobId again (a resend after a reconnect): replayed, never run twice.
                 t.incoming.put_nowait({"type": "command", "jobId": JOB_A, "command": "restart_agent", "args": {"profile": "viktor"}})
-                t.incoming.put_nowait({"type": "command", "jobId": JOB_B, "command": "provision_agent", "args": {}})
+                t.incoming.put_nowait({"type": "command", "jobId": JOB_B, "command": "update_runtime", "args": {"version": "0.23.0"}})
                 t.incoming.put_nowait({"type": "command", "jobId": "44444444-4444-4444-8444-444444444444", "command": "restart_agent",
                                        "args": {"profile": "a;rm -rf ~"}})
                 await _settle(t, lambda: len(t.of("ack")) >= 4 and len(t.of("result")) >= 2)

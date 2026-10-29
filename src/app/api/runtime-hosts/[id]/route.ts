@@ -31,7 +31,10 @@ export async function PATCH(req: NextRequest, { params }: Params) {
     return NextResponse.json({ host: serializeHost(host) });
 }
 
-/** DELETE /api/runtime-hosts/[id]: revoke. The token stops working and the socket closes (4401). */
+/**
+ * DELETE /api/runtime-hosts/[id]: revoke. The token stops working and the socket closes (4401).
+ * Pending removals are canceled; `leftProfiles` lists the profiles they leave on the machine.
+ */
 export async function DELETE(_req: NextRequest, { params }: Params) {
     const access = await companyRouteAccess("admin");
     if (access.response) return access.response;
@@ -41,5 +44,6 @@ export async function DELETE(_req: NextRequest, { params }: Params) {
     if (existing.revokedAt) return NextResponse.json({ host: serializeHost(existing) });
     const host = await revokeHost(access.ctx.companyId, id, access.ctx.userId);
     if (!host) return NextResponse.json({ error: "Host not found" }, { status: 404 });
-    return NextResponse.json({ host: serializeHost(host) });
+    // Removals that were still pending will never run: those agents' profiles stay on the machine.
+    return NextResponse.json({ host: serializeHost(host), leftProfiles: host.leftProfiles });
 }

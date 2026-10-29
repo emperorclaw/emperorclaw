@@ -82,23 +82,23 @@ export function JobProgress({ jobId, onDone, className }: { jobId: string; onDon
     const lines = events.filter((e) => e.line).slice(-8);
 
     return (
-        <div className={cn("rounded-xl border border-border bg-muted/30 p-3 text-xs", className)} aria-live="polite">
+        <div className={cn("min-w-0 max-w-full overflow-hidden rounded-xl border border-border bg-muted/30 p-3 text-xs", className)} aria-live="polite">
             <div className="flex items-center gap-2">
                 {!finished && <IconLoader2 className="h-4 w-4 animate-spin text-primary" aria-hidden="true" />}
                 {finished && ok && <IconCircleCheck className="h-4 w-4 text-emerald-600 dark:text-emerald-400" aria-hidden="true" />}
                 {finished && !ok && <IconAlertTriangle className="h-4 w-4 text-destructive" aria-hidden="true" />}
                 <span className="font-medium text-foreground">{STATUS_LABEL[status] ?? status}</span>
-                {lastStep && !finished && <span className="min-w-0 truncate text-muted-foreground">{lastStep}</span>}
+                {lastStep && !finished && <span className="min-w-0 flex-1 truncate text-muted-foreground">{lastStep}</span>}
             </div>
             {status === "queued" && (
                 <p className="mt-1 text-muted-foreground">It starts as soon as the host is online and free.</p>
             )}
             {lines.length > 0 && (
-                <pre className="mt-2 max-h-40 overflow-auto whitespace-pre-wrap break-words rounded-lg bg-background/60 p-2 font-mono text-[11px] leading-5 text-muted-foreground">
+                <pre className="mt-2 max-h-40 overflow-auto max-w-full whitespace-pre-wrap break-all rounded-lg bg-background/60 p-2 font-mono text-[11px] leading-5 text-muted-foreground">
                     {lines.map((e) => e.line).join("\n")}
                 </pre>
             )}
-            {finished && job?.result?.summary && <p className="mt-2 text-foreground">{job.result.summary}</p>}
+            {finished && job?.result?.summary && <p className="mt-2 break-words text-foreground">{job.result.summary}</p>}
             {finished && (job?.result?.units?.length ?? 0) > 0 && (
                 <p className="mt-1 text-muted-foreground">Restarted on the host: {job!.result!.units!.join(", ")}</p>
             )}
@@ -107,7 +107,7 @@ export function JobProgress({ jobId, onDone, className }: { jobId: string; onDon
             {finished && !ok && job?.result?.logTail && (
                 <details className="mt-2">
                     <summary className="cursor-pointer text-muted-foreground">Log tail</summary>
-                    <pre className="mt-1 max-h-48 overflow-auto whitespace-pre-wrap break-words rounded-lg bg-background/60 p-2 font-mono text-[11px] leading-5 text-muted-foreground">{job.result.logTail}</pre>
+                    <pre className="mt-1 max-h-48 overflow-auto max-w-full whitespace-pre-wrap break-all rounded-lg bg-background/60 p-2 font-mono text-[11px] leading-5 text-muted-foreground">{job.result.logTail}</pre>
                 </details>
             )}
             {error && <p role="alert" className="mt-1 text-destructive">{error}</p>}

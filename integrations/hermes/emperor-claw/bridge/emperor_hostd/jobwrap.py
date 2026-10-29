@@ -1,9 +1,10 @@
 """Runs one job's argv inside its transient unit and records the exit code.
 
-``python -m emperor_hostd.jobwrap <exit_file> -- argv...`` (started by ``systemd-run --user``).
-The unit is ``--collect``ed when it ends, so systemd forgets its exit status; this file is how the
-daemon learns it, even when the daemon itself restarted while the job ran. No shell is involved:
-argv is executed as a list, with a clean environment.
+``python -m emperor_hostd.jobwrap <exit_file> [--pythonpath DIR] -- argv...`` (started by
+``systemd-run --user``). The unit is ``--collect``ed when it ends, so systemd forgets its exit
+status; this file is how the daemon learns it, even when the daemon itself restarted while the job
+ran. No shell is involved: argv is executed as a list, with a clean environment. ``--pythonpath``
+is given only to jobs that run one of the daemon's own modules (emperor_hostd.provision).
 """
 from __future__ import annotations
 
@@ -24,13 +25,20 @@ def write_exit(path: Path, code: int) -> None:
 
 
 def main(argv: list[str]) -> int:
+    pythonpath = None
+    if len(argv) >= 3 and argv[1] == "--pythonpath":
+        pythonpath = argv[2]
+        argv = [argv[0], *argv[3:]]
     if len(argv) < 3 or argv[1] != "--":
-        print("usage: python -m emperor_hostd.jobwrap <exit_file> -- argv...", file=sys.stderr)
+        print("usage: python -m emperor_hostd.jobwrap <exit_file> [--pythonpath DIR] -- argv...", file=sys.stderr)
         return 64
     exit_file = Path(argv[0])
     command = argv[2:]
     env = {k: os.environ[k] for k in KEEP_ENV if k in os.environ}
     env.setdefault("HOSTD_PROGRESS", "1")
+    if pythonpath:
+        env["PYTHONPATH"] = pythonpath
+        env["PYTHONUNBUFFERED"] = "1"  # progress lines reach the log as they happen
     try:
         code = subprocess.call(command, env=env, stdin=subprocess.DEVNULL)
     except OSError as exc:

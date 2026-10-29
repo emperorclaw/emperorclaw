@@ -43,6 +43,7 @@ import { CUSTOM_LLM_PROVIDER } from "@/lib/llm-endpoint";
 import { planLlmEndpointEdit } from "@/lib/llm-endpoint-edit";
 import { installerDownloadCommand } from "@/lib/runtime-hosts/connect-command";
 import { RestartAgentButton } from "@/components/runtime-hosts/restart-agent-button";
+import { HostSetupBanner, type ProvisioningView } from "@/components/runtime-hosts/host-setup-banner";
 
 
 /** A Hermes profile name suggestion for an agent: lowercase, dashes, no spaces. */
@@ -93,7 +94,9 @@ type AgentDetailData = {
     /** Set when the agent's latest runs failed on the model provider (it may still be online). */
     providerTrouble?: ProviderTrouble | null;
     /** The paired runtime host it runs on (0.21, Settings -> Runtime hosts). */
-    runtimeHost?: { id: string; name: string; status: string; profile: string | null; topology: "standalone" | "shared" | "unknown"; sharedAgents?: number } | null;
+    runtimeHost?: { id: string; name: string; status: string; profile: string | null; topology: "standalone" | "shared" | "unknown"; sharedAgents?: number; commands?: string[] } | null;
+    /** Its setup on a runtime host (0.22): the latest provision job. */
+    provisioning?: ProvisioningView | null;
     latestSnapshot: { id: string; content: string; createdAt: string } | null;
     memoryEntries: Array<{
         id: string;
@@ -140,10 +143,11 @@ export function AgentDetailPanel({ agentId, agentName, runtime = null }: {
     const [data, setData] = useState<AgentDetailData | null>(null);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
+    const [reloadKey, setReloadKey] = useState(0);
 
     useEffect(() => {
         let cancelled = false;
-        setLoading(true);
+        if (reloadKey === 0) setLoading(true);
         setError(null);
 
         fetch(`/api/agents/${agentId}`)
@@ -165,7 +169,7 @@ export function AgentDetailPanel({ agentId, agentName, runtime = null }: {
             });
 
         return () => { cancelled = true; };
-    }, [agentId]);
+    }, [agentId, reloadKey]);
 
     // ALL hooks must be called before any conditional return
     const [editingProvider, setEditingProvider] = useState(false);
@@ -423,7 +427,8 @@ export function AgentDetailPanel({ agentId, agentName, runtime = null }: {
                         <RestartAgentButton hostId={data.runtimeHost.id} agentId={agent.id} agentName={agent.name}
                             topology={data.runtimeHost.topology} sharedAgents={data.runtimeHost.sharedAgents} hostOnline={data.runtimeHost.status === "online"} />
                     )}
-                    <DeleteAgentDialog agentId={agent.id} agentName={agent.name} />
+                    <DeleteAgentDialog agentId={agent.id} agentName={agent.name}
+                        host={data.runtimeHost ? { name: data.runtimeHost.name, canRemove: canAdmin } : null} />
                 </div>
             </div>
 
@@ -460,8 +465,18 @@ export function AgentDetailPanel({ agentId, agentName, runtime = null }: {
                 </div>
             )}
 
-            {/* Setup banner — only for offline agents that need configuration */}
-            {agent.status === "offline" && (
+            {/* Set up on a runtime host (0.22): its setup's progress, or Setup failed — Retry / Remove */}
+            {data.provisioning && (
+                <HostSetupBanner agentId={agent.id} agentName={agent.name} agentStatus={agent.status}
+                    hostName={data.provisioning.hostName ?? data.runtimeHost?.name ?? "its host"} provisioning={data.provisioning} canAdmin={canAdmin}
+                    onChanged={() => setReloadKey((k) => k + 1)}
+                    removeAction={<DeleteAgentDialog agentId={agent.id} agentName={agent.name}
+                        host={data.runtimeHost ? { name: data.runtimeHost.name, canRemove: canAdmin } : null}
+                        trigger={<Button type="button" size="sm" variant="outline">Remove</Button>} />} />
+            )}
+
+            {/* Setup banner — only for offline agents that need configuration (not those Emperor sets up on a host) */}
+            {agent.status === "offline" && !data.provisioning && (
                 <>
                 <SetupBanner
                     agentId={agent.id}

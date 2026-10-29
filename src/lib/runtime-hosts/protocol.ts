@@ -1,4 +1,4 @@
-// The runtime host protocol (0.21): JSON frames on /api/hosts/ws between the
+// The runtime host protocol (0.21; 0.22 adds hello.commands and result.tokenSha256): JSON frames on /api/hosts/ws between the
 // host daemon (emperor_hostd, Python) and this server. Pure and DB-free so it
 // is unit-testable and shared by server.ts and the routes.
 //
@@ -71,6 +71,11 @@ export const helloFrameSchema = z.object({
     os: optText(80),
     arch: optText(40),
     jobs: z.array(hostJobStateSchema).max(200).default([]),
+    /**
+     * The commands this daemon runs (0.22+). Absent on a 0.21 daemon, which
+     * runs restart_agent and refresh_inventory only (commands.hostCommandsFrom).
+     */
+    commands: z.array(z.string().regex(/^[a-z_]{1,40}$/)).max(32).optional(),
 });
 
 export const inventoryProfileSchema = z.object({
@@ -142,6 +147,8 @@ export const resultFrameSchema = z.object({
     logTail: z.string().max(HOST_LOG_TAIL_MAX * 2).nullish(),
     /** The systemd units the job restarted (a shared bridge/gateway serves every agent on it). */
     units: z.array(z.string().regex(/^[\w@.-]{1,120}$/)).max(20).nullish(),
+    /** provision_agent: sha256 of the agent token the new profile holds (Emperor keeps it, revokes any other). */
+    tokenSha256: z.string().regex(/^[0-9a-f]{64}$/).nullish(),
 });
 
 export const hostFrameSchema = z.discriminatedUnion("type", [

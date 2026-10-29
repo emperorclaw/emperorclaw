@@ -10,9 +10,12 @@ import { getAvailableProviders, getProvider, type AgentProvider } from "@/lib/ag
 import { ModelSearchSelect } from "@/components/model-search-select";
 import { CharacterAvatar } from "@/components/character/character-avatar";
 import { cn } from "@/lib/utils";
+import { DEFAULT_HOST_MODEL } from "@/lib/runtime-hosts/commands";
 import { EVERYONE_ACCESS, WhoCanUseField, hireAccessBody, useAccessPeople, type AgentAccessValue } from "@/components/access/agent-access-control";
+import { HireProgress, HostPicker, useHireHosts, type HostChoice } from "@/components/runtime-hosts/host-picker";
+import { toast } from "sonner";
 
-type Step = "role" | "provider" | "name";
+type Step = "role" | "provider" | "name" | "progress";
 
 const providers = getAvailableProviders();
 
@@ -66,6 +69,21 @@ export function CreateAgentDialog({
     const [error, setError] = useState<string | null>(null);
     const [whoCanUse, setWhoCanUse] = useState<AgentAccessValue>(EVERYONE_ACCESS);
     const accessPeople = useAccessPeople(step === "name");
+    // "Another machine" with a connected runtime host (0.22): Emperor sets the agent up there.
+    const wantsHosts = open && step === "name" && selectedProvider.id === "hermes" && deploymentMode === "remote";
+    const { hosts, forbidden: hostsForbidden } = useHireHosts(wantsHosts);
+    const [hostChoice, setHostChoice] = useState<HostChoice | null>(null);
+    const [hostTouched, setHostTouched] = useState(false);
+    const [hireProgress, setHireProgress] = useState<{ jobId: string; agentId: string; agentName: string; hostName: string } | null>(null);
+    const onHost = wantsHosts && hostChoice !== null;
+    const chosenHost = onHost ? hosts?.find((h) => h.id === hostChoice?.hostId) ?? null : null;
+
+    // The first host that can take the agent is preselected (once; "I'll set it up myself" stays one click away).
+    useEffect(() => {
+        if (!hosts || hostTouched || hostChoice) return;
+        const ready = hosts.find((h) => h.hire.ok && h.hire.providers.length > 0);
+        if (ready) setHostChoice({ hostId: ready.id, llmProvider: ready.hire.providers[0], model: DEFAULT_HOST_MODEL[ready.hire.providers[0]] });
+    }, [hosts, hostTouched, hostChoice]);
 
     useEffect(() => {
         if (open) {
@@ -113,17 +131,19 @@ export function CreateAgentDialog({
                 doctrine["IDENTITY.md"] = selectedRole.identity;
             }
 
+            const agentName = name.trim() || (selectedRole?.title || "Agent");
             const res = await fetch("/api/agents", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({
-                    name: name.trim() || (selectedRole?.title || "Agent"),
+                    name: agentName,
                     role: selectedRole?.title || name.trim() || "Custom",
                     provider: selectedProvider.id,
                     deploymentMode,
                     monthlyBudgetCents: monthlyBudget ? Math.round(parseFloat(monthlyBudget) * 100) : 0,
-                    llmProvider: llmProvider || undefined,
-                    llmModel: llmModel || undefined,
+                    ...(onHost && hostChoice
+                        ? { runtimeHostId: hostChoice.hostId, llmProvider: hostChoice.llmProvider, model: hostChoice.model.trim() || undefined }
+                        : { llmProvider: llmProvider || undefined, llmModel: llmModel || undefined }),
                     doctrineJson: doctrine,
                     ...hireAccessBody(whoCanUse),
                 }),
@@ -131,12 +151,19 @@ export function CreateAgentDialog({
 
             const data = await res.json();
             if (!res.ok) throw new Error(data.error || "Agent creation failed");
-            if (res.ok) {
-                setOpen(false);
-                resetForm();
-                router.refresh();
-                onAgentCreated?.(data.agent.id);
+            router.refresh();
+            if (typeof data.jobId === "string") {
+                // Set up on a host: stay open and show the setup live.
+                setHireProgress({ jobId: data.jobId, agentId: data.agent.id, agentName, hostName: data.runtimeHost?.name ?? chosenHost?.name ?? "the host" });
+                setStep("progress");
+                return;
             }
+            if (typeof data.hostError === "string") {
+                toast.error(`${agentName} was created, but its setup on the host could not be queued`, { description: `${data.hostError} Open the agent to retry.` });
+            }
+            setOpen(false);
+            resetForm();
+            onAgentCreated?.(data.agent.id);
         } catch (e) {
             setError(e instanceof Error ? e.message : "Agent creation failed");
         } finally {
@@ -154,31 +181,50 @@ export function CreateAgentDialog({
         setLlmProvider("");
         setLlmModel("");
         setWhoCanUse(EVERYONE_ACCESS);
+        setHostChoice(null);
+        setHostTouched(false);
+        setHireProgress(null);
         setError(null);
     };
 
     const avatarSeed = name.trim() || selectedRole?.title || "agent";
 
+    const closeAfterProgress = () => {
+        const agentId = hireProgress?.agentId;
+        setOpen(false);
+        resetForm();
+        if (agentId) onAgentCreated?.(agentId);
+    };
+
     return (
-        <Dialog open={open} onOpenChange={(o) => { setOpen(o); if (!o) resetForm(); }}>
+        <Dialog open={open} onOpenChange={(o) => {
+            if (!o && step === "progress") { closeAfterProgress(); return; }
+            setOpen(o);
+            if (!o) resetForm();
+        }}>
             {!hideTrigger && (
                 <DialogTrigger asChild>
                     <Button variant={triggerVariant} className="shadow-sm">Hire Agent</Button>
                 </DialogTrigger>
             )}
-            <DialogContent className="sm:max-w-[580px] bg-zinc-950 border-zinc-800 text-zinc-200">
+            <DialogContent className="sm:max-w-[580px] max-h-[90dvh] flex flex-col overflow-hidden bg-zinc-950 border-zinc-800 text-zinc-200">
                 <DialogHeader>
                     <DialogTitle className="text-zinc-100">
                         {step === "role" && "Pick a role"}
                         {step === "provider" && "How should it run?"}
                         {step === "name" && "Name your agent"}
+                        {step === "progress" && `Setting up ${hireProgress?.agentName ?? "the agent"}`}
                     </DialogTitle>
                     <DialogDescription className="text-zinc-400">
                         {step === "role" && "Choose a pre-built role with doctrine files, or start from scratch."}
                         {step === "provider" && "Select the runtime that will execute this agent's work. API keys live in the runtime — not stored in EmperorClaw."}
                         {step === "name" && "Give it a name and review the configuration before creating."}
+                        {step === "progress" && "Emperor installs it on the host and waits until it is online."}
                     </DialogDescription>
                 </DialogHeader>
+
+                {/* The body scrolls; the footer (Cancel / Hire) always stays in view. */}
+                <div className="min-h-0 min-w-0 flex-1 overflow-y-auto px-1">
 
                 {/* Step 1: Role Selection */}
                 {step === "role" && (
@@ -318,6 +364,10 @@ export function CreateAgentDialog({
                                     </div>
                                 </button>
                             </div>
+                            {wantsHosts && (
+                                <HostPicker hosts={hosts} forbidden={hostsForbidden} value={hostChoice}
+                                    onChange={(choice) => { setHostTouched(true); setHostChoice(choice); }} />
+                            )}
                         </div>
 
                         {/* Monthly budget */}
@@ -340,8 +390,8 @@ export function CreateAgentDialog({
 
                         <WhoCanUseField value={whoCanUse} onChange={setWhoCanUse} people={accessPeople.people} me={accessPeople.me} />
 
-                        {/* LLM Provider — only for runtimes that read it (Hermes) */}
-                        {selectedProvider.supportsLlmProvider && (
+                        {/* LLM Provider — only for runtimes that read it (Hermes); a host hire picks it above */}
+                        {selectedProvider.supportsLlmProvider && !onHost && (
                         <div className="space-y-1.5">
                             <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">
                                 LLM Provider <span className="text-zinc-500 font-normal">— Optional metadata</span>
@@ -372,7 +422,7 @@ export function CreateAgentDialog({
                         )}
 
                         {/* LLM Model — searchable dropdown with pricing */}
-                        {selectedProvider.supportsLlmProvider && pricingOptions.length > 0 && (
+                        {selectedProvider.supportsLlmProvider && !onHost && pricingOptions.length > 0 && (
                         <div className="space-y-1.5">
                             <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">
                                 LLM Model <span className="text-zinc-500 font-normal">— For cost tracking</span>
@@ -402,7 +452,7 @@ export function CreateAgentDialog({
                                 </div>
                                 <div className="flex justify-between">
                                     <span className="text-zinc-400">Deployment</span>
-                                    <span className="text-zinc-300">{deploymentMode === "local" ? "🖥️ This server" : "🌐 Remote"}</span>
+                                    <span className="text-zinc-300">{deploymentMode === "local" ? "🖥️ This server" : chosenHost ? `🌐 On ${chosenHost.name}` : "🌐 Remote"}</span>
                                 </div>
                                 {selectedRole && (
                                     <div className="flex justify-between">
@@ -414,10 +464,10 @@ export function CreateAgentDialog({
                                     <span className="text-zinc-400">Budget</span>
                                     <span className="text-zinc-300">{monthlyBudget ? `$${monthlyBudget}/mo` : "Unlimited"}</span>
                                 </div>
-                                {llmProvider && (
+                                {(onHost ? hostChoice?.llmProvider : llmProvider) && (
                                     <div className="flex justify-between">
                                         <span className="text-zinc-400">LLM</span>
-                                        <span className="text-emerald-300">{llmProvider}</span>
+                                        <span className="text-emerald-300">{onHost ? `${hostChoice?.llmProvider} · ${hostChoice?.model.trim() || "default model"}` : llmProvider}</span>
                                     </div>
                                 )}
                             </div>
@@ -431,7 +481,9 @@ export function CreateAgentDialog({
                         <div className="rounded-lg border border-zinc-800 bg-zinc-900/50 px-3 py-2">
                             <span className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">After creation</span>
                             <p className="text-[10px] text-zinc-400 mt-0.5 leading-relaxed">
-                                {selectedProvider.id === "hermes"
+                                {onHost
+                                    ? `Emperor sets it up on ${chosenHost?.name ?? "the host"} and shows the progress here. It is online in a few minutes.`
+                                    : selectedProvider.id === "hermes"
                                     ? "1. Configure your LLM API key in ~/.hermes/.env  2. Start the Hermes bridge  3. Agent appears online"
                                     : "1. Configure your runtime  2. Point it to EmperorClaw's MCP endpoint  3. Agent registers on first heartbeat"}
                             </p>
@@ -444,20 +496,30 @@ export function CreateAgentDialog({
                     </div>
                 )}
 
-                <DialogFooter className="flex items-center gap-2">
-                    {step !== "role" && (
+                {step === "progress" && hireProgress && (
+                    <HireProgress jobId={hireProgress.jobId} agentId={hireProgress.agentId} agentName={hireProgress.agentName} hostName={hireProgress.hostName} />
+                )}
+                </div>
+
+                <DialogFooter className="shrink-0 border-t border-zinc-800 pt-3 flex items-center gap-2">
+                    {step === "progress" && (
+                        <Button type="button" onClick={closeAfterProgress} className="ml-auto bg-cyan-600 hover:bg-cyan-500 text-white">Close</Button>
+                    )}
+                    {step !== "role" && step !== "progress" && (
                         <Button type="button" variant="outline" onClick={() => setStep(step === "provider" ? "role" : "provider")}
                             className="border-zinc-800 text-zinc-300 hover:bg-zinc-800">
                             Back
                         </Button>
                     )}
-                    <div className="flex-1" />
-                    <Button type="button" variant="outline" onClick={() => setOpen(false)} className="border-zinc-800 text-zinc-300 hover:bg-zinc-800">
-                        Cancel
-                    </Button>
+                    {step !== "progress" && <div className="flex-1" />}
+                    {step !== "progress" && (
+                        <Button type="button" variant="outline" onClick={() => setOpen(false)} className="border-zinc-800 text-zinc-300 hover:bg-zinc-800">
+                            Cancel
+                        </Button>
+                    )}
                     {step === "name" && (
-                        <Button type="button" onClick={handleCreate} disabled={isSaving || !name.trim()} className="bg-cyan-600 hover:bg-cyan-500 text-white">
-                            {isSaving ? "Creating..." : "Hire Agent"}
+                        <Button type="button" onClick={handleCreate} disabled={isSaving || !name.trim() || (onHost && !chosenHost)} className="bg-cyan-600 hover:bg-cyan-500 text-white">
+                            {isSaving ? "Creating..." : onHost ? "Hire and set up" : "Hire Agent"}
                         </Button>
                     )}
                 </DialogFooter>

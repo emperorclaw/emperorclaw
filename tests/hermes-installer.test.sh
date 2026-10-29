@@ -11,7 +11,8 @@
 # layout, update, rollback (--bridge-only, per profile, --all, after finalize), status,
 # restart-gateway (--when-idle), shared topology, shared -> standalone switch, finalize, status --json,
 # non-interactive install, remove, and the runtime host daemon (host connect against a fake Emperor,
-# a restart job end to end, no secrets in its frames, exit 78 when revoked, host disconnect).
+# a restart job end to end, provision_agent and remove_agent jobs (0.22), no secrets in its frames,
+# exit 78 when revoked, host disconnect).
 #
 # Usage: bash tests/hermes-installer.test.sh        (needs Docker; ~2-4 min, first build longer)
 #        KEEP=1 bash tests/hermes-installer.test.sh (keep the container for debugging)
@@ -134,6 +135,21 @@ if cmd == "config" and args[1] == "set":
     with open(os.path.join(home, "config.yaml"), "a") as f:
         f.write("# set %s=%s\n" % (args[2], args[3]))
     log("%s config set %s=%s via %s" % (who, args[2], args[3], version)); sys.exit(0)
+if cmd == "config" and args[1] in ("get", "unset"):
+    cfg = os.path.join(home, "config.yaml")
+    value = None
+    for line in (open(cfg).read().splitlines() if os.path.exists(cfg) else []):
+        if line.startswith("# set %s=" % args[2]):
+            value = line.split("=", 1)[1]
+        elif line == "# unset %s" % args[2]:
+            value = None
+    if value is None:
+        print("Config key not set: %s" % args[2]); sys.exit(1)
+    if args[1] == "unset":
+        with open(cfg, "a") as f:
+            f.write("# unset %s\n" % args[2])
+        log("%s config unset %s via %s" % (who, args[2], version)); sys.exit(0)
+    print(json.dumps(value)); sys.exit(0)
 if cmd == "plugins" and args[1] == "enable":
     log("%s plugins enable %s via %s" % (who, args[2], version)); sys.exit(0)
 if cmd == "profile" and args[1] == "create":
@@ -239,13 +255,27 @@ import asyncio, json, os, sys
 from websockets.asyncio.server import serve
 TOKEN = "ech_" + "a" * 64
 LOG, PROFILE, REVOKE = sys.argv[1], sys.argv[2], sys.argv[3]
+GO_REMOVE = os.path.join(os.path.dirname(LOG), "do-remove")
 JOB = "11111111-1111-4111-8111-111111111111"
+PROVISION = "33333333-3333-4333-8333-333333333333"
+REMOVE_OTHER = "44444444-4444-4444-8444-444444444444"
+REMOVE = "55555555-5555-4555-8555-555555555555"
+AGENT = "66666666-6666-4666-8666-666666666666"
+AGENT_TOKEN = "ec_" + "b" * 48
 def log(frame):
     with open(LOG, "a") as f:
         f.write(json.dumps(frame) + "\n")
 def process_request(conn, request):
     if request.headers.get("Authorization") != "Bearer " + TOKEN:
         return conn.respond(401, "unknown token\n")
+def command(job, name, args, deadline=300):
+    return json.dumps({"type": "command", "jobId": job, "command": name, "args": args, "deadlineSec": deadline})
+async def removals(ws):
+    while not os.path.exists(GO_REMOVE):  # the test inspects the new profile first
+        await asyncio.sleep(0.2)
+    # A profile of another agent (qa names its own agent id): refused, untouched.
+    await ws.send(command(REMOVE_OTHER, "remove_agent", {"profile": PROFILE, "agentId": AGENT, "purge": True}))
+    await ws.send(command(REMOVE, "remove_agent", {"profile": "scout", "agentId": AGENT, "purge": True}))
 async def handler(ws):
     sent = False
     async for raw in ws:
@@ -259,8 +289,14 @@ async def handler(ws):
                                       "serverVersion": "test", "heartbeatSec": 30, "inventorySec": 300}))
         elif frame["type"] == "inventory" and not sent:
             sent = True
-            await ws.send(json.dumps({"type": "command", "jobId": JOB, "command": "restart_agent",
-                                      "args": {"profile": PROFILE, "target": "bridge"}, "deadlineSec": 300}))
+            await ws.send(command(JOB, "restart_agent", {"profile": PROFILE, "target": "bridge"}))
+        elif frame["type"] == "result" and frame["jobId"] == JOB:
+            # Emperor mints the agent's token when it sends the job: it travels only in this frame.
+            await ws.send(command(PROVISION, "provision_agent", {
+                "profile": "scout", "agentId": AGENT, "agentName": "Scout", "apiToken": AGENT_TOKEN, "gateway": "standalone",
+                "llmProvider": "deepseek", "model": "deepseek-chat", "skipBrowser": True}, 1800))
+        elif frame["type"] == "result" and frame["jobId"] == PROVISION:
+            asyncio.create_task(removals(ws))
 async def main():
     async with serve(handler, "127.0.0.1", 18091, process_request=process_request):
         await asyncio.Future()
@@ -881,7 +917,10 @@ print(d["ok"], p["profile"], p["topology"], p["gateway"], p["bridge"], d["hermes
     eh host connect --url http://10.evil.com ABCD-EFGH --bundle "$bundle" >/dev/null 2>&1 || out_rc=$?
     check_not "a name that only looks private is refused" test "$out_rc" = 0
     check_not "no hostd.env after a refused code" test -e "$HOME/.config/emperor-hermes/hostd.env"
-    check "host connect" eh host connect --url http://127.0.0.1:18080 ABCD-EFGH --bundle "$bundle"
+    # A bundle of the installer's own version: a profile installed by a provision job reuses it (no download).
+    bundle_cur=$(bash /repo/scripts/package-hermes-bridge.sh --plugin-dir "$F/plugin-src" --out "$F/dist-cur" \
+        --version "$(sed -n 's/^readonly EMPEROR_HERMES_VERSION="\(.*\)"/\1/p' "$EH")")
+    check "host connect" eh host connect --url http://127.0.0.1:18080 ABCD-EFGH --bundle "$bundle_cur"
     eq "hostd.env is private" "$(stat -c %a "$HOME/.config/emperor-hermes/hostd.env")" 600
     check "hostd.env holds the host token" contains "$HOME/.config/emperor-hermes/hostd.env" 'HOST_TOKEN="ech_'
     check "hostd unit enabled" enabled emperor-hermes-hostd.service
@@ -918,6 +957,56 @@ print(bool(re.fullmatch(r"[0-9a-f]{64}", hello["hostFingerprint"])), hello["inst
     check "host status" eh host status
     check "jobs dir is private" bash -c "[ \"\$(stat -c %a $HOME/.local/share/emperor-hermes/jobs)\" = 700 ]"
 
+    section "provision_agent and remove_agent jobs (host daemon 0.22)"
+    jobframe() { # jobId type -> that frame as JSON ("" when not there yet)
+        python3 -c 'import json, sys
+for line in open(sys.argv[1]):
+    f = json.loads(json.loads(line)["raw"])
+    if f.get("jobId") == sys.argv[2] and f["type"] == sys.argv[3]:
+        print(json.dumps(f)); break' "$F/hostd-frames.jsonl" "$1" "$2" 2>/dev/null || true
+    }
+    prov=33333333-3333-4333-8333-333333333333
+    for _ in $(seq 1 360); do [ -n "$(jobframe "$prov" result)" ] && break; sleep 0.5; done
+    eq "hello lists the 0.22 commands" "$(python3 -c 'import json, sys
+print(json.loads(json.loads(open(sys.argv[1]).readline())["raw"]).get("commands"))' "$F/hostd-frames.jsonl")" \
+        "['provision_agent', 'refresh_inventory', 'remove_agent', 'restart_agent']"
+    eq "provision result" "$(jobframe "$prov" result | python3 -c 'import hashlib, json, sys
+r = json.load(sys.stdin)
+print(r["ok"], r["exitCode"], r.get("tokenSha256") == hashlib.sha256(("ec_" + "b" * 48).encode()).hexdigest())')" "True 0 True"
+    scout=$HOME/.hermes/profiles/scout
+    check "scout profile created" test -d "$scout"
+    eq "scout .env is private" "$(stat -c %a "$scout/.env")" 600
+    eq "scout .env: URL from hostd.env, token, identity" "$(python3 -c 'import sys
+sys.path.insert(0, sys.argv[2])
+from emperor_bridge.config import read_env_file
+e = read_env_file(sys.argv[1])
+print(e.get("EMPEROR_CLAW_API_URL"), e.get("EMPEROR_CLAW_API_TOKEN") == "ec_" + "b" * 48, e.get("EMPEROR_CLAW_AGENT_ID"), e.get("EMPEROR_CLAW_AGENT_NAME"))' \
+        "$scout/.env" "$HOME/.hermes/emperor-bridge/current/bridge")" "http://127.0.0.1:18091 True 66666666-6666-4666-8666-666666666666 Scout"
+    eq "only the deepseek key line was copied" "$(grep -c '_API_KEY=' "$scout/.env") $(grep -c '^DEEPSEEK_API_KEY="sk-fake-' "$scout/.env")" "1 1"
+    check "model provider set via the pinned launcher" contains "$HOME/.hermes/fake-hermes.log" "scout config set model.provider=deepseek via 0.22.4"
+    check "model set" contains "$HOME/.hermes/fake-hermes.log" "scout config set model.default=deepseek-chat via 0.22.4"
+    check "scout installed standalone" bash -c "systemctl --user is-active --quiet emperor-hermes-gateway@scout && systemctl --user is-active --quiet emperor-hermes-bridge@scout"
+    check "progress steps streamed" bash -c "grep -q 'Creating Hermes profile scout' '$F/hostd-frames.jsonl' && grep -q 'Waiting for Scout' '$F/hostd-frames.jsonl'"
+    check "no bundle download for the new profile" grep -Eq 'bridge [0-9][0-9.]* already installed' "$HOME/.local/share/emperor-hermes/jobs/$prov.log"
+    check "the reused release carries its unpack stamp" test -s "$HOME/.hermes/emperor-bridge/current/.unpacked"
+    check_not "no ownership marker left without a reason" test -s "$HOME/.local/share/emperor-hermes/hostd-profiles/qa.json"
+    check_not "the spec file is gone" bash -c "ls $HOME/.local/share/emperor-hermes/jobs/*.spec"
+    check_not "no agent token in any frame" grep -q 'ec_bbbbbbbb' "$F/hostd-frames.jsonl"
+    check_not "no agent token in the job files" grep -rq 'ec_bbbbbbbb' "$HOME/.local/share/emperor-hermes/jobs"
+    check_not "no agent token in the daemon log" grep -q 'ec_bbbbbbbb' "$HOME/.local/share/emperor-hermes/hostd.log"
+    : >"$F/do-remove"
+    rm_job=55555555-5555-4555-8555-555555555555
+    for _ in $(seq 1 120); do [ -n "$(jobframe "$rm_job" result)" ] && break; sleep 0.5; done
+    eq "a removal for another agent's profile is refused" "$(jobframe 44444444-4444-4444-8444-444444444444 ack | python3 -c 'import json, sys
+a = json.load(sys.stdin); print(a["accepted"], "agent_mismatch" in a.get("reason", ""))')" "False True"
+    check "qa untouched by the refused removal" active emperor-hermes-bridge@qa
+    eq "remove result" "$(jobframe "$rm_job" result | python3 -c 'import json, sys; r = json.load(sys.stdin); print(r["ok"], r["exitCode"])')" "True 0"
+    check_not "scout profile purged" test -d "$scout"
+    check_not "scout record purged" test -e "$HOME/.local/share/emperor-hermes/profiles/scout.env"
+    check_not "scout ownership marker dropped after the removal" test -e "$HOME/.local/share/emperor-hermes/hostd-profiles/scout.json"
+    check_not "scout units stopped" active emperor-hermes-bridge@scout
+    check_not "no LLM key in any frame after provisioning" grep -q 'sk-fake-' "$F/hostd-frames.jsonl"
+
     # A rollback to a bridge without the daemon stops it; installing a bundle with it starts it again.
     rel="$HOME/.hermes/emperor-bridge/releases"
     rm -rf "$rel/0.8.0"
@@ -939,6 +1028,19 @@ print(bool(re.fullmatch(r"[0-9a-f]{64}", hello["hostFingerprint"])), hello["inst
     check_not "a revoked host's daemon stops" active emperor-hermes-hostd.service
     eq "and exits 78 (no restart loop)" "$(systemctl --user show -p ExecMainStatus --value emperor-hermes-hostd.service)" 78
     rm -f "$F/revoke"
+
+    # Back on the installer's own bundle (bridges and daemon then run from it, writing caches):
+    # connecting again without --bundle reuses it instead of downloading; a changed file does not.
+    check "update to the installer's own bundle" eh update --bundle "$bundle_cur"
+    check "bridges run from it" active emperor-hermes-bridge@qa
+    python3 -c 'import sys; sys.path.insert(0, sys.argv[1]); import emperor_bridge.config, emperor_hostd.provision'         "$HOME/.hermes/emperor-bridge/current/bridge"
+    : >"$HOME/.local/share/emperor-hermes/emperor-hermes.log"
+    check "host connect without --bundle reuses the unpacked bundle" eh host connect --url http://127.0.0.1:18080 ABCD-EFGH
+    check "no download" grep -Eq 'bridge [0-9][0-9.]* already installed' "$HOME/.local/share/emperor-hermes/emperor-hermes.log"
+    echo "# changed" >>"$HOME/.hermes/emperor-bridge/current/bridge/emperor_hostd/version.py"
+    out_rc=0
+    out=$(eh host connect --url http://127.0.0.1:18080 ABCD-EFGH 2>&1) || out_rc=$?
+    check_not "a changed release is not reused" grep -Eq 'bridge [0-9][0-9.]* already installed' <<<"$out"
     check "host disconnect" eh host disconnect
     check_not "hostd disabled" enabled emperor-hermes-hostd.service
     check_not "host token deleted" test -e "$HOME/.config/emperor-hermes/hostd.env"

@@ -5,7 +5,7 @@ import { db } from "@/db";
 import { agents } from "@/db/schema";
 import { companyRouteAccess } from "@/lib/company-access";
 import { planHostCommand } from "@/lib/runtime-hosts/commands";
-import { getHost, listJobs, queueJob, serializeJob } from "@/lib/runtime-hosts/store";
+import { getHost, hostCommandsOf, listJobs, queueJob, serializeJob } from "@/lib/runtime-hosts/store";
 
 type Params = { params: Promise<{ id: string }> };
 
@@ -50,6 +50,10 @@ export async function POST(req: NextRequest, { params }: Params) {
     const body = parsed.data;
     const host = await getHost(access.ctx.companyId, id);
     if (!host || host.revokedAt) return NextResponse.json({ error: "Host not found" }, { status: 404 });
+    // Setting an agent up or removing it goes through the agent (hire, Retry, Delete): never a raw job.
+    if (body.command === "provision_agent" || body.command === "remove_agent") {
+        return NextResponse.json({ error: "Hire or delete the agent instead" }, { status: 400 });
+    }
 
     let agentId: string | null = null;
     let args: Record<string, unknown> = {};
@@ -64,7 +68,7 @@ export async function POST(req: NextRequest, { params }: Params) {
         agentId = agent.id;
         args = { profile: agent.runtimeProfile, target: body.target ?? "bridge", ...(body.force ? { force: true } : {}) };
     }
-    const plan = planHostCommand(body.command, args);
+    const plan = planHostCommand(body.command, args, { hostCommands: hostCommandsOf(host) });
     if (!plan.ok) return NextResponse.json({ error: plan.error }, { status: plan.status });
 
     const queued = await queueJob({
