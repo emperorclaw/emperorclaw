@@ -9,6 +9,15 @@ tagged (e.g. `## [1.2.0] — 2026-07-22`). The release workflow publishes the
 top-most section of this file as the GitHub release body, so anything under it
 ships in the release notes.
 
+## [0.24.0] — 2026-10-29
+
+### Added
+- **Simplified Chinese (简体中文), second part.** Agents (the directory, agent details, hiring and Easy Setup, removing an agent, access), the projects board and task pages, Views, every Settings tab and runtime hosts are now translated. Pick the language in Settings → Your profile.
+- Agent names, instructions, task titles, messages and anything else you or your agents write stay exactly as written; only the interface changes.
+
+### Changed
+- A new desk display's default name stays "Desk display" in every language, because the whole company sees it.
+
 ## [0.23.0] — 2026-10-29
 
 ### Added
