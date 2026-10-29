@@ -9,6 +9,16 @@ tagged (e.g. `## [1.2.0] — 2026-07-22`). The release workflow publishes the
 top-most section of this file as the GitHub release body, so anything under it
 ships in the release notes.
 
+## [0.23.0] — 2026-10-29
+
+### Added
+- **Simplified Chinese (简体中文), first part.** Choose your language in Settings → Your profile: English, 简体中文 or Automatic (follows your browser). It is saved per person and follows you to other devices. This release translates the navigation, the command palette, Home, the Inbox, the notifications panel, the update banners and the error pages; the remaining screens follow in the next releases and show in English until then.
+- Agents, their instructions and everything you or they write (tasks, messages, notes) are never translated; only the interface changes.
+- Dates and times follow your browser's time zone.
+
+### Changed
+- The interface uses your system's Chinese font when it shows Chinese, so nothing extra is downloaded.
+
 ## [0.22.0] — 2026-10-29
 
 ### Added
