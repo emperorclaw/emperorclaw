@@ -9,6 +9,21 @@ tagged (e.g. `## [1.2.0] — 2026-07-22`). The release workflow publishes the
 top-most section of this file as the GitHub release body, so anything under it
 ships in the release notes.
 
+## [0.22.0] — 2026-10-29
+
+### Added
+- **Hire an agent on one of your machines.** "Hire agent or team" now starts with "Where should it run?" and lists your connected machines with their free memory and model providers. Pick one, a provider and a model, and Emperor sets the agent up there and shows the progress live until it is online, usually in about a minute. The machine uses the API key it already has for that provider; the key never passes through Emperor.
+- **Remove an agent from its machine.** Deleting an agent that runs on a connected machine also removes it there (on by default). Its access is cut immediately; if the machine is offline, the removal waits for it and shows on the machine's card, where an admin can retry or cancel it.
+- **Retry a failed setup** from the agent's page. A setup that stops halfway is cleaned up and picked up again.
+
+### Changed
+- Agents set up on a machine get their own token, revoked as soon as a setup fails or the agent is deleted.
+- Hosts still on 0.21 keep working for restarts; update them to hire there.
+- Hermes bridge 0.22.0. Update with `emperor-hermes update` after downloading the 0.22.0 installer.
+
+### Fixed
+- The hire dialog could grow taller than the screen and hide its button.
+
 ## [0.21.0] — 2026-10-29
 
 ### Added
