@@ -1,9 +1,11 @@
+import { useTranslations } from "next-intl";
 import { Skeleton, SkeletonCard, SkeletonHeader, SkeletonPage } from "@/components/ui/skeleton";
 
 /** /agents: the roster on the left, the selected agent on the right. */
 export default function Loading() {
+    const t = useTranslations("agents.list");
     return (
-        <SkeletonPage label="Loading agents">
+        <SkeletonPage label={t("loading")}>
             <SkeletonHeader />
             <div aria-hidden className="grid grid-cols-1 gap-6 lg:grid-cols-[320px_minmax(0,1fr)]">
                 <div className="space-y-2 rounded-2xl border border-border bg-card p-3 sm:p-4">

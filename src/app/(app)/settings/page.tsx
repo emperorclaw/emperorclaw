@@ -3,6 +3,7 @@ import { db } from "@/db";
 import { companyMembers, companyTokens, users, agents, customers } from "@/db/schema";
 import { and, desc, eq, isNull } from "drizzle-orm";
 import { redirect } from "next/navigation";
+import { getTranslations } from "next-intl/server";
 import { Suspense } from "react";
 import SettingsClient from "./settings-client";
 import { serializeCompanyToken } from "@/lib/mcp";
@@ -23,7 +24,7 @@ export default async function SettingsPage() {
         .limit(1);
 
     if (!membership) {
-        return <div className="p-8 text-muted-foreground">Company not found.</div>;
+        return <div className="p-8 text-muted-foreground">{(await getTranslations("settings"))("companyNotFound")}</div>;
     }
 
     // Get instance role

@@ -36,7 +36,8 @@ test("agent claiming cannot take human or other-agent work", () => {
 });
 
 test("operator and MCP surfaces expose unified assignment without removing compatibility", () => {
-  const projects = read("src/app/(app)/projects/projects-client.tsx");
+  // The board's copy lives in messages/en.json (i18n).
+  const projects = `${read("src/app/(app)/projects/projects-client.tsx")}\n${read("messages/en.json")}`;
   const dashboard = read("src/app/(app)/page.tsx");
   const apiDocs = read("src/content/docs/v1.1/api-reference.md");
 

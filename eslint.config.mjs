@@ -6,7 +6,8 @@ import i18next from "eslint-plugin-i18next";
 /**
  * Screens whose copy lives in messages/*.json (i18n phase 1). A user-visible
  * literal (JSX text, placeholder, title, aria-label, alt, label) in these files
- * fails lint; the list grows as later phases translate more screens.
+ * fails lint; the list grows as later phases translate more screens (phase 2:
+ * agents, projects and tasks, views, settings, runtime hosts and access).
  */
 // Copy that is never translated: brand names, keyboard keys, all-caps pixel signage, the "z" sleep cue.
 const UNTRANSLATED_WORDS = ["[0-9!-/:-@[-`{-~\s·↑↓↵⌘→—–…]+", "[A-Z_ ·-]+", "Emperor Claw", "EmperorClaw", "Esc", "Ctrl", "Enter", "v", "z( z)*"];
@@ -57,6 +58,15 @@ const TRANSLATED_FILES = [
   "src/components/version-banner.tsx",
   "src/components/ui/*.tsx",
   "src/components/team-dashboard/*.tsx",
+  // Phase 2: agents, projects and tasks, views, settings, runtime hosts, access.
+  "src/app/[(]app[)]/agents/**/*.tsx",
+  "src/app/[(]app[)]/projects/**/*.tsx",
+  "src/app/[(]app[)]/views/**/*.tsx",
+  "src/app/[(]app[)]/settings/**/*.tsx",
+  "src/components/update-settings-tab.tsx",
+  "src/components/views/*.tsx",
+  "src/components/access/*.tsx",
+  "src/components/runtime-hosts/*.tsx",
 ];
 
 const eslintConfig = defineConfig([

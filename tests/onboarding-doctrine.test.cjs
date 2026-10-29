@@ -75,7 +75,8 @@ test("Onboarding confirms the created agent and opens its direct chat", () => {
 
 test("Failed provisioning does not advance and can be retried", () => {
   const dialog = read("src/app/(app)/agents/easy-setup-dialog.tsx");
-  assert.ok(dialog.includes("Retry provisioning"), "a failed batch should offer a retry");
+  // The dialog's copy lives in messages/en.json (i18n).
+  assert.ok(dialog.includes('t("retryProvisioning")') && read("messages/en.json").includes('"retryProvisioning": "Retry provisioning"'), "a failed batch should offer a retry");
   // The key is only cleared once a worker actually came up.
   assert.match(
     dialog,

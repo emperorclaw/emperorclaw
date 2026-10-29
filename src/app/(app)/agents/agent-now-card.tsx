@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
+import { useTranslations } from "next-intl";
 import { cn } from "@/lib/utils";
 import type { AgentNow, AgentRuntimeInfo } from "@/lib/agent-activity";
 import { runWorkLabel } from "@/lib/agent-visibility";
@@ -13,12 +14,16 @@ import { describeFailure, fixAudience } from "@/lib/failure-cause";
 import { useViewerPermissions } from "@/lib/use-viewer-permissions";
 import { FailureFixButton } from "@/components/failure-fix";
 
-const STATE_PILL: Record<AgentNow["state"], { label: string; className: string }> = {
-    working: { label: "Working", className: "border-cyan-500/30 bg-cyan-500/10 text-cyan-300" },
-    typing: { label: "Responding", className: "border-emerald-500/30 bg-emerald-500/10 text-emerald-300" },
-    idle: { label: "Idle", className: "border-zinc-700 bg-zinc-800/60 text-zinc-300" },
-    offline: { label: "Offline", className: "border-zinc-700/60 bg-zinc-800/40 text-zinc-500" },
+/** Labelled by agents.now.states.<state>. */
+const STATE_PILL: Record<AgentNow["state"], { className: string }> = {
+    working: { className: "border-cyan-500/30 bg-cyan-500/10 text-cyan-300" },
+    typing: { className: "border-emerald-500/30 bg-emerald-500/10 text-emerald-300" },
+    idle: { className: "border-zinc-700 bg-zinc-800/60 text-zinc-300" },
+    offline: { className: "border-zinc-700/60 bg-zinc-800/40 text-zinc-500" },
 };
+
+/** Run statuses with a label under agents.now.runStatus (anything else shows as is). */
+const RUN_STATUSES = new Set(["succeeded", "failed", "timeout", "lost", "cancelled", "blocked", "running", "queued"]);
 
 function lastRunBadge(status: string): string {
     if (status === "succeeded") return "border-emerald-500/30 bg-emerald-500/10 text-emerald-300";
@@ -28,6 +33,8 @@ function lastRunBadge(status: string): string {
 }
 
 export function AgentNowCard({ now }: { now: AgentNow | undefined }) {
+    const t = useTranslations("agents.now");
+    const formatAgo = useFormatAgo();
     const [nowMs, setNowMs] = useState(() => Date.now());
     useEffect(() => {
         const id = window.setInterval(() => setNowMs(Date.now()), 1000);
@@ -37,13 +44,14 @@ export function AgentNowCard({ now }: { now: AgentNow | undefined }) {
     if (!now) {
         return (
             <section className="emperor-panel rounded-2xl p-4 sm:p-5">
-                <p className="text-[10px] font-bold uppercase tracking-wider text-zinc-500">Right now</p>
-                <p className="mt-2 text-sm text-zinc-500">Loading activity…</p>
+                <p className="text-[10px] font-bold uppercase tracking-wider text-zinc-500">{t("rightNow")}</p>
+                <p className="mt-2 text-sm text-zinc-500">{t("loading")}</p>
             </section>
         );
     }
 
-    const pill = STATE_PILL[now.state] ?? STATE_PILL.idle;
+    const pillState = now.state in STATE_PILL ? now.state : "idle";
+    const pill = STATE_PILL[pillState];
     const live = now.run?.live;
     // The step timer counts from when this snapshot was taken (the card poll).
     const activityText = live?.current.summary ?? now.activity;
@@ -52,11 +60,11 @@ export function AgentNowCard({ now }: { now: AgentNow | undefined }) {
 
     return (
         <section className="emperor-panel rounded-2xl p-4 sm:p-5">
-            <p className="text-[10px] font-bold uppercase tracking-wider text-zinc-500">Right now</p>
+            <p className="text-[10px] font-bold uppercase tracking-wider text-zinc-500">{t("rightNow")}</p>
 
             <div className="mt-2 flex flex-wrap items-center gap-2">
                 <span className={cn("inline-flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-[11px] font-medium", pill.className)}>
-                    {pill.label}
+                    {t(`states.${pillState}`)}
                 </span>
             </div>
 
@@ -85,9 +93,9 @@ export function AgentNowCard({ now }: { now: AgentNow | undefined }) {
                         {live && isTimedStepKind(live.current.kind) && <StepElapsed key={`${live.current.kind}:${live.current.summary}`} sinceMs={live.current.sinceMs} />}
                     </p>
                 ) : now.state === "idle" ? (
-                    <p className="text-xs text-zinc-500">Idle — waiting for work.</p>
+                    <p className="text-xs text-zinc-500">{t("idle")}</p>
                 ) : now.state === "offline" ? (
-                    <p className="text-xs text-zinc-500">{now.lastSeenAt ? `Last seen ${formatAgo(now.lastSeenAt, nowMs)}` : "Never connected"}</p>
+                    <p className="text-xs text-zinc-500">{now.lastSeenAt ? t("lastSeen", { ago: formatAgo(now.lastSeenAt, nowMs) }) : t("neverConnected")}</p>
                 ) : null}
             </div>
 
@@ -100,7 +108,7 @@ export function AgentNowCard({ now }: { now: AgentNow | undefined }) {
 
             {now.task && (
                 <div className="mt-3 flex items-center gap-2 text-xs">
-                    <span className="shrink-0 text-[10px] font-bold uppercase tracking-wider text-zinc-500">Task</span>
+                    <span className="shrink-0 text-[10px] font-bold uppercase tracking-wider text-zinc-500">{t("task")}</span>
                     <Link href={taskHref(now.task.id, now.run?.taskId === now.task.id ? now.run.id : null)} className="line-clamp-2 sm:truncate text-cyan-300 hover:text-cyan-200">
                         {now.task.title}
                     </Link>
@@ -111,16 +119,16 @@ export function AgentNowCard({ now }: { now: AgentNow | undefined }) {
                 <div className="mt-3 space-y-1.5">
                     <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-zinc-400">
                         <span className={cn("rounded-full border px-2 py-0.5 text-[11px] font-medium capitalize", lastRunBadge(now.lastRun.status))}>
-                            {now.lastRun.status}
+                            {RUN_STATUSES.has(now.lastRun.status) ? t(`runStatus.${now.lastRun.status as "failed"}`) : now.lastRun.status}
                         </span>
-                        <span>ended {formatAgo(now.lastRun.endedAt ?? now.lastRun.startedAt, nowMs)}</span>
+                        <span>{t("ended", { ago: formatAgo(now.lastRun.endedAt ?? now.lastRun.startedAt, nowMs) })}</span>
                         {now.lastRun.durationMs != null && <span>{formatDuration(now.lastRun.durationMs)}</span>}
-                        {now.lastRun.tokens != null && <span>{now.lastRun.tokens.toLocaleString()} tokens</span>}
+                        {now.lastRun.tokens != null && <span>{t("tokens", { count: now.lastRun.tokens })}</span>}
                         {now.lastRun.cacheReadTokens != null && now.lastRun.cacheReadTokens > 0 && (
-                            <span>{formatTokenCount(now.lastRun.cacheReadTokens)} cached{lastRunCache != null ? ` (${lastRunCache}%)` : ""}</span>
+                            <span>{lastRunCache != null ? t("cachedPercent", { amount: formatTokenCount(now.lastRun.cacheReadTokens), percent: lastRunCache }) : t("cached", { amount: formatTokenCount(now.lastRun.cacheReadTokens) })}</span>
                         )}
                         {now.lastRun.costCents != null && <span>${(now.lastRun.costCents / 100).toFixed(2)}</span>}
-                        {now.lastRun.toolCalls != null && <span>{now.lastRun.toolCalls} {now.lastRun.toolCalls === 1 ? "tool" : "tools"}</span>}
+                        {now.lastRun.toolCalls != null && <span>{t("tools", { count: now.lastRun.toolCalls })}</span>}
                         {now.lastRun.model && <span className="max-w-full truncate">{now.lastRun.model}</span>}
                     </div>
                     {["failed", "timeout", "lost"].includes(now.lastRun.status) && <LastRunFailure agentId={now.agentId} lastRun={now.lastRun} />}
@@ -139,7 +147,7 @@ export function AgentNowCard({ now }: { now: AgentNow | undefined }) {
                     href={`/messages?agent=${now.agentId}`}
                     className="inline-flex h-11 sm:h-8 items-center gap-1.5 rounded-lg border border-zinc-800 px-3 text-xs text-zinc-300 transition-colors hover:border-cyan-400/40 hover:bg-cyan-400/10 hover:text-cyan-100"
                 >
-                    Open chat
+                    {t("openChat")}
                 </Link>
             </div>
         </section>
@@ -188,23 +196,32 @@ const BADGE_TONE: Record<ReturnType<typeof bridgeBadgeCopy>["tone"], string> = {
  * legacy). Outdated states link the upgrade guide unless `compact`.
  */
 export function BridgeBadge({ runtime, compact = false }: { runtime: AgentRuntimeInfo | null | undefined; compact?: boolean }) {
+    const t = useTranslations("agents.bridge");
     if (!runtime) return null;
     const managed = runtime.deployMode === "managed";
+    // Tone and guide from the shared rule; the words from messages (lib/live-activity.ts bridgeBadgeCopy).
     const copy = bridgeBadgeCopy(runtime.updateState, runtime.bridgeVersion, managed);
+    const update = managed ? t("updateManaged") : t("updateSelf");
+    const version = runtime.bridgeVersion ?? "?";
+    const state = runtime.updateState === "current" || runtime.updateState === "update-available" || runtime.updateState === "unsupported" ? runtime.updateState : "legacy";
+    const label = state === "current" ? (runtime.bridgeVersion ? t("currentVersion", { version }) : t("current"))
+        : state === "update-available" ? t("updateAvailable") : state === "unsupported" ? t("unsupported") : t("legacy");
+    const hint = state === "current" ? t("currentHint") : state === "update-available" ? t("updateAvailableHint", { version, update })
+        : state === "unsupported" ? t("unsupportedHint", { version, update }) : t("legacyHint", { update });
     if (compact && runtime.updateState === "current") return null;
     return (
         <span className="inline-flex max-w-full flex-wrap items-center gap-1.5">
-            <span title={copy.hint} className={cn("inline-flex shrink-0 items-center rounded-full border px-2 py-0.5 text-[10px] font-medium", BADGE_TONE[copy.tone])}>
-                {copy.label}
+            <span title={hint} className={cn("inline-flex shrink-0 items-center rounded-full border px-2 py-0.5 text-[10px] font-medium", BADGE_TONE[copy.tone])}>
+                {label}
             </span>
             {!compact && copy.showGuide && (
                 <a href={HERMES_MIGRATION_DOC_HREF} target="_blank" rel="noreferrer" className="text-[10px] text-cyan-400 underline underline-offset-2 hover:text-cyan-300">
-                    {managed ? "How to update" : "Update guide"}
+                    {managed ? t("howToUpdate") : t("updateGuide")}
                 </a>
             )}
             {!compact && runtime.gatewayTopology === "shared" && (
-                <span title="This runtime shares one Hermes gateway with other agents on the same host." className="inline-flex shrink-0 items-center rounded-full border border-zinc-700 bg-zinc-800/60 px-2 py-0.5 text-[10px] font-medium text-zinc-300">
-                    Shared gateway
+                <span title={t("sharedGatewayHint")} className="inline-flex shrink-0 items-center rounded-full border border-zinc-700 bg-zinc-800/60 px-2 py-0.5 text-[10px] font-medium text-zinc-300">
+                    {t("sharedGateway")}
                 </span>
             )}
         </span>
@@ -223,18 +240,21 @@ export function formatDuration(ms: number): string {
     return `${secs}s`;
 }
 
-/** Relative time like `just now`, `42s ago`, `3m ago`, `2h ago`. */
-export function formatAgo(iso: string, nowMs: number): string {
-    const t = Date.parse(iso);
-    if (!Number.isFinite(t)) return "";
-    const diffMs = Math.max(0, nowMs - t);
-    const seconds = Math.floor(diffMs / 1000);
-    if (seconds < 10) return "just now";
-    if (seconds < 60) return `${seconds}s ago`;
-    const minutes = Math.floor(seconds / 60);
-    if (minutes < 60) return `${minutes}m ago`;
-    const hours = Math.floor(minutes / 60);
-    if (hours < 24) return `${hours}h ago`;
-    const days = Math.floor(hours / 24);
-    return `${days}d ago`;
+/** Relative time like `just now`, `42s ago`, `3m ago`, `2h ago`, in the person's language. */
+export function useFormatAgo() {
+    const t = useTranslations("time");
+    const tNow = useTranslations("agents.now");
+    return (iso: string, nowMs: number): string => {
+        const at = Date.parse(iso);
+        if (!Number.isFinite(at)) return "";
+        const diffMs = Math.max(0, nowMs - at);
+        const seconds = Math.floor(diffMs / 1000);
+        if (seconds < 10) return t("justNow");
+        if (seconds < 60) return tNow("secondsAgo", { count: seconds });
+        const minutes = Math.floor(seconds / 60);
+        if (minutes < 60) return t("minutesAgo", { count: minutes });
+        const hours = Math.floor(minutes / 60);
+        if (hours < 24) return t("hoursAgo", { count: hours });
+        return t("daysAgo", { count: Math.floor(hours / 24) });
+    };
 }

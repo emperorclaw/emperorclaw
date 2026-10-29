@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { IconArrowUp, IconDownload, IconExternalLink, IconRefresh, IconServer, IconTerminal2 } from "@tabler/icons-react";
 import { toast } from "sonner";
+import { useFormatter, useTranslations } from "next-intl";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
@@ -16,7 +17,36 @@ interface UpdateInfo {
     error?: string;
 }
 
+type UpdatesT = ReturnType<typeof useTranslations<"settings.updates">>;
+
+const BACKUP_COMMAND = "pg_dump $POSTGRES_CONNECTION_STRING > backup-$(date +%Y%m%d).sql";
+
+/** The shell steps; only the # comments are translated. */
+function dockerScript(t: UpdatesT): string {
+    return [
+        `# 1. ${t("script.backup")}`, BACKUP_COMMAND, "",
+        `# 2. ${t("script.pullRebuild")}`, "cd ~/emperorclaw", "git pull --ff-only origin main", "docker compose up -d --build", "",
+        `# 3. ${t("script.verify")}`, "docker compose logs -f app",
+    ].join("\n");
+}
+
+function manualScript(t: UpdatesT): string {
+    return [
+        `# 1. ${t("script.backup")}`, BACKUP_COMMAND, "",
+        `# 2. ${t("script.pull")}`, "cd ~/emperorclaw", "git pull --ff-only origin main", "",
+        `# 3. ${t("script.installRebuild")}`, "npm install", "npm run build", "",
+        `# 4. ${t("script.migrate")}`, "npm run db:migrate", "",
+        `# 5. ${t("script.restart")}`, "npm start",
+    ].join("\n");
+}
+
+const rollbackScript = (version: string) => `git checkout v${version}\ndocker compose up -d --build`;
+
+const BACKUP_SCRIPTS = "Linux/macOS: scripts/backup-db.sh\nWindows:     scripts/backup-db.ps1";
+
 export function UpdateSettingsTab() {
+    const t = useTranslations("settings.updates");
+    const format = useFormatter();
     const [data, setData] = useState<UpdateInfo | null>(null);
     const [loading, setLoading] = useState(true);
 
@@ -28,7 +58,7 @@ export function UpdateSettingsTab() {
                 setData(await res.json());
             }
         } catch {
-            toast.error("Failed to check for updates");
+            toast.error(t("checkFailed"));
         } finally {
             setLoading(false);
         }
@@ -43,7 +73,7 @@ export function UpdateSettingsTab() {
             <section className="space-y-4">
                 <div className="emperor-panel rounded-2xl sm:rounded-2xl p-8 text-center">
                     <div className="mx-auto h-8 w-8 animate-spin rounded-full border-2 border-cyan-400/30 border-t-cyan-400" />
-                    <p className="mt-4 text-sm text-muted-foreground">Checking for updates...</p>
+                    <p className="mt-4 text-sm text-muted-foreground">{t("checking")}</p>
                 </div>
             </section>
         );
@@ -52,11 +82,7 @@ export function UpdateSettingsTab() {
     if (!data) return null;
 
     const publishedDate = data.publishedAt
-        ? new Date(data.publishedAt).toLocaleDateString("en-US", {
-              year: "numeric",
-              month: "long",
-              day: "numeric",
-          })
+        ? format.dateTime(new Date(data.publishedAt), { year: "numeric", month: "long", day: "numeric" })
         : "";
 
     return (
@@ -66,21 +92,21 @@ export function UpdateSettingsTab() {
                 <div className="flex items-center justify-between">
                     <div>
                         <h2 className="flex items-center text-lg font-semibold text-foreground">
-                            <IconServer className="mr-2 h-5 w-5 text-cyan-300" /> Instance version
+                            <IconServer className="mr-2 h-5 w-5 text-cyan-300" /> {t("instanceVersion")}
                         </h2>
                         <p className="mt-1 text-sm text-muted-foreground">
-                            EmperorClaw is self-hosted — updates are applied by the instance administrator.
+                            {t("selfHosted")}
                         </p>
                     </div>
                     <Button variant="outline" size="sm" onClick={fetchUpdate} disabled={loading}>
                         <IconRefresh className={cn("h-4 w-4", loading && "animate-spin")} />
-                        Check now
+                        {t("checkNow")}
                     </Button>
                 </div>
 
                 <div className="mt-5 grid gap-3 sm:grid-cols-2">
                     <div className="rounded-xl border border-border bg-muted/30 p-4">
-                        <div className="text-xs uppercase tracking-wider text-muted-foreground">Installed</div>
+                        <div className="text-xs uppercase tracking-wider text-muted-foreground">{t("installed")}</div>
                         <div className="mt-1 font-mono text-2xl font-bold text-foreground">
                             v{data.currentVersion}
                         </div>
@@ -91,14 +117,14 @@ export function UpdateSettingsTab() {
                             ? "border-cyan-400/20 bg-cyan-400/8"
                             : "border-emerald-500/20 bg-emerald-500/8",
                     )}>
-                        <div className="text-xs uppercase tracking-wider text-muted-foreground">Latest</div>
+                        <div className="text-xs uppercase tracking-wider text-muted-foreground">{t("latest")}</div>
                         <div className="mt-1 font-mono text-2xl font-bold text-foreground">
                             v{data.latestVersion}
                         </div>
                         <div className="mt-1 text-xs text-muted-foreground">
                             {data.isUpdateAvailable
-                                ? `Released ${publishedDate}`
-                                : "You're up to date"}
+                                ? t("released", { date: publishedDate })
+                                : t("upToDate")}
                         </div>
                     </div>
                 </div>
@@ -113,10 +139,10 @@ export function UpdateSettingsTab() {
                         </div>
                         <div className="min-w-0">
                             <h3 className="text-lg font-semibold text-cyan-100">
-                                Update available — v{data.latestVersion}
+                                {t("updateAvailable", { version: data.latestVersion })}
                             </h3>
                             <p className="mt-1 text-sm text-cyan-200/70">
-                                Released {publishedDate}. Review the changelog below before upgrading.
+                                {t("releasedReview", { date: publishedDate })}
                             </p>
                             <div className="mt-4 flex flex-wrap gap-2">
                                 <a
@@ -126,7 +152,7 @@ export function UpdateSettingsTab() {
                                     className="inline-flex items-center gap-1.5 rounded-xl bg-cyan-400/15 px-4 py-2 text-sm font-semibold text-cyan-200 transition-colors hover:bg-cyan-400/25"
                                 >
                                     <IconExternalLink className="h-4 w-4" />
-                                    View release on GitHub
+                                    {t("viewOnGitHub")}
                                 </a>
                             </div>
                         </div>
@@ -137,11 +163,10 @@ export function UpdateSettingsTab() {
             {/* Upgrade instructions */}
             <div className="emperor-panel rounded-2xl sm:rounded-2xl p-4 sm:p-6">
                 <h2 className="flex items-center text-lg font-semibold text-foreground">
-                    <IconTerminal2 className="mr-2 h-5 w-5 text-cyan-300" /> How to upgrade
+                    <IconTerminal2 className="mr-2 h-5 w-5 text-cyan-300" /> {t("howToUpgrade")}
                 </h2>
                 <p className="mt-2 text-sm leading-6 text-muted-foreground">
-                    EmperorClaw uses additive-only database migrations — upgrades are safe and reversible.
-                    Always back up your database before upgrading.
+                    {t("migrationsNote")}
                 </p>
 
                 <div className="mt-5 space-y-4">
@@ -149,19 +174,12 @@ export function UpdateSettingsTab() {
                     <div className="rounded-xl border border-border bg-muted/30 p-4">
                         <h3 className="flex items-center gap-2 text-sm font-semibold text-foreground">
                             <IconDownload className="h-4 w-4 text-cyan-300" />
-                            Docker (recommended)
+                            {t("docker")}
                         </h3>
                         <div className="mt-3 space-y-2">
                             <div className="rounded-lg bg-background p-3">
                                 <code className="block whitespace-pre-wrap font-mono text-sm text-foreground">
-                                    {"# 1. Back up your database\n"}
-                                    {"pg_dump $POSTGRES_CONNECTION_STRING > backup-$(date +%Y%m%d).sql\n\n"}
-                                    {"# 2. Pull latest and rebuild\n"}
-                                    {"cd ~/emperorclaw\n"}
-                                    {"git pull --ff-only origin main\n"}
-                                    {"docker compose up -d --build\n\n"}
-                                    {"# 3. Verify\n"}
-                                    {"docker compose logs -f app"}
+                                    {dockerScript(t)}
                                 </code>
                             </div>
                         </div>
@@ -171,23 +189,12 @@ export function UpdateSettingsTab() {
                     <div className="rounded-xl border border-border bg-muted/30 p-4">
                         <h3 className="flex items-center gap-2 text-sm font-semibold text-foreground">
                             <IconTerminal2 className="h-4 w-4 text-muted-foreground" />
-                            Manual (without Docker)
+                            {t("manual")}
                         </h3>
                         <div className="mt-3 space-y-2">
                             <div className="rounded-lg bg-background p-3">
                                 <code className="block whitespace-pre-wrap font-mono text-sm text-foreground">
-                                    {"# 1. Back up your database\n"}
-                                    {"pg_dump $POSTGRES_CONNECTION_STRING > backup-$(date +%Y%m%d).sql\n\n"}
-                                    {"# 2. Pull latest\n"}
-                                    {"cd ~/emperorclaw\n"}
-                                    {"git pull --ff-only origin main\n\n"}
-                                    {"# 3. Install dependencies and rebuild\n"}
-                                    {"npm install\n"}
-                                    {"npm run build\n\n"}
-                                    {"# 4. Run migrations\n"}
-                                    {"npm run db:migrate\n\n"}
-                                    {"# 5. Restart the server\n"}
-                                    {"npm start"}
+                                    {manualScript(t)}
                                 </code>
                             </div>
                         </div>
@@ -195,15 +202,14 @@ export function UpdateSettingsTab() {
 
                     {/* Backup scripts */}
                     <div className="rounded-xl border border-border bg-muted/30 p-4">
-                        <h3 className="text-sm font-semibold text-foreground">Backup scripts</h3>
+                        <h3 className="text-sm font-semibold text-foreground">{t("backupScripts")}</h3>
                         <p className="mt-1 text-sm text-muted-foreground">
-                            Convenience scripts to back up your database before upgrading.
+                            {t("backupScriptsHint")}
                         </p>
                         <div className="mt-3 space-y-2">
                             <div className="rounded-lg bg-background p-3">
-                                <code className="block font-mono text-xs text-muted-foreground">
-                                    Linux/macOS: scripts/backup-db.sh{"\n"}
-                                    Windows:     scripts/backup-db.ps1
+                                <code className="block whitespace-pre font-mono text-xs text-muted-foreground">
+                                    {BACKUP_SCRIPTS}
                                 </code>
                             </div>
                         </div>
@@ -212,17 +218,14 @@ export function UpdateSettingsTab() {
                     {/* Rollback */}
                     <div className="rounded-xl border border-amber-500/20 bg-amber-500/8 p-4">
                         <h3 className="flex items-center gap-2 text-sm font-semibold text-amber-100">
-                            Rollback
+                            {t("rollback")}
                         </h3>
                         <p className="mt-1 text-sm text-amber-100/70">
-                            If something goes wrong, migrations are additive-only and never drop data.
-                            You can safely roll back to the previous version:
+                            {t("rollbackHint")}
                         </p>
                         <div className="mt-3 rounded-lg bg-background p-3">
                             <code className="block whitespace-pre-wrap font-mono text-sm text-foreground">
-                                {"git checkout v"}
-                                {data.currentVersion}
-                                {"\ndocker compose up -d --build"}
+                                {rollbackScript(data.currentVersion)}
                             </code>
                         </div>
                     </div>
@@ -233,7 +236,7 @@ export function UpdateSettingsTab() {
             {data.changelog && (
                 <div className="emperor-panel rounded-2xl sm:rounded-2xl p-4 sm:p-6">
                     <h2 className="flex items-center text-lg font-semibold text-foreground">
-                        <IconDownload className="mr-2 h-5 w-5 text-cyan-300" /> Changelog — v{data.latestVersion}
+                        <IconDownload className="mr-2 h-5 w-5 text-cyan-300" /> {t("changelog", { version: data.latestVersion })}
                     </h2>
                     <div className="mt-4 max-h-[600px] overflow-y-auto rounded-xl border border-border bg-muted/30 p-4 sm:p-6">
                         <div className="prose prose-invert prose-sm max-w-none [&_h2]:text-lg [&_h2]:font-bold [&_h2]:text-cyan-200 [&_h3]:text-base [&_h3]:font-semibold [&_h3]:text-foreground [&_ul]:list-disc [&_ul]:pl-4 [&_li]:text-muted-foreground [&_code]:bg-white/5 [&_code]:px-1 [&_code]:rounded [&_strong]:text-foreground">

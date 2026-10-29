@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { IconHandStop } from "@tabler/icons-react";
 import { toast } from "sonner";
+import { useTranslations } from "next-intl";
 import {
     ACTION_CATALOG, actionCatalogEntry, resolveActionMode,
     type ActionCatalogEntry, type ActionMode, type ActionPolicyMap,
@@ -12,24 +13,21 @@ import { cn } from "@/lib/utils";
 type Props = { agentId: string; agentName?: string };
 type Level = "agent" | "company";
 
-const MODES: { value: ActionMode; label: string; dot: string }[] = [
-    { value: "off", label: "Off", dot: "bg-rose-500" },
-    { value: "ask", label: "Ask first", dot: "bg-amber-500" },
-    { value: "allowed", label: "Allowed", dot: "bg-emerald-500" },
+/** Labelled by agents.actions.modes.<value>. */
+const MODES: { value: ActionMode; dot: string }[] = [
+    { value: "off", dot: "bg-rose-500" },
+    { value: "ask", dot: "bg-amber-500" },
+    { value: "allowed", dot: "bg-emerald-500" },
 ];
 
-const GROUPS: { group: ActionCatalogEntry["group"]; title: string; hint: string }[] = [
-    {
-        group: "external",
-        title: "Outside Emperor",
-        hint: "Things the agent does with its own tools. It checks with Emperor before each one (check_action).",
-    },
-    {
-        group: "emperor",
-        title: "In Emperor",
-        hint: "Emperor's own tools. Reading is always allowed.",
-    },
-];
+/** Titled by agents.actions.groups.<group>. */
+const GROUPS: ActionCatalogEntry["group"][] = ["external", "emperor"];
+
+/** An action's label: agents.actions.catalog.<key>, or the catalog's English label for an unknown key. */
+function useActionLabel() {
+    const t = useTranslations("agents.actions.catalog");
+    return (entry: ActionCatalogEntry) => (t.has(entry.key as "send_email") ? t(entry.key as "send_email") : entry.label);
+}
 
 /**
  * The agent's action permissions: for each action, Off / Ask first / Allowed.
@@ -38,28 +36,29 @@ const GROUPS: { group: ActionCatalogEntry["group"]; title: string; hint: string 
  * The same list edits the company defaults that every agent starts from.
  */
 export function AgentActionsTab({ agentId, agentName }: Props) {
+    const t = useTranslations("agents.actions");
     const [level, setLevel] = useState<Level>("agent");
     const [agentPolicies, setAgentPolicies] = useState<ActionPolicyMap>({});
     const [companyPolicies, setCompanyPolicies] = useState<ActionPolicyMap>({});
     const [canEdit, setCanEdit] = useState(false);
     const [loaded, setLoaded] = useState(false);
     const [savingKey, setSavingKey] = useState<string | null>(null);
-    const self = agentName || "This agent";
+    const self = agentName || t("thisAgent");
 
     useEffect(() => {
         let cancelled = false;
         fetch(`/api/agents/${agentId}/action-policies`)
-            .then((r) => (r.ok ? r.json() : Promise.reject(new Error("Couldn't load permissions"))))
+            .then((r) => (r.ok ? r.json() : Promise.reject(new Error(t("loadFailed")))))
             .then((data) => {
                 if (cancelled) return;
                 setAgentPolicies(data.agentPolicies ?? {});
                 setCompanyPolicies(data.companyPolicies ?? {});
                 setCanEdit(Boolean(data.canEdit));
             })
-            .catch((error) => { if (!cancelled) toast.error(error instanceof Error ? error.message : "Couldn't load permissions"); })
+            .catch((error) => { if (!cancelled) toast.error(error instanceof Error ? error.message : t("loadFailed")); })
             .finally(() => { if (!cancelled) setLoaded(true); });
         return () => { cancelled = true; };
-    }, [agentId]);
+    }, [agentId, t]);
 
     const save = useCallback(async (key: string, mode: ActionMode | null) => {
         setSavingKey(key);
@@ -71,37 +70,35 @@ export function AgentActionsTab({ agentId, agentName }: Props) {
                 body: JSON.stringify({ policies: { [key]: mode } }),
             });
             const data = await res.json().catch(() => ({}));
-            if (!res.ok) throw new Error(typeof data.error === "string" ? data.error : "Couldn't save the permission");
+            if (!res.ok) throw new Error(typeof data.error === "string" ? data.error : t("saveFailed"));
             if (level === "agent") setAgentPolicies(data.agentPolicies ?? {});
             setCompanyPolicies(data.companyPolicies ?? {});
         } catch (error) {
-            toast.error(error instanceof Error ? error.message : "Couldn't save the permission");
+            toast.error(error instanceof Error ? error.message : t("saveFailed"));
         } finally {
             setSavingKey(null);
         }
-    }, [agentId, level]);
+    }, [agentId, level, t]);
 
     return (
         <div className="max-w-2xl space-y-5">
             <div className="space-y-2">
                 <div className="flex items-center gap-2 text-foreground">
                     <IconHandStop className="h-4 w-4 text-primary" aria-hidden />
-                    <h3 className="text-sm font-medium">Actions</h3>
+                    <h3 className="text-sm font-medium">{t("title")}</h3>
                 </div>
                 <p className="text-xs text-muted-foreground">
-                    Choose what {level === "agent" ? self : "every agent"} may do on its own. <strong className="font-medium text-foreground">Ask first</strong> sends
-                    each call to your Inbox and the agent waits; approving lets that exact call run once. <strong className="font-medium text-foreground">Off</strong> refuses it.
+                    {t.rich("intro", { who: level === "agent" ? self : t("everyAgent"), strong: (chunks) => <strong className="font-medium text-foreground">{chunks}</strong> })}
                 </p>
                 <p className="text-xs text-muted-foreground">
-                    Only the actions listed here are governed. Anything else an agent can do in Emperor (reading, uploading files,
-                    deleting tasks, answering a message it was sent...) is not affected by these settings.
+                    {t("scopeNote")}
                 </p>
             </div>
 
-            <div role="radiogroup" aria-label="Whose permissions" className="inline-flex w-full rounded-lg border border-border bg-muted/50 p-1 sm:w-auto">
+            <div role="radiogroup" aria-label={t("whose")} className="inline-flex w-full rounded-lg border border-border bg-muted/50 p-1 sm:w-auto">
                 {([
                     { value: "agent", label: self },
-                    { value: "company", label: "Company defaults" },
+                    { value: "company", label: t("companyDefaults") },
                 ] as const).map((option) => (
                     <button
                         key={option.value}
@@ -119,20 +116,20 @@ export function AgentActionsTab({ agentId, agentName }: Props) {
                 ))}
             </div>
             {level === "company" && (
-                <p className="text-xs text-muted-foreground">Every agent uses these unless its own setting says otherwise.</p>
+                <p className="text-xs text-muted-foreground">{t("companyHint")}</p>
             )}
 
             {loaded && !canEdit && (
                 <p className="rounded-lg border border-border bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
-                    Only owners and admins can change permissions.
+                    {t("adminsOnly")}
                 </p>
             )}
 
-            {GROUPS.map(({ group, title, hint }) => (
+            {GROUPS.map((group) => (
                 <section key={group} className="space-y-2" aria-labelledby={`actions-${group}`}>
                     <div>
-                        <h4 id={`actions-${group}`} className="text-sm font-medium text-foreground">{title}</h4>
-                        <p className="text-xs text-muted-foreground">{hint}</p>
+                        <h4 id={`actions-${group}`} className="text-sm font-medium text-foreground">{t(`groups.${group}.title`)}</h4>
+                        <p className="text-xs text-muted-foreground">{t(`groups.${group}.hint`)}</p>
                     </div>
                     <ul className="divide-y divide-border rounded-xl border border-border bg-card">
                         {ACTION_CATALOG.filter((entry) => entry.group === group).map((entry) => (
@@ -163,20 +160,23 @@ function ActionRow({ entry, level, agentPolicies, companyPolicies, disabled, sav
     saving: boolean;
     onChange: (mode: ActionMode | null) => void;
 }) {
+    const t = useTranslations("agents.actions");
+    const actionLabel = useActionLabel();
+    const label = actionLabel(entry);
     const resolved = level === "agent"
         ? resolveActionMode(entry.key, agentPolicies, companyPolicies)
         : resolveActionMode(entry.key, {}, companyPolicies);
     // Where the value comes from, and whether this level has its own setting to reset.
     const own = level === "agent" ? resolved.source === "agent" : resolved.source === "company";
     const sourceText = own
-        ? "Custom"
-        : resolved.source === "company" ? "Company default" : "Default";
+        ? t("source.custom")
+        : resolved.source === "company" ? t("source.company") : t("source.default");
     const builtIn = actionCatalogEntry(entry.key)?.defaultMode;
 
     return (
         <li className={cn("flex flex-col gap-2 px-3 py-2.5 sm:flex-row sm:items-center sm:gap-3", saving && "opacity-70")}>
             <div className="min-w-0 flex-1">
-                <p className="truncate text-sm text-foreground">{entry.label}</p>
+                <p className="truncate text-sm text-foreground">{label}</p>
                 <p className="flex flex-wrap items-center gap-x-2 text-[11px] text-muted-foreground">
                     <code className="font-mono">{entry.key}</code>
                     <span aria-hidden>·</span>
@@ -186,14 +186,14 @@ function ActionRow({ entry, level, agentPolicies, companyPolicies, disabled, sav
                             type="button"
                             onClick={() => onChange(null)}
                             className="text-primary hover:underline"
-                            title={level === "agent" ? "Use the company default" : `Use the built-in default (${builtIn === "ask" ? "Ask first" : builtIn === "off" ? "Off" : "Allowed"})`}
+                            title={level === "agent" ? t("useCompanyDefault") : t("useBuiltInDefault", { mode: t(`modes.${builtIn === "ask" ? "ask" : builtIn === "off" ? "off" : "allowed"}`) })}
                         >
-                            Reset
+                            {t("reset")}
                         </button>
                     )}
                 </p>
             </div>
-            <div role="radiogroup" aria-label={entry.label} className="inline-flex shrink-0 rounded-lg border border-border bg-muted/50 p-0.5">
+            <div role="radiogroup" aria-label={label} className="inline-flex shrink-0 rounded-lg border border-border bg-muted/50 p-0.5">
                 {MODES.map((mode) => {
                     const checked = resolved.mode === mode.value;
                     return (
@@ -212,7 +212,7 @@ function ActionRow({ entry, level, agentPolicies, companyPolicies, disabled, sav
                             )}
                         >
                             <span aria-hidden className={cn("h-1.5 w-1.5 rounded-full", checked ? mode.dot : "bg-muted-foreground/40")} />
-                            {mode.label}
+                            {t(`modes.${mode.value}`)}
                         </button>
                     );
                 })}

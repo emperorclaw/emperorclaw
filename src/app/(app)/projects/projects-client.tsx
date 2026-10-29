@@ -6,6 +6,9 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { DndContext, DragOverlay, MouseSensor, TouchSensor, useSensor, useSensors, type DragEndEvent, type DragStartEvent } from "@dnd-kit/core";
 import { IconAlertTriangle, IconLayoutColumns, IconList, IconPlus, IconSearch, IconX } from "@tabler/icons-react";
 import { toast } from "sonner";
+import { useFormatter, useTranslations } from "next-intl";
+import { useAge } from "@/lib/i18n/format";
+import { ageParts } from "@/lib/i18n/relative-time";
 import { ScopeViewsSection } from "@/components/views/scope-views-section";
 import { ResourceAccessButton } from "@/components/access/resource-access-dialog";
 import { PageHeader } from "@/components/page-header";
@@ -18,14 +21,12 @@ import {
     cardContextLine,
     cardSignals,
     COLUMN_DROP_STATE,
-    formatAge,
     groupBoardTasks,
     isRecurringTask,
     laneIsBulkArchivable,
     priorityLevel,
     REVIEW_BUCKET_LABEL,
     reviewBucketFor,
-    sentenceCase,
     taskBody,
     taskTitle,
     type BoardColumnKey,
@@ -34,7 +35,8 @@ import {
 import { projectTitle } from "@/lib/project-title";
 import { cn } from "@/lib/utils";
 import { BoardLane, LaneList, LaneSwitcher, laneCount, type CardHandlers, type Lane, type RowSelection } from "./board/board-lanes";
-import { BlockTaskDialog, ConfirmArchiveTaskDialog, ConfirmArchiveTasksDialog, ProjectFormDialog, TaskFormDialog, workTypeLabel } from "./board/board-dialogs";
+import { BlockTaskDialog, ConfirmArchiveTaskDialog, ConfirmArchiveTasksDialog, ProjectFormDialog, TaskFormDialog } from "./board/board-dialogs";
+import { useBoardLabels } from "./board/board-labels";
 import { ProjectHeader } from "./board/project-header";
 import { ProjectNotesPanel } from "./board/project-notes-panel";
 import { TaskCard, type TaskView } from "./board/task-card";
@@ -107,7 +109,7 @@ function parseAssigneeValue(value: string) {
 async function patchTaskRequest(taskId: string, body: Record<string, unknown>) {
     const res = await fetch(`/api/tasks/${taskId}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
     const data = await res.json().catch(() => ({}));
-    if (!res.ok) throw new Error(typeof data.error === "string" ? data.error : "Task update failed");
+    if (!res.ok) throw new Error(typeof data.error === "string" ? data.error : "");
     return data.task;
 }
 
@@ -122,14 +124,12 @@ async function bulkTaskRequest(url: string, taskIds: string[], resultKey: "archi
     for (let start = 0; start < taskIds.length; start += BULK_ARCHIVE_CHUNK) {
         const res = await fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ taskIds: taskIds.slice(start, start + BULK_ARCHIVE_CHUNK) }) });
         const data = await res.json().catch(() => ({}));
-        if (!res.ok) throw new Error(typeof data.error === "string" ? data.error : "Request failed");
+        if (!res.ok) throw new Error(typeof data.error === "string" ? data.error : "");
         if (Array.isArray(data[resultKey])) changed.push(...data[resultKey]);
         if (Array.isArray(data.skipped)) skipped += data.skipped.length;
     }
     return { changed, skipped };
 }
-
-const taskCount = (count: number) => `${count} ${count === 1 ? "task" : "tasks"}`;
 
 /** Wall clock that ticks each minute. 0 until mounted, so server and client render the same HTML. */
 function useMinuteClock() {
@@ -150,9 +150,17 @@ function writeStorage(key: string, value: string) {
 }
 
 export default function ProjectsClient({ initialTasks, projects, agents, customers, recurringDefinitions = [], artifacts = [], taskEvents = [], initialProjectMemory = [], members = [], currentMemberId = null, companyRole = "member", editableProjectIds = [], limitedAgents = [] }: Props) {
+    const t = useTranslations("projects.board");
+    const tTasks = useTranslations("tasks");
+    const labels = useBoardLabels();
+    const format = useFormatter();
+    const age = useAge();
     const router = useRouter();
     const searchParams = useSearchParams();
     const nowMs = useMinuteClock();
+    const taskCount = (count: number) => tTasks("count", { count });
+    /** An error message, or the fallback when the server gave none. */
+    const messageOf = (error: unknown, fallback: string) => error instanceof Error && error.message ? error.message : fallback;
 
     const [tasks, setTasks] = useState<any[]>(initialTasks);
     const [projectItems, setProjectItems] = useState<any[]>(projects);
@@ -248,16 +256,16 @@ export default function ProjectsClient({ initialTasks, projects, agents, custome
     const customerById = useMemo(() => new Map(customers.map((customer) => [customer.id, customer])), [customers]);
     const agentName = useCallback((id?: string | null) => {
         const agent = agents.find((item) => item.id === id);
-        if (agent) return agent.name || "Unknown agent";
+        if (agent) return agent.name || t("unknownAgent");
         // An agent limited to other people: 🔒 its name for owners/admins, "Private agent" for others.
         const limited = limitedAgents.find((item) => item.id === id);
-        if (limited) return limited.name ? `🔒 ${limited.name}` : "Private agent";
-        return "Unknown agent";
-    }, [agents, limitedAgents]);
+        if (limited) return limited.name ? `🔒 ${limited.name}` : t("privateAgent");
+        return t("unknownAgent");
+    }, [agents, limitedAgents, t]);
     const memberName = useCallback((id?: string | null) => {
         const member = members.find((item) => item.id === id);
-        return member?.displayName || member?.email || "Unknown person";
-    }, [members]);
+        return member?.displayName || member?.email || t("unknownPerson");
+    }, [members, t]);
     const projectLabel = useCallback((projectId?: string | null) => projectTitle(projectById.get(projectId ?? "")), [projectById]);
     const customerNameOf = useCallback((projectId?: string | null) => {
         const project = projectById.get(projectId ?? "");
@@ -321,12 +329,13 @@ export default function ProjectsClient({ initialTasks, projects, agents, custome
             contextTitle: [customer, project.name, project.description].filter(Boolean).join("\n"),
             owner,
             priority: priorityLevel(task.priority),
-            age: nowMs ? formatAge(stamp, nowMs) : "",
-            ageTitle: nowMs && stampDate && !Number.isNaN(stampDate.getTime()) ? `${fresh ? "Created" : "Updated"} ${stampDate.toLocaleString()}` : "",
+            age: nowMs ? age(stamp, nowMs) : "",
+            ageNow: nowMs ? ageParts(stamp, nowMs)?.key === "ageNow" : false,
+            ageTitle: nowMs && stampDate && !Number.isNaN(stampDate.getTime()) ? t(fresh ? "createdAt" : "updatedAt", { when: format.dateTime(stampDate, { dateStyle: "medium", timeStyle: "short" }) }) : "",
             signals: cardSignals(task, { nowMs, waitingOnDependency: groups.waitingOnDependency.has(task.id), currentMemberId }),
             recurring: isRecurringTask(task),
         };
-    }, [projectLabel, customerNameOf, memberName, agentName, filteredToProject, filteredToCustomer, nowMs, groups, currentMemberId]);
+    }, [projectLabel, customerNameOf, memberName, agentName, filteredToProject, filteredToCustomer, nowMs, groups, currentMemberId, age, format, t]);
 
     const views = useMemo(() => new Map(filteredTasks.map((task) => [task.id, viewFor(task)])), [filteredTasks, viewFor]);
     const toViews = useCallback((list: any[]) => list.map((task) => views.get(task.id) ?? viewFor(task)), [views, viewFor]);
@@ -336,7 +345,7 @@ export default function ProjectsClient({ initialTasks, projects, agents, custome
         ? groups.columns.review.filter((task) => reviewBucketFor(task, groups.waitingOnDependency.has(task.id)) === reviewFilter)
         : groups.columns.review;
     const reviewHeader = groups.columns.review.length > 0 ? (
-        <div className="flex flex-wrap gap-1" role="group" aria-label="Filter review">
+        <div className="flex flex-wrap gap-1" role="group" aria-label={t("filterReview")}>
             {(Object.keys(REVIEW_BUCKET_LABEL) as ReviewBucket[]).filter((bucket) => groups.reviewCounts[bucket] > 0).map((bucket) => {
                 const active = reviewFilter === bucket;
                 return (
@@ -350,7 +359,7 @@ export default function ProjectsClient({ initialTasks, projects, agents, custome
                             active ? "bg-violet-400/15 text-violet-100 ring-1 ring-inset ring-violet-400/30" : "bg-zinc-900 text-zinc-400 hover:text-zinc-200",
                         )}
                     >
-                        {REVIEW_BUCKET_LABEL[bucket]}
+                        {labels.reviewBucket(bucket)}
                         <span className="tabular-nums text-zinc-500">{groups.reviewCounts[bucket]}</span>
                     </button>
                 );
@@ -360,22 +369,22 @@ export default function ProjectsClient({ initialTasks, projects, agents, custome
 
     const lanes: Lane[] = showAttentionOnly
         ? [
-            { key: "dead_letter", title: "Dead-lettered", tone: "problem", icon: "failed", views: toViews(groups.attention.deadLetter), emptyText: "Nothing dead-lettered." },
-            { key: "failed", title: "Failed", tone: "problem", icon: "failed", views: toViews(groups.attention.failed), emptyText: "No failed tasks." },
-            { key: "stale_inbox", title: "Waiting over 1h", tone: "neutral", icon: "stale", views: toViews(groups.attention.staleInbox), emptyText: "Every new task was picked up within the hour." },
-            { key: "overdue_review", title: "In review over 24h", tone: "review", icon: "review", views: toViews(groups.attention.overdueReview), emptyText: "No review is overdue." },
+            { key: "dead_letter", title: tTasks("lanes.deadLettered"), tone: "problem", icon: "failed", views: toViews(groups.attention.deadLetter), emptyText: tTasks("lanes.deadLetteredEmpty") },
+            { key: "failed", title: tTasks("lanes.failed"), tone: "problem", icon: "failed", views: toViews(groups.attention.failed), emptyText: tTasks("lanes.failedEmpty") },
+            { key: "stale_inbox", title: tTasks("lanes.staleInbox"), tone: "neutral", icon: "stale", views: toViews(groups.attention.staleInbox), emptyText: tTasks("lanes.staleInboxEmpty") },
+            { key: "overdue_review", title: tTasks("lanes.overdueReview"), tone: "review", icon: "review", views: toViews(groups.attention.overdueReview), emptyText: tTasks("lanes.overdueReviewEmpty") },
         ]
         : [
-            { key: "inbox", title: "Inbox", tone: "neutral", icon: "inbox", views: toViews(groups.columns.inbox), dropId: "inbox", emptyText: "Nothing waiting. New tasks land here." },
-            { key: "in_progress", title: "In progress", tone: "active", icon: "progress", views: toViews(groups.columns.in_progress), dropId: "in_progress", emptyText: "Nobody is working on a task right now." },
+            { key: "inbox", title: labels.column("inbox"), tone: "neutral", icon: "inbox", views: toViews(groups.columns.inbox), dropId: "inbox", emptyText: tTasks("lanes.inboxEmpty") },
+            { key: "in_progress", title: labels.column("in_progress"), tone: "active", icon: "progress", views: toViews(groups.columns.in_progress), dropId: "in_progress", emptyText: tTasks("lanes.inProgressEmpty") },
             // Failed work is rare and needs the same thing as blocked work (a person), so it
             // shares this lane with a failed icon instead of taking a sixth column.
-            { key: "blocked", title: groups.columns.exceptions.length > 0 ? "Blocked or failed" : "Blocked", tone: "problem", icon: "blocked", views: toViews([...groups.columns.exceptions, ...groups.columns.blocked]), dropId: "blocked", emptyText: "Nothing is blocked or failed.", collapseWhenEmpty: true },
-            { key: "review", title: "Review", tone: "review", icon: "review", views: toViews(reviewTasks), dropId: "review", emptyText: reviewFilter ? "Nothing in this group." : "Nothing to review.", header: reviewHeader, count: reviewFilter ? undefined : groups.columns.review.length },
-            { key: "done", title: "Done", tone: "done", icon: "done", views: toViews(groups.columns.done), dropId: "done", emptyText: "Finished tasks show up here." },
+            { key: "blocked", title: groups.columns.exceptions.length > 0 ? tTasks("lanes.blockedOrFailed") : labels.column("blocked"), tone: "problem", icon: "blocked", views: toViews([...groups.columns.exceptions, ...groups.columns.blocked]), dropId: "blocked", emptyText: tTasks("lanes.blockedEmpty"), collapseWhenEmpty: true },
+            { key: "review", title: labels.column("review"), tone: "review", icon: "review", views: toViews(reviewTasks), dropId: "review", emptyText: reviewFilter ? tTasks("lanes.reviewGroupEmpty") : tTasks("lanes.reviewEmpty"), header: reviewHeader, count: reviewFilter ? undefined : groups.columns.review.length },
+            { key: "done", title: labels.column("done"), tone: "done", icon: "done", views: toViews(groups.columns.done), dropId: "done", emptyText: tTasks("lanes.doneEmpty") },
             ...((filteredRecurringDefinitions.length > 0 || groups.recurring.length > 0) ? [{
                 key: "recurring",
-                title: "Recurring",
+                title: tTasks("lanes.recurring"),
                 tone: "neutral" as const,
                 icon: "recurring" as const,
                 views: toViews(groups.recurring),
@@ -384,7 +393,7 @@ export default function ProjectsClient({ initialTasks, projects, agents, custome
                     projectName: filteredToProject ? "" : projectLabel(definition.projectId).name,
                     ownerName: definition.createdByAgentId ? agentName(definition.createdByAgentId) : "",
                 })),
-                emptyText: "No recurring work.",
+                emptyText: tTasks("lanes.recurringEmpty"),
             }] : []),
         ];
 
@@ -416,7 +425,7 @@ export default function ProjectsClient({ initialTasks, projects, agents, custome
             return true;
         } catch (error) {
             if (options.optimistic) replaceTask(task);
-            toast.error(error instanceof Error ? error.message : "Task update failed");
+            toast.error(messageOf(error, t("taskUpdateFailed")));
             return false;
         }
     };
@@ -430,29 +439,29 @@ export default function ProjectsClient({ initialTasks, projects, agents, custome
             setBlockDialog({ task });
             return;
         }
-        void patchTask(task, { state }, { optimistic: { state, updatedAt: new Date().toISOString() }, success: `Moved to ${sentenceCase(state).toLowerCase()}` });
+        void patchTask(task, { state }, { optimistic: { state, updatedAt: new Date().toISOString() }, success: tTasks("movedTo", { state: labels.state(state).toLowerCase() }) });
     };
 
     const setTaskPriority = (task: any, priority: number) => {
         if (!canEdit) return;
         const level = priorityLevel(priority);
-        void patchTask(task, { priority }, { optimistic: { priority }, success: level ? `Priority set to ${level.label.toLowerCase()}` : "Priority cleared" });
+        void patchTask(task, { priority }, { optimistic: { priority }, success: level ? tTasks("prioritySet", { priority: labels.priority(level.tone).toLowerCase() }) : tTasks("priorityCleared") });
     };
 
     const submitBlockTask = async () => {
         if (!blockDialog) return;
         const reason = blockReasonDraft.trim();
-        if (!reason) { setMutationError("Give a short reason so the blocker is clear."); return; }
+        if (!reason) { setMutationError(tTasks("block.reasonMissing")); return; }
         setIsMutating(true);
         setMutationError(null);
         try {
             const updated = await patchTaskRequest(blockDialog.task.id, { state: "blocked", blockedReason: reason });
             replaceTask(updated);
-            toast.success("Task blocked");
+            toast.success(tTasks("block.done"));
             setBlockDialog(null);
             setBlockReasonDraft("");
         } catch (error) {
-            setMutationError(error instanceof Error ? error.message : "Could not block task");
+            setMutationError(messageOf(error, tTasks("block.failed")));
         } finally {
             setIsMutating(false);
         }
@@ -461,7 +470,7 @@ export default function ProjectsClient({ initialTasks, projects, agents, custome
     const sendTaskNote = async (task: any, text: string) => {
         try {
             const noteRes = await fetch(`/api/tasks/${task.id}/notes`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ comment: text }) });
-            if (!noteRes.ok) throw new Error("Could not save the note");
+            if (!noteRes.ok) throw new Error("note");
             const data = await noteRes.json().catch(() => ({}));
             if (data.event) setEvents((prev) => [...prev, data.event]);
             if (task.assignedAgentId) {
@@ -471,11 +480,11 @@ export default function ProjectsClient({ initialTasks, projects, agents, custome
                     body: JSON.stringify({ text: `Task Directive for TASK-${task.id}:\n${text}`, targetAgentId: task.assignedAgentId }),
                 });
             }
-            toast.success(task.assignedAgentId ? `Note saved and sent to ${agentName(task.assignedAgentId)}` : "Note saved");
+            toast.success(task.assignedAgentId ? t("noteSentTo", { agent: agentName(task.assignedAgentId) }) : t("noteSaved"));
             return true;
         } catch (error) {
             console.error("Failed to send task note", error);
-            toast.error("Could not save the note. Please try again.");
+            toast.error(t("noteFailedRetry"));
             return false;
         }
     };
@@ -483,7 +492,7 @@ export default function ProjectsClient({ initialTasks, projects, agents, custome
     const addProjectNote = async (content: string) => {
         if (projectFilter === ALL_PROJECTS) return false;
         const res = await fetch(`/api/projects/${projectFilter}/memory`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ content }) });
-        if (!res.ok) { toast.error("Could not save the note"); return false; }
+        if (!res.ok) { toast.error(t("noteFailed")); return false; }
         const { data } = await res.json();
         setProjectMemoryItems((prev) => [data, ...prev]);
         return true;
@@ -524,13 +533,13 @@ export default function ProjectsClient({ initialTasks, projects, agents, custome
             const endpoint = projectDialogMode === "edit" && editingProject ? `/api/projects/${editingProject.id}` : "/api/projects";
             const res = await fetch(endpoint, { method: projectDialogMode === "edit" ? "PATCH" : "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...projectForm, goal: projectForm.goal.trim() }) });
             const data = await res.json();
-            if (!res.ok) throw new Error(data.error || "Project save failed");
+            if (!res.ok) throw new Error(data.error || t("projectSaveFailed"));
             setProjectItems((prev) => projectDialogMode === "edit" ? prev.map((project) => project.id === data.project.id ? data.project : project) : [data.project, ...prev]);
             if (projectDialogMode !== "edit") setProjectFilter(data.project.id);
             setProjectDialogMode(null);
             router.refresh();
         } catch (error) {
-            setMutationError(error instanceof Error ? error.message : "Project save failed");
+            setMutationError(messageOf(error, t("projectSaveFailed")));
         } finally {
             setIsMutating(false);
         }
@@ -548,14 +557,14 @@ export default function ProjectsClient({ initialTasks, projects, agents, custome
         try {
             const res = await fetch(`/api/projects/${project.id}`, { method: "DELETE" });
             const data = await res.json();
-            if (!res.ok) throw new Error(data.error || "Project archive failed");
+            if (!res.ok) throw new Error(data.error || t("projectArchiveFailed"));
             setProjectItems((prev) => prev.filter((item) => item.id !== project.id));
             setTasks((prev) => prev.filter((task) => task.projectId !== project.id));
             if (projectFilter === project.id) setProjectFilter(ALL_PROJECTS);
-            toast.success("Project archived.");
+            toast.success(t("projectArchived"));
             router.refresh();
         } catch (error) {
-            setMutationError(error instanceof Error ? error.message : "Project archive failed");
+            setMutationError(messageOf(error, t("projectArchiveFailed")));
         } finally {
             setIsMutating(false);
         }
@@ -568,13 +577,13 @@ export default function ProjectsClient({ initialTasks, projects, agents, custome
         try {
             const res = await fetch(`/api/projects/${project.id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ status }) });
             const data = await res.json();
-            if (!res.ok) throw new Error(data.error || "Project update failed");
+            if (!res.ok) throw new Error(data.error || t("projectUpdateFailed"));
             setProjectItems((prev) => prev.map((p) => p.id === project.id ? { ...p, status } : p));
-            toast.success(`"${projectTitle(project).name}" ${status === "completed" ? "completed" : "reopened"}.`);
+            toast.success(status === "completed" ? t("projectCompleted", { name: projectTitle(project).name }) : t("projectReopened", { name: projectTitle(project).name }));
             router.refresh();
         } catch (error) {
-            setMutationError(error instanceof Error ? error.message : "Project update failed");
-            toast.error("Could not update the project.");
+            setMutationError(messageOf(error, t("projectUpdateFailed")));
+            toast.error(t("projectUpdateFailedToast"));
         } finally {
             setIsMutating(false);
             setCompletingProject(null);
@@ -645,13 +654,13 @@ export default function ProjectsClient({ initialTasks, projects, agents, custome
                 body: JSON.stringify({ ...taskForm, assignee: parseAssigneeValue(taskForm.assignee), priority: Number(taskForm.priority) || 0, inputJson, ...(useDefaultProject && !isEdit ? { useDefaultProject: true } : {}) }),
             });
             const data = await res.json();
-            if (!res.ok) throw new Error(data.error || "Task save failed");
+            if (!res.ok) throw new Error(data.error || t("taskSaveFailed"));
             setTasks((prev) => isEdit ? prev.map((task) => task.id === data.task.id ? data.task : task) : [data.task, ...prev]);
             if (!isEdit && !projectById.has(data.task.projectId)) setProjectItems((prev) => [...prev, { id: data.task.projectId, goal: "General", status: "active", customerId: null }]);
             setTaskDialogMode(null);
             router.refresh();
         } catch (error) {
-            setMutationError(error instanceof Error ? error.message : "Task save failed");
+            setMutationError(messageOf(error, t("taskSaveFailed")));
         } finally {
             setIsMutating(false);
         }
@@ -663,14 +672,14 @@ export default function ProjectsClient({ initialTasks, projects, agents, custome
         try {
             const res = await fetch(`/api/tasks/${task.id}`, { method: "DELETE" });
             const data = await res.json();
-            if (!res.ok) throw new Error(data.error || "Task archive failed");
+            if (!res.ok) throw new Error(data.error || t("taskArchiveFailed"));
             setTasks((prev) => prev.filter((item) => item.id !== task.id));
             setArchivingTaskId(null);
             if (selectedTaskId === task.id) setSelectedTaskId(null);
-            toast.success("Task archived.");
+            toast.success(t("taskArchived"));
             router.refresh();
         } catch (error) {
-            setMutationError(error instanceof Error ? error.message : "Task archive failed");
+            setMutationError(messageOf(error, t("taskArchiveFailed")));
         } finally {
             setIsMutating(false);
         }
@@ -684,11 +693,11 @@ export default function ProjectsClient({ initialTasks, projects, agents, custome
                 const present = new Set(prev.map((task) => task.id));
                 return [...snapshot.filter((task) => back.has(task.id) && !present.has(task.id)).map((task) => ({ ...task, deletedAt: null })), ...prev];
             });
-            if (changed.length < ids.length) toast.warning(`Restored ${taskCount(changed.length)}. ${taskCount(ids.length - changed.length)} could not be restored.`);
-            else toast.success(`Restored ${taskCount(changed.length)}`);
+            if (changed.length < ids.length) toast.warning(t("restoredPartly", { restored: taskCount(changed.length), failed: taskCount(ids.length - changed.length) }));
+            else toast.success(t("restored", { tasks: taskCount(changed.length) }));
             router.refresh();
         } catch (error) {
-            toast.error(error instanceof Error ? error.message : "Could not restore the tasks");
+            toast.error(messageOf(error, t("restoreFailed")));
         }
     };
 
@@ -703,14 +712,14 @@ export default function ProjectsClient({ initialTasks, projects, agents, custome
             setListSelection((prev) => new Set([...prev].filter((id) => !gone.has(id))));
             if (selectedTaskId && gone.has(selectedTaskId)) setSelectedTaskId(null);
             setBulkArchiveIds(null);
-            toast.success(`Archived ${taskCount(changed.length)}`, {
-                description: skipped > 0 ? `${taskCount(skipped)} skipped: you cannot archive ${skipped === 1 ? "it" : "them"}, or ${skipped === 1 ? "it was" : "they were"} already gone.` : undefined,
+            toast.success(t("archived", { tasks: taskCount(changed.length) }), {
+                description: skipped > 0 ? t("archiveSkipped", { tasks: taskCount(skipped), count: skipped }) : undefined,
                 duration: UNDO_TOAST_MS,
-                action: changed.length > 0 ? { label: "Undo", onClick: () => void restoreTasks(changed, snapshot) } : undefined,
+                action: changed.length > 0 ? { label: t("undo"), onClick: () => void restoreTasks(changed, snapshot) } : undefined,
             });
             router.refresh();
         } catch (error) {
-            setMutationError(error instanceof Error ? error.message : "Could not archive the tasks");
+            setMutationError(messageOf(error, t("archiveFailed")));
         } finally {
             setIsMutating(false);
         }
@@ -755,33 +764,33 @@ export default function ProjectsClient({ initialTasks, projects, agents, custome
 
     // ─── Filter copy ────────────────────────────────────────────────────────
     const customerOptions = [
-        { value: ALL_CUSTOMERS, label: "All customers", description: `${customers.length} customers` },
-        ...customers.map((customer) => ({ value: customer.id, label: customer.name, description: `${projectItems.filter((project) => project.customerId === customer.id).length} projects` })),
+        { value: ALL_CUSTOMERS, label: t("allCustomers"), description: t("customerCount", { count: customers.length }) },
+        ...customers.map((customer) => ({ value: customer.id, label: customer.name, description: t("projectCount", { count: projectItems.filter((project) => project.customerId === customer.id).length }) })),
     ];
     const projectOptions = [
-        { value: ALL_PROJECTS, label: "All projects", description: `${visibleProjects.length} ${hideCompletedProjects ? "active " : ""}projects` },
+        { value: ALL_PROJECTS, label: t("allProjects"), description: hideCompletedProjects ? t("activeProjectCount", { count: visibleProjects.length }) : t("projectCount", { count: visibleProjects.length }) },
         ...visibleProjects
             .filter((project) => customerFilter === ALL_CUSTOMERS || project.customerId === customerFilter)
             .map((project) => {
                 const title = projectTitle(project);
-                const customerName = customerById.get(project.customerId)?.name || "No customer";
+                const customerName = customerById.get(project.customerId)?.name || t("noCustomer");
                 const finished = project.status === "completed" || project.status === "killed";
                 return {
                     value: project.id,
                     label: title.name,
-                    description: finished ? `${customerName} · ${sentenceCase(project.status)}` : customerName,
+                    description: finished ? `${customerName} · ${labels.projectStatus(project.status)}` : customerName,
                     keywords: title.description,
                 };
             }),
     ];
     const assigneeOptions = [
-        { value: "all", label: "All assignees", description: `${members.length} people · ${agents.length} agents` },
-        ...(currentMemberId ? [{ value: `human:${currentMemberId}`, label: "Assigned to me", description: "Your tasks" }] : []),
-        { value: "human", label: "All people", description: "Human-assigned work" },
-        { value: "agent", label: "All agents", description: "Agent-assigned work" },
-        { value: "unassigned", label: "Unassigned", description: "Waiting for an assignee" },
-        ...members.map((member) => ({ value: `human:${member.id}`, label: member.displayName || member.email, description: member.roleTitle || "Person" })),
-        ...agents.map((agent) => ({ value: `agent:${agent.id}`, label: agent.name, description: agent.role || "Agent" })),
+        { value: "all", label: t("assignees.all"), description: t("assignees.allDescription", { people: members.length, agents: agents.length }) },
+        ...(currentMemberId ? [{ value: `human:${currentMemberId}`, label: t("assignees.me"), description: t("assignees.meDescription") }] : []),
+        { value: "human", label: t("assignees.people"), description: t("assignees.peopleDescription") },
+        { value: "agent", label: t("assignees.agents"), description: t("assignees.agentsDescription") },
+        { value: "unassigned", label: t("assignees.unassigned"), description: t("assignees.unassignedDescription") },
+        ...members.map((member) => ({ value: `human:${member.id}`, label: member.displayName || member.email, description: member.roleTitle || t("assignees.person") })),
+        ...agents.map((agent) => ({ value: `agent:${agent.id}`, label: agent.name, description: agent.role || t("assignees.agent") })),
     ];
     const assigneeLabel = assigneeOptions.find((option) => option.value === assigneeFilter)?.label;
     const filterParts = [
@@ -820,22 +829,22 @@ export default function ProjectsClient({ initialTasks, projects, agents, custome
     return (
         <div className="relative mx-auto flex h-full max-w-[1800px] flex-col gap-4">
             <PageHeader
-                eyebrow="Work"
-                title="Projects board"
-                description="Track work from to-do to done across all your projects."
+                eyebrow={t("eyebrow")}
+                title={t("title")}
+                description={t("description")}
                 actions={canEdit ? (
                     <>
                         <button type="button" onClick={openCreateProject} className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-zinc-700 bg-zinc-900/80 px-3 text-sm font-medium text-zinc-100 transition-colors hover:border-zinc-600 hover:bg-zinc-800">
-                            <IconPlus className="h-4 w-4" aria-hidden="true" />Project
+                            <IconPlus className="h-4 w-4" aria-hidden="true" />{t("newProject")}
                         </button>
                         <button type="button" onClick={() => openCreateTask()} className="inline-flex h-9 items-center gap-1.5 rounded-lg bg-cyan-400/15 px-3 text-sm font-semibold text-cyan-50 ring-1 ring-inset ring-cyan-400/30 transition-colors hover:bg-cyan-400/25">
-                            <IconPlus className="h-4 w-4" aria-hidden="true" />Task
+                            <IconPlus className="h-4 w-4" aria-hidden="true" />{t("newTask")}
                         </button>
                     </>
                 ) : (
-                    <DisabledReason reason="You have view-only access. Ask an owner or admin for member access to add projects and tasks.">
+                    <DisabledReason reason={t("viewOnly")}>
                         <button type="button" disabled className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-border px-3 text-sm font-medium text-muted-foreground disabled:opacity-60">
-                            <IconPlus className="h-4 w-4" aria-hidden="true" />Task
+                            <IconPlus className="h-4 w-4" aria-hidden="true" />{t("newTask")}
                         </button>
                     </DisabledReason>
                 )}
@@ -844,18 +853,18 @@ export default function ProjectsClient({ initialTasks, projects, agents, custome
             <div className="emperor-panel rounded-2xl p-3">
                 <div className="flex flex-wrap items-center gap-2">
                     <label className="relative min-w-0 flex-[1_1_16rem]">
-                        <span className="sr-only">Search tasks</span>
+                        <span className="sr-only">{t("searchTasks")}</span>
                         <IconSearch className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-zinc-500" aria-hidden="true" />
-                        <input value={searchQuery} onChange={(event) => setSearchQuery(event.target.value)} placeholder="Search tasks" className="h-10 w-full rounded-xl border border-zinc-800 bg-zinc-950/80 pl-9 pr-9 text-sm text-zinc-100 outline-none placeholder:text-zinc-500 focus:border-cyan-400 focus:ring-1 focus:ring-cyan-400/60" />
+                        <input value={searchQuery} onChange={(event) => setSearchQuery(event.target.value)} placeholder={t("searchTasks")} className="h-10 w-full rounded-xl border border-zinc-800 bg-zinc-950/80 pl-9 pr-9 text-sm text-zinc-100 outline-none placeholder:text-zinc-500 focus:border-cyan-400 focus:ring-1 focus:ring-cyan-400/60" />
                         {searchQuery && (
-                            <button type="button" onClick={() => setSearchQuery("")} aria-label="Clear search" className="absolute right-2 top-1/2 inline-flex h-6 w-6 -translate-y-1/2 items-center justify-center rounded-md text-zinc-500 hover:text-zinc-200"><IconX className="h-3.5 w-3.5" aria-hidden="true" /></button>
+                            <button type="button" onClick={() => setSearchQuery("")} aria-label={t("clearSearch")} className="absolute right-2 top-1/2 inline-flex h-6 w-6 -translate-y-1/2 items-center justify-center rounded-md text-zinc-500 hover:text-zinc-200"><IconX className="h-3.5 w-3.5" aria-hidden="true" /></button>
                         )}
                     </label>
                     <SearchableSelect
                         value={customerFilter}
                         options={customerOptions}
-                        placeholder="All customers"
-                        searchPlaceholder="Search customers..."
+                        placeholder={t("allCustomers")}
+                        searchPlaceholder={t("searchCustomers")}
                         className="hidden min-w-0 flex-[1_1_11rem] sm:block sm:max-w-[15rem]"
                         onChange={(nextCustomerId) => {
                             setCustomerFilter(nextCustomerId);
@@ -865,8 +874,8 @@ export default function ProjectsClient({ initialTasks, projects, agents, custome
                     <SearchableSelect
                         value={projectFilter}
                         options={projectOptions}
-                        placeholder="All projects"
-                        searchPlaceholder="Search projects..."
+                        placeholder={t("allProjects")}
+                        searchPlaceholder={t("searchProjects")}
                         onChange={setProjectFilter}
                         className="min-w-0 flex-[1_1_13rem] sm:max-w-[18rem]"
                     />
@@ -875,30 +884,30 @@ export default function ProjectsClient({ initialTasks, projects, agents, custome
                             type="button"
                             aria-pressed={showAttentionOnly}
                             onClick={() => setShowAttentionOnly((prev) => !prev)}
-                            title="Failed, dead-lettered, waiting over 1h, or in review over 24h"
+                            title={t("needsAttentionHint")}
                             className={cn(
                                 "inline-flex h-10 items-center gap-1.5 rounded-xl border px-3 text-sm transition-colors",
                                 showAttentionOnly ? "border-rose-400/40 bg-rose-400/10 text-rose-100" : "border-zinc-800 bg-zinc-950/80 text-zinc-300 hover:border-zinc-700 hover:text-zinc-100",
                             )}
                         >
                             <IconAlertTriangle className="h-4 w-4" aria-hidden="true" />
-                            Needs attention
+                            {t("needsAttention")}
                             {groups.attentionCount > 0 && <span className={cn("rounded-full px-1.5 text-xs tabular-nums", showAttentionOnly ? "bg-rose-400/20" : "bg-zinc-800 text-zinc-300")}>{groups.attentionCount}</span>}
                         </button>
-                        <div role="group" aria-label="Layout" className="hidden h-10 items-center gap-0.5 rounded-xl border border-zinc-800 bg-zinc-950/80 p-1 md:inline-flex">
-                            <button type="button" aria-pressed={viewMode === "board"} onClick={() => setViewMode("board")} className={cn(segmented, viewMode === "board" ? "bg-zinc-800 text-zinc-50" : "text-zinc-400 hover:text-zinc-200")}><IconLayoutColumns className="h-4 w-4" aria-hidden="true" />Board</button>
-                            <button type="button" aria-pressed={viewMode === "list"} onClick={() => setViewMode("list")} className={cn(segmented, viewMode === "list" ? "bg-zinc-800 text-zinc-50" : "text-zinc-400 hover:text-zinc-200")}><IconList className="h-4 w-4" aria-hidden="true" />List</button>
+                        <div role="group" aria-label={t("layout")} className="hidden h-10 items-center gap-0.5 rounded-xl border border-zinc-800 bg-zinc-950/80 p-1 md:inline-flex">
+                            <button type="button" aria-pressed={viewMode === "board"} onClick={() => setViewMode("board")} className={cn(segmented, viewMode === "board" ? "bg-zinc-800 text-zinc-50" : "text-zinc-400 hover:text-zinc-200")}><IconLayoutColumns className="h-4 w-4" aria-hidden="true" />{t("board")}</button>
+                            <button type="button" aria-pressed={viewMode === "list"} onClick={() => setViewMode("list")} className={cn(segmented, viewMode === "list" ? "bg-zinc-800 text-zinc-50" : "text-zinc-400 hover:text-zinc-200")}><IconList className="h-4 w-4" aria-hidden="true" />{t("list")}</button>
                         </div>
                     </div>
                 </div>
                 <details className="group mt-2">
-                    <summary className="inline-flex cursor-pointer select-none items-center rounded-md px-1 py-1 text-xs font-medium text-zinc-400 hover:text-zinc-200">More filters</summary>
+                    <summary className="inline-flex cursor-pointer select-none items-center rounded-md px-1 py-1 text-xs font-medium text-zinc-400 hover:text-zinc-200">{t("moreFilters")}</summary>
                     <div className="mt-2 flex flex-wrap items-center gap-3 border-t border-zinc-800/80 pt-3">
-                        <SearchableSelect value={customerFilter} options={customerOptions} placeholder="All customers" searchPlaceholder="Search customers..." onChange={setCustomerFilter} className="min-w-[14rem] sm:hidden" />
-                        <SearchableSelect value={assigneeFilter} options={assigneeOptions} placeholder="All assignees" searchPlaceholder="Search people and agents..." onChange={setAssigneeFilter} className="min-w-[14rem]" />
+                        <SearchableSelect value={customerFilter} options={customerOptions} placeholder={t("allCustomers")} searchPlaceholder={t("searchCustomers")} onChange={setCustomerFilter} className="min-w-[14rem] sm:hidden" />
+                        <SearchableSelect value={assigneeFilter} options={assigneeOptions} placeholder={t("assignees.all")} searchPlaceholder={t("searchAssignees")} onChange={setAssigneeFilter} className="min-w-[14rem]" />
                         <label className="inline-flex min-h-10 items-center gap-2 text-sm text-zinc-300">
                             <input type="checkbox" checked={!hideCompletedProjects} onChange={(event) => setHideCompletedProjects(!event.target.checked)} className="h-4 w-4 accent-cyan-500" />
-                            Include finished projects
+                            {t("includeFinished")}
                         </label>
                     </div>
                 </details>
@@ -927,17 +936,17 @@ export default function ProjectsClient({ initialTasks, projects, agents, custome
 
             {hasBoardFilters && (
                 <p className="flex flex-wrap items-center gap-x-2 gap-y-1 px-1 text-sm text-zinc-400" role="status">
-                    <span>Showing <span className="tabular-nums text-zinc-200">{shownCount}</span> of <span className="tabular-nums">{totalCount}</span> tasks</span>
+                    <span>{t.rich("showing", { shown: shownCount, total: totalCount, strong: (chunks) => <span className="tabular-nums text-zinc-200">{chunks}</span>, num: (chunks) => <span className="tabular-nums">{chunks}</span> })}</span>
                     <span aria-hidden="true">·</span>
-                    <span className="min-w-0 truncate">Filtered to <span className="text-zinc-200">{filterParts.join(", ")}</span></span>
-                    <button type="button" onClick={clearBoardFilters} className="rounded-md px-1.5 py-0.5 text-sm font-medium text-cyan-300 hover:bg-cyan-400/10 hover:text-cyan-200">Clear</button>
+                    <span className="min-w-0 truncate">{t.rich("filteredTo", { filters: filterParts.join(", "), strong: (chunks) => <span className="text-zinc-200">{chunks}</span> })}</span>
+                    <button type="button" onClick={clearBoardFilters} className="rounded-md px-1.5 py-0.5 text-sm font-medium text-cyan-300 hover:bg-cyan-400/10 hover:text-cyan-200">{t("clear")}</button>
                 </p>
             )}
 
             {mutationError && !projectDialogMode && !taskDialogMode && !blockDialog && !archivingTaskId && !bulkArchiveIds && (
                 <div role="alert" className="flex items-start gap-3 rounded-lg border border-rose-500/30 bg-rose-500/10 px-4 py-3 text-sm text-rose-200">
                     <span className="flex-1">{mutationError}</span>
-                    <button type="button" onClick={() => setMutationError(null)} aria-label="Dismiss" className="text-rose-300 hover:text-rose-100"><IconX className="h-4 w-4" aria-hidden="true" /></button>
+                    <button type="button" onClick={() => setMutationError(null)} aria-label={t("dismiss")} className="text-rose-300 hover:text-rose-100"><IconX className="h-4 w-4" aria-hidden="true" /></button>
                 </div>
             )}
 
@@ -946,17 +955,17 @@ export default function ProjectsClient({ initialTasks, projects, agents, custome
                     <EmptyState
                         className="flex-1 justify-center"
                         icon={IconLayoutColumns}
-                        title="No tasks yet"
-                        description={canEdit ? "Create one, or ask an agent in chat to plan the work. Tasks land here, grouped by where they are." : "Tasks your agents and team create show up here. You have view-only access, so you can't add one."}
-                        action={canEdit && <button type="button" onClick={() => openCreateTask()} className="inline-flex h-10 items-center gap-1.5 rounded-lg bg-cyan-400/15 px-4 text-sm font-semibold text-cyan-50 ring-1 ring-inset ring-cyan-400/30 hover:bg-cyan-400/25"><IconPlus className="h-4 w-4" aria-hidden="true" />Create a task</button>}
+                        title={t("emptyTitle")}
+                        description={canEdit ? t("emptyDescription") : t("emptyViewOnly")}
+                        action={canEdit && <button type="button" onClick={() => openCreateTask()} className="inline-flex h-10 items-center gap-1.5 rounded-lg bg-cyan-400/15 px-4 text-sm font-semibold text-cyan-50 ring-1 ring-inset ring-cyan-400/30 hover:bg-cyan-400/25"><IconPlus className="h-4 w-4" aria-hidden="true" />{t("createTask")}</button>}
                     />
                 ) : (
                     <EmptyState
                         className="flex-1 justify-center"
                         icon={IconSearch}
-                        title={showAttentionOnly && !hasBoardFilters ? "Nothing needs attention" : "No tasks match these filters"}
-                        description={hasBoardFilters ? `${totalCount} task${totalCount === 1 ? " is" : "s are"} hidden by: ${filterParts.join(", ")}.` : "Everything is moving."}
-                        action={hasBoardFilters && <button type="button" onClick={clearBoardFilters} className="inline-flex h-10 items-center rounded-lg border border-border px-4 text-sm font-medium text-foreground hover:bg-muted">Clear filters</button>}
+                        title={showAttentionOnly && !hasBoardFilters ? t("nothingNeedsAttention") : t("noMatchTitle")}
+                        description={hasBoardFilters ? t("hiddenBy", { count: totalCount, filters: filterParts.join(", ") }) : t("everythingMoving")}
+                        action={hasBoardFilters && <button type="button" onClick={clearBoardFilters} className="inline-flex h-10 items-center rounded-lg border border-border px-4 text-sm font-medium text-foreground hover:bg-muted">{t("clearFilters")}</button>}
                     />
                 )
             ) : (
@@ -976,10 +985,10 @@ export default function ProjectsClient({ initialTasks, projects, agents, custome
                     {viewMode === "list" && (
                         <div className="hidden md:block">
                             {rowSelection && selectedVisibleIds.length > 0 && (
-                                <div role="region" aria-label="Selected tasks" className="sticky top-0 z-10 mb-3 flex items-center gap-3 rounded-xl border border-zinc-800 bg-zinc-950/95 px-3 py-2 text-sm text-zinc-300 shadow-lg shadow-black/30 backdrop-blur">
-                                    <span><span className="tabular-nums text-zinc-100">{selectedVisibleIds.length}</span> selected</span>
-                                    <button type="button" onClick={() => { setMutationError(null); setBulkArchiveIds(selectedVisibleIds); }} className="ml-auto inline-flex h-8 items-center gap-1.5 rounded-lg bg-rose-500/15 px-3 text-sm font-medium text-rose-100 ring-1 ring-inset ring-rose-400/30 hover:bg-rose-500/25">Archive selected</button>
-                                    <button type="button" onClick={() => setListSelection(new Set())} className="inline-flex h-8 items-center rounded-lg px-2 text-sm text-zinc-400 hover:text-zinc-200">Clear</button>
+                                <div role="region" aria-label={t("selectedTasks")} className="sticky top-0 z-10 mb-3 flex items-center gap-3 rounded-xl border border-zinc-800 bg-zinc-950/95 px-3 py-2 text-sm text-zinc-300 shadow-lg shadow-black/30 backdrop-blur">
+                                    <span>{t.rich("selectedCount", { count: selectedVisibleIds.length, num: (chunks) => <span className="tabular-nums text-zinc-100">{chunks}</span> })}</span>
+                                    <button type="button" onClick={() => { setMutationError(null); setBulkArchiveIds(selectedVisibleIds); }} className="ml-auto inline-flex h-8 items-center gap-1.5 rounded-lg bg-rose-500/15 px-3 text-sm font-medium text-rose-100 ring-1 ring-inset ring-rose-400/30 hover:bg-rose-500/25">{t("archiveSelected")}</button>
+                                    <button type="button" onClick={() => setListSelection(new Set())} className="inline-flex h-8 items-center rounded-lg px-2 text-sm text-zinc-400 hover:text-zinc-200">{t("clear")}</button>
                                 </div>
                             )}
                             <LaneList lanes={lanes} handlers={handlers} selection={rowSelection} />
@@ -999,7 +1008,7 @@ export default function ProjectsClient({ initialTasks, projects, agents, custome
                     view={views.get(selectedTask.id) ?? viewFor(selectedTask)}
                     project={projectLabel(selectedTask.projectId)}
                     customerName={customerNameOf(selectedTask.projectId)}
-                    workTypeLabel={workTypeLabel(selectedTask.taskType)}
+                    workTypeLabel={labels.workType(selectedTask.taskType)}
                     events={events.filter((event) => event.taskId === selectedTask.id)}
                     artifacts={artifacts.filter((artifact) => artifact.taskId === selectedTask.id)}
                     agents={agents}
@@ -1009,7 +1018,7 @@ export default function ProjectsClient({ initialTasks, projects, agents, custome
                     busy={isMutating}
                     onClose={() => setSelectedTaskId(null)}
                     onSetState={(state) => setTaskState(selectedTask, state)}
-                    onAssign={(value) => void patchTask(selectedTask, { assignee: parseAssigneeValue(value) }, { success: value ? "Owner changed" : "Owner removed" })}
+                    onAssign={(value) => void patchTask(selectedTask, { assignee: parseAssigneeValue(value) }, { success: value ? t("ownerChanged") : t("ownerRemoved") })}
                     onSetPriority={(priority) => setTaskPriority(selectedTask, priority)}
                     onEdit={() => openEditTask(selectedTask)}
                     onArchive={() => { setMutationError(null); setArchivingTaskId(selectedTask.id); }}
@@ -1048,7 +1057,7 @@ export default function ProjectsClient({ initialTasks, projects, agents, custome
             />
             <BlockTaskDialog
                 open={Boolean(blockDialog)}
-                title={blockDialog ? taskTitle(blockDialog.task) : "Task"}
+                title={blockDialog ? taskTitle(blockDialog.task) : tTasks("drawer.task")}
                 reason={blockReasonDraft}
                 setReason={setBlockReasonDraft}
                 busy={isMutating}

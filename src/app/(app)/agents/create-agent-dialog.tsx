@@ -14,12 +14,25 @@ import { DEFAULT_HOST_MODEL } from "@/lib/runtime-hosts/commands";
 import { EVERYONE_ACCESS, WhoCanUseField, hireAccessBody, useAccessPeople, type AgentAccessValue } from "@/components/access/agent-access-control";
 import { HireProgress, HostPicker, useHireHosts, type HostChoice } from "@/components/runtime-hosts/host-picker";
 import { toast } from "sonner";
+import { useTranslations } from "next-intl";
 
 type Step = "role" | "provider" | "name" | "progress";
 
 const providers = getAvailableProviders();
 
 type PricingOption = { provider: string; model: string; label: string; inputPricePer1k: number; outputPricePer1k: number };
+
+/** Product names, not copy. */
+const LLM_PROVIDER_OPTIONS = [
+    { value: "openai", label: "OpenAI" },
+    { value: "anthropic", label: "Anthropic" },
+    { value: "google", label: "Google Gemini" },
+    { value: "openrouter", label: "OpenRouter" },
+    { value: "grok", label: "Grok" },
+    { value: "deepseek", label: "DeepSeek" },
+];
+const DOCTRINE_FILES = "SOUL.md, AGENTS.md, BOOTSTRAP.md, IDENTITY.md";
+const PROVIDER_EMOJI: Record<string, string> = { openclaw: "🦀", hermes: "👑", codex: "🧠" };
 
 export function CreateAgentDialog({
     onAgentCreated,
@@ -48,6 +61,8 @@ export function CreateAgentDialog({
      */
     hideTrigger?: boolean;
 }) {
+    const t = useTranslations("agents.create");
+    const tc = useTranslations("common");
     const router = useRouter();
     const [uncontrolledOpen, setUncontrolledOpen] = useState(false);
     const isControlled = controlledOpen !== undefined;
@@ -150,22 +165,22 @@ export function CreateAgentDialog({
             });
 
             const data = await res.json();
-            if (!res.ok) throw new Error(data.error || "Agent creation failed");
+            if (!res.ok) throw new Error(data.error || t("failed"));
             router.refresh();
             if (typeof data.jobId === "string") {
                 // Set up on a host: stay open and show the setup live.
-                setHireProgress({ jobId: data.jobId, agentId: data.agent.id, agentName, hostName: data.runtimeHost?.name ?? chosenHost?.name ?? "the host" });
+                setHireProgress({ jobId: data.jobId, agentId: data.agent.id, agentName, hostName: data.runtimeHost?.name ?? chosenHost?.name ?? t("theHost") });
                 setStep("progress");
                 return;
             }
             if (typeof data.hostError === "string") {
-                toast.error(`${agentName} was created, but its setup on the host could not be queued`, { description: `${data.hostError} Open the agent to retry.` });
+                toast.error(t("hostQueueFailed", { name: agentName }), { description: t("hostQueueFailedHint", { error: data.hostError }) });
             }
             setOpen(false);
             resetForm();
             onAgentCreated?.(data.agent.id);
         } catch (e) {
-            setError(e instanceof Error ? e.message : "Agent creation failed");
+            setError(e instanceof Error ? e.message : t("failed"));
         } finally {
             setIsSaving(false);
         }
@@ -204,22 +219,22 @@ export function CreateAgentDialog({
         }}>
             {!hideTrigger && (
                 <DialogTrigger asChild>
-                    <Button variant={triggerVariant} className="shadow-sm">Hire Agent</Button>
+                    <Button variant={triggerVariant} className="shadow-sm">{t("hire")}</Button>
                 </DialogTrigger>
             )}
             <DialogContent className="sm:max-w-[580px] max-h-[90dvh] flex flex-col overflow-hidden bg-zinc-950 border-zinc-800 text-zinc-200">
                 <DialogHeader>
                     <DialogTitle className="text-zinc-100">
-                        {step === "role" && "Pick a role"}
-                        {step === "provider" && "How should it run?"}
-                        {step === "name" && "Name your agent"}
-                        {step === "progress" && `Setting up ${hireProgress?.agentName ?? "the agent"}`}
+                        {step === "role" && t("steps.role")}
+                        {step === "provider" && t("steps.provider")}
+                        {step === "name" && t("steps.name")}
+                        {step === "progress" && t("steps.progress", { name: hireProgress?.agentName ?? t("theAgent") })}
                     </DialogTitle>
                     <DialogDescription className="text-zinc-400">
-                        {step === "role" && "Choose a pre-built role with doctrine files, or start from scratch."}
-                        {step === "provider" && "Select the runtime that will execute this agent's work. API keys live in the runtime — not stored in EmperorClaw."}
-                        {step === "name" && "Give it a name and review the configuration before creating."}
-                        {step === "progress" && "Emperor installs it on the host and waits until it is online."}
+                        {step === "role" && t("steps.roleHint")}
+                        {step === "provider" && t("steps.providerHint")}
+                        {step === "name" && t("steps.nameHint")}
+                        {step === "progress" && t("steps.progressHint")}
                     </DialogDescription>
                 </DialogHeader>
 
@@ -248,11 +263,11 @@ export function CreateAgentDialog({
                     <div className="space-y-2 py-2 max-h-[340px] overflow-y-auto">
                         {selectedRole && (
                             <div className="flex items-center gap-3 rounded-xl border border-cyan-500/20 bg-cyan-500/5 px-3 py-2 mb-3">
-                                <span className="text-lg">{selectedRole.emoji}</span>
+                                <span className="text-lg" aria-hidden="true">{selectedRole.emoji}</span>
                                 <div>
                                     <span className="text-sm font-medium text-cyan-100">{selectedRole.title}</span>
                                     <span className="block text-[11px] text-cyan-100/60">
-                                        {selectedRole.runtime === "any" ? "Works with any runtime" : `Best with ${selectedRole.runtime}`}
+                                        {selectedRole.runtime === "any" ? t("anyRuntime") : t("bestWith", { runtime: selectedRole.runtime })}
                                     </span>
                                 </div>
                             </div>
@@ -260,19 +275,18 @@ export function CreateAgentDialog({
                         {/* Hermes prerequisite warning */}
                         {selectedProvider.id === "hermes" && (
                         <div className="rounded-lg border border-amber-500/20 bg-amber-500/[0.04] px-3 py-2 mb-2">
-                            <span className="text-[10px] font-bold text-amber-300 uppercase tracking-wider">⚡ Before you continue</span>
+                            <span className="text-[10px] font-bold text-amber-300 uppercase tracking-wider">{t("beforeYouContinue")}</span>
                             <p className="text-[10px] text-amber-200/70 mt-0.5 leading-relaxed">
-                                Hermes requires a running bridge on your machine. You&apos;ll need Python 3.10+, the Hermes CLI, and an LLM API key.
-                                The setup guide appears right after creation — no terminal expertise needed.
+                                {t("hermesPrereq")}
                             </p>
                         </div>
                         )}
                         {/* Key guidance for the selected provider */}
                         {selectedProvider.supportsLlmProvider && (
                         <div className="rounded-lg border border-amber-500/20 bg-amber-500/[0.04] px-3 py-2 mb-2">
-                            <span className="text-[10px] font-bold text-amber-300 uppercase tracking-wider">🔑 API Keys</span>
+                            <span className="text-[10px] font-bold text-amber-300 uppercase tracking-wider">{t("apiKeys")}</span>
                             <p className="text-[10px] text-amber-200/70 mt-0.5 leading-relaxed">
-                                Hermes reads keys from ~/.hermes/.env or your environment. EmperorClaw only stores the provider choice as metadata — the bridge reads it to auto-detect which LLM you&apos;re using.
+                                {t("apiKeysHint")}
                             </p>
                         </div>
                         )}
@@ -288,14 +302,14 @@ export function CreateAgentDialog({
                                         : "border-zinc-800 bg-zinc-900/70 hover:border-zinc-600 hover:bg-zinc-900"
                                 )}
                             >
-                                <span className="text-xl shrink-0 mt-0.5">
-                                    {provider.id === "openclaw" ? "🦀" : provider.id === "hermes" ? "👑" : provider.id === "codex" ? "🧠" : "🔌"}
+                                <span className="text-xl shrink-0 mt-0.5" aria-hidden="true">
+                                    {PROVIDER_EMOJI[provider.id] ?? "🔌"}
                                 </span>
                                 <div className="min-w-0">
                                     <div className="flex items-center gap-2">
                                         <span className="text-sm font-medium text-zinc-100">{provider.name}</span>
                                         <span className="rounded bg-zinc-800 px-1.5 py-0.5 text-[10px] font-medium text-zinc-400 uppercase">
-                                            {provider.executionModel === "persistent" ? "Daemon" : "On-demand"}
+                                            {provider.executionModel === "persistent" ? t("daemon") : t("onDemand")}
                                         </span>
                                     </div>
                                     <span className="block text-[11px] leading-tight text-zinc-400 mt-0.5">{provider.description}</span>
@@ -310,13 +324,13 @@ export function CreateAgentDialog({
                     <div className="space-y-4 py-2">
                         <div className="flex items-center gap-4">
                             <div className="w-14 h-14 rounded-xl bg-zinc-900 border border-zinc-800 flex items-center justify-center overflow-hidden shrink-0">
-                                <CharacterAvatar agentId={avatarSeed} name="Preview" size={56} decorative />
+                                <CharacterAvatar agentId={avatarSeed} name={t("preview")} size={56} decorative />
                             </div>
                             <div className="flex-1 space-y-1">
-                                <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Agent Name</label>
+                                <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">{t("agentName")}</label>
                                 <input
                                     className="w-full bg-zinc-900 border-zinc-800 focus:ring-1 focus:ring-cyan-500 rounded-lg px-3 py-2 text-sm text-zinc-100 outline-none"
-                                    placeholder="e.g. SEO Agent"
+                                    placeholder={t("agentNamePlaceholder")}
                                     value={name}
                                     onChange={(e) => setName(e.target.value)}
                                     autoFocus
@@ -325,7 +339,7 @@ export function CreateAgentDialog({
                         </div>
 
                         <div className="space-y-3">
-                            <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Where will this agent run?</label>
+                            <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">{t("whereRun")}</label>
                             <div className="grid grid-cols-2 gap-2">
                                 <button
                                     type="button"
@@ -337,17 +351,17 @@ export function CreateAgentDialog({
                                             : "border-zinc-800 bg-zinc-900/70 text-zinc-400 hover:border-zinc-600"
                                     )}
                                 >
-                                    <span className="text-sm">🌐</span>
+                                    <span className="text-sm" aria-hidden="true">{"🌐"}</span>
                                     <div>
-                                        <span className="block font-medium">Another machine</span>
-                                        <span className="text-[10px] opacity-70">VPS, Raspberry Pi, dedicated worker</span>
+                                        <span className="block font-medium">{t("anotherMachine")}</span>
+                                        <span className="text-[10px] opacity-70">{t("anotherMachineHint")}</span>
                                     </div>
                                 </button>
                                 <button
                                     type="button"
                                     onClick={() => setDeploymentMode("local")}
                                     disabled={!selectedProvider.supportsLocal}
-                                    title={selectedProvider.supportsLocal ? undefined : `${selectedProvider.name} does not support same-server deployment yet`}
+                                    title={selectedProvider.supportsLocal ? undefined : t("noLocal", { provider: selectedProvider.name })}
                                     className={cn(
                                         "flex items-center gap-2 rounded-lg border px-3 py-2 text-left text-xs transition-colors",
                                         !selectedProvider.supportsLocal
@@ -357,10 +371,10 @@ export function CreateAgentDialog({
                                                 : "border-zinc-800 bg-zinc-900/70 text-zinc-400 hover:border-zinc-600"
                                     )}
                                 >
-                                    <span className="text-sm">🖥️</span>
+                                    <span className="text-sm" aria-hidden="true">{"🖥️"}</span>
                                     <div>
-                                        <span className="block font-medium">This server</span>
-                                        <span className="text-[10px] opacity-70">Same machine as EmperorClaw</span>
+                                        <span className="block font-medium">{t("thisServer")}</span>
+                                        <span className="text-[10px] opacity-70">{t("thisServerHint")}</span>
                                     </div>
                                 </button>
                             </div>
@@ -372,9 +386,9 @@ export function CreateAgentDialog({
 
                         {/* Monthly budget */}
                         <div className="space-y-1.5">
-                            <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Monthly Budget (USD)</label>
+                            <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">{t("monthlyBudget")}</label>
                             <div className="flex items-center gap-2">
-                                <span className="text-zinc-400 text-sm">$</span>
+                                <span className="text-zinc-400 text-sm">{"$"}</span>
                                 <input
                                     type="number"
                                     min="0"
@@ -384,7 +398,7 @@ export function CreateAgentDialog({
                                     value={monthlyBudget}
                                     onChange={(e) => setMonthlyBudget(e.target.value)}
                                 />
-                                <span className="text-[10px] text-zinc-400">Leave empty for unlimited</span>
+                                <span className="text-[10px] text-zinc-400">{t("unlimitedHint")}</span>
                             </div>
                         </div>
 
@@ -394,11 +408,10 @@ export function CreateAgentDialog({
                         {selectedProvider.supportsLlmProvider && !onHost && (
                         <div className="space-y-1.5">
                             <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">
-                                LLM Provider <span className="text-zinc-500 font-normal">— Optional metadata</span>
+                                {t("llmProvider")} <span className="text-zinc-500 font-normal">{t("optionalMetadata")}</span>
                             </label>
                             <p className="text-[10px] text-zinc-400 -mt-0.5">
-                                Which LLM does this agent use? Stored as metadata — the bridge reads it to auto-detect the provider.
-                                API keys must be configured in the runtime environment (~/.hermes/.env), not in EmperorClaw.
+                                {t("llmProviderHint")}
                             </p>
                             <select
                                 value={llmProvider}
@@ -410,13 +423,8 @@ export function CreateAgentDialog({
                                 }}
                                 className="h-8 rounded-lg border border-zinc-800 bg-zinc-900 px-2 text-xs text-zinc-200 outline-none focus:border-cyan-400 mt-1"
                             >
-                                <option value="">None</option>
-                                <option value="openai">OpenAI</option>
-                                <option value="anthropic">Anthropic</option>
-                                <option value="google">Google Gemini</option>
-                                <option value="openrouter">OpenRouter</option>
-                                <option value="grok">Grok</option>
-                                <option value="deepseek">DeepSeek</option>
+                                <option value="">{t("none")}</option>
+                                {LLM_PROVIDER_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
                             </select>
                         </div>
                         )}
@@ -425,7 +433,7 @@ export function CreateAgentDialog({
                         {selectedProvider.supportsLlmProvider && !onHost && pricingOptions.length > 0 && (
                         <div className="space-y-1.5">
                             <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">
-                                LLM Model <span className="text-zinc-500 font-normal">— For cost tracking</span>
+                                {t("llmModel")} <span className="text-zinc-500 font-normal">{t("forCostTracking")}</span>
                             </label>
                             <ModelSearchSelect
                                 options={pricingOptions}
@@ -440,34 +448,34 @@ export function CreateAgentDialog({
                         )}
 
                         <div className="rounded-xl border border-emerald-500/20 bg-emerald-500/[0.04] p-3 space-y-2">
-                            <span className="text-[10px] font-bold text-emerald-300 uppercase tracking-wider">Configuration</span>
+                            <span className="text-[10px] font-bold text-emerald-300 uppercase tracking-wider">{t("configuration")}</span>
                             <div className="grid gap-1.5 text-[11px]">
                                 <div className="flex justify-between">
-                                    <span className="text-zinc-400">Role</span>
-                                    <span className="text-zinc-300">{selectedRole ? `${selectedRole.emoji} ${selectedRole.title}` : "Custom"}</span>
+                                    <span className="text-zinc-400">{t("summary.role")}</span>
+                                    <span className="text-zinc-300">{selectedRole ? `${selectedRole.emoji} ${selectedRole.title}` : t("summary.custom")}</span>
                                 </div>
                                 <div className="flex justify-between">
-                                    <span className="text-zinc-400">Provider</span>
+                                    <span className="text-zinc-400">{t("summary.provider")}</span>
                                     <span className="text-zinc-300">{selectedProvider.name}</span>
                                 </div>
                                 <div className="flex justify-between">
-                                    <span className="text-zinc-400">Deployment</span>
-                                    <span className="text-zinc-300">{deploymentMode === "local" ? "🖥️ This server" : chosenHost ? `🌐 On ${chosenHost.name}` : "🌐 Remote"}</span>
+                                    <span className="text-zinc-400">{t("summary.deployment")}</span>
+                                    <span className="text-zinc-300">{deploymentMode === "local" ? t("summary.thisServer") : chosenHost ? t("summary.onHost", { host: chosenHost.name }) : t("summary.remote")}</span>
                                 </div>
                                 {selectedRole && (
                                     <div className="flex justify-between">
-                                        <span className="text-zinc-400">Doctrine</span>
-                                        <span className="text-emerald-300">SOUL.md, AGENTS.md, BOOTSTRAP.md, IDENTITY.md</span>
+                                        <span className="text-zinc-400">{t("summary.doctrine")}</span>
+                                        <span className="text-emerald-300">{DOCTRINE_FILES}</span>
                                     </div>
                                 )}
                                 <div className="flex justify-between">
-                                    <span className="text-zinc-400">Budget</span>
-                                    <span className="text-zinc-300">{monthlyBudget ? `$${monthlyBudget}/mo` : "Unlimited"}</span>
+                                    <span className="text-zinc-400">{t("summary.budget")}</span>
+                                    <span className="text-zinc-300">{monthlyBudget ? t("summary.perMonth", { amount: monthlyBudget }) : t("summary.unlimited")}</span>
                                 </div>
                                 {(onHost ? hostChoice?.llmProvider : llmProvider) && (
                                     <div className="flex justify-between">
-                                        <span className="text-zinc-400">LLM</span>
-                                        <span className="text-emerald-300">{onHost ? `${hostChoice?.llmProvider} · ${hostChoice?.model.trim() || "default model"}` : llmProvider}</span>
+                                        <span className="text-zinc-400">{t("summary.llm")}</span>
+                                        <span className="text-emerald-300">{onHost ? `${hostChoice?.llmProvider} · ${hostChoice?.model.trim() || t("summary.defaultModel")}` : llmProvider}</span>
                                     </div>
                                 )}
                             </div>
@@ -479,17 +487,17 @@ export function CreateAgentDialog({
 
                         {/* What's next hint */}
                         <div className="rounded-lg border border-zinc-800 bg-zinc-900/50 px-3 py-2">
-                            <span className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">After creation</span>
+                            <span className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">{t("afterCreation")}</span>
                             <p className="text-[10px] text-zinc-400 mt-0.5 leading-relaxed">
                                 {onHost
-                                    ? `Emperor sets it up on ${chosenHost?.name ?? "the host"} and shows the progress here. It is online in a few minutes.`
+                                    ? t("afterHost", { host: chosenHost?.name ?? t("theHost") })
                                     : selectedProvider.id === "hermes"
-                                    ? "1. Configure your LLM API key in ~/.hermes/.env  2. Start the Hermes bridge  3. Agent appears online"
-                                    : "1. Configure your runtime  2. Point it to EmperorClaw's MCP endpoint  3. Agent registers on first heartbeat"}
+                                    ? t("afterHermes")
+                                    : t("afterOther")}
                             </p>
                             <p className="text-[10px] text-zinc-400 mt-1">
                                 <a href="/docs/v1.1/troubleshooting#5-agent-setup--llm-configuration" target="_blank" className="text-cyan-400 hover:text-cyan-300 underline underline-offset-2">
-                                    Troubleshooting guide →
+                                    {t("troubleshooting")}
                                 </a>
                             </p>
                         </div>
@@ -503,23 +511,23 @@ export function CreateAgentDialog({
 
                 <DialogFooter className="shrink-0 border-t border-zinc-800 pt-3 flex items-center gap-2">
                     {step === "progress" && (
-                        <Button type="button" onClick={closeAfterProgress} className="ml-auto bg-cyan-600 hover:bg-cyan-500 text-white">Close</Button>
+                        <Button type="button" onClick={closeAfterProgress} className="ml-auto bg-cyan-600 hover:bg-cyan-500 text-white">{tc("close")}</Button>
                     )}
                     {step !== "role" && step !== "progress" && (
                         <Button type="button" variant="outline" onClick={() => setStep(step === "provider" ? "role" : "provider")}
                             className="border-zinc-800 text-zinc-300 hover:bg-zinc-800">
-                            Back
+                            {tc("back")}
                         </Button>
                     )}
                     {step !== "progress" && <div className="flex-1" />}
                     {step !== "progress" && (
                         <Button type="button" variant="outline" onClick={() => setOpen(false)} className="border-zinc-800 text-zinc-300 hover:bg-zinc-800">
-                            Cancel
+                            {tc("cancel")}
                         </Button>
                     )}
                     {step === "name" && (
                         <Button type="button" onClick={handleCreate} disabled={isSaving || !name.trim() || (onHost && !chosenHost)} className="bg-cyan-600 hover:bg-cyan-500 text-white">
-                            {isSaving ? "Creating..." : onHost ? "Hire and set up" : "Hire Agent"}
+                            {isSaving ? t("creating") : onHost ? t("hireAndSetUp") : t("hire")}
                         </Button>
                     )}
                 </DialogFooter>

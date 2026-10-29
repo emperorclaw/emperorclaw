@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { IconCheck, IconCopy } from "@tabler/icons-react";
+import { useTranslations } from "next-intl";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { hostConnectCommand, originNeedsInsecure } from "@/lib/runtime-hosts/connect-command";
@@ -19,6 +20,8 @@ function remaining(expiresAt: string, now: number): number {
  * version, checks its sha256 and runs `emperor-hermes host connect`.
  */
 export function ConnectHostDialog({ open, onOpenChange, onConnected }: { open: boolean; onOpenChange: (open: boolean) => void; onConnected?: () => void }) {
+    const t = useTranslations("runtimeHosts.connect");
+    const tc = useTranslations("common");
     const [pairing, setPairing] = useState<Pairing | null>(null);
     const [error, setError] = useState<string | null>(null);
     const [loading, setLoading] = useState(false);
@@ -34,11 +37,11 @@ export function ConnectHostDialog({ open, onOpenChange, onConnected }: { open: b
         try {
             const res = await fetch("/api/runtime-hosts", { method: "POST" });
             const data = await res.json().catch(() => ({}));
-            if (!res.ok) throw new Error(data.error || "Could not create a code");
+            if (!res.ok) throw new Error(data.error || t("createFailed"));
             setPairing({ code: data.code, expiresAt: data.expiresAt });
             setNow(Date.now());
         } catch (err) {
-            setError(err instanceof Error ? err.message : "Could not create a code");
+            setError(err instanceof Error ? err.message : t("createFailed"));
         } finally {
             setLoading(false);
         }
@@ -92,7 +95,7 @@ export function ConnectHostDialog({ open, onOpenChange, onConnected }: { open: b
             setCopied(true);
             setTimeout(() => setCopied(false), 1500);
         } catch {
-            setError("Copy failed; select the command and copy it by hand.");
+            setError(t("copyFailed"));
         }
     };
 
@@ -100,31 +103,30 @@ export function ConnectHostDialog({ open, onOpenChange, onConnected }: { open: b
         <Dialog open={open} onOpenChange={onOpenChange}>
             <DialogContent className="sm:max-w-2xl">
                 <DialogHeader>
-                    <DialogTitle>Connect a host</DialogTitle>
+                    <DialogTitle>{t("title")}</DialogTitle>
                     <DialogDescription>
-                        Run this on the Linux machine (with systemd) where your Hermes agents run, as the same user that runs them (not root).
-                        It installs emperor-hermes {LATEST_HERMES_BRIDGE_VERSION}, checks its checksum and connects the machine. Agents already running there are found automatically.
+                        {t("description", { version: LATEST_HERMES_BRIDGE_VERSION })}
                     </DialogDescription>
                 </DialogHeader>
                 {connected ? (
                     <div role="status" className="rounded-xl border border-emerald-500/30 bg-emerald-500/10 p-4 text-sm text-foreground">
-                        <p className="flex items-center gap-2 font-medium"><IconCheck className="h-4 w-4 text-emerald-600 dark:text-emerald-400" aria-hidden="true" />{connected} is connected.</p>
-                        <p className="mt-1 text-xs text-muted-foreground">Its agents show up on the host card within a minute.</p>
+                        <p className="flex items-center gap-2 font-medium"><IconCheck className="h-4 w-4 text-emerald-600 dark:text-emerald-400" aria-hidden="true" />{t("connected", { name: connected })}</p>
+                        <p className="mt-1 text-xs text-muted-foreground">{t("connectedHint")}</p>
                     </div>
                 ) : (
                     <div className="grid min-w-0 gap-3">
                         {pairing && (
                             <div className="flex flex-wrap items-baseline gap-3">
-                                <span className="font-mono text-2xl font-semibold tracking-[0.2em] text-foreground" aria-label={`Pairing code ${pairing.code.split("").join(" ")}`}>{pairing.code}</span>
+                                <span className="font-mono text-2xl font-semibold tracking-[0.2em] text-foreground" aria-label={t("pairingCode", { code: pairing.code.split("").join(" ") })}>{pairing.code}</span>
                                 <span className={expired ? "text-xs text-destructive" : "text-xs text-muted-foreground"}>
-                                    {expired ? "Expired" : `Valid for ${Math.floor(secondsLeft / 60)}:${String(secondsLeft % 60).padStart(2, "0")}`}
+                                    {expired ? t("expired") : t("validFor", { time: `${Math.floor(secondsLeft / 60)}:${String(secondsLeft % 60).padStart(2, "0")}` })}
                                 </span>
                             </div>
                         )}
                         {pairing && !expired && (
                             <div className="relative min-w-0">
                                 <pre className="max-h-48 min-w-0 overflow-auto whitespace-pre-wrap break-all rounded-xl border border-border bg-muted/40 p-3 pr-12 font-mono text-xs leading-5 text-foreground">{command}</pre>
-                                <Button type="button" variant="outline" size="icon-sm" onClick={() => void copy()} className="absolute right-2 top-2" aria-label="Copy the command">
+                                <Button type="button" variant="outline" size="icon-sm" onClick={() => void copy()} className="absolute right-2 top-2" aria-label={t("copyCommand")}>
                                     {copied ? <IconCheck className="h-4 w-4" /> : <IconCopy className="h-4 w-4" />}
                                 </Button>
                             </div>
@@ -132,19 +134,18 @@ export function ConnectHostDialog({ open, onOpenChange, onConnected }: { open: b
                         {loading && !pairing && <div className="h-24 animate-pulse rounded-xl bg-muted/40" />}
                         {originNeedsInsecure(origin) && (
                             <p role="alert" className="text-xs text-destructive">
-                                Emperor is open over plain http at a public address, so the host&apos;s key would travel unencrypted.
-                                The command refuses that; use https, or add --insecure at the end if you accept the risk.
+                                {t("insecureWarning")}
                             </p>
                         )}
                         <p className="text-xs text-muted-foreground">
-                            The code works once. The host gets its own key, separate from agent tokens; you can revoke it here at any time.
+                            {t("oneTimeHint")}
                         </p>
                         {error && <p role="alert" className="text-xs text-destructive">{error}</p>}
                     </div>
                 )}
                 <DialogFooter>
-                    {!connected && (expired || error) && <Button type="button" variant="outline" onClick={() => void newCode()} disabled={loading}>New code</Button>}
-                    <Button type="button" onClick={() => onOpenChange(false)}>{connected ? "Done" : "Close"}</Button>
+                    {!connected && (expired || error) && <Button type="button" variant="outline" onClick={() => void newCode()} disabled={loading}>{t("newCode")}</Button>}
+                    <Button type="button" onClick={() => onOpenChange(false)}>{connected ? t("done") : tc("close")}</Button>
                 </DialogFooter>
             </DialogContent>
         </Dialog>

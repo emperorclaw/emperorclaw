@@ -2,6 +2,7 @@
 
 import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
+import { useFormatter, useTranslations } from "next-intl";
 import {
     IconArrowUpRight,
     IconChartHistogram,
@@ -21,7 +22,6 @@ import {
     formatRunTokens,
     runThreadLink,
     summarizeRunDaily,
-    triggerKindLabel,
     type RunDailyDay,
 } from "@/lib/run-ledger-copy";
 
@@ -67,14 +67,24 @@ interface RunsResponse {
     daily?: DailyRow[];
 }
 
+/** Labelled by agents.runs.filters.<key>. */
 const STATUS_FILTERS = [
-    { value: "", label: "All" },
-    { value: "failed", label: "Failed" },
-    { value: "timeout", label: "Timeout" },
-    { value: "lost", label: "Lost" },
+    { value: "", key: "all" },
+    { value: "failed", key: "failed" },
+    { value: "timeout", key: "timeout" },
+    { value: "lost", key: "lost" },
 ] as const;
 
+const TRIGGER_KINDS = new Set(["message", "task", "objective", "other"]);
+
+/** Trigger kind → label (lib/run-ledger-copy.ts triggerKindLabel, translated). */
+function useTriggerKindLabel() {
+    const t = useTranslations("agents.runs.triggers");
+    return (kind: string | null | undefined) => kind && TRIGGER_KINDS.has(kind) ? t(kind as "task") : kind || t("unknown");
+}
+
 export function AgentRunsTab({ agentId }: { agentId: string }) {
+    const t = useTranslations("agents.runs");
     const [filter, setFilter] = useState("");
     const [runs, setRuns] = useState<AgentRunRow[]>([]);
     const [daily, setDaily] = useState<DailyRow[]>([]);
@@ -89,7 +99,7 @@ export function AgentRunsTab({ agentId }: { agentId: string }) {
         setError(null);
         fetch(`/api/agents/${encodeURIComponent(agentId)}/runs?${buildRunsQuery({ status: filter })}`)
             .then(async (res) => {
-                if (!res.ok) throw new Error("Could not load runs");
+                if (!res.ok) throw new Error("runs");
                 return (await res.json()) as RunsResponse;
             })
             .then((data) => {
@@ -99,7 +109,7 @@ export function AgentRunsTab({ agentId }: { agentId: string }) {
                 setCursor(data.nextCursor ?? null);
             })
             .catch(() => {
-                if (!cancelled) setError("Could not load runs");
+                if (!cancelled) setError(t("loadFailed"));
             })
             .finally(() => {
                 if (!cancelled) setLoading(false);
@@ -107,23 +117,23 @@ export function AgentRunsTab({ agentId }: { agentId: string }) {
         return () => {
             cancelled = true;
         };
-    }, [agentId, filter]);
+    }, [agentId, filter, t]);
 
     const loadMore = useCallback(async () => {
         if (!cursor || loadingMore) return;
         setLoadingMore(true);
         try {
             const res = await fetch(`/api/agents/${encodeURIComponent(agentId)}/runs?${buildRunsQuery({ cursor, status: filter })}`);
-            if (!res.ok) throw new Error("Could not load more runs");
+            if (!res.ok) throw new Error("more");
             const data = (await res.json()) as RunsResponse;
             setRuns((prev) => [...prev, ...(data.runs ?? [])]);
             setCursor(data.nextCursor ?? null);
         } catch {
-            setError("Could not load more runs");
+            setError(t("loadMoreFailed"));
         } finally {
             setLoadingMore(false);
         }
-    }, [agentId, cursor, filter, loadingMore]);
+    }, [agentId, cursor, filter, loadingMore, t]);
 
     const summary = useMemo(() => summarizeRunDaily(daily), [daily]);
     const hasAnyData = runs.length > 0 || daily.length > 0;
@@ -133,36 +143,34 @@ export function AgentRunsTab({ agentId }: { agentId: string }) {
             <div className="mb-3 flex items-center justify-between gap-2">
                 <div className="flex items-center gap-2">
                     <IconChartHistogram className="h-4 w-4 text-cyan-400" aria-hidden="true" />
-                    <h3 className="text-sm font-medium text-zinc-200">Runs</h3>
-                    <span className="text-[10px] uppercase tracking-wider text-zinc-500">Last 30 days</span>
+                    <h3 className="text-sm font-medium text-zinc-200">{t("title")}</h3>
+                    <span className="text-[10px] uppercase tracking-wider text-zinc-500">{t("last30Days")}</span>
                 </div>
             </div>
 
             {loading ? (
                 <p className="flex items-center gap-2 text-xs text-zinc-500">
                     <IconLoader2 className="h-4 w-4 animate-spin motion-reduce:animate-none" aria-hidden="true" />
-                    Loading runs…
+                    {t("loading")}
                 </p>
             ) : error && !hasAnyData ? (
                 <p className="text-xs text-amber-400" role="alert">{error}</p>
             ) : !hasAnyData ? (
                 <div className="rounded-lg border border-dashed border-zinc-800 p-6 text-center">
                     <IconChartHistogram className="mx-auto mb-2 h-6 w-6 text-zinc-600" aria-hidden="true" />
-                    <p className="text-xs text-zinc-400">No runs recorded yet.</p>
+                    <p className="text-xs text-zinc-400">{t("emptyTitle")}</p>
                     <p className="mx-auto mt-1 max-w-md text-[11px] leading-relaxed text-zinc-500">
-                        Once this agent&apos;s runtime reports its turns (bridge 0.2.0 and later), each turn
-                        appears here with its trigger, duration, tokens and outcome. Update the bridge if
-                        runs stay empty after the agent answers a message.
+                        {t("emptyHint")}
                     </p>
                 </div>
             ) : (
                 <div className="space-y-4">
                     <HeadlineStats summary={summary} />
                     <RunChart daily={daily} />
-                    <div className="flex flex-wrap gap-2" role="group" aria-label="Filter runs by status">
+                    <div className="flex flex-wrap gap-2" role="group" aria-label={t("filterLabel")}>
                         {STATUS_FILTERS.map((item) => (
                             <button
-                                key={item.value || "all"}
+                                key={item.key}
                                 type="button"
                                 aria-pressed={filter === item.value}
                                 onClick={() => setFilter(item.value)}
@@ -173,7 +181,7 @@ export function AgentRunsTab({ agentId }: { agentId: string }) {
                                         : "border-zinc-800 text-zinc-400 hover:border-zinc-700 hover:text-zinc-100",
                                 )}
                             >
-                                {item.label}
+                                {t(`filters.${item.key}`)}
                             </button>
                         ))}
                     </div>
@@ -181,7 +189,7 @@ export function AgentRunsTab({ agentId }: { agentId: string }) {
                     {runs.length === 0 ? (
                         <div className="rounded-lg border border-dashed border-zinc-800 p-4 text-center">
                             <p className="text-[11px] text-zinc-500">
-                                No {filter ? `${filter} ` : ""}runs in the last 30 days.
+                                {filter ? t("noFilteredRuns", { status: t(`filters.${STATUS_FILTERS.find((item) => item.value === filter)?.key ?? "all"}`).toLowerCase() }) : t("noRuns")}
                             </p>
                         </div>
                     ) : (
@@ -199,7 +207,7 @@ export function AgentRunsTab({ agentId }: { agentId: string }) {
                                 disabled={loadingMore}
                                 className="rounded-full border border-zinc-800 bg-zinc-950/80 px-3 py-1.5 text-xs font-medium text-zinc-400 transition-colors hover:border-cyan-500/40 hover:text-cyan-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400/60 disabled:cursor-not-allowed disabled:opacity-50"
                             >
-                                {loadingMore ? "Loading…" : "Load older runs"}
+                                {loadingMore ? t("loadingMore") : t("loadOlder")}
                             </button>
                         </div>
                     )}
@@ -210,13 +218,15 @@ export function AgentRunsTab({ agentId }: { agentId: string }) {
 }
 
 function HeadlineStats({ summary }: { summary: ReturnType<typeof summarizeRunDaily> }) {
+    const t = useTranslations("agents.runs.stats");
+    const format = useFormatter();
     const items: { label: string; value: string }[] = [
-        { label: "Runs", value: summary.runs.toLocaleString("en-US") },
-        { label: "Success rate", value: summary.successRate === null ? "—" : `${Math.round(summary.successRate * 100)}%` },
-        { label: "p50 / p95", value: `${formatRunDuration(summary.p50Ms)} / ${formatRunDuration(summary.p95Ms)}` },
-        { label: "Tokens", value: formatRunTokens(summary.inputTokens, summary.outputTokens) },
-        { label: "Cost", value: formatCents(summary.costCents) ?? "—" },
-        { label: "Tool calls", value: summary.toolCalls.toLocaleString("en-US") },
+        { label: t("runs"), value: format.number(summary.runs) },
+        { label: t("successRate"), value: summary.successRate === null ? "—" : `${Math.round(summary.successRate * 100)}%` },
+        { label: t("p50p95"), value: `${formatRunDuration(summary.p50Ms)} / ${formatRunDuration(summary.p95Ms)}` },
+        { label: t("tokens"), value: formatRunTokens(summary.inputTokens, summary.outputTokens) },
+        { label: t("cost"), value: formatCents(summary.costCents) ?? "—" },
+        { label: t("toolCalls"), value: format.number(summary.toolCalls) },
     ];
     return (
         <dl className="grid grid-cols-2 gap-x-3 gap-y-2 sm:grid-cols-3 lg:grid-cols-6">
@@ -231,6 +241,7 @@ function HeadlineStats({ summary }: { summary: ReturnType<typeof summarizeRunDai
 }
 
 function RunChart({ daily }: { daily: DailyRow[] }) {
+    const t = useTranslations("agents.runs.chart");
     const days = useMemo(() => buildDailyWindow(daily, RUNS_WINDOW_DAYS), [daily]);
     const max = Math.max(1, ...days.map((d) => d.succeeded + d.unsuccessful));
     const totals = days.reduce(
@@ -242,15 +253,15 @@ function RunChart({ daily }: { daily: DailyRow[] }) {
 
     return (
         <figure className="space-y-2">
-            <figcaption className="sr-only">Runs per day over the last 30 days, stacked by outcome.</figcaption>
+            <figcaption className="sr-only">{t("caption")}</figcaption>
             <div className="flex h-24 items-end gap-[3px]" aria-hidden="true">
                 {days.map((day) => {
                     const total = day.succeeded + day.unsuccessful;
                     const title = total > 0
-                        ? `${day.day}: ${day.succeeded} succeeded, ${day.unsuccessful} unsuccessful`
+                        ? t("dayTotals", { day: day.day, succeeded: day.succeeded, unsuccessful: day.unsuccessful })
                         : day.hasData
-                            ? `${day.day}: no runs`
-                            : `${day.day}: no data`;
+                            ? t("dayNoRuns", { day: day.day })
+                            : t("dayNoData", { day: day.day });
                     return (
                         <div
                             key={day.day}
@@ -278,33 +289,39 @@ function RunChart({ daily }: { daily: DailyRow[] }) {
             <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-[10px] text-zinc-500">
                 <span className="inline-flex items-center gap-1.5">
                     <span className="h-2 w-2 rounded-sm bg-emerald-500/70" aria-hidden="true" />
-                    Succeeded: {totals.succeeded.toLocaleString("en-US")}
+                    {t("succeeded", { count: totals.succeeded })}
                 </span>
                 <span className="inline-flex items-center gap-1.5">
                     <span className="h-2 w-2 rounded-sm bg-rose-500/70" aria-hidden="true" />
-                    Failed, timed out or lost: {totals.unsuccessful.toLocaleString("en-US")}
+                    {t("unsuccessful", { count: totals.unsuccessful })}
                 </span>
                 {zeroRunDays > 0 && (
                     <span className="inline-flex items-center gap-1.5">
                         <span className="h-2 w-2 rounded-sm bg-zinc-700" aria-hidden="true" />
-                        Recorded, no runs: {zeroRunDays.toLocaleString("en-US")} day{zeroRunDays === 1 ? "" : "s"}
+                        {t("zeroRunDays", { count: zeroRunDays })}
                     </span>
                 )}
                 <span className="text-zinc-600">
-                    {hasBars ? `Peak ${max.toLocaleString("en-US")} runs/day` : "No daily rollups yet"}
+                    {hasBars ? t("peak", { count: max }) : t("noRollups")}
                 </span>
             </div>
         </figure>
     );
 }
 
-function formatRunTime(iso: string): string {
-    const date = new Date(iso);
-    if (Number.isNaN(date.getTime())) return "—";
-    return date.toLocaleString([], { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
+/** "Oct 29, 14:05" in the person's language. */
+function useFormatRunTime() {
+    const format = useFormatter();
+    return (iso: string): string => {
+        const date = new Date(iso);
+        if (Number.isNaN(date.getTime())) return "—";
+        return format.dateTime(date, { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
+    };
 }
 
 function TriggerCell({ run }: { run: AgentRunRow }) {
+    const t = useTranslations("agents.runs");
+    const triggerKindLabel = useTriggerKindLabel();
     const label = triggerKindLabel(run.triggerKind);
     const href = runThreadLink(run);
     if (href) {
@@ -315,7 +332,7 @@ function TriggerCell({ run }: { run: AgentRunRow }) {
             >
                 {label}
                 <IconArrowUpRight className="h-3 w-3 shrink-0" aria-hidden="true" />
-                <span className="sr-only"> — open the triggering thread</span>
+                <span className="sr-only">{t("openThread")}</span>
             </Link>
         );
     }
@@ -332,12 +349,13 @@ function msLabel(ms: number | null | undefined): string {
 }
 
 function ExpandButton({ open, onClick }: { open: boolean; onClick: () => void }) {
+    const t = useTranslations("agents.runs");
     return (
         <button
             type="button"
             onClick={onClick}
             aria-expanded={open}
-            aria-label={open ? "Hide run steps" : "Show run steps"}
+            aria-label={open ? t("hideRunSteps") : t("showRunSteps")}
             className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded text-zinc-500 transition-colors hover:text-cyan-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400/60"
         >
             <IconChevronRight className={cn("h-3.5 w-3.5 transition-transform", open && "rotate-90")} aria-hidden="true" />
@@ -359,25 +377,27 @@ function useExpanded() {
 }
 
 function RunTable({ runs }: { runs: AgentRunRow[] }) {
+    const t = useTranslations("agents.runs");
+    const formatRunTime = useFormatRunTime();
     const { expanded, toggle } = useExpanded();
     return (
         <div className="overflow-x-auto">
             <table className="hidden w-full border-collapse text-left text-xs sm:table">
-                <caption className="sr-only">Recent runs, newest first</caption>
+                <caption className="sr-only">{t("tableCaption")}</caption>
                 <thead>
                     <tr className="border-b border-zinc-800 text-[10px] uppercase tracking-wider text-zinc-500">
-                        <th scope="col" className="py-2 pr-3 font-medium">Time</th>
-                        <th scope="col" className="py-2 pr-3 font-medium">Trigger</th>
-                        <th scope="col" className="py-2 pr-3 font-medium">Status</th>
-                        <th scope="col" className="py-2 pr-3 text-right font-medium">Duration</th>
-                        <th scope="col" className="py-2 pr-3 text-right font-medium">Tokens</th>
-                        <th scope="col" className="py-2 pr-3 text-right font-medium">Tools</th>
-                        <th scope="col" className="py-2 pr-3 text-right font-medium" title="Time spent queued before the turn started">Queue</th>
-                        <th scope="col" className="py-2 pr-3 text-right font-medium" title="Time to the model's first token">First token</th>
-                        <th scope="col" className="py-2 pr-3 text-right font-medium" title="Share of prompt tokens served from the provider cache">Cache</th>
-                        <th scope="col" className="py-2 pr-3 font-medium">Model</th>
-                        <th scope="col" className="py-2 pr-3 font-medium">Exit</th>
-                        <th scope="col" className="py-2 font-medium">Error</th>
+                        <th scope="col" className="py-2 pr-3 font-medium">{t("columns.time")}</th>
+                        <th scope="col" className="py-2 pr-3 font-medium">{t("columns.trigger")}</th>
+                        <th scope="col" className="py-2 pr-3 font-medium">{t("columns.status")}</th>
+                        <th scope="col" className="py-2 pr-3 text-right font-medium">{t("columns.duration")}</th>
+                        <th scope="col" className="py-2 pr-3 text-right font-medium">{t("columns.tokens")}</th>
+                        <th scope="col" className="py-2 pr-3 text-right font-medium">{t("columns.tools")}</th>
+                        <th scope="col" className="py-2 pr-3 text-right font-medium" title={t("columns.queueHint")}>{t("columns.queue")}</th>
+                        <th scope="col" className="py-2 pr-3 text-right font-medium" title={t("columns.firstTokenHint")}>{t("columns.firstToken")}</th>
+                        <th scope="col" className="py-2 pr-3 text-right font-medium" title={t("columns.cacheHint")}>{t("columns.cache")}</th>
+                        <th scope="col" className="py-2 pr-3 font-medium">{t("columns.model")}</th>
+                        <th scope="col" className="py-2 pr-3 font-medium">{t("columns.exit")}</th>
+                        <th scope="col" className="py-2 font-medium">{t("columns.error")}</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -420,6 +440,8 @@ function RunTable({ runs }: { runs: AgentRunRow[] }) {
 }
 
 function RunCards({ runs }: { runs: AgentRunRow[] }) {
+    const t = useTranslations("agents.runs");
+    const formatRunTime = useFormatRunTime();
     const { expanded, toggle } = useExpanded();
     return (
         <ul className="space-y-2 sm:hidden">
@@ -431,40 +453,40 @@ function RunCards({ runs }: { runs: AgentRunRow[] }) {
                     </div>
                     <dl className="mt-2 grid grid-cols-2 gap-x-3 gap-y-1 text-[11px]">
                         <div className="flex min-w-0 justify-between gap-2">
-                            <dt className="text-zinc-500">Trigger</dt>
+                            <dt className="text-zinc-500">{t("columns.trigger")}</dt>
                             <dd className="min-w-0 truncate text-zinc-300"><TriggerCell run={run} /></dd>
                         </div>
                         <div className="flex justify-between gap-2">
-                            <dt className="text-zinc-500">Duration</dt>
+                            <dt className="text-zinc-500">{t("columns.duration")}</dt>
                             <dd className="tabular-nums text-zinc-300">{formatRunDuration(run.durationMs)}</dd>
                         </div>
                         <div className="flex justify-between gap-2">
-                            <dt className="text-zinc-500">Tokens</dt>
+                            <dt className="text-zinc-500">{t("columns.tokens")}</dt>
                             <dd className="tabular-nums text-zinc-300">{formatRunTokens(run.inputTokens, run.outputTokens)}</dd>
                         </div>
                         <div className="flex justify-between gap-2">
-                            <dt className="text-zinc-500">Tools</dt>
+                            <dt className="text-zinc-500">{t("columns.tools")}</dt>
                             <dd className="tabular-nums text-zinc-300">{run.toolCalls ?? "—"}</dd>
                         </div>
                         <div className="flex justify-between gap-2">
-                            <dt className="text-zinc-500">Queue</dt>
+                            <dt className="text-zinc-500">{t("columns.queue")}</dt>
                             <dd className="tabular-nums text-zinc-300">{msLabel(run.queueMs)}</dd>
                         </div>
                         <div className="flex justify-between gap-2">
-                            <dt className="text-zinc-500">First token</dt>
+                            <dt className="text-zinc-500">{t("columns.firstToken")}</dt>
                             <dd className="tabular-nums text-zinc-300">{msLabel(run.firstTokenMs)}</dd>
                         </div>
                         <div className="flex justify-between gap-2">
-                            <dt className="text-zinc-500">Cache</dt>
+                            <dt className="text-zinc-500">{t("columns.cache")}</dt>
                             <dd className="tabular-nums text-zinc-300">{cacheLabel(run)}</dd>
                         </div>
                         <div className="flex min-w-0 justify-between gap-2">
-                            <dt className="text-zinc-500">Model</dt>
+                            <dt className="text-zinc-500">{t("columns.model")}</dt>
                             <dd className="min-w-0 truncate text-zinc-300">{run.model || "—"}</dd>
                         </div>
                         {run.exitReason && (
                             <div className="col-span-2 flex min-w-0 justify-between gap-2">
-                                <dt className="text-zinc-500">Exit</dt>
+                                <dt className="text-zinc-500">{t("columns.exit")}</dt>
                                 <dd className="min-w-0 truncate text-zinc-300" title={run.exitReason}>{run.exitReason}</dd>
                             </div>
                         )}
@@ -477,7 +499,7 @@ function RunCards({ runs }: { runs: AgentRunRow[] }) {
                         className="mt-2 inline-flex min-h-9 items-center gap-1 text-[11px] text-zinc-400 transition-colors hover:text-cyan-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400/60"
                     >
                         <IconChevronRight className={cn("h-3.5 w-3.5 transition-transform", expanded.has(run.id) && "rotate-90")} aria-hidden="true" />
-                        {expanded.has(run.id) ? "Hide steps" : "Show steps"}
+                        {expanded.has(run.id) ? t("hideSteps") : t("showSteps")}
                     </button>
                     {expanded.has(run.id) && (
                         <div className="mt-1.5 rounded-lg border border-zinc-800/80 bg-zinc-900/60 p-2">

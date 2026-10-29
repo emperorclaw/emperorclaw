@@ -4,6 +4,7 @@ import { memo, useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { IconLock } from "@tabler/icons-react";
+import { useTranslations } from "next-intl";
 import { cn } from "@/lib/utils";
 import { LiveRunSteps } from "@/components/run-timeline";
 import {
@@ -14,7 +15,7 @@ import {
     mergeLiveRuns,
     type ClientLiveRun,
 } from "@/lib/live-activity";
-import { stallLabel, stallSignal, type StallSignal } from "@/lib/stall-signal";
+import { stallSignal, type StallSignal } from "@/lib/stall-signal";
 import type { TaskLiveRun, TaskLiveView } from "@/lib/task-story-reads";
 import { useLivePoll } from "@/lib/use-realtime";
 
@@ -125,6 +126,19 @@ export function useTaskLive(taskId: string, initial: TaskLiveView): TaskLiveStat
     return current.live;
 }
 
+/** "No progress for 14 min" / "Last useful action 40s ago" (lib/stall-signal.ts stallLabel, translated). */
+export function useStallLabel() {
+    const t = useTranslations("tasks.live");
+    return (signal: Pick<StallSignal, "stalled" | "idleMs">): string => {
+        const total = Number.isFinite(signal.idleMs) && signal.idleMs > 0 ? Math.floor(signal.idleMs / 1000) : 0;
+        const minutes = Math.floor(total / 60);
+        const idle = total < 60 ? t("idleSeconds", { count: total })
+            : minutes < 60 ? t("idleMinutes", { count: minutes })
+                : t("idleHours", { hours: Math.floor(minutes / 60), minutes: String(minutes % 60).padStart(2, "0") });
+        return signal.stalled ? t("noProgressFor", { idle }) : t("lastUsefulAction", { idle });
+    };
+}
+
 /** The worst stall among live runs (for the task header), or null. */
 export function strongestStall(state: TaskLiveState, nowMs: number): StallSignal | null {
     if (nowMs === 0) return null;
@@ -144,6 +158,8 @@ export function strongestStall(state: TaskLiveState, nowMs: number): StallSignal
  * stream in; the full step list sits behind "Steps".
  */
 export const LiveRunBlock = memo(function LiveRunBlock({ run, meta, offsetMs, nowMs }: { run: ClientLiveRun; meta: LiveMeta | undefined; offsetMs: number; nowMs: number }) {
+    const t = useTranslations("tasks.live");
+    const stallLabel = useStallLabel();
     const serverNow = nowMs + offsetMs;
     const started = Date.parse(run.startedAt);
     const elapsed = nowMs && Number.isFinite(started) ? formatElapsed(serverNow - started) : null;
@@ -151,12 +167,12 @@ export const LiveRunBlock = memo(function LiveRunBlock({ run, meta, offsetMs, no
     const stepElapsed = nowMs && timed ? formatElapsed(serverNow - run.currentStartedAt) : null;
     const detail = meta?.private ? null : lastReasoningLine(run);
     const signal = nowMs && meta ? stallSignal({ status: run.status, lastUsefulAt: meta.lastUsefulAt, now: serverNow }) : null;
-    const name = meta?.agentName ?? "Agent";
+    const name = meta?.agentName ?? t("agent");
 
     return (
         <section
             id={`run-${run.runId}`}
-            aria-label={`${name} is working`}
+            aria-label={t("isWorkingLabel", { name })}
             className={cn(
                 "relative overflow-hidden rounded-2xl border bg-zinc-950/70 p-4 sm:p-5",
                 signal?.stalled ? "border-amber-500/40" : "border-cyan-500/30",
@@ -169,10 +185,10 @@ export const LiveRunBlock = memo(function LiveRunBlock({ run, meta, offsetMs, no
                     <span className={cn("relative inline-flex h-2 w-2 rounded-full", signal?.stalled ? "bg-amber-400" : "bg-cyan-400")} />
                 </span>
                 <p className="min-w-0 text-sm font-medium text-zinc-100">
-                    {name} <span className="font-normal text-zinc-400">is working</span>
+                    {t.rich("isWorking", { name, muted: (chunks) => <span className="font-normal text-zinc-400">{chunks}</span> })}
                 </p>
                 <span className="font-mono text-xs tabular-nums text-zinc-400">{elapsed ?? " "}</span>
-                <span className="ml-auto inline-flex items-center rounded-full border border-cyan-500/30 bg-cyan-500/10 px-2 py-0.5 text-[11px] font-medium text-cyan-300">Live</span>
+                <span className="ml-auto inline-flex items-center rounded-full border border-cyan-500/30 bg-cyan-500/10 px-2 py-0.5 text-[11px] font-medium text-cyan-300">{t("live")}</span>
             </div>
 
             {/* Fixed two-line row: the step, then the last thought (blank when none). */}
@@ -197,7 +213,7 @@ export const LiveRunBlock = memo(function LiveRunBlock({ run, meta, offsetMs, no
                 </p>
                 {meta?.threadHref && (
                     <Link href={meta.threadHref} className="text-xs text-cyan-300 underline-offset-2 hover:text-cyan-200 hover:underline">
-                        Open chat
+                        {t("openChat")}
                     </Link>
                 )}
             </div>

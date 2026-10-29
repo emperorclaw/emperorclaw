@@ -2,21 +2,18 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { IconBell, IconBrandDiscord, IconBrandSlack, IconCheck, IconMail, IconWebhook } from "@tabler/icons-react";
+import { useFormatter, useTranslations } from "next-intl";
 import { cn } from "@/lib/utils";
 import { SettingsSwitch as Toggle } from "@/components/ui/settings-switch";
 
 type Kind = { kind: string; label: string };
 type Webhook = { urlHint: string; format: string; kinds: string[]; enabled: boolean; lastDeliveryAt: string | null; lastError: string | null };
 
-const WEBHOOK_LABELS: Record<string, string> = {
-    mention: "Mentions",
-    decision: "Decisions",
-    approval: "Approvals",
-    task_assigned: "Assigned tasks",
-    agent_failed: "Agent failures",
-    agent_down: "Agents down",
-    incident: "Serious incidents",
-};
+/** An example URL, not copy. */
+const WEBHOOK_URL_EXAMPLE = "https://hooks.slack.com/services/…";
+
+/** Webhook kinds with a label under settings.notifications.webhookKinds (anything else shows as is). */
+const WEBHOOK_KINDS = { mention: "mention", decision: "decision", approval: "approval", task_assigned: "taskAssigned", agent_failed: "agentFailed", agent_down: "agentDown", incident: "incident" } as const;
 
 
 /**
@@ -24,6 +21,9 @@ const WEBHOOK_LABELS: Record<string, string> = {
  * Everything always reaches the in-app inbox (the bell in the sidebar).
  */
 export function NotificationSettingsTab({ isAdmin }: { isAdmin: boolean }) {
+    const t = useTranslations("settings.notifications");
+    const tc = useTranslations("common");
+    const format = useFormatter();
     const [kinds, setKinds] = useState<Kind[]>([]);
     const [emailKinds, setEmailKinds] = useState<string[]>([]);
     const [emailConfigured, setEmailConfigured] = useState(true);
@@ -46,22 +46,22 @@ export function NotificationSettingsTab({ isAdmin }: { isAdmin: boolean }) {
         setPrefsError(null);
         try {
             const res = await fetch("/api/notifications/preferences");
-            if (!res.ok) throw new Error("Could not load notification preferences");
+            if (!res.ok) throw new Error("load");
             const data = await res.json();
             setKinds(data.kinds);
             setEmailKinds(data.emailKinds);
             setEmailConfigured(data.emailConfigured);
             setPrefsLoaded(true);
         } catch {
-            setPrefsError("Could not load notification preferences.");
+            setPrefsError(t("prefsLoadFailed"));
         }
-    }, []);
+    }, [t]);
     const loadHook = useCallback(async () => {
         if (!isAdmin) return;
         setHookLoadError(false);
         try {
             const res = await fetch("/api/notifications/webhook");
-            if (!res.ok) throw new Error("Could not load the team webhook");
+            if (!res.ok) throw new Error("load");
             const data = await res.json();
             setCanStoreSecrets(data.canStoreSecrets);
             setAllKinds(data.kinds);
@@ -83,12 +83,12 @@ export function NotificationSettingsTab({ isAdmin }: { isAdmin: boolean }) {
         setEmailKinds(next);
         try {
             const res = await fetch("/api/notifications/preferences", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ emailKinds: next }) });
-            if (!res.ok) throw new Error("Could not save notification preferences.");
+            if (!res.ok) throw new Error("save");
             setSavedPrefs(true);
             setTimeout(() => setSavedPrefs(false), 1500);
         } catch {
             setEmailKinds(previous);
-            setPrefsError("Could not save notification preferences. Your previous choices are unchanged.");
+            setPrefsError(t("prefsSaveFailed"));
         } finally {
             setSavingPrefs(false);
         }
@@ -101,13 +101,13 @@ export function NotificationSettingsTab({ isAdmin }: { isAdmin: boolean }) {
         try {
             const res = await fetch("/api/notifications/webhook", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(patch) });
             const data = await res.json().catch(() => ({}));
-            if (!res.ok) throw new Error(data.error || "Could not save the webhook");
+            if (!res.ok) throw new Error(data.error || t("hookSaveFailed"));
             setHook((prev) => ({ ...(prev ?? { lastDeliveryAt: null, lastError: null }), ...data.webhook }));
             setUrl("");
-            setHookMessage({ ok: true, text: "Saved." });
+            setHookMessage({ ok: true, text: t("hookSaved") });
         } catch (e) {
             if (hook && patch.kinds) setHookKinds(hook.kinds);
-            setHookMessage({ ok: false, text: e instanceof Error ? e.message : "Could not save the webhook" });
+            setHookMessage({ ok: false, text: e instanceof Error ? e.message : t("hookSaveFailed") });
         } finally {
             setBusy(false);
         }
@@ -119,12 +119,12 @@ export function NotificationSettingsTab({ isAdmin }: { isAdmin: boolean }) {
         try {
         const res = await fetch("/api/notifications/webhook/test", { method: "POST" });
         const data = await res.json().catch(() => ({}));
-        setHookMessage(res.ok ? { ok: true, text: "Test sent — check your channel." } : { ok: false, text: data.error || "The channel didn't accept the test" });
+        setHookMessage(res.ok ? { ok: true, text: t("testSent") } : { ok: false, text: data.error || t("testRejected") });
         setHook((prev) => prev && (res.ok
             ? { ...prev, lastDeliveryAt: new Date().toISOString(), lastError: null }
-            : { ...prev, lastError: data.error || "Delivery failed" }));
+            : { ...prev, lastError: data.error || t("deliveryFailed") }));
         } catch {
-            setHookMessage({ ok: false, text: "Could not send the test. Please retry." });
+            setHookMessage({ ok: false, text: t("testFailed") });
         } finally {
             setBusy(false);
         }
@@ -135,11 +135,11 @@ export function NotificationSettingsTab({ isAdmin }: { isAdmin: boolean }) {
         setHookMessage(null);
         try {
             const res = await fetch("/api/notifications/webhook", { method: "DELETE" });
-            if (!res.ok) throw new Error("Could not remove the webhook");
+            if (!res.ok) throw new Error("remove");
             setHook(null);
-            setHookMessage({ ok: true, text: "Webhook removed." });
+            setHookMessage({ ok: true, text: t("hookRemoved") });
         } catch {
-            setHookMessage({ ok: false, text: "Could not remove the webhook. Please retry." });
+            setHookMessage({ ok: false, text: t("hookRemoveFailed") });
         } finally {
             setBusy(false);
         }
@@ -151,16 +151,16 @@ export function NotificationSettingsTab({ isAdmin }: { isAdmin: boolean }) {
                 <div className="flex items-center gap-3">
                     <span className="grid h-9 w-9 place-items-center rounded-xl border border-cyan-400/25 bg-cyan-400/10 text-primary"><IconMail className="h-4 w-4" /></span>
                     <div className="min-w-0 flex-1">
-                        <h2 className="text-base font-semibold text-foreground">Email me when…</h2>
-                        <p className="text-xs text-muted-foreground">Everything also lands in the <IconBell className="inline h-3 w-3" /> inbox in the sidebar.</p>
+                        <h2 className="text-base font-semibold text-foreground">{t("emailTitle")}</h2>
+                        <p className="text-xs text-muted-foreground">{t.rich("emailIntro", { bell: () => <IconBell className="inline h-3 w-3" /> })}</p>
                     </div>
-                    {savedPrefs && <span className="inline-flex items-center gap-1 text-xs text-emerald-700 dark:text-emerald-400"><IconCheck className="h-3.5 w-3.5" />Saved</span>}
+                    {savedPrefs && <span className="inline-flex items-center gap-1 text-xs text-emerald-700 dark:text-emerald-400"><IconCheck className="h-3.5 w-3.5" />{t("saved")}</span>}
                 </div>
-                {!prefsLoaded && !prefsError && <p role="status" className="mt-4 text-sm text-muted-foreground">Loading preferences…</p>}
-                {prefsError && <p role="alert" className="mt-4 text-sm text-destructive">{prefsError} {!prefsLoaded && <button type="button" onClick={() => void loadPrefs()} className="min-h-11 px-2 underline">Retry</button>}</p>}
+                {!prefsLoaded && !prefsError && <p role="status" className="mt-4 text-sm text-muted-foreground">{t("loadingPrefs")}</p>}
+                {prefsError && <p role="alert" className="mt-4 text-sm text-destructive">{prefsError} {!prefsLoaded && <button type="button" onClick={() => void loadPrefs()} className="min-h-11 px-2 underline">{tc("retry")}</button>}</p>}
                 {!emailConfigured && (
                     <p className="mt-4 rounded-lg border border-amber-500/25 bg-amber-500/10 px-3 py-2 text-xs text-amber-800 dark:text-amber-200">
-                        Email isn&apos;t configured on this server (SMTP_HOST, SMTP_USER, SMTP_FROM), so these only take effect once it is. The in-app inbox works regardless.
+                        {t("emailNotConfigured")}
                     </p>
                 )}
                 <ul className="mt-4 divide-y divide-border">
@@ -183,16 +183,16 @@ export function NotificationSettingsTab({ isAdmin }: { isAdmin: boolean }) {
                     <div className="flex items-center gap-3">
                         <span className="grid h-9 w-9 place-items-center rounded-xl border border-cyan-400/25 bg-cyan-400/10 text-primary"><IconWebhook className="h-4 w-4" /></span>
                         <div className="min-w-0 flex-1">
-                            <h2 className="text-base font-semibold text-foreground">Team channel webhook</h2>
-                            <p className="text-xs text-muted-foreground">Post notifications to Slack, Discord, or any URL that accepts JSON.</p>
+                            <h2 className="text-base font-semibold text-foreground">{t("webhookTitle")}</h2>
+                            <p className="text-xs text-muted-foreground">{t("webhookIntro")}</p>
                         </div>
                     </div>
 
-                    {!hookLoaded && !hookLoadError && <p role="status" className="mt-4 text-sm text-muted-foreground">Loading webhook…</p>}
-                    {hookLoadError && <p role="alert" className="mt-4 text-sm text-destructive">Could not load the team webhook. <button type="button" onClick={() => void loadHook()} className="min-h-11 px-2 underline">Retry</button></p>}
+                    {!hookLoaded && !hookLoadError && <p role="status" className="mt-4 text-sm text-muted-foreground">{t("loadingWebhook")}</p>}
+                    {hookLoadError && <p role="alert" className="mt-4 text-sm text-destructive">{t("webhookLoadFailed")} <button type="button" onClick={() => void loadHook()} className="min-h-11 px-2 underline">{tc("retry")}</button></p>}
                     {!canStoreSecrets && (
                         <p className="mt-4 rounded-lg border border-amber-500/25 bg-amber-500/10 px-3 py-2 text-xs text-amber-800 dark:text-amber-200">
-                            Set EMPEROR_CLAW_MASTER_KEY on the server to add a webhook. Its URL is a credential and is stored encrypted.
+                            {t("needsMasterKey")}
                         </p>
                     )}
 
@@ -202,10 +202,10 @@ export function NotificationSettingsTab({ isAdmin }: { isAdmin: boolean }) {
                             <div className="min-w-0 flex-1">
                                 <div className="truncate font-mono text-xs text-foreground">{hook.urlHint}</div>
                                 <div className={cn("text-xs", hook.lastError ? "text-destructive" : "text-muted-foreground")}>
-                                    {hook.lastError ? `Last delivery failed: ${hook.lastError}` : hook.lastDeliveryAt ? `Last delivered ${new Date(hook.lastDeliveryAt).toLocaleString()}` : "No deliveries yet"}
+                                    {hook.lastError ? t("lastFailed", { error: hook.lastError }) : hook.lastDeliveryAt ? t("lastDelivered", { when: format.dateTime(new Date(hook.lastDeliveryAt), { dateStyle: "medium", timeStyle: "short" }) }) : t("noDeliveries")}
                                 </div>
                             </div>
-                            <Toggle label="Webhook enabled" checked={hook.enabled} onChange={(on) => void saveHook({ enabled: on })} disabled={busy || !hookLoaded} />
+                            <Toggle label={t("webhookEnabled")} checked={hook.enabled} onChange={(on) => void saveHook({ enabled: on })} disabled={busy || !hookLoaded} />
                         </div>
                     ) : null}
 
@@ -213,8 +213,8 @@ export function NotificationSettingsTab({ isAdmin }: { isAdmin: boolean }) {
                         <input
                             value={url}
                             onChange={(e) => setUrl(e.target.value)}
-                            placeholder={hook ? "Replace with a new webhook URL" : "https://hooks.slack.com/services/…"}
-                            aria-label="Webhook URL"
+                            placeholder={hook ? t("replaceUrl") : WEBHOOK_URL_EXAMPLE}
+                            aria-label={t("webhookUrl")}
                             disabled={!canStoreSecrets}
                             className="h-10 min-w-0 flex-1 rounded-lg border border-border bg-muted px-3 font-mono text-xs text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-cyan-400/60 disabled:opacity-50"
                         />
@@ -224,12 +224,12 @@ export function NotificationSettingsTab({ isAdmin }: { isAdmin: boolean }) {
                             disabled={busy || !hookLoaded || !url.trim() || !canStoreSecrets}
                             className="rounded-lg bg-cyan-400 px-3 text-sm font-semibold text-cyan-950 hover:bg-cyan-300 disabled:opacity-50"
                         >
-                            Save
+                            {tc("save")}
                         </button>
                     </div>
 
                     <div className="mt-4">
-                        <div className="mb-2 text-xs font-medium text-muted-foreground">Send to the channel</div>
+                        <div className="mb-2 text-xs font-medium text-muted-foreground">{t("sendToChannel")}</div>
                         <div className="flex flex-wrap gap-1.5">
                             {allKinds.map((kind) => {
                                 const on = hookKinds.includes(kind);
@@ -246,7 +246,7 @@ export function NotificationSettingsTab({ isAdmin }: { isAdmin: boolean }) {
                                         }}
                                         className={cn("min-h-11 rounded-full border px-3 py-2 text-xs transition-colors disabled:opacity-50", on ? "border-cyan-400/50 bg-cyan-400/10 text-primary" : "border-border text-muted-foreground hover:text-foreground")}
                                     >
-                                        {WEBHOOK_LABELS[kind] ?? kind}
+                                        {kind in WEBHOOK_KINDS ? t(`webhookKinds.${WEBHOOK_KINDS[kind as keyof typeof WEBHOOK_KINDS]}`) : kind}
                                     </button>
                                 );
                             })}
@@ -255,8 +255,8 @@ export function NotificationSettingsTab({ isAdmin }: { isAdmin: boolean }) {
 
                     {hook && (
                         <div className="mt-4 flex gap-2">
-                            <button type="button" onClick={() => void testHook()} disabled={busy || !hookLoaded} className="rounded-lg border border-border px-3 py-1.5 text-xs text-foreground hover:border-cyan-400/40 hover:text-primary disabled:opacity-50">Send test</button>
-                            <button type="button" onClick={() => void removeHook()} disabled={busy || !hookLoaded} className="rounded-lg px-3 py-1.5 text-xs text-muted-foreground hover:bg-rose-500/10 hover:text-destructive disabled:opacity-50">Remove</button>
+                            <button type="button" onClick={() => void testHook()} disabled={busy || !hookLoaded} className="rounded-lg border border-border px-3 py-1.5 text-xs text-foreground hover:border-cyan-400/40 hover:text-primary disabled:opacity-50">{t("sendTest")}</button>
+                            <button type="button" onClick={() => void removeHook()} disabled={busy || !hookLoaded} className="rounded-lg px-3 py-1.5 text-xs text-muted-foreground hover:bg-rose-500/10 hover:text-destructive disabled:opacity-50">{tc("remove")}</button>
                         </div>
                     )}
                     {hookMessage && <p role="status" className={cn("mt-3 text-xs", hookMessage.ok ? "text-emerald-700 dark:text-emerald-400" : "text-destructive")}>{hookMessage.text}</p>}

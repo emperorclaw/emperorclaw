@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
+import { useTranslations } from "next-intl";
 import { IconArrowLeft, IconHierarchy2, IconHeartbeat, IconLoader2, IconRobot, IconSearch, IconWallet } from "@tabler/icons-react";
 import { CreateAgentDialog } from "./create-agent-dialog";
 import { EasySetupDialog } from "./easy-setup-dialog";
@@ -34,7 +35,12 @@ type AgentDirectoryItem = {
     use?: "full" | "metadata";
 };
 
+/** Agent statuses with a label under agents.status (anything else shows as is). */
+const AGENT_STATUSES = new Set(["online", "degraded", "offline"]);
+
 export function AgentsClient({ agents }: { agents: AgentDirectoryItem[] }) {
+    const t = useTranslations("agents.list");
+    const tStatus = useTranslations("agents.status");
     const [query, setQuery] = useState("");
     const [status, setStatus] = useState("all");
     // `?agent=<id>` opens that agent (old /agents/<id> links redirect here).
@@ -94,7 +100,7 @@ export function AgentsClient({ agents }: { agents: AgentDirectoryItem[] }) {
         }
     };
 
-    const pendingName = agents.find((agent) => agent.id === pendingId)?.name || "Your agent";
+    const pendingName = agents.find((agent) => agent.id === pendingId)?.name || t("yourAgent");
 
     const filteredAgents = useMemo(() => {
         const normalized = query.trim().toLowerCase();
@@ -110,25 +116,25 @@ export function AgentsClient({ agents }: { agents: AgentDirectoryItem[] }) {
     return (
         <div className="mx-auto max-w-[1800px] space-y-6 animate-in fade-in duration-500">
             <PageHeader
-                eyebrow="Agents"
-                title="Agent Directory"
-                description="Find agents, inspect workload, and jump into the durable profile when you need details."
+                eyebrow={t("eyebrow")}
+                title={t("title")}
+                description={t("description")}
                 actions={
                     <div className="flex flex-wrap items-center gap-2">
-                        <Link href="/agents/organization" className="inline-flex min-h-11 items-center gap-1.5 rounded-xl border border-cyan-500/30 bg-cyan-500/5 px-3 text-sm text-cyan-400 hover:bg-cyan-500/10"><IconHierarchy2 className="h-4 w-4" />Organization</Link>
+                        <Link href="/agents/organization" className="inline-flex min-h-11 items-center gap-1.5 rounded-xl border border-cyan-500/30 bg-cyan-500/5 px-3 text-sm text-cyan-400 hover:bg-cyan-500/10"><IconHierarchy2 className="h-4 w-4" />{t("organization")}</Link>
                         <Link
                             href="/agents/health"
                             className="inline-flex min-h-11 items-center gap-1.5 rounded-xl border border-zinc-800 px-3 text-sm text-zinc-300 transition-colors hover:border-cyan-400/40 hover:bg-cyan-400/10 hover:text-cyan-100"
                         >
                             <IconHeartbeat className="h-4 w-4" />
-                            Health
+                            {t("health")}
                         </Link>
                         <Link
                             href="/budgets"
                             className="inline-flex min-h-11 items-center gap-1.5 rounded-xl border border-zinc-800 px-3 text-sm text-zinc-300 transition-colors hover:border-cyan-400/40 hover:bg-cyan-400/10 hover:text-cyan-100"
                         >
                             <IconWallet className="h-4 w-4" />
-                            Budgets
+                            {t("budgets")}
                         </Link>
                         <EasySetupDialog key={hireRequested ? "hire" : "idle"} defaultOpen={hireRequested} onAgentCreated={handleAgentCreated} onSwitchToAdvanced={() => setAdvancedDialogOpen(true)} />
                         <CreateAgentDialog onAgentCreated={handleAgentCreated} open={advancedDialogOpen}
@@ -141,13 +147,13 @@ export function AgentsClient({ agents }: { agents: AgentDirectoryItem[] }) {
                 <div className="flex flex-wrap items-center gap-3 rounded-xl border border-emerald-500/25 bg-emerald-500/[0.06] px-4 py-3 text-sm">
                     <IconLoader2 className="h-4 w-4 shrink-0 animate-spin text-emerald-400" />
                     <span className="text-zinc-200">
-                        {pendingName} is starting up. We&apos;ll open its direct chat as soon as it&apos;s online — no action needed.
+                        {t("startingUp", { name: pendingName })}
                     </span>
                     {pendingStalled && (
                         <>
-                            <span className="text-amber-200/90">Still offline after a few minutes.</span>
+                            <span className="text-amber-200/90">{t("stillOffline")}</span>
                             <button type="button" onClick={() => void retryPendingRuntime()} disabled={pendingRetrying} className="rounded-lg border border-amber-500/40 px-3 py-1 text-xs font-medium text-amber-100 hover:bg-amber-500/10 disabled:opacity-50">
-                                {pendingRetrying ? "Restarting…" : "Retry runtime"}
+                                {pendingRetrying ? t("restarting") : t("retryRuntime")}
                             </button>
                         </>
                     )}
@@ -157,20 +163,20 @@ export function AgentsClient({ agents }: { agents: AgentDirectoryItem[] }) {
             {agents.length === 0 ? (
                 <EmptyState
                     icon={IconRobot}
-                    title="No agents yet"
-                    description="Nobody is on the team, so no work will run. Use Hire an Agent above: choose a role and connect your AI model, and Emperor starts the agent for you."
+                    title={t("emptyTitle")}
+                    description={t("emptyDescription")}
                 />
             ) : (
                 <div className="grid grid-cols-1 gap-6 lg:grid-cols-[320px_minmax(0,1fr)]">
                     <aside className={cn("emperor-panel min-w-0 overflow-hidden rounded-2xl p-3 sm:p-4", mobileView === "detail" ? "hidden lg:block" : "")}>
                         <label className="flex min-h-11 min-w-0 items-center gap-2 rounded-xl border border-zinc-800 bg-zinc-950/80 px-3 py-2 text-sm text-zinc-400">
                             <IconSearch className="h-4 w-4" />
-                            <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search agents" className="w-full bg-transparent text-zinc-100 outline-none placeholder:text-zinc-500" />
+                            <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder={t("search")} className="w-full bg-transparent text-zinc-100 outline-none placeholder:text-zinc-500" />
                         </label>
                         <div className="mt-3 flex flex-wrap gap-2">
                             {["all", "online", "degraded", "offline"].map((item) => (
                                 <button key={item} type="button" onClick={() => setStatus(item)} className={cn("inline-flex min-h-9 items-center rounded-full border px-3.5 text-xs font-medium capitalize lg:min-h-8 lg:px-2.5 transition-colors", status === item ? "border-cyan-400/40 bg-cyan-400/10 text-cyan-100" : "border-zinc-800 text-zinc-400 hover:border-zinc-700 hover:text-zinc-100")}>
-                                    {item}
+                                    {item === "all" ? t("filterAll") : tStatus(item as "online")}
                                 </button>
                             ))}
                         </div>
@@ -182,7 +188,7 @@ export function AgentsClient({ agents }: { agents: AgentDirectoryItem[] }) {
                                         <span className="flex items-center gap-2 truncate font-medium text-zinc-100">
                                             {agent.name}
                                             {(agent.deadLetterCount > 0 || agent.failedCount > 0) && (
-                                                <span className="shrink-0 rounded-full bg-rose-500/20 px-1.5 py-0.5 text-[10px] font-semibold text-rose-300" title={`${agent.deadLetterCount} dead-lettered, ${agent.failedCount} failed`}>
+                                                <span className="shrink-0 rounded-full bg-rose-500/20 px-1.5 py-0.5 text-[10px] font-semibold text-rose-300" title={t("problemCounts", { deadLettered: agent.deadLetterCount, failed: agent.failedCount })}>
                                                     {agent.deadLetterCount + agent.failedCount}
                                                 </span>
                                             )}
@@ -198,8 +204,8 @@ export function AgentsClient({ agents }: { agents: AgentDirectoryItem[] }) {
                                 <EmptyState
                                     compact
                                     icon={IconSearch}
-                                    title={query.trim() ? "No agents match that search" : `No ${status} agents`}
-                                    description={<button type="button" onClick={() => { setQuery(""); setStatus("all"); }} className="text-primary hover:underline">Show all agents</button>}
+                                    title={query.trim() ? t("noMatch") : AGENT_STATUSES.has(status) ? t("noStatusAgents", { status: tStatus(status as "online") }) : t("noMatch")}
+                                    description={<button type="button" onClick={() => { setQuery(""); setStatus("all"); }} className="text-primary hover:underline">{t("showAll")}</button>}
                                 />
                             ) : null}
                         </div>
@@ -209,7 +215,7 @@ export function AgentsClient({ agents }: { agents: AgentDirectoryItem[] }) {
                         <div className={cn("min-w-0 space-y-4", mobileView === "list" ? "hidden lg:block" : "")}>
                             <button type="button" onClick={() => setMobileView("list")} className="lg:hidden inline-flex min-h-11 items-center gap-1.5 text-sm text-zinc-300 hover:text-zinc-100">
                                 <IconArrowLeft className="h-4 w-4" />
-                                All agents
+                                {t("allAgents")}
                             </button>
                             {selectedAgent.use !== "metadata" && <AgentNowCard now={activity[selectedAgent.id]} />}
                             <AgentDetailPanel agentId={selectedAgent.id} agentName={selectedAgent.name} runtime={activity[selectedAgent.id]?.runtime ?? null} />
@@ -218,7 +224,7 @@ export function AgentsClient({ agents }: { agents: AgentDirectoryItem[] }) {
                         <main className="emperor-panel rounded-2xl p-6 flex items-center justify-center min-h-[400px]">
                             <div className="text-center text-zinc-500">
                                 <IconRobot className="mx-auto h-12 w-12 mb-3 text-zinc-600" />
-                                <p className="text-sm">Select an agent from the list to view details.</p>
+                                <p className="text-sm">{t("selectAgent")}</p>
                             </div>
                         </main>
                     )}
@@ -229,17 +235,18 @@ export function AgentsClient({ agents }: { agents: AgentDirectoryItem[] }) {
 }
 
 function AgentSubtitle({ agent, now }: { agent: AgentDirectoryItem; now: AgentNow | undefined }) {
+    const t = useTranslations("agents.list");
     if (now && (now.state === "working" || now.state === "typing")) {
         const text = now.activity || now.task?.title || "";
         return (
             <span className="block truncate text-xs text-cyan-300">
                 {now.run ? <RunElapsed startedAt={now.run.startedAt} /> : null}
                 {now.run && text ? " · " : null}
-                {text || (now.run ? null : "Active")}
+                {text || (now.run ? null : t("active"))}
             </span>
         );
     }
-    return <span className="block truncate text-xs text-zinc-500">{agent.role}{agent.tasksCompleted > 0 ? ` · ${agent.tasksCompleted} done` : ""}</span>;
+    return <span className="block truncate text-xs text-zinc-500">{agent.role}{agent.tasksCompleted > 0 ? ` · ${t("doneCount", { count: agent.tasksCompleted })}` : ""}</span>;
 }
 
 /** Elapsed time of an open run, ticking every second from its own clock. */

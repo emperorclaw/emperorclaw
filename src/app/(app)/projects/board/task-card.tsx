@@ -3,6 +3,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
+import { useTranslations } from "next-intl";
 import { useDraggable } from "@dnd-kit/core";
 import { CSS } from "@dnd-kit/utilities";
 import {
@@ -31,14 +32,13 @@ import {
     DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import {
-    BOARD_COLUMN_LABEL,
-    CARD_SIGNAL_LABEL,
     initialsOf,
     type CardSignal,
     type PriorityLevel,
 } from "@/lib/project-board-model";
 import { taskHref } from "@/lib/task-story";
 import { cn } from "@/lib/utils";
+import { PRIORITY_CHOICES, useBoardLabels, useShortDateTime } from "./board-labels";
 
 /** Everything a card or list row shows, computed once per task by the board. */
 export type TaskView = {
@@ -54,15 +54,9 @@ export type TaskView = {
     ageTitle: string;
     signals: CardSignal[];
     recurring: boolean;
+    /** The age is under a minute ("now"). */
+    ageNow?: boolean;
 };
-
-export const PRIORITY_CHOICES = [
-    { value: 0, label: "None" },
-    { value: 25, label: "Low" },
-    { value: 50, label: "Medium" },
-    { value: 75, label: "High" },
-    { value: 100, label: "Urgent" },
-];
 
 const MOVE_TARGETS = ["inbox", "in_progress", "review", "blocked", "done"] as const;
 
@@ -103,15 +97,16 @@ export function OwnerAvatar({ owner, size = "sm" }: { owner: TaskView["owner"]; 
 }
 
 export function SignalIcons({ signals, className }: { signals: CardSignal[]; className?: string }) {
+    const labels = useBoardLabels();
     if (signals.length === 0) return null;
     return (
         <span className={cn("flex items-center gap-1", className)}>
             {signals.map((signal) => {
                 const { icon: Icon, className: tone } = SIGNAL_ICON[signal];
                 return (
-                    <span key={signal} title={CARD_SIGNAL_LABEL[signal]} className="inline-flex">
+                    <span key={signal} title={labels.signal(signal)} className="inline-flex">
                         <Icon className={cn("h-3.5 w-3.5", tone)} aria-hidden="true" />
-                        <span className="sr-only">{CARD_SIGNAL_LABEL[signal]}</span>
+                        <span className="sr-only">{labels.signal(signal)}</span>
                     </span>
                 );
             })}
@@ -120,12 +115,15 @@ export function SignalIcons({ signals, className }: { signals: CardSignal[]; cla
 }
 
 export function PriorityMark({ priority }: { priority: PriorityLevel | null }) {
+    const t = useTranslations("tasks.card");
+    const labels = useBoardLabels();
     if (!priority) return null;
     const Icon = priority.tone === "critical" || priority.tone === "high" ? IconFlagFilled : IconFlag;
+    const label = labels.priority(priority.tone);
     return (
-        <span className={cn("inline-flex items-center gap-0.5 font-medium", PRIORITY_TONE[priority.tone])} title={`${priority.label} priority`}>
+        <span className={cn("inline-flex items-center gap-0.5 font-medium", PRIORITY_TONE[priority.tone])} title={t("priorityTitle", { priority: label })}>
             <Icon className="h-3 w-3" aria-hidden="true" />
-            {priority.label}
+            {label}
         </span>
     );
 }
@@ -139,13 +137,15 @@ export function TaskCardMenu({ view, open, onOpenChange, onSetPriority, onSetSta
     onSetState?: (state: string) => void;
     onArchive?: () => void;
 }) {
+    const t = useTranslations("tasks.card");
+    const labels = useBoardLabels();
     const { task } = view;
     return (
         <DropdownMenu open={open} onOpenChange={onOpenChange}>
             <DropdownMenuTrigger asChild>
                 <button
                     type="button"
-                    aria-label={`Actions for ${view.title}`}
+                    aria-label={t("actionsFor", { title: view.title })}
                     onPointerDown={(event) => event.stopPropagation()}
                     onClick={(event) => event.stopPropagation()}
                     onKeyDown={(event) => event.stopPropagation()}
@@ -159,25 +159,25 @@ export function TaskCardMenu({ view, open, onOpenChange, onSetPriority, onSetSta
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="w-52 border-zinc-800 bg-zinc-950 text-zinc-100" onClick={(event) => event.stopPropagation()} onPointerDown={(event) => event.stopPropagation()} onKeyDown={(event) => event.stopPropagation()}>
                 <DropdownMenuItem asChild>
-                    <Link href={taskHref(task.id)}><IconArrowUpRight className="mr-2 h-4 w-4" />Open full page</Link>
+                    <Link href={taskHref(task.id)}><IconArrowUpRight className="mr-2 h-4 w-4" />{t("openFullPage")}</Link>
                 </DropdownMenuItem>
                 {onSetState && (
                     <DropdownMenuSub>
-                        <DropdownMenuSubTrigger>Move to</DropdownMenuSubTrigger>
+                        <DropdownMenuSubTrigger>{t("moveTo")}</DropdownMenuSubTrigger>
                         <DropdownMenuSubContent className="border-zinc-800 bg-zinc-950 text-zinc-100">
                             {MOVE_TARGETS.filter((state) => state !== task.state).map((state) => (
-                                <DropdownMenuItem key={state} onSelect={() => onSetState(state)}>{BOARD_COLUMN_LABEL[state]}</DropdownMenuItem>
+                                <DropdownMenuItem key={state} onSelect={() => onSetState(state)}>{labels.column(state)}</DropdownMenuItem>
                             ))}
                         </DropdownMenuSubContent>
                     </DropdownMenuSub>
                 )}
                 {onSetPriority && (
                     <DropdownMenuSub>
-                        <DropdownMenuSubTrigger>Priority</DropdownMenuSubTrigger>
+                        <DropdownMenuSubTrigger>{t("priority")}</DropdownMenuSubTrigger>
                         <DropdownMenuSubContent className="border-zinc-800 bg-zinc-950 text-zinc-100">
-                            <DropdownMenuLabel className="text-xs font-normal text-zinc-500">Current: {view.priority?.label ?? "None"}</DropdownMenuLabel>
+                            <DropdownMenuLabel className="text-xs font-normal text-zinc-500">{t("currentPriority", { priority: labels.priority(view.priority?.tone ?? "none") })}</DropdownMenuLabel>
                             {PRIORITY_CHOICES.map((choice) => (
-                                <DropdownMenuItem key={choice.value} onSelect={() => onSetPriority(choice.value)}>{choice.label}</DropdownMenuItem>
+                                <DropdownMenuItem key={choice.value} onSelect={() => onSetPriority(choice.value)}>{labels.priority(choice.tone)}</DropdownMenuItem>
                             ))}
                         </DropdownMenuSubContent>
                     </DropdownMenuSub>
@@ -185,7 +185,7 @@ export function TaskCardMenu({ view, open, onOpenChange, onSetPriority, onSetSta
                 {onArchive && (
                     <>
                         <DropdownMenuSeparator />
-                        <DropdownMenuItem variant="destructive" onSelect={onArchive}><IconArchive className="mr-2 h-4 w-4" />Archive task</DropdownMenuItem>
+                        <DropdownMenuItem variant="destructive" onSelect={onArchive}><IconArchive className="mr-2 h-4 w-4" />{t("archive")}</DropdownMenuItem>
                     </>
                 )}
             </DropdownMenuContent>
@@ -195,6 +195,7 @@ export function TaskCardMenu({ view, open, onOpenChange, onSetPriority, onSetSta
 
 /** The card body shared by the board card, the drag overlay and the list row. */
 function CardBody({ view, menu }: { view: TaskView; menu?: React.ReactNode }) {
+    const t = useTranslations("tasks.card");
     return (
         <>
             <div className="flex items-start gap-1.5">
@@ -204,9 +205,9 @@ function CardBody({ view, menu }: { view: TaskView; menu?: React.ReactNode }) {
             {view.context && <p className="mt-0.5 truncate text-xs text-zinc-500" title={view.contextTitle}>{view.context}</p>}
             <div className="mt-2 flex min-w-0 items-center gap-1.5 text-[11px] text-zinc-500">
                 <OwnerAvatar owner={view.owner} />
-                <span className={cn("min-w-0 truncate", view.owner ? "text-zinc-400" : "text-zinc-600")}>{view.owner?.name ?? "No owner"}</span>
+                <span className={cn("min-w-0 truncate", view.owner ? "text-zinc-400" : "text-zinc-600")}>{view.owner?.name ?? t("noOwner")}</span>
                 <span className="ml-auto flex shrink-0 items-center gap-2">
-                    {view.recurring && <IconRepeat className="h-3.5 w-3.5 text-cyan-300/80" aria-label="Recurring" />}
+                    {view.recurring && <IconRepeat className="h-3.5 w-3.5 text-cyan-300/80" aria-label={t("recurring")} />}
                     <SignalIcons signals={view.signals} />
                     <PriorityMark priority={view.priority} />
                     {view.age && <time className="tabular-nums text-zinc-500" title={view.ageTitle}>{view.age}</time>}
@@ -226,6 +227,7 @@ export function TaskCard({ view, canEdit, onOpen, onSetPriority, onSetState, onA
     overlay?: boolean;
     selected?: boolean;
 }) {
+    const t = useTranslations("tasks.card");
     const draggable = useDraggable({ id: view.task.id, disabled: overlay || !canEdit });
     const [menuOpen, setMenuOpen] = useState(false);
     const style = overlay ? undefined : { transform: CSS.Translate.toString(draggable.transform) };
@@ -246,7 +248,7 @@ export function TaskCard({ view, canEdit, onOpen, onSetPriority, onSetState, onA
             {...draggable.attributes}
             role="button"
             tabIndex={0}
-            aria-roledescription={canEdit ? "Draggable task" : undefined}
+            aria-roledescription={canEdit ? t("draggable") : undefined}
             aria-label={view.title}
             onClick={onOpen}
             onContextMenu={canEdit ? (event) => { event.preventDefault(); setMenuOpen(true); } : undefined}
@@ -285,13 +287,14 @@ export function TaskRow({ view, canEdit, onOpen, onSetPriority, onSetState, onAr
     /** List-view multi-select: a checkbox before the row. */
     selection?: { checked: boolean; onToggle: () => void };
 }) {
+    const t = useTranslations("tasks.card");
     const [menuOpen, setMenuOpen] = useState(false);
     return (
         <li className="group/card relative">
             {selection && (
                 <input
                     type="checkbox"
-                    aria-label={`Select ${view.title}`}
+                    aria-label={t("select", { title: view.title })}
                     checked={selection.checked}
                     onChange={selection.onToggle}
                     className="absolute left-3 top-1/2 z-10 h-4 w-4 -translate-y-1/2 cursor-pointer accent-cyan-500"
@@ -313,12 +316,12 @@ export function TaskRow({ view, canEdit, onOpen, onSetPriority, onSetState, onAr
                     <span className="line-clamp-2 break-words text-sm font-medium leading-snug text-zinc-100 sm:line-clamp-1">{view.title}</span>
                     <span className="mt-0.5 flex min-w-0 items-center gap-2 text-xs text-zinc-500">
                         <span className="min-w-0 truncate" title={view.contextTitle}>
-                            {[view.owner?.name ?? "No owner", view.context].filter(Boolean).join(" · ")}
+                            {[view.owner?.name ?? t("noOwner"), view.context].filter(Boolean).join(" · ")}
                         </span>
                     </span>
                 </span>
                 <span className="flex shrink-0 items-center gap-2 text-[11px] text-zinc-500">
-                    {view.recurring && <IconRepeat className="h-3.5 w-3.5 text-cyan-300/80" aria-label="Recurring" />}
+                    {view.recurring && <IconRepeat className="h-3.5 w-3.5 text-cyan-300/80" aria-label={t("recurring")} />}
                     <SignalIcons signals={view.signals} />
                     <PriorityMark priority={view.priority} />
                     {view.age && <time className="w-7 text-right tabular-nums" title={view.ageTitle}>{view.age}</time>}
@@ -334,17 +337,19 @@ export function TaskRow({ view, canEdit, onOpen, onSetPriority, onSetState, onAr
 }
 
 export function RecurringCard({ definition, projectName, ownerName }: { definition: any; projectName: string; ownerName: string }) {
+    const t = useTranslations("tasks.card");
+    const shortDateTime = useShortDateTime();
     const next = definition.nextRunAt ? new Date(definition.nextRunAt) : null;
     return (
         <div className="w-full rounded-lg border border-dashed border-zinc-800 bg-zinc-950/60 px-3 py-2.5">
             <div className="flex items-start gap-2">
                 <IconRepeat className="mt-0.5 h-3.5 w-3.5 shrink-0 text-cyan-300/80" aria-hidden="true" />
                 <h4 className="line-clamp-2 min-w-0 flex-1 text-[13px] font-medium leading-snug text-zinc-100">{definition.name}</h4>
-                <span className={cn("shrink-0 text-[11px]", definition.active ? "text-emerald-300" : "text-zinc-500")}>{definition.active ? "Active" : "Paused"}</span>
+                <span className={cn("shrink-0 text-[11px]", definition.active ? "text-emerald-300" : "text-zinc-500")}>{definition.active ? t("active") : t("paused")}</span>
             </div>
             {projectName && <p className="mt-0.5 truncate pl-5 text-xs text-zinc-500" title={projectName}>{projectName}</p>}
             <p className="mt-1.5 truncate pl-5 text-[11px] text-zinc-500">
-                {[ownerName, definition.cronExpression, next && !Number.isNaN(next.getTime()) ? `Next ${next.toLocaleString([], { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })}` : null].filter(Boolean).join(" · ")}
+                {[ownerName, definition.cronExpression, next && !Number.isNaN(next.getTime()) ? t("nextRun", { when: shortDateTime(next) }) : null].filter(Boolean).join(" · ")}
             </p>
         </div>
     );

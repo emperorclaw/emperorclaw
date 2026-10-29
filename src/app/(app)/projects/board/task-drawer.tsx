@@ -3,6 +3,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
+import { useFormatter, useTranslations } from "next-intl";
 import {
     IconArchive,
     IconArrowRight,
@@ -22,9 +23,11 @@ import { blockedReason, sentenceCase, taskBriefMarkdown, type BoardTask } from "
 import type { ProjectTitle } from "@/lib/project-title";
 import { taskHref } from "@/lib/task-story";
 import { cn } from "@/lib/utils";
-import { OwnerAvatar, PRIORITY_CHOICES, SignalIcons, type TaskView } from "./task-card";
+import { OwnerAvatar, SignalIcons, type TaskView } from "./task-card";
+import { PRIORITY_CHOICES, TASK_STATES as DRAWER_STATES, useBoardLabels } from "./board-labels";
 
-const DRAWER_STATES = ["inbox", "in_progress", "review", "blocked", "done", "failed", "dead_letter"];
+type DrawerT = ReturnType<typeof useTranslations<"tasks.drawer">>;
+type BoardLabels = ReturnType<typeof useBoardLabels>;
 
 const STATE_TONE: Record<string, string> = {
     inbox: "border-zinc-700 bg-zinc-800/60 text-zinc-300",
@@ -37,14 +40,18 @@ const STATE_TONE: Record<string, string> = {
     dead_letter: "border-rose-500/30 bg-rose-500/10 text-rose-300",
 };
 
-function when(iso: string | Date | null | undefined): string {
-    if (!iso) return "";
-    const date = new Date(iso);
-    if (Number.isNaN(date.getTime())) return "";
-    const sameDay = date.toDateString() === new Date().toDateString();
-    return sameDay
-        ? date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
-        : date.toLocaleString([], { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
+/** "14:05" today, else "Oct 29, 14:05", in the person's language. */
+function useWhen() {
+    const format = useFormatter();
+    return (iso: string | Date | null | undefined): string => {
+        if (!iso) return "";
+        const date = new Date(iso);
+        if (Number.isNaN(date.getTime())) return "";
+        const sameDay = date.toDateString() === new Date().toDateString();
+        return sameDay
+            ? format.dateTime(date, { hour: "2-digit", minute: "2-digit" })
+            : format.dateTime(date, { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
+    };
 }
 
 export type DrawerLookups = {
@@ -52,30 +59,30 @@ export type DrawerLookups = {
     memberName: (id?: string | null) => string;
 };
 
-function describeEvent(event: any, lookups: DrawerLookups): { icon: typeof IconNote; text: string; note: string | null } {
+function describeEvent(event: any, lookups: DrawerLookups, t: DrawerT, labels: BoardLabels): { icon: typeof IconNote; text: string; note: string | null } {
     const payload = event.payloadJson && typeof event.payloadJson === "object" ? event.payloadJson : {};
-    if (event.eventType === "task_note") return { icon: IconNote, text: "Note", note: typeof payload.note === "string" ? payload.note : null };
+    if (event.eventType === "task_note") return { icon: IconNote, text: t("events.note"), note: typeof payload.note === "string" ? payload.note : null };
     if (event.eventType === "task_handoff" && payload.handoff) {
-        return { icon: IconUserShare, text: `Handed off from ${payload.handoff.fromRole ?? "?"} to ${payload.handoff.toRole ?? "?"}`, note: typeof payload.note === "string" ? payload.note : null };
+        return { icon: IconUserShare, text: t("events.handoff", { from: payload.handoff.fromRole ?? "?", to: payload.handoff.toRole ?? "?" }), note: typeof payload.note === "string" ? payload.note : null };
     }
     if (event.eventType === "task_reassigned") {
         const assignee = payload.assignee;
         const label = assignee?.type === "human" ? lookups.memberName(assignee.id) : assignee?.type === "agent" ? lookups.agentName(assignee.id) : null;
-        return { icon: IconUserShare, text: label ? `Assigned to ${label}` : "Unassigned", note: null };
+        return { icon: IconUserShare, text: label ? t("events.assigned", { name: label }) : t("events.unassigned"), note: null };
     }
-    if (event.eventType === "task_generated" || event.eventType === "task_created") return { icon: IconSparkles, text: "Created", note: null };
+    if (event.eventType === "task_generated" || event.eventType === "task_created") return { icon: IconSparkles, text: t("events.created"), note: null };
     if (typeof event.eventType === "string" && event.eventType.startsWith("task_")) {
         const state = typeof payload.state === "string" ? payload.state : event.eventType.replace("task_", "");
         const note = typeof payload.comment === "string" ? payload.comment : typeof payload.blockedReason === "string" ? payload.blockedReason : null;
-        return { icon: IconArrowRight, text: `Moved to ${sentenceCase(state).toLowerCase()}`, note };
+        return { icon: IconArrowRight, text: t("events.moved", { state: labels.state(state).toLowerCase() }), note };
     }
     return { icon: IconArrowRight, text: sentenceCase(event.eventType), note: null };
 }
 
-function actorOf(event: any, lookups: DrawerLookups): string | null {
+function actorOf(event: any, lookups: DrawerLookups, t: DrawerT): string | null {
     if (event.actorType === "agent" && event.actorId) return lookups.agentName(event.actorId);
     if (event.actorType === "human" && event.actorId) return lookups.memberName(event.actorId);
-    if (event.actorType === "system") return "System";
+    if (event.actorType === "system") return t("events.system");
     return null;
 }
 
@@ -120,6 +127,10 @@ export function TaskDrawer({
     onArchive: () => void;
     onSendNote: (text: string) => Promise<boolean>;
 }) {
+    const t = useTranslations("tasks.drawer");
+    const tc = useTranslations("common");
+    const labels = useBoardLabels();
+    const when = useWhen();
     const [note, setNote] = useState("");
     const [sending, setSending] = useState(false);
     const panelRef = useRef<HTMLDivElement>(null);
@@ -151,7 +162,7 @@ export function TaskDrawer({
 
     return (
         <>
-            <button type="button" aria-label="Close task" onClick={onClose} className="fixed inset-0 z-40 bg-black/50 lg:bg-black/25 motion-safe:animate-in motion-safe:fade-in" />
+            <button type="button" aria-label={t("closeTask")} onClick={onClose} className="fixed inset-0 z-40 bg-black/50 lg:bg-black/25 motion-safe:animate-in motion-safe:fade-in" />
             <aside
                 ref={panelRef}
                 tabIndex={-1}
@@ -161,83 +172,83 @@ export function TaskDrawer({
                 <div className="flex items-center gap-2 border-b border-zinc-800/80 px-4 py-2.5 sm:px-5">
                     <span className="hidden font-mono text-[11px] text-zinc-500 sm:inline">TASK-{String(task.id).slice(0, 8).toUpperCase()}</span>
                     <Link href={taskHref(task.id)} className="inline-flex min-h-8 items-center gap-1 rounded-md px-1.5 text-xs font-medium text-cyan-300 transition-colors hover:bg-cyan-400/10 hover:text-cyan-200">
-                        Open full page
+                        {t("openFullPage")}
                         <IconArrowUpRight className="h-3.5 w-3.5" aria-hidden="true" />
                     </Link>
                     <span className="ml-auto flex items-center gap-1">
                         {canEdit && (
                             <>
-                                <button type="button" onClick={onEdit} className="inline-flex h-8 items-center gap-1.5 rounded-md px-2 text-xs text-zinc-300 transition-colors hover:bg-zinc-800 hover:text-zinc-100"><IconPencil className="h-3.5 w-3.5" aria-hidden="true" />Edit</button>
-                                <button type="button" onClick={onArchive} className="inline-flex h-8 items-center gap-1.5 rounded-md px-2 text-xs text-zinc-300 transition-colors hover:bg-rose-500/10 hover:text-rose-200"><IconArchive className="h-3.5 w-3.5" aria-hidden="true" />Archive</button>
+                                <button type="button" onClick={onEdit} className="inline-flex h-8 items-center gap-1.5 rounded-md px-2 text-xs text-zinc-300 transition-colors hover:bg-zinc-800 hover:text-zinc-100"><IconPencil className="h-3.5 w-3.5" aria-hidden="true" />{tc("edit")}</button>
+                                <button type="button" onClick={onArchive} className="inline-flex h-8 items-center gap-1.5 rounded-md px-2 text-xs text-zinc-300 transition-colors hover:bg-rose-500/10 hover:text-rose-200"><IconArchive className="h-3.5 w-3.5" aria-hidden="true" />{t("archive")}</button>
                             </>
                         )}
-                        <button type="button" onClick={onClose} aria-label="Close" className="inline-flex h-8 w-8 items-center justify-center rounded-md text-zinc-400 transition-colors hover:bg-zinc-800 hover:text-zinc-100"><IconX className="h-4 w-4" aria-hidden="true" /></button>
+                        <button type="button" onClick={onClose} aria-label={tc("close")} className="inline-flex h-8 w-8 items-center justify-center rounded-md text-zinc-400 transition-colors hover:bg-zinc-800 hover:text-zinc-100"><IconX className="h-4 w-4" aria-hidden="true" /></button>
                     </span>
                 </div>
 
                 <div className="min-h-0 flex-1 space-y-6 overflow-y-auto px-4 py-5 sm:px-5">
                     <header className="space-y-2">
-                        <h2 id="task-drawer-title" className="text-lg font-semibold leading-snug text-zinc-50 text-balance">{view?.title ?? "Task"}</h2>
+                        <h2 id="task-drawer-title" className="text-lg font-semibold leading-snug text-zinc-50 text-balance">{view?.title ?? t("task")}</h2>
                         <p className="flex min-w-0 flex-wrap items-center gap-x-1.5 text-xs text-zinc-500">
-                            <span className="max-w-full truncate text-zinc-300" title={project.description ? `${project.name}\n\n${project.description}` : project.name}>{project.name || "No project"}</span>
+                            <span className="max-w-full truncate text-zinc-300" title={project.description ? `${project.name}\n\n${project.description}` : project.name}>{project.name || t("noProject")}</span>
                             {customerName && <><span aria-hidden="true">/</span><span className="truncate">{customerName}</span></>}
                             <span aria-hidden="true">·</span>
                             <span>{workTypeLabel}</span>
                         </p>
                         <div className="flex flex-wrap items-center gap-2 pt-1">
-                            <span className={cn("inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-medium", STATE_TONE[task.state ?? "inbox"] ?? STATE_TONE.inbox)}>{sentenceCase(task.state === "queued" ? "inbox" : task.state)}</span>
+                            <span className={cn("inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-medium", STATE_TONE[task.state ?? "inbox"] ?? STATE_TONE.inbox)}>{labels.state(task.state === "queued" ? "inbox" : task.state)}</span>
                             {view && <SignalIcons signals={view.signals} className="gap-1.5" />}
-                            {view?.age && <span className="text-xs text-zinc-500" title={view.ageTitle}>Updated {view.age === "now" ? "just now" : `${view.age} ago`}</span>}
+                            {view?.age && <span className="text-xs text-zinc-500" title={view.ageTitle}>{view.ageNow ? t("updatedJustNow") : t("updatedAgo", { age: view.age })}</span>}
                         </div>
                         {task.state === "blocked" && reason && (
-                            <p className="rounded-lg border border-rose-500/20 bg-rose-500/[0.06] px-3 py-2 text-sm text-rose-100"><span className="font-medium">Blocked:</span> {reason}</p>
+                            <p className="rounded-lg border border-rose-500/20 bg-rose-500/[0.06] px-3 py-2 text-sm text-rose-100"><span className="font-medium">{t("blocked")}</span> {reason}</p>
                         )}
                     </header>
 
                     {canEdit ? (
                         <div className="grid grid-cols-3 gap-2 sm:gap-3">
                             <label className="grid gap-1.5 text-xs text-zinc-400">
-                                <span>State</span>
+                                <span>{t("state")}</span>
                                 <select value={task.state === "queued" ? "inbox" : task.state ?? "inbox"} disabled={busy} onChange={(event) => onSetState(event.target.value)} className={selectClass}>
-                                    {DRAWER_STATES.map((state) => <option key={state} value={state}>{sentenceCase(state)}</option>)}
+                                    {DRAWER_STATES.map((state) => <option key={state} value={state}>{labels.state(state)}</option>)}
                                 </select>
                             </label>
                             <label className="grid gap-1.5 text-xs text-zinc-400">
-                                <span>Owner</span>
+                                <span>{t("owner")}</span>
                                 <select value={ownerValue} disabled={busy} onChange={(event) => onAssign(event.target.value)} className={selectClass}>
-                                    <option value="">No owner</option>
-                                    {agents.length > 0 && <optgroup label="Agents">{agents.map((agent) => <option key={agent.id} value={`agent:${agent.id}`}>{agent.name}</option>)}</optgroup>}
-                                    {members.length > 0 && <optgroup label="People">{members.map((member) => <option key={member.id} value={`human:${member.id}`}>{member.displayName || member.email}</option>)}</optgroup>}
+                                    <option value="">{t("noOwner")}</option>
+                                    {agents.length > 0 && <optgroup label={t("agents")}>{agents.map((agent) => <option key={agent.id} value={`agent:${agent.id}`}>{agent.name}</option>)}</optgroup>}
+                                    {members.length > 0 && <optgroup label={t("people")}>{members.map((member) => <option key={member.id} value={`human:${member.id}`}>{member.displayName || member.email}</option>)}</optgroup>}
                                 </select>
                             </label>
                             <label className="grid gap-1.5 text-xs text-zinc-400">
-                                <span>Priority</span>
+                                <span>{t("priority")}</span>
                                 <select value={PRIORITY_CHOICES.reduce((best, choice) => ((task.priority ?? 0) >= choice.value ? choice : best), PRIORITY_CHOICES[0]).value} disabled={busy} onChange={(event) => onSetPriority(Number(event.target.value) || 0)} className={selectClass}>
-                                    {PRIORITY_CHOICES.map((choice) => <option key={choice.value} value={choice.value}>{choice.label}</option>)}
+                                    {PRIORITY_CHOICES.map((choice) => <option key={choice.value} value={choice.value}>{labels.priority(choice.tone)}</option>)}
                                 </select>
                             </label>
                         </div>
                     ) : (
                         <dl className="grid grid-cols-2 gap-3 rounded-xl border border-zinc-800/80 px-3 py-2.5 text-sm">
-                            <div className="min-w-0"><dt className="text-[11px] text-zinc-500">Owner</dt><dd className="mt-0.5 flex min-w-0 items-center gap-1.5 text-zinc-200"><OwnerAvatar owner={view?.owner ?? null} /><span className="truncate">{view?.owner?.name ?? "No owner"}</span></dd></div>
-                            <div className="min-w-0"><dt className="text-[11px] text-zinc-500">Priority</dt><dd className="mt-0.5 text-zinc-200">{view?.priority?.label ?? "None"}</dd></div>
+                            <div className="min-w-0"><dt className="text-[11px] text-zinc-500">{t("owner")}</dt><dd className="mt-0.5 flex min-w-0 items-center gap-1.5 text-zinc-200"><OwnerAvatar owner={view?.owner ?? null} /><span className="truncate">{view?.owner?.name ?? t("noOwner")}</span></dd></div>
+                            <div className="min-w-0"><dt className="text-[11px] text-zinc-500">{t("priority")}</dt><dd className="mt-0.5 text-zinc-200">{labels.priority(view?.priority?.tone ?? "none")}</dd></div>
                         </dl>
                     )}
 
                     <section aria-labelledby="drawer-brief" className="space-y-2">
-                        <h3 id="drawer-brief" className="text-xs font-medium text-zinc-400">Brief</h3>
+                        <h3 id="drawer-brief" className="text-xs font-medium text-zinc-400">{t("brief")}</h3>
                         {brief ? (
                             <div className="rounded-xl border border-zinc-800/80 bg-zinc-900/30 px-4 py-3">
                                 <RichText content={brief} collapsedHeight={280} />
                             </div>
                         ) : (
-                            <p className="text-sm text-zinc-500">No instructions yet.{canEdit ? " Use Edit to add a goal and what done looks like." : ""}</p>
+                            <p className="text-sm text-zinc-500">{t("noInstructions")}{canEdit ? ` ${t("noInstructionsEdit")}` : ""}</p>
                         )}
                     </section>
 
                     {artifacts.length > 0 && (
                         <section aria-labelledby="drawer-files" className="space-y-2">
-                            <h3 id="drawer-files" className="text-xs font-medium text-zinc-400">Files <span className="tabular-nums text-zinc-500">{artifacts.length}</span></h3>
+                            <h3 id="drawer-files" className="text-xs font-medium text-zinc-400">{t("files")} <span className="tabular-nums text-zinc-500">{artifacts.length}</span></h3>
                             <ul className="space-y-2">
                                 {artifacts.map((artifact) => (
                                     <li key={artifact.id} className="rounded-xl border border-zinc-800/80 bg-zinc-900/30">
@@ -245,7 +256,7 @@ export function TaskDrawer({
                                             <IconFileText className="h-4 w-4 shrink-0 text-sky-300" aria-hidden="true" />
                                             <span className="min-w-0 flex-1">
                                                 <span className="block truncate text-sm text-zinc-100">{artifact.title || artifact.originalFilename || artifact.kind}</span>
-                                                <span className="block truncate text-[11px] text-zinc-500">{[getArtifactClassLabel(artifact.artifactClass || artifact.kind), artifact.isCanonical ? "Canonical" : null, artifact.contentType].filter(Boolean).join(" · ")}</span>
+                                                <span className="block truncate text-[11px] text-zinc-500">{[getArtifactClassLabel(artifact.artifactClass || artifact.kind), artifact.isCanonical ? t("canonical") : null, artifact.contentType].filter(Boolean).join(" · ")}</span>
                                             </span>
                                         </Link>
                                         {artifact.contentText && (
@@ -260,14 +271,14 @@ export function TaskDrawer({
                     )}
 
                     <section aria-labelledby="drawer-activity" className="space-y-3">
-                        <h3 id="drawer-activity" className="text-xs font-medium text-zinc-400">Activity</h3>
+                        <h3 id="drawer-activity" className="text-xs font-medium text-zinc-400">{t("activity")}</h3>
                         {sortedEvents.length === 0 ? (
-                            <p className="text-sm text-zinc-500">Created {when(task.createdAt)}. Notes, handoffs and state changes show up here.</p>
+                            <p className="text-sm text-zinc-500">{t("noActivity", { when: when(task.createdAt) })}</p>
                         ) : (
                             <ol className="space-y-3">
                                 {sortedEvents.map((event) => {
-                                    const { icon: Icon, text, note: body } = describeEvent(event, lookups);
-                                    const actor = actorOf(event, lookups);
+                                    const { icon: Icon, text, note: body } = describeEvent(event, lookups, t, labels);
+                                    const actor = actorOf(event, lookups, t);
                                     return (
                                         <li key={event.id} className="flex gap-2.5">
                                             <span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full border border-zinc-800 bg-zinc-900"><Icon className="h-3 w-3 text-zinc-400" aria-hidden="true" /></span>
@@ -293,7 +304,7 @@ export function TaskDrawer({
 
                 {canEdit && (
                     <div className="border-t border-zinc-800/80 px-4 py-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] sm:px-5">
-                        <label htmlFor="drawer-note" className="sr-only">Add a note</label>
+                        <label htmlFor="drawer-note" className="sr-only">{t("addNote")}</label>
                         <div className="overflow-hidden rounded-xl border border-zinc-800 bg-zinc-900/40 focus-within:border-cyan-400/60">
                             <textarea
                                 id="drawer-note"
@@ -301,15 +312,15 @@ export function TaskDrawer({
                                 onChange={(event) => setNote(event.target.value)}
                                 onKeyDown={(event) => { if (event.key === "Enter" && (event.metaKey || event.ctrlKey)) void send(); }}
                                 rows={2}
-                                placeholder={task.assignedAgentId ? `Note for ${lookups.agentName(task.assignedAgentId)}. Markdown works.` : "Add a note. Markdown works."}
+                                placeholder={task.assignedAgentId ? t("notePlaceholderAgent", { agent: lookups.agentName(task.assignedAgentId) }) : t("notePlaceholder")}
                                 className="block w-full resize-none bg-transparent px-3 py-2 text-sm text-zinc-200 outline-none placeholder:text-zinc-500"
                             />
                             {/* Save sits on the left: the app's chat button floats over the bottom-right corner. */}
                             <div className="flex flex-row-reverse items-center justify-end gap-3 border-t border-zinc-800/80 px-3 py-1.5">
-                                <span className="text-[11px] text-zinc-500">{task.assignedAgentId ? `${lookups.agentName(task.assignedAgentId)} gets it too` : "Saved to the activity"}</span>
+                                <span className="text-[11px] text-zinc-500">{task.assignedAgentId ? t("agentGetsIt", { agent: lookups.agentName(task.assignedAgentId) }) : t("savedToActivity")}</span>
                                 <button type="button" onClick={() => void send()} disabled={sending || !note.trim()} className="inline-flex h-8 items-center gap-1.5 rounded-lg bg-cyan-400/10 px-3 text-xs font-medium text-cyan-100 transition-colors hover:bg-cyan-400/20 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50">
                                     {sending ? <IconLoader2 className="h-3.5 w-3.5 animate-spin" aria-hidden="true" /> : <IconSend className="h-3.5 w-3.5" aria-hidden="true" />}
-                                    Save note
+                                    {t("saveNote")}
                                 </button>
                             </div>
                         </div>

@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { IconAlertTriangle, IconRefresh } from "@tabler/icons-react";
+import { useTranslations } from "next-intl";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
@@ -39,6 +40,8 @@ export function RestartAgentButton({ hostId, agentId, agentName, topology, share
     size?: "sm" | "xs";
     onFinished?: () => void;
 }) {
+    const t = useTranslations("runtimeHosts.restart");
+    const tc = useTranslations("common");
     const [open, setOpen] = useState(false);
     const [target, setTarget] = useState<Target>("bridge");
     const [force, setForce] = useState(false);
@@ -46,7 +49,7 @@ export function RestartAgentButton({ hostId, agentId, agentName, topology, share
     const [error, setError] = useState<string | null>(null);
     const [jobId, setJobId] = useState<string | null>(null);
 
-    const all = sharedAgents > 1 ? `all ${sharedAgents} agents` : "every agent";
+    const all = sharedAgents > 1 ? t("allAgents", { count: sharedAgents }) : t("everyAgent");
     const mayBeShared = topology !== "standalone";
 
     const reset = () => {
@@ -72,10 +75,10 @@ export function RestartAgentButton({ hostId, agentId, agentName, topology, share
                 }),
             });
             const data = await res.json().catch(() => ({}));
-            if (!res.ok) throw new Error(data.error || "Could not send the restart");
+            if (!res.ok) throw new Error(data.error || t("sendFailed"));
             setJobId(data.job.id);
         } catch (err) {
-            setError(err instanceof Error ? err.message : "Could not send the restart");
+            setError(err instanceof Error ? err.message : t("sendFailed"));
         } finally {
             setBusy(false);
         }
@@ -83,35 +86,35 @@ export function RestartAgentButton({ hostId, agentId, agentName, topology, share
 
     const hints: Record<Target, string> = {
         bridge: topology === "shared"
-            ? `Restarts the bridge for ${all} on this host (they share one). Quick; the models keep running.`
-            : "Reconnects the agent to Emperor. Quick; the model keeps running.",
+            ? t("bridgeSharedHint", { all })
+            : t("bridgeHint"),
         gateway: topology === "shared"
-            ? `Restarts Hermes for ${all} on this shared gateway.`
-            : "Restarts Hermes for this agent (a few seconds offline).",
+            ? t("gatewaySharedHint", { all })
+            : t("gatewayHint"),
     };
 
     return (
         <>
-            <Button type="button" variant="outline" size={size} onClick={() => { reset(); setOpen(true); }} title={`Restart ${agentName}`}>
+            <Button type="button" variant="outline" size={size} onClick={() => { reset(); setOpen(true); }} title={t("title", { agent: agentName })}>
                 <IconRefresh className="h-3.5 w-3.5" aria-hidden="true" />
-                Restart
+                {t("button")}
             </Button>
             <Dialog open={open} onOpenChange={(next) => { setOpen(next); if (!next && jobId) onFinished?.(); }}>
                 <DialogContent className="sm:max-w-md">
                     <DialogHeader>
-                        <DialogTitle>Restart {agentName}</DialogTitle>
+                        <DialogTitle>{t("title", { agent: agentName })}</DialogTitle>
                         <DialogDescription>
-                            The host restarts it and reports back here. Chats and memory are kept; a reply in progress may be interrupted.
+                            {t("description")}
                         </DialogDescription>
                     </DialogHeader>
                     {!jobId ? (
                         <div className="grid gap-3">
-                            <div role="radiogroup" aria-label="What to restart" className="grid gap-2">
+                            <div role="radiogroup" aria-label={t("whatToRestart")} className="grid gap-2">
                                 {(["bridge", "gateway"] as const).map((value) => (
                                     <button key={value} type="button" role="radio" aria-checked={target === value} onClick={() => setTarget(value)}
                                         className={cn("flex min-h-11 flex-col items-start rounded-xl border p-3 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
                                             target === value ? "border-primary/50 bg-primary/10" : "border-border hover:border-primary/30")}>
-                                        <span className="text-sm font-medium text-foreground">{value === "bridge" ? "Bridge" : "Gateway"}</span>
+                                        <span className="text-sm font-medium text-foreground">{value === "bridge" ? t("bridge") : t("gateway")}</span>
                                         <span className="text-xs text-muted-foreground">{hints[value]}</span>
                                     </button>
                                 ))}
@@ -119,23 +122,23 @@ export function RestartAgentButton({ hostId, agentId, agentName, topology, share
                             {mayBeShared && (
                                 <div role="note" className="rounded-xl border border-amber-500/30 bg-amber-500/10 p-3 text-xs text-foreground">
                                     <p className="flex items-center gap-1.5 font-medium"><IconAlertTriangle className="h-4 w-4 text-amber-600 dark:text-amber-400" aria-hidden="true" />
-                                        {topology === "shared" ? "Shared gateway" : "This host has not said how this agent runs"}
+                                        {topology === "shared" ? t("sharedGateway") : t("unknownTopology")}
                                     </p>
                                     <p className="mt-1 text-muted-foreground">
                                         {topology === "shared"
-                                            ? `${agentName} shares its bridge and gateway with the other agents on this host: a restart restarts ${all}, not only ${agentName}.`
-                                            : `If ${agentName} shares a gateway with other agents, a restart restarts all of them.`}
-                                        {" "}A shared gateway restart waits until none of them is working (up to 4 minutes).
+                                            ? t("sharedWarning", { agent: agentName, all })
+                                            : t("unknownWarning", { agent: agentName })}
+                                        {" "}{t("waitsForIdle")}
                                     </p>
                                     {target === "gateway" && (
                                         <label className="mt-2 flex min-h-11 items-start gap-2 text-foreground">
                                             <input type="checkbox" checked={force} onChange={(e) => setForce(e.target.checked)} className="mt-0.5 h-4 w-4" />
-                                            <span>Restart now even if an agent is busy. <span className="text-muted-foreground">Replies in progress on {topology === "shared" ? all : "every agent on a shared gateway"} are cut off.</span></span>
+                                            <span>{t("force")} <span className="text-muted-foreground">{t("forceHint", { who: topology === "shared" ? all : t("everyAgentShared") })}</span></span>
                                         </label>
                                     )}
                                 </div>
                             )}
-                            {!hostOnline && <p className="text-xs text-muted-foreground">The host is offline: the restart runs when it reconnects (within the hour).</p>}
+                            {!hostOnline && <p className="text-xs text-muted-foreground">{t("hostOffline")}</p>}
                             {error && <p role="alert" className="text-xs text-destructive">{error}</p>}
                         </div>
                     ) : (
@@ -144,13 +147,13 @@ export function RestartAgentButton({ hostId, agentId, agentName, topology, share
                     <DialogFooter>
                         {!jobId ? (
                             <>
-                                <Button type="button" variant="outline" onClick={() => setOpen(false)}>Cancel</Button>
+                                <Button type="button" variant="outline" onClick={() => setOpen(false)}>{tc("cancel")}</Button>
                                 <Button type="button" variant={force ? "destructive" : "default"} onClick={() => void start()} disabled={busy}>
-                                    {busy ? "Sending…" : force ? "Restart now" : `Restart ${target}`}
+                                    {busy ? t("sending") : force ? t("restartNow") : target === "bridge" ? t("restartBridge") : t("restartGateway")}
                                 </Button>
                             </>
                         ) : (
-                            <Button type="button" variant="outline" onClick={() => { setOpen(false); onFinished?.(); }}>Close</Button>
+                            <Button type="button" variant="outline" onClick={() => { setOpen(false); onFinished?.(); }}>{tc("close")}</Button>
                         )}
                     </DialogFooter>
                 </DialogContent>

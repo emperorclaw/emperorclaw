@@ -1,9 +1,11 @@
+import { useTranslations } from "next-intl";
 import { Skeleton, SkeletonHeader, SkeletonPage } from "@/components/ui/skeleton";
 
 /** /projects: header, filter bar and the board's lanes. */
 export default function Loading() {
+    const t = useTranslations("projects.board");
     return (
-        <SkeletonPage label="Loading projects">
+        <SkeletonPage label={t("loading")}>
             <SkeletonHeader />
             <div aria-hidden className="flex flex-wrap gap-2">
                 {Array.from({ length: 5 }, (_, i) => <Skeleton key={i} className="h-8 w-24 rounded-full" />)}

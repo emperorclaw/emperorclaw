@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { IconCircleCheck, IconLoader2, IconServer2 } from "@tabler/icons-react";
+import { useTranslations } from "next-intl";
 import { cn } from "@/lib/utils";
 import { DEFAULT_HOST_MODEL, isHostLlmProvider, type HostLlmProvider } from "@/lib/runtime-hosts/commands";
 import type { HireReadiness } from "@/lib/runtime-hosts/hire";
@@ -32,6 +33,15 @@ const PROVIDER_LABEL: Record<HostLlmProvider, string> = {
 function mb(value: number | null): string {
     if (value == null) return "?";
     return value >= 1024 ? `${(value / 1024).toFixed(1)} GB` : `${value} MB`;
+}
+
+/** Host statuses with a label under runtimeHosts.hostStatus (anything else shows as is). */
+const HOST_STATUSES = new Set(["online", "offline", "revoked", "pending"]);
+
+/** A host's status as a translated label. */
+export function useHostStatusLabel() {
+    const t = useTranslations("runtimeHosts.hostStatus");
+    return (status: string) => HOST_STATUSES.has(status) ? t(status as "online") : status;
 }
 
 /**
@@ -75,15 +85,17 @@ export function HostPicker({ hosts, forbidden, value, onChange }: {
     value: HostChoice | null;
     onChange: (choice: HostChoice | null) => void;
 }) {
+    const t = useTranslations("runtimeHosts.picker");
+    const statusLabel = useHostStatusLabel();
     if (hosts === null) {
-        return <div className="h-16 animate-pulse rounded-lg border border-zinc-800 bg-zinc-900/50" aria-label="Loading hosts" />;
+        return <div className="h-16 animate-pulse rounded-lg border border-zinc-800 bg-zinc-900/50" aria-label={t("loading")} />;
     }
     if (hosts.length === 0) {
         return (
             <p className="rounded-lg border border-zinc-800 bg-zinc-900/50 px-3 py-2 text-[11px] leading-relaxed text-zinc-400">
-                No host is connected, so you set this agent up yourself (the steps appear after you hire it).
+                {t("noHosts")}
                 {!forbidden && (
-                    <> Or <Link href="/settings?tab=runtime-hosts" className="text-cyan-400 underline underline-offset-2 hover:text-cyan-300">connect a host</Link> and Emperor sets agents up there for you.</>
+                    <> {t.rich("connectHostHint", { link: (chunks) => <Link href="/settings?tab=runtime-hosts" className="text-cyan-400 underline underline-offset-2 hover:text-cyan-300">{chunks}</Link> })}</>
                 )}
             </p>
         );
@@ -96,7 +108,7 @@ export function HostPicker({ hosts, forbidden, value, onChange }: {
     };
     return (
         <div className="space-y-2">
-            <div role="radiogroup" aria-label="Host" className="grid gap-2">
+            <div role="radiogroup" aria-label={t("host")} className="grid gap-2">
                 {hosts.map((host) => {
                     const active = value?.hostId === host.id;
                     const disabled = !host.hire.ok;
@@ -112,11 +124,11 @@ export function HostPicker({ hosts, forbidden, value, onChange }: {
                             <span className="min-w-0 flex-1">
                                 <span className="flex flex-wrap items-center gap-x-2">
                                     <span className="font-medium">{host.name}</span>
-                                    <span className={cn("text-[10px]", host.status === "online" ? "text-emerald-400" : "text-amber-400")}>{host.status}</span>
+                                    <span className={cn("text-[10px]", host.status === "online" ? "text-emerald-400" : "text-amber-400")}>{statusLabel(host.status)}</span>
                                 </span>
                                 <span className="block text-[10px] opacity-80">
-                                    {mb(host.resources.memAvailMiB)} free · needs {mb(host.hire.needMiB)} · browser {host.capabilities.browser ? "yes" : "no"} · {host.agents.length} agent{host.agents.length === 1 ? "" : "s"}
-                                    {host.hire.gateway === "shared" ? " · shared gateway" : ""}
+                                    {t("hostSummary", { free: mb(host.resources.memAvailMiB), needs: mb(host.hire.needMiB), browser: host.capabilities.browser ? "yes" : "no", count: host.agents.length })}
+                                    {host.hire.gateway === "shared" ? t("sharedGatewaySuffix") : ""}
                                 </span>
                                 {disabled && host.hire.reason && <span className="block text-[10px] text-amber-300/90">{host.hire.reason}</span>}
                             </span>
@@ -126,14 +138,14 @@ export function HostPicker({ hosts, forbidden, value, onChange }: {
                 <button type="button" role="radio" aria-checked={value === null} onClick={() => onChange(null)}
                     className={cn("rounded-lg border px-3 py-2 text-left text-xs transition-colors",
                         value === null ? "border-cyan-400/40 bg-cyan-400/10 text-cyan-100" : "border-zinc-800 bg-zinc-900/70 text-zinc-400 hover:border-zinc-600")}>
-                    <span className="font-medium">I&apos;ll set it up myself</span>
-                    <span className="block text-[10px] opacity-80">Another machine without the host daemon: the steps appear after you hire it.</span>
+                    <span className="font-medium">{t("manual")}</span>
+                    <span className="block text-[10px] opacity-80">{t("manualHint")}</span>
                 </button>
             </div>
             {selected && value && (
                 <div className="grid gap-2 sm:grid-cols-2">
                     <label className="space-y-1">
-                        <span className="text-[10px] font-bold uppercase tracking-wider text-zinc-400">Model provider</span>
+                        <span className="text-[10px] font-bold uppercase tracking-wider text-zinc-400">{t("modelProvider")}</span>
                         <select value={value.llmProvider} className="h-9 w-full rounded-lg border border-zinc-800 bg-zinc-900 px-2 text-xs text-zinc-200 outline-none focus:border-cyan-400"
                             onChange={(e) => {
                                 const next = e.target.value;
@@ -143,13 +155,13 @@ export function HostPicker({ hosts, forbidden, value, onChange }: {
                         </select>
                     </label>
                     <label className="space-y-1">
-                        <span className="text-[10px] font-bold uppercase tracking-wider text-zinc-400">Model</span>
+                        <span className="text-[10px] font-bold uppercase tracking-wider text-zinc-400">{t("model")}</span>
                         <input value={value.model} onChange={(e) => onChange({ ...value, model: e.target.value })} placeholder={DEFAULT_HOST_MODEL[value.llmProvider]}
                             className="h-9 w-full rounded-lg border border-zinc-800 bg-zinc-900 px-2 text-xs text-zinc-100 outline-none focus:border-cyan-400" />
                     </label>
                     <p className="text-[10px] leading-relaxed text-zinc-400 sm:col-span-2">
-                        The {PROVIDER_LABEL[value.llmProvider]} key already on {selected.name} is used; it never passes through Emperor.
-                        {selected.hire.gateway === "shared" && " This host runs its agents on one shared gateway: adding one restarts it once the others are idle."}
+                        {t("keyHint", { provider: PROVIDER_LABEL[value.llmProvider], host: selected.name })}
+                        {selected.hire.gateway === "shared" && ` ${t("sharedGatewayHint")}`}
                     </p>
                 </div>
             )}
@@ -162,6 +174,7 @@ export function HostPicker({ hosts, forbidden, value, onChange }: {
  * coming online, with a link to chat with it.
  */
 export function HireProgress({ jobId, agentId, agentName, hostName }: { jobId: string; agentId: string; agentName: string; hostName: string }) {
+    const t = useTranslations("runtimeHosts.hire");
     const [jobDone, setJobDone] = useState<"ok" | "failed" | null>(null);
     const [online, setOnline] = useState(false);
     useEffect(() => {
@@ -183,18 +196,18 @@ export function HireProgress({ jobId, agentId, agentName, hostName }: { jobId: s
 
     return (
         <div className="min-w-0 space-y-3 py-2">
-            <p className="text-sm text-zinc-300">Setting up {agentName} on {hostName}. You can close this window: the agent page shows the progress too.</p>
+            <p className="text-sm text-zinc-300">{t("settingUp", { agent: agentName, host: hostName })}</p>
             <JobProgress jobId={jobId} onDone={(job) => setJobDone(job.status === "succeeded" ? "ok" : "failed")} />
             {jobDone === "ok" && (
                 <div className="flex flex-wrap items-center gap-2 rounded-lg border border-emerald-500/25 bg-emerald-500/10 px-3 py-2 text-sm text-emerald-100">
                     {online ? <IconCircleCheck className="h-4 w-4" aria-hidden="true" /> : <IconLoader2 className="h-4 w-4 animate-spin" aria-hidden="true" />}
-                    <span>{online ? `${agentName} is online.` : `${agentName} registered; waiting for its first heartbeat…`}</span>
-                    <Link href={`/messages?agent=${encodeURIComponent(agentId)}`} className="ml-auto text-cyan-300 underline underline-offset-2 hover:text-cyan-200">Chat with {agentName}</Link>
+                    <span>{online ? t("online", { agent: agentName }) : t("waitingHeartbeat", { agent: agentName })}</span>
+                    <Link href={`/messages?agent=${encodeURIComponent(agentId)}`} className="ml-auto text-cyan-300 underline underline-offset-2 hover:text-cyan-200">{t("chatWith", { agent: agentName })}</Link>
                 </div>
             )}
             {jobDone === "failed" && (
                 <p className="text-xs text-rose-200">
-                    The setup failed. Open <Link href={`/agents?agent=${encodeURIComponent(agentId)}`} className="underline underline-offset-2">{agentName}</Link> to retry it or remove the agent.
+                    {t.rich("failed", { agent: agentName, link: (chunks) => <Link href={`/agents?agent=${encodeURIComponent(agentId)}`} className="underline underline-offset-2">{chunks}</Link> })}
                 </p>
             )}
         </div>

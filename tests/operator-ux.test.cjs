@@ -10,6 +10,11 @@ function read(relativePath) {
   return readFileSync(resolve(root, relativePath), "utf8");
 }
 
+/** A translated screen's source plus its English copy (messages/en.json), for copy assertions. */
+function readUi(relativePath) {
+  return `${read(relativePath)}\n${read("messages/en.json")}`;
+}
+
 function assertContains(source, needle, message) {
   assert.ok(source.includes(needle), message || `Expected source to contain ${needle}`);
 }
@@ -19,7 +24,7 @@ function assertNotContains(source, needle, message) {
 }
 
 test("Settings is runtime-neutral for operators and hides dangerous details behind Advanced", () => {
-  const source = read("src/app/(app)/settings/settings-client.tsx");
+  const source = readUi("src/app/(app)/settings/settings-client.tsx");
   const navigation = read("src/lib/settings-navigation.ts");
   ["Settings", "Agent connections", "Access tokens", "Advanced", "Hermes agents", "OpenClaw agents"].forEach((needle) => {
     assertContains(source + navigation, needle, `settings should include ${needle}`);
@@ -86,8 +91,9 @@ test("Core workspaces use the standardized Emperor visual system", () => {
   assertContains(dashboard, "emperor-panel", "dashboard should use shared Emperor panels");
   assertContains(projects, "emperor-panel", "projects should use shared Emperor panels");
   assertContains(messages, "emperor-panel", "messages should use shared Emperor panels");
-  assertContains(projects, "Track work from to-do to done", "projects should use clear operator copy");
-  assertContains(projects, "More filters", "projects should hide secondary controls behind progressive disclosure");
+  const projectsCopy = readUi("src/app/(app)/projects/projects-client.tsx");
+  assertContains(projectsCopy, "Track work from to-do to done", "projects should use clear operator copy");
+  assertContains(projectsCopy, "More filters", "projects should hide secondary controls behind progressive disclosure");
   assertContains(messagingHub, "bg-zinc-950/70", "messages sidebar should match the OLED panel system");
   assertContains(globals, ".emperor-main .text-zinc-400", "app secondary text should be lifted on dark OLED surfaces");
   assertContains(globals, ".emperor-main .text-zinc-500", "app muted text contrast should be lifted on dark OLED surfaces");
@@ -118,8 +124,9 @@ test("Directories scale with search-first navigation instead of card dumps", () 
   assertContains(projects, "SearchableSelect", "projects should use searchable customer/project/agent filters");
   assertContains(customers, "Search customers", "customers should have directory search");
   assertContains(customers, "Customer Directory", "customers should be framed as a scalable directory");
-  assertContains(agents, "Search agents", "agents should have directory search");
-  assertContains(agents, "Agent Directory", "agents should be framed as a scalable directory");
+  const agentsCopy = readUi("src/app/(app)/agents/agents-client.tsx");
+  assertContains(agentsCopy, "Search agents", "agents should have directory search");
+  assertContains(agentsCopy, "Agent Directory", "agents should be framed as a scalable directory");
   assertNotContains(customers, "grid gap-6 rounded-xl border border-zinc-800/80 bg-zinc-900/50 p-6", "customers should not render a large card dump for every customer");
 });
 
@@ -140,7 +147,7 @@ test("Operator polish pass keeps advanced pages consistent and removes dead-feel
   });
 
   assertContains(settings, "max-w-[1440px]", "settings should constrain form width while retaining its grouped navigation");
-  assertContains(settings, "Settings section", "mobile settings should provide a labeled section selector");
+  assertContains(readUi("src/app/(app)/settings/settings-client.tsx"), "Settings section", "mobile settings should provide a labeled section selector");
   assertContains(approvals, "Decision Queue", "approvals should be framed as a useful operator queue");
   assertNotContains(agents, "What belongs here", "agent cards should not repeat generic instructional copy");
   assertNotContains(agents, "Open detail", "the agent panel is the profile; there is no duplicate detail page");

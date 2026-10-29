@@ -2,6 +2,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
 import type { ReactNode } from "react";
+import { useTranslations } from "next-intl";
 import { useDroppable } from "@dnd-kit/core";
 import {
     IconAlertTriangle,
@@ -84,20 +85,21 @@ export function laneCount(lane: Lane) {
 
 /** The lane "..." menu. Only rendered when the lane offers an action. */
 function LaneMenu({ lane }: { lane: Lane }) {
+    const t = useTranslations("tasks.lanes");
     if (!lane.onArchiveAll) return null;
     return (
         <DropdownMenu>
             <DropdownMenuTrigger asChild>
                 <button
                     type="button"
-                    aria-label={`Actions for ${lane.title}`}
+                    aria-label={t("actionsFor", { lane: lane.title })}
                     className="-mr-1 inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-zinc-500 transition-colors hover:bg-zinc-800 hover:text-zinc-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400/60 data-[state=open]:bg-zinc-800 data-[state=open]:text-zinc-200"
                 >
                     <IconDots className="h-4 w-4" aria-hidden="true" />
                 </button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="w-48 border-zinc-800 bg-zinc-950 text-zinc-100">
-                <DropdownMenuItem variant="destructive" onSelect={lane.onArchiveAll}><IconArchive className="mr-2 h-4 w-4" />Archive all {lane.views.length}</DropdownMenuItem>
+                <DropdownMenuItem variant="destructive" onSelect={lane.onArchiveAll}><IconArchive className="mr-2 h-4 w-4" />{t("archiveAll", { count: lane.views.length })}</DropdownMenuItem>
             </DropdownMenuContent>
         </DropdownMenu>
     );
@@ -110,6 +112,7 @@ function LaneIcon({ lane, className }: { lane: Lane; className?: string }) {
 
 /** One board column. Droppable when it maps to a task state. */
 export function BoardLane({ lane, handlers, dragging }: { lane: Lane; handlers: CardHandlers; dragging: boolean }) {
+    const t = useTranslations("tasks.lanes");
     const { setNodeRef, isOver } = useDroppable({ id: lane.dropId ?? `__lane-${lane.key}`, disabled: !lane.dropId || !handlers.canEdit });
     const count = laneCount(lane);
     const rail = Boolean(lane.collapseWhenEmpty) && count === 0;
@@ -119,7 +122,7 @@ export function BoardLane({ lane, handlers, dragging }: { lane: Lane; handlers: 
         return (
             <section
                 ref={setNodeRef}
-                aria-label={`${lane.title}, empty`}
+                aria-label={t("emptyLane", { lane: lane.title })}
                 title={`${lane.title}: ${lane.emptyText}`}
                 className={cn(
                     "flex w-11 shrink-0 flex-col items-center gap-3 rounded-xl border border-zinc-800/60 bg-zinc-950/30 py-3 transition-[width,background-color,border-color] duration-200",
@@ -128,7 +131,7 @@ export function BoardLane({ lane, handlers, dragging }: { lane: Lane; handlers: 
                 )}
             >
                 <LaneIcon lane={lane} />
-                <span className={cn("text-xs font-medium text-zinc-500 [writing-mode:vertical-rl]", canDrop && "[writing-mode:horizontal-tb]")}>{canDrop ? `Drop to ${lane.title.toLowerCase()}` : lane.title}</span>
+                <span className={cn("text-xs font-medium text-zinc-500 [writing-mode:vertical-rl]", canDrop && "[writing-mode:horizontal-tb]")}>{canDrop ? t("dropTo", { lane: lane.title.toLowerCase() }) : lane.title}</span>
             </section>
         );
     }
@@ -179,8 +182,9 @@ export function BoardLane({ lane, handlers, dragging }: { lane: Lane; handlers: 
 
 /** Segmented control that picks one lane on phones and in the list view. */
 export function LaneSwitcher({ lanes, active, onChange }: { lanes: Lane[]; active: string; onChange: (key: string) => void }) {
+    const t = useTranslations("tasks.lanes");
     return (
-        <div role="tablist" aria-label="Task state" className="-mx-4 flex gap-1.5 overflow-x-auto px-4 pb-1 [scrollbar-width:none] sm:mx-0 sm:flex-wrap sm:px-0 [&::-webkit-scrollbar]:hidden">
+        <div role="tablist" aria-label={t("taskState")} className="-mx-4 flex gap-1.5 overflow-x-auto px-4 pb-1 [scrollbar-width:none] sm:mx-0 sm:flex-wrap sm:px-0 [&::-webkit-scrollbar]:hidden">
             {lanes.map((lane) => {
                 const selected = lane.key === active;
                 const count = laneCount(lane);
@@ -208,6 +212,7 @@ export function LaneSwitcher({ lanes, active, onChange }: { lanes: Lane[]; activ
 
 /** Rows of one lane, or every lane as a section (dense desktop list). */
 export function LaneList({ lanes, handlers, selection }: { lanes: Lane[]; handlers: CardHandlers; selection?: RowSelection }) {
+    const t = useTranslations("tasks.lanes");
     return (
         <div className="space-y-5">
             {lanes.map((lane) => {
@@ -222,7 +227,7 @@ export function LaneList({ lanes, handlers, selection }: { lanes: Lane[]; handle
                                 {selection && laneIds.length > 0 && (
                                     <input
                                         type="checkbox"
-                                        aria-label={`Select all in ${lane.title}`}
+                                        aria-label={t("selectAll", { lane: lane.title })}
                                         checked={allSelected}
                                         ref={(node) => { if (node) node.indeterminate = selectedInLane > 0 && !allSelected; }}
                                         onChange={(event) => selection.setMany(laneIds, event.target.checked)}

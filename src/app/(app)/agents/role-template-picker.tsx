@@ -1,5 +1,6 @@
 "use client";
 
+import { useTranslations } from "next-intl";
 import { agentRoleTemplates, getPinnedAgentTemplates, type AgentRoleTemplate } from "@/lib/agent-templates";
 import { cn } from "@/lib/utils";
 
@@ -65,13 +66,14 @@ export function RoleTemplatePicker({
     onSelect: (roleId: string | null) => void;
     allowCustom?: boolean;
 }) {
+    const t = useTranslations("agents.roles");
     const pinned = getPinnedAgentTemplates();
     return (
         <div className="space-y-2">
             {pinned.length > 0 && (
                 <div className="space-y-1.5">
                     <span className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
-                        Lead your team
+                        {t("leadYourTeam")}
                     </span>
                     <div className="grid grid-cols-1 gap-2">
                         {pinned.map((template) => (
@@ -109,11 +111,11 @@ export function RoleTemplatePicker({
                             : "border-border bg-muted/20 hover:border-zinc-500 hover:bg-muted/40"
                     )}
                 >
-                    <span className="text-2xl shrink-0">✨</span>
+                    <span className="text-2xl shrink-0" aria-hidden="true">{"✨"}</span>
                     <div className="min-w-0">
-                        <span className="block text-sm font-medium text-muted-foreground">Custom Role</span>
+                        <span className="block text-sm font-medium text-muted-foreground">{t("custom")}</span>
                         <span className="block text-xs leading-tight text-muted-foreground mt-0.5">
-                            Blank slate
+                            {t("customHint")}
                         </span>
                     </div>
                 </button>

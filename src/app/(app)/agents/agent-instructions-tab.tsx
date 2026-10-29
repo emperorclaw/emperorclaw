@@ -6,6 +6,7 @@ import { IconFileText, IconPlus, IconTrash, IconDeviceFloppy, IconPencil } from 
 import { Button } from "@/components/ui/button";
 import { DisabledReason } from "@/components/ui/disabled-reason";
 import { toast } from "sonner";
+import { useTranslations } from "next-intl";
 
 type DoctrineFile = {
     name: string;
@@ -21,6 +22,8 @@ const BUILT_IN_FILES = ["SOUL.md", "AGENTS.md", "BOOTSTRAP.md", "IDENTITY.md", "
 
 export function AgentInstructionsTab({ agentId, initialDoctrine }: Props) {
     // Viewers read the instructions; saving needs member or above (the API refuses viewers).
+    const t = useTranslations("agents.instructions");
+    const tc = useTranslations("common");
     const { canWrite } = useViewerPermissions();
     const [files, setFiles] = useState<DoctrineFile[]>(() =>
         Object.entries(initialDoctrine).map(([name, content]) => ({ name, content }))
@@ -56,12 +59,12 @@ export function AgentInstructionsTab({ agentId, initialDoctrine }: Props) {
                 body: JSON.stringify({ doctrineJson }),
             });
 
-            if (!res.ok) throw new Error("Failed to save");
+            if (!res.ok) throw new Error("save");
             setFiles(updated);
             setEditingFile(null);
-            toast.success(`${editingFile} saved`);
+            toast.success(t("fileSaved", { file: editingFile }));
         } catch {
-            toast.error("Failed to save changes");
+            toast.error(t("saveFailed"));
         } finally {
             setSaving(false);
         }
@@ -82,15 +85,15 @@ export function AgentInstructionsTab({ agentId, initialDoctrine }: Props) {
                 body: JSON.stringify({ doctrineJson }),
             });
 
-            if (!res.ok) throw new Error("Failed to add file");
+            if (!res.ok) throw new Error("add");
             setFiles(updated);
             setNewFileName("");
             setShowNewFile(false);
             setEditingFile(name);
             setEditContent("");
-            toast.success(`${name} added`);
+            toast.success(t("fileAdded", { file: name }));
         } catch {
-            toast.error("Failed to add file");
+            toast.error(t("addFailed"));
         }
     };
 
@@ -106,32 +109,30 @@ export function AgentInstructionsTab({ agentId, initialDoctrine }: Props) {
                 body: JSON.stringify({ doctrineJson }),
             });
 
-            if (!res.ok) throw new Error("Failed to delete");
+            if (!res.ok) throw new Error("delete");
             setFiles(updated);
             if (editingFile === fileName) setEditingFile(null);
-            toast.success(`${fileName} removed`);
+            toast.success(t("fileRemoved", { file: fileName }));
         } catch {
-            toast.error("Failed to delete file");
+            toast.error(t("deleteFailed"));
         }
     };
 
     return (
         <div className="space-y-3">
         <p className="rounded-xl border border-zinc-800 bg-zinc-900/40 px-4 py-3 text-xs leading-5 text-zinc-400">
-            These files are the agent&apos;s role, persona, and rules, included in every turn. Changes apply on its next message
-            (Hermes bridge 0.8.59 or later; older runtimes pick them up after <strong className="text-zinc-300">Recreate runtime</strong>).
-            For things it should learn along the way, use <strong className="text-zinc-300">Memory</strong>.
+            {t.rich("intro", { strong: (chunks) => <strong className="text-zinc-300">{chunks}</strong> })}
         </p>
         <div className="grid grid-cols-1 lg:grid-cols-[220px_minmax(0,1fr)] gap-4">
             {/* File list sidebar */}
             <div className="border border-zinc-800 rounded-xl bg-zinc-900/50 p-3 space-y-1">
                 <div className="flex items-center justify-between mb-2">
-                    <span className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider">Files</span>
+                    <span className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider">{t("files")}</span>
                     <button
                         type="button"
                         onClick={() => setShowNewFile(!showNewFile)}
                         className="text-zinc-500 hover:text-zinc-300 transition-colors"
-                        title="Add file"
+                        title={t("addFile")}
                     >
                         <IconPlus className="h-4 w-4" />
                     </button>
@@ -174,14 +175,14 @@ export function AgentInstructionsTab({ agentId, initialDoctrine }: Props) {
                             <span className="truncate">{file.name}</span>
                         </span>
                         {BUILT_IN_FILES.includes(file.name) && (
-                            <span className="text-[9px] text-cyan-600 ml-1 shrink-0">built-in</span>
+                            <span className="text-[9px] text-cyan-600 ml-1 shrink-0">{t("builtIn")}</span>
                         )}
                     </button>
                 ))}
 
                 {files.length === 0 && (
                     <p className="text-[11px] text-zinc-600 text-center py-4">
-                        No instruction files yet. Add one to get started.
+                        {t("empty")}
                     </p>
                 )}
             </div>
@@ -195,11 +196,11 @@ export function AgentInstructionsTab({ agentId, initialDoctrine }: Props) {
                                 <IconPencil className="h-3.5 w-3.5 text-cyan-400" />
                                 <span className="text-sm font-medium text-zinc-200">{editingFile}</span>
                                 {BUILT_IN_FILES.includes(editingFile) && (
-                                    <span className="text-[10px] text-cyan-600 bg-cyan-500/10 px-1.5 py-0.5 rounded">built-in</span>
+                                    <span className="text-[10px] text-cyan-600 bg-cyan-500/10 px-1.5 py-0.5 rounded">{t("builtIn")}</span>
                                 )}
                             </div>
                             <div className="flex items-center gap-1">
-                                <DisabledReason reason={canWrite ? null : "You have view-only access, so you can't change this agent's instructions."}>
+                                <DisabledReason reason={canWrite ? null : t("viewOnly")}>
                                     <Button
                                         size="sm"
                                         variant="outline"
@@ -208,7 +209,7 @@ export function AgentInstructionsTab({ agentId, initialDoctrine }: Props) {
                                         className="h-7 text-xs border-zinc-700 text-zinc-300 hover:bg-zinc-800"
                                     >
                                         <IconDeviceFloppy className="h-3 w-3 mr-1" />
-                                        {saving ? "Saving..." : "Save"}
+                                        {saving ? tc("saving") : tc("save")}
                                     </Button>
                                 </DisabledReason>
                                 {canWrite && !BUILT_IN_FILES.includes(editingFile) && (
@@ -227,7 +228,7 @@ export function AgentInstructionsTab({ agentId, initialDoctrine }: Props) {
                             className="flex-1 w-full bg-transparent text-zinc-300 font-mono text-xs leading-relaxed p-4 outline-none resize-none"
                             value={editContent}
                             onChange={(e) => setEditContent(e.target.value)}
-                            placeholder="Write your instructions here..."
+                            placeholder={t("placeholder")}
                             spellCheck={false}
                         />
                     </div>
@@ -235,7 +236,7 @@ export function AgentInstructionsTab({ agentId, initialDoctrine }: Props) {
                     <div className="flex items-center justify-center min-h-[320px] text-zinc-500 text-sm">
                         <div className="text-center">
                             <IconFileText className="mx-auto h-8 w-8 mb-2 text-zinc-600" />
-                            <p>Select a file to edit, or add a new one.</p>
+                            <p>{t("selectFile")}</p>
                         </div>
                     </div>
                 )}

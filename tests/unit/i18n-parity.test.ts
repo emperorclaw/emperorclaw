@@ -12,6 +12,19 @@ import { STATUS_LABEL, ZONES } from "../../src/lib/team-scene";
 import { ATTENTION_GROUP_LABEL } from "../../src/lib/attention-rules";
 import { GO_CHORDS } from "../../src/lib/keyboard-shortcuts";
 import { SEARCH_TYPE_LABELS } from "../../src/lib/search-query";
+import { createTranslator } from "use-intl/core";
+import { COMPANY_TEMPLATES, MODULES } from "../../src/lib/modules";
+import { BOARD_COLUMN_LABEL, CARD_SIGNAL_LABEL, REVIEW_BUCKET_LABEL, priorityLevel } from "../../src/lib/project-board-model";
+import { ACTION_CATALOG } from "../../src/lib/action-policy";
+import { TEAM_TEMPLATES } from "../../src/lib/onboarding-shared";
+import { MEMORY_KIND_LABELS } from "../../src/lib/agent-memory";
+import { RUN_OUTCOME_LABEL, taskStateLabel } from "../../src/lib/task-story";
+import { RESOURCE_ROLE_LABELS } from "../../src/lib/resource-roles";
+import { triggerKindLabel } from "../../src/lib/run-ledger-copy";
+import { agentAccessSummary } from "../../src/lib/agent-access";
+import { refreshCadenceText } from "../../src/lib/view-access";
+import { bridgeBadgeCopy } from "../../src/lib/live-activity";
+import { stallLabel } from "../../src/lib/stall-signal";
 
 const ROOT = path.join(__dirname, "..", "..");
 type Tree = { [key: string]: string | Tree };
@@ -91,9 +104,12 @@ test("Chinese copy follows the glossary (messages/GLOSSARY.zh-CN.md)", () => {
         "工件": "文件 (artifact/file)",
         "顾客": "客户 (customer)",
     };
+    // Standard compounds that contain a banned word but mean something else.
+    const allowed = ["反向代理" /* reverse proxy */, "代理机构" /* agency */];
     for (const [key, value] of zhFlat) {
+        const checked = allowed.reduce((text, word) => text.replaceAll(word, ""), value);
         for (const [word, use] of Object.entries(banned)) {
-            assert.ok(!value.includes(word), `zh-CN ${key} uses "${word}"; use ${use}`);
+            assert.ok(!checked.includes(word), `zh-CN ${key} uses "${word}"; use ${use}`);
         }
         // Full-width punctuation in Chinese sentences: no ASCII "," ";" "?" "!" after a CJK character.
         assert.ok(!/[一-鿿][,;?!]/.test(value), `zh-CN ${key} uses ASCII punctuation after Chinese text: ${value}`);
@@ -101,16 +117,87 @@ test("Chinese copy follows the glossary (messages/GLOSSARY.zh-CN.md)", () => {
 });
 
 /**
- * Every English message (pauseAll, livePill, updateBanner, versionBanner,
- * errors, time, home, inbox, …) as verified against the HEAD source literals
- * it replaced when phase 1 moved the copy into en.json. Changing English copy
- * is deliberate: update the snapshot in the same change.
+ * Every English message as verified against the HEAD source literals it
+ * replaced when it moved into en.json: phase 1 (shell, Home, Inbox, errors,
+ * time, …) and phase 2 (agents, projects and tasks, views, settings, runtime
+ * hosts, access). Changing English copy is deliberate: update the snapshot of
+ * its phase in the same change; new keys go in the current phase's snapshot.
  */
-test("English copy is frozen to the verified phase-1 snapshot", () => {
-    const snapshot = flatten(JSON.parse(readFileSync(path.join(ROOT, "tests/fixtures/i18n-en-phase1.snapshot.json"), "utf8")) as Tree);
+const SNAPSHOTS = ["tests/fixtures/i18n-en-phase1.snapshot.json", "tests/fixtures/i18n-en-phase2.snapshot.json"];
+
+test("English copy is frozen to the verified phase snapshots", () => {
+    const snapshot = new Map<string, string>();
+    for (const file of SNAPSHOTS) {
+        for (const [key, value] of flatten(JSON.parse(readFileSync(path.join(ROOT, file), "utf8")) as Tree)) {
+            assert.ok(!snapshot.has(key), `${key} is in more than one snapshot`);
+            snapshot.set(key, value);
+        }
+    }
     for (const [key, value] of snapshot) assert.equal(enFlat.get(key), value, `en.json ${key} changed`);
     const added = [...enFlat.keys()].filter((key) => !snapshot.has(key));
-    assert.deepEqual(added, [], `new English keys: add them to tests/fixtures/i18n-en-phase1.snapshot.json`);
+    assert.deepEqual(added, [], `new English keys: add them to ${SNAPSHOTS[SNAPSHOTS.length - 1]}`);
+});
+
+/** Renders an en.json message the way next-intl does (same ICU formatter). */
+const translate = createTranslator({ locale: "en", messages: en as never });
+const render = (key: string, values?: Record<string, string | number>) => (translate as unknown as (key: string, values?: Record<string, string | number>) => string)(key, values);
+
+test("English copy moved to en.json is unchanged: phase-2 label maps", () => {
+    for (const m of MODULES) {
+        assert.equal(enMessage(`settings.modules.items.${m.key}.label`), m.label, m.key);
+        assert.equal(enMessage(`settings.modules.items.${m.key}.description`), m.description, m.key);
+    }
+    for (const template of COMPANY_TEMPLATES) {
+        assert.equal(enMessage(`settings.modules.templates.${template.id}.label`), template.label, template.id);
+        assert.equal(enMessage(`settings.modules.templates.${template.id}.description`), template.description, template.id);
+    }
+    for (const [key, label] of Object.entries(BOARD_COLUMN_LABEL)) assert.equal(enMessage(`tasks.columns.${key}`), label, key);
+    for (const [key, label] of Object.entries(CARD_SIGNAL_LABEL)) assert.equal(enMessage(`tasks.signals.${key}`), label, key);
+    for (const [key, label] of Object.entries(REVIEW_BUCKET_LABEL)) assert.equal(enMessage(`tasks.reviewBuckets.${key}`), label, key);
+    for (const value of [25, 50, 75, 100]) {
+        const level = priorityLevel(value)!;
+        assert.equal(enMessage(`tasks.priority.${level.tone}`), level.label, String(value));
+    }
+    for (const state of ["inbox", "queued", "in_progress", "review", "blocked", "done", "failed", "dead_letter"]) {
+        assert.equal(enMessage(`tasks.states.${state}`), taskStateLabel(state), state);
+    }
+    for (const [key, label] of Object.entries(RUN_OUTCOME_LABEL)) assert.equal(enMessage(`tasks.timeline.outcomes.${key}`), label, key);
+    for (const entry of ACTION_CATALOG) assert.equal(enMessage(`agents.actions.catalog.${entry.key}`), entry.label, entry.key);
+    for (const team of TEAM_TEMPLATES) {
+        assert.equal(enMessage(`agents.easySetup.teams.${team.id}.label`), team.label, team.id);
+        assert.equal(enMessage(`agents.easySetup.teams.${team.id}.hint`), team.hint, team.id);
+    }
+    for (const [key, label] of Object.entries(MEMORY_KIND_LABELS)) assert.equal(enMessage(`agents.memory.kinds.${key}`), label, key);
+    for (const [key, label] of Object.entries(RESOURCE_ROLE_LABELS)) assert.equal(enMessage(`access.roles.${key}`), label, key);
+    for (const kind of ["message", "task", "objective", "other"]) assert.equal(enMessage(`agents.runs.triggers.${kind}`), triggerKindLabel(kind), kind);
+});
+
+test("English copy moved to en.json is unchanged: phase-2 formatted copy", () => {
+    // Who can use an agent (lib/agent-access.ts agentAccessSummary).
+    assert.equal(render("access.agent.summaryEveryone"), agentAccessSummary({ access: "everyone", ownerName: "Ana", peopleCount: 0 }));
+    assert.equal(render("access.agent.summaryOnly", { owner: "Ana" }), agentAccessSummary({ access: "owner", ownerName: "Ana", peopleCount: 0 }));
+    for (const count of [1, 3]) {
+        assert.equal(render("access.agent.summaryPeople", { owner: "Ana", count }), agentAccessSummary({ access: "people", ownerName: "Ana", peopleCount: count }));
+    }
+    // A view's refresh cadence (lib/view-access.ts refreshCadenceText).
+    const cadence = (minutes: number) => minutes === 60 ? render("views.cadence.hourly") : minutes === 1440 ? render("views.cadence.daily")
+        : minutes === 10080 ? render("views.cadence.weekly") : minutes < 60 ? render("views.cadence.everyMinutes", { count: minutes })
+            : minutes % 1440 === 0 ? render("views.cadence.everyDays", { count: minutes / 1440 })
+                : minutes % 60 === 0 ? render("views.cadence.everyHours", { count: minutes / 60 }) : render("views.cadence.everyMinutes", { count: minutes });
+    for (const minutes of [15, 60, 120, 1440, 2880, 10080, 90]) assert.equal(cadence(minutes), refreshCadenceText(minutes), String(minutes));
+    // The bridge badge (lib/live-activity.ts bridgeBadgeCopy).
+    for (const managed of [true, false]) {
+        const update = render(managed ? "agents.bridge.updateManaged" : "agents.bridge.updateSelf");
+        assert.equal(render("agents.bridge.currentVersion", { version: "0.22.0" }), bridgeBadgeCopy("current", "0.22.0", managed).label);
+        assert.equal(render("agents.bridge.currentHint"), bridgeBadgeCopy("current", "0.22.0", managed).hint);
+        assert.equal(render("agents.bridge.updateAvailableHint", { version: "0.9.0", update }), bridgeBadgeCopy("update-available", "0.9.0", managed).hint);
+        assert.equal(render("agents.bridge.unsupportedHint", { version: "0.5.0", update }), bridgeBadgeCopy("unsupported", "0.5.0", managed).hint);
+        assert.equal(render("agents.bridge.legacyHint", { update }), bridgeBadgeCopy("legacy", null, managed).hint);
+    }
+    // A stalled run (lib/stall-signal.ts stallLabel).
+    assert.equal(render("tasks.live.noProgressFor", { idle: render("tasks.live.idleMinutes", { count: 14 }) }), stallLabel({ stalled: true, idleMs: 14 * 60_000 }));
+    assert.equal(render("tasks.live.lastUsefulAction", { idle: render("tasks.live.idleSeconds", { count: 40 }) }), stallLabel({ stalled: false, idleMs: 40_000 }));
+    assert.equal(render("tasks.live.noProgressFor", { idle: render("tasks.live.idleHours", { hours: 1, minutes: "05" }) }), stallLabel({ stalled: true, idleMs: 65 * 60_000 }));
 });
 
 test("English copy moved to en.json is unchanged: navigation", () => {

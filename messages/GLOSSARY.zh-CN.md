@@ -29,6 +29,8 @@ banned variants listed below.
 | timeline | 时间线 | |
 | activity | 动态 | |
 | Emperor, EmperorClaw | Emperor, EmperorClaw (never translated) | 皇帝, 帝王 |
+| agency (business) | 代理机构 | |
+| reverse proxy | 反向代理 | 代理 alone |
 
 ## Style
 

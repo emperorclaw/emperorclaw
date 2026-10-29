@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
+import { useFormatter, useTranslations } from "next-intl";
 import {
     IconRobot,
     IconPlugConnected,
@@ -53,6 +54,7 @@ function hermesProfileName(agentName: string): string {
 import { toast } from "sonner";
 import { useModuleEnabled } from "@/components/modules-provider";
 
+/** Product names; the custom endpoint is labelled by agents.detail.customEndpoint. */
 const LLM_PROVIDER_LABELS: Record<string, string> = {
     openai: "OpenAI",
     anthropic: "Anthropic",
@@ -60,8 +62,17 @@ const LLM_PROVIDER_LABELS: Record<string, string> = {
     openrouter: "OpenRouter",
     grok: "Grok",
     deepseek: "DeepSeek",
-    custom: "Custom endpoint",
 };
+const PROVIDER_EMOJI: Record<string, string> = { hermes: "👑", openclaw: "🦀", codex: "🧠" };
+/** Runtime product names (Generic MCP is labelled by agents.detail.genericMcp). */
+const RUNTIME_OPTIONS = [
+    { value: "hermes", label: "👑 Hermes" },
+    { value: "openclaw", label: "🦀 OpenClaw" },
+    { value: "codex", label: "🧠 Codex" },
+    { value: "claude", label: "🧠 Claude" },
+];
+const BASE_URL_EXAMPLE = "http://host.docker.internal:11434/v1";
+const AGENT_STATUSES = new Set(["online", "degraded", "offline"]);
 
 type AgentDetailData = {
     /** "metadata": an owner/admin who may not use this agent (lib/agent-access.ts); only name, owner, status and cost come back. */
@@ -136,6 +147,11 @@ export function AgentDetailPanel({ agentId, agentName, runtime = null }: {
     /** The agent's Hermes runtime (bridge version badge, shared gateway chip), from the activity poll. */
     runtime?: AgentRuntimeInfo | null;
 }) {
+    const t = useTranslations("agents.detail");
+    const tc = useTranslations("common");
+    const tStatus = useTranslations("agents.status");
+    const format = useFormatter();
+    const llmLabel = (value: string) => value === CUSTOM_LLM_PROVIDER ? t("customEndpoint") : LLM_PROVIDER_LABELS[value] || value;
     // `?tab=scope` (a failure's "Open agent scope" fix) opens that tab.
     const requestedTab = useSearchParams().get("tab");
     const timelineOn = useModuleEnabled("timeline");
@@ -152,7 +168,7 @@ export function AgentDetailPanel({ agentId, agentName, runtime = null }: {
 
         fetch(`/api/agents/${agentId}`)
             .then(r => {
-                if (!r.ok) throw new Error(r.status === 404 ? "Agent not found" : "Failed to load");
+                if (!r.ok) throw new Error(r.status === 404 ? t("notFound") : t("loadFailed"));
                 return r.json();
             })
             .then(d => {
@@ -169,7 +185,7 @@ export function AgentDetailPanel({ agentId, agentName, runtime = null }: {
             });
 
         return () => { cancelled = true; };
-    }, [agentId, reloadKey]);
+    }, [agentId, reloadKey, t]);
 
     // ALL hooks must be called before any conditional return
     const [editingProvider, setEditingProvider] = useState(false);
@@ -201,7 +217,7 @@ export function AgentDetailPanel({ agentId, agentName, runtime = null }: {
             <main className="emperor-panel rounded-2xl p-6 flex items-center justify-center min-h-[400px]">
                 <div className="flex flex-col items-center gap-3 text-zinc-500">
                     <div className="h-8 w-8 animate-spin rounded-full border-2 border-zinc-700 border-t-cyan-400" />
-                    <span className="text-sm">Loading agent details…</span>
+                    <span className="text-sm">{t("loading")}</span>
                 </div>
             </main>
         );
@@ -212,7 +228,7 @@ export function AgentDetailPanel({ agentId, agentName, runtime = null }: {
             <main className="emperor-panel rounded-2xl p-6 flex items-center justify-center min-h-[400px]">
                 <div className="text-center text-zinc-500">
                     <IconRobot className="mx-auto h-10 w-10 mb-3 text-zinc-600" />
-                    <p className="text-sm">{error || "Could not load agent details."}</p>
+                    <p className="text-sm">{error || t("couldNotLoad")}</p>
                 </div>
             </main>
         );
@@ -252,11 +268,11 @@ export function AgentDetailPanel({ agentId, agentName, runtime = null }: {
                 body: JSON.stringify(fields),
             });
             const updated = await res.json().catch(() => ({}));
-            if (!res.ok) return updated.error || "Could not save agent settings";
+            if (!res.ok) return updated.error || t("saveFailed");
             setData((prev) => prev ? { ...prev, agent: { ...prev.agent, ...updated.agent } } : prev);
             return null;
         } catch (error) {
-            return error instanceof Error ? error.message : "Could not save agent settings";
+            return error instanceof Error ? error.message : t("saveFailed");
         } finally {
             setSaving(false);
         }
@@ -303,7 +319,7 @@ export function AgentDetailPanel({ agentId, agentName, runtime = null }: {
         noKey: llmDraft.noKey,
         model: llmModelToSave(),
     });
-    const llmDraftLabel = LLM_PROVIDER_LABELS[llmDraft.provider] || llmDraft.provider;
+    const llmDraftLabel = llmLabel(llmDraft.provider);
     const saveLlm = async () => {
         if (!llmPlan.fields) {
             setLlmError(llmPlan.error);
@@ -329,19 +345,19 @@ export function AgentDetailPanel({ agentId, agentName, runtime = null }: {
             const result = await res.json().catch(() => ({}));
             setRecreateResult({
                 success: !!result.success,
-                message: result.message || (result.success ? "Runtime recreated." : "Could not recreate runtime."),
+                message: result.message || (result.success ? t("recreated") : t("recreateFailed")),
                 outputs: result.outputs || [],
             });
             if (result.success) {
                 // Started is not online: the status turns Online once Hermes connects.
-                toast.success("Runtime recreated", { description: "It shows Online once it connects." });
+                toast.success(t("recreatedToast"), { description: t("recreatedToastHint") });
                 const refreshed = await fetch(`/api/agents/${agent.id}`).then((r) => r.json()).catch(() => null);
                 if (refreshed) setData(refreshed);
             } else {
-                toast.error(result.message || "Could not recreate runtime");
+                toast.error(result.message || t("recreateFailedToast"));
             }
         } catch (e) {
-            const message = e instanceof Error ? e.message : "Network error";
+            const message = e instanceof Error ? e.message : t("networkError");
             setRecreateResult({ success: false, message, outputs: [] });
             toast.error(message);
         } finally {
@@ -366,31 +382,31 @@ export function AgentDetailPanel({ agentId, agentName, runtime = null }: {
                         <div className="flex flex-wrap items-center gap-2">
                             <h2 className="min-w-0 break-words text-xl sm:text-2xl font-semibold text-zinc-100">{agent.name}</h2>
                             <span className="rounded border border-zinc-800 bg-zinc-950 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-zinc-400">
-                                {agent.role || "operator"}
+                                {agent.role || t("operator")}
                             </span>
                         </div>
                         <div className="mt-1.5 flex flex-wrap items-center gap-2 text-sm text-zinc-400">
                             <StatusDot status={agent.status} />
-                            <span className="capitalize">{agent.status}</span>
+                            <span className="capitalize">{AGENT_STATUSES.has(agent.status) ? tStatus(agent.status as "online") : agent.status}</span>
                             {data.providerTrouble && agent.status !== "offline" && (
                                 <span className="text-rose-300" title={data.providerTrouble.headline}>· {providerTroubleLabel(data.providerTrouble.cause)}</span>
                             )}
                             {agent.deploymentMode === "local" && (
-                                <span className="rounded bg-emerald-500/10 px-1.5 py-0.5 text-[10px] text-emerald-300 font-medium">🖥️ Local</span>
+                                <span className="rounded bg-emerald-500/10 px-1.5 py-0.5 text-[10px] text-emerald-300 font-medium">{t("local")}</span>
                             )}
                             {agent.deploymentMode === "remote" && agent.provider && agent.provider !== "mcp" && (
-                                <span className="rounded bg-zinc-800 px-1.5 py-0.5 text-[10px] text-zinc-400 font-medium">🌐 Remote</span>
+                                <span className="rounded bg-zinc-800 px-1.5 py-0.5 text-[10px] text-zinc-400 font-medium">{t("remote")}</span>
                             )}
                             {provider && (
                                 <span className="rounded bg-zinc-800/50 px-1.5 py-0.5 text-[10px] text-zinc-400">
-                                    {provider.id === "hermes" ? "👑" : provider.id === "openclaw" ? "🦀" : provider.id === "codex" ? "🧠" : "🔌"} {provider.name}
+                                    {PROVIDER_EMOJI[provider.id] ?? "🔌"} {provider.name}
                                 </span>
                             )}
                             {agent.provider === "hermes" && <BridgeBadge runtime={runtime} />}
                             {data.runtimeHost && (
-                                <Link href="/settings?tab=runtime-hosts" title={`Profile ${data.runtimeHost.profile ?? "?"} (${data.runtimeHost.topology}); host ${data.runtimeHost.status}`}
+                                <Link href="/settings?tab=runtime-hosts" title={t("hostTitle", { profile: data.runtimeHost.profile ?? "?", topology: data.runtimeHost.topology, status: data.runtimeHost.status })}
                                     className="rounded border border-border px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground hover:text-foreground">
-                                    Runs on {data.runtimeHost.name}{data.runtimeHost.status !== "online" ? ` (${data.runtimeHost.status})` : ""}
+                                    {data.runtimeHost.status !== "online" ? t("runsOnStatus", { host: data.runtimeHost.name, status: data.runtimeHost.status }) : t("runsOn", { host: data.runtimeHost.name })}
                                 </Link>
                             )}
                         </div>
@@ -398,13 +414,13 @@ export function AgentDetailPanel({ agentId, agentName, runtime = null }: {
                 </div>
                 <div className="flex min-w-0 max-w-full flex-wrap items-center gap-2">
                     {workLogThread && (
-                        <Link href={directThreadLink(workLogThread.id, agent.id)} title={`Open ${workLogThreadTitle(agent.name)}`}
+                        <Link href={directThreadLink(workLogThread.id, agent.id)} title={t("openWorkLog", { title: workLogThreadTitle(agent.name) })}
                             className="inline-flex min-h-11 items-center gap-1.5 rounded-xl border border-zinc-800 px-3 text-xs text-zinc-300 transition-colors hover:border-cyan-400/40 hover:bg-cyan-400/10 hover:text-cyan-100">
-                            Work log
+                            {t("workLog")}
                         </Link>
                     )}
                     {timelineOn && (
-                        <Link href={`/timeline?agentId=${encodeURIComponent(agent.id)}`} title="See this agent on the timeline"
+                        <Link href={`/timeline?agentId=${encodeURIComponent(agent.id)}`} title={t("onTimeline")}
                             className="rounded-full border border-zinc-700 bg-zinc-900/60 p-2 text-zinc-500 transition-colors hover:border-zinc-600 hover:text-zinc-300">
                             <IconHistory className="h-4 w-4" />
                         </Link>
@@ -417,7 +433,7 @@ export function AgentDetailPanel({ agentId, agentName, runtime = null }: {
                             type="button"
                             disabled={recreating}
                             onClick={() => setConfirmRecreate(true)}
-                            title="Recreate Runtime — stop, remove, and re-provision this agent's Hermes container"
+                            title={t("recreateTitle")}
                             className="rounded-full border border-zinc-700 bg-zinc-900/60 p-2 text-zinc-500 hover:text-zinc-300 hover:border-zinc-600 transition-colors disabled:opacity-50"
                         >
                             {recreating ? <IconLoader className="h-4 w-4 animate-spin" /> : <IconRefresh className="h-4 w-4" />}
@@ -435,14 +451,14 @@ export function AgentDetailPanel({ agentId, agentName, runtime = null }: {
             <Dialog open={confirmRecreate} onOpenChange={setConfirmRecreate}>
                 <DialogContent className="sm:max-w-md">
                     <DialogHeader>
-                        <DialogTitle>Recreate {agent.name}&apos;s runtime?</DialogTitle>
+                        <DialogTitle>{t("recreateConfirmTitle", { name: agent.name })}</DialogTitle>
                         <DialogDescription>
-                            Emperor stops the current container (a reply in progress gets up to 75 seconds to finish) and starts a fresh one from the saved provider, model and key. Memory, chats and tasks are kept.
+                            {t("recreateConfirmBody")}
                         </DialogDescription>
                     </DialogHeader>
                     <DialogFooter>
-                        <Button type="button" variant="outline" onClick={() => setConfirmRecreate(false)}>Cancel</Button>
-                        <Button type="button" onClick={() => void handleRecreateRuntime()} disabled={recreating}>Recreate runtime</Button>
+                        <Button type="button" variant="outline" onClick={() => setConfirmRecreate(false)}>{tc("cancel")}</Button>
+                        <Button type="button" onClick={() => void handleRecreateRuntime()} disabled={recreating}>{t("recreate")}</Button>
                     </DialogFooter>
                 </DialogContent>
             </Dialog>
@@ -458,7 +474,7 @@ export function AgentDetailPanel({ agentId, agentName, runtime = null }: {
                             : agent.status === "online" ? <IconCircleCheck className="h-4 w-4 text-emerald-400" />
                                 : <IconLoader className="h-4 w-4 animate-spin text-zinc-400" />}
                         <span className={cn("text-xs", !recreateResult.success ? "text-rose-200" : agent.status === "online" ? "text-emerald-200" : "text-zinc-300")}>
-                            {recreateResult.success && agent.status === "online" ? `${agent.name} is online.` : recreateResult.message}
+                            {recreateResult.success && agent.status === "online" ? t("isOnline", { name: agent.name }) : recreateResult.message}
                         </span>
                     </div>
                     <SetupOutputLog outputs={recreateResult.outputs} />
@@ -468,11 +484,11 @@ export function AgentDetailPanel({ agentId, agentName, runtime = null }: {
             {/* Set up on a runtime host (0.22): its setup's progress, or Setup failed — Retry / Remove */}
             {data.provisioning && (
                 <HostSetupBanner agentId={agent.id} agentName={agent.name} agentStatus={agent.status}
-                    hostName={data.provisioning.hostName ?? data.runtimeHost?.name ?? "its host"} provisioning={data.provisioning} canAdmin={canAdmin}
+                    hostName={data.provisioning.hostName ?? data.runtimeHost?.name ?? t("itsHost")} provisioning={data.provisioning} canAdmin={canAdmin}
                     onChanged={() => setReloadKey((k) => k + 1)}
                     removeAction={<DeleteAgentDialog agentId={agent.id} agentName={agent.name}
                         host={data.runtimeHost ? { name: data.runtimeHost.name, canRemove: canAdmin } : null}
-                        trigger={<Button type="button" size="sm" variant="outline">Remove</Button>} />} />
+                        trigger={<Button type="button" size="sm" variant="outline">{tc("remove")}</Button>} />} />
             )}
 
             {/* Setup banner — only for offline agents that need configuration (not those Emperor sets up on a host) */}
@@ -489,16 +505,16 @@ export function AgentDetailPanel({ agentId, agentName, runtime = null }: {
                 {!agent.lastSeenAt && (
                     runtimeSetup?.status === "failed" && !agent.containerId && agent.provider === "hermes" && agent.deploymentMode === "local" ? (
                         <div role="alert" className="border-b border-rose-500/15 bg-rose-500/[0.04] px-4 py-2 text-xs text-rose-200">
-                            Setup failed: {runtimeSetup.message} Use Retry local setup above once the cause is fixed.
+                            {t("setupFailed", { message: runtimeSetup.message })}
                         </div>
                     ) : withinStartupGrace ? (
                         <div className="border-b border-amber-500/15 bg-amber-500/[0.04] px-4 py-2 text-[10px] text-amber-200/80">
-                            ⏳ Starting up — the runtime is being installed and connected. The first boot can take a minute or two; this page shows “online” once it checks in.
+                            {t("startingUp")}
                         </div>
                     ) : (
                         <div className="border-b border-rose-500/15 bg-rose-500/[0.04] px-4 py-2 text-[10px] text-rose-300/70">
-                            ⚠️ This agent has never connected — no heartbeat received yet. The bridge must be running for the agent to appear online.
-                            {agent.provider === "hermes" ? " See the setup guide below." : ""}
+                            {t("neverConnected")}
+                            {agent.provider === "hermes" ? ` ${t("seeGuideBelow")}` : ""}
                         </div>
                     )
                 )}
@@ -514,7 +530,7 @@ export function AgentDetailPanel({ agentId, agentName, runtime = null }: {
             )}>
                     {/* Provider — editable */}
                     <span className="text-zinc-500 inline-flex items-center gap-1.5">
-                        Provider:{" "}
+                        {t("providerLabel")}{" "}
                         {editingProvider ? (
                             <select
                                 value={agent.provider || "mcp"}
@@ -527,16 +543,15 @@ export function AgentDetailPanel({ agentId, agentName, runtime = null }: {
                                 className="h-6 rounded border border-zinc-700 bg-zinc-900 px-1.5 text-xs text-zinc-200 outline-none focus:border-cyan-400"
                                 autoFocus
                             >
-                                <option disabled={agent.deploymentMode === "local"} value="mcp">🔌 Generic MCP</option>
-                                <option value="hermes">👑 Hermes</option>
-                                <option disabled={agent.deploymentMode === "local"} value="openclaw">🦀 OpenClaw</option>
-                                <option disabled={agent.deploymentMode === "local"} value="codex">🧠 Codex</option>
-                                <option disabled={agent.deploymentMode === "local"} value="claude">🧠 Claude</option>
+                                <option disabled={agent.deploymentMode === "local"} value="mcp">{t("genericMcp")}</option>
+                                {RUNTIME_OPTIONS.map((option) => (
+                                    <option key={option.value} disabled={option.value !== "hermes" && agent.deploymentMode === "local"} value={option.value}>{option.label}</option>
+                                ))}
                             </select>
                         ) : (
                             <>
-                                <span className="text-zinc-300 font-medium">{provider?.id === "hermes" ? "👑" : provider?.id === "openclaw" ? "🦀" : provider?.id === "codex" ? "🧠" : "🔌"} {provider?.name || "Generic MCP"}</span>
-                                <button type="button" onClick={() => setEditingProvider(true)} className="text-zinc-600 hover:text-zinc-400 transition-colors" title="Change provider">
+                                <span className="text-zinc-300 font-medium">{(provider && PROVIDER_EMOJI[provider.id]) ?? "🔌"} {provider?.name || t("genericMcpName")}</span>
+                                <button type="button" onClick={() => setEditingProvider(true)} className="text-zinc-600 hover:text-zinc-400 transition-colors" title={t("changeProvider")}>
                                     <IconPencil className="h-3 w-3" />
                                 </button>
                             </>
@@ -544,7 +559,7 @@ export function AgentDetailPanel({ agentId, agentName, runtime = null }: {
                     </span>
                     {/* Deployment mode — editable */}
                     <span className="text-zinc-500 inline-flex items-center gap-1.5">
-                        Deployment:{" "}
+                        {t("deploymentLabel")}{" "}
                         {editingDeployment ? (
                             <select
                                 value={agent.deploymentMode || "remote"}
@@ -557,13 +572,13 @@ export function AgentDetailPanel({ agentId, agentName, runtime = null }: {
                                 className="h-6 rounded border border-zinc-700 bg-zinc-900 px-1.5 text-xs text-zinc-200 outline-none focus:border-cyan-400"
                                 autoFocus
                             >
-                                <option value="remote">🌐 Remote</option>
-                                <option disabled={agent.provider !== "hermes"} value="local">🖥️ Local (This server)</option>
+                                <option value="remote">{t("remote")}</option>
+                                <option disabled={agent.provider !== "hermes"} value="local">{t("localThisServer")}</option>
                             </select>
                         ) : (
                             <>
-                                <span className="text-zinc-300 font-medium">{agent.deploymentMode === "local" ? "🖥️ Local" : "🌐 Remote"}</span>
-                                <button type="button" onClick={() => setEditingDeployment(true)} className="text-zinc-600 hover:text-zinc-400 transition-colors" title="Change deployment">
+                                <span className="text-zinc-300 font-medium">{agent.deploymentMode === "local" ? t("local") : t("remote")}</span>
+                                <button type="button" onClick={() => setEditingDeployment(true)} className="text-zinc-600 hover:text-zinc-400 transition-colors" title={t("changeDeployment")}>
                                     <IconPencil className="h-3 w-3" />
                                 </button>
                             </>
@@ -571,13 +586,13 @@ export function AgentDetailPanel({ agentId, agentName, runtime = null }: {
                     </span>
                     {/* LLM Provider — owners/admins edit it; a new endpoint's key is asked for below the bar */}
                     <span className="text-zinc-500 inline-flex items-center gap-1.5">
-                        LLM:{" "}
+                        {t("llmLabel")}{" "}
                         {editingLlm && canAdmin ? (
                             <span className="inline-flex items-center gap-1.5">
                                 <select
                                     value={llmDraft.provider}
                                     disabled={saving}
-                                    aria-label="LLM provider"
+                                    aria-label={t("llmProvider")}
                                     onChange={(e) => {
                                         const nextProvider = e.target.value;
                                         setLlmDraft((draft) => ({ ...draft, provider: nextProvider, pendingModel: null }));
@@ -585,14 +600,9 @@ export function AgentDetailPanel({ agentId, agentName, runtime = null }: {
                                     }}
                                     className="h-6 rounded border border-zinc-700 bg-zinc-900 px-1.5 text-xs text-zinc-200 outline-none focus:border-cyan-400"
                                 >
-                                    <option value="">None</option>
-                                    <option value="openai">OpenAI</option>
-                                    <option value="anthropic">Anthropic</option>
-                                    <option value="google">Google Gemini</option>
-                                    <option value="openrouter">OpenRouter</option>
-                                    <option value="grok">Grok</option>
-                                    <option value="deepseek">DeepSeek</option>
-                                    <option value={CUSTOM_LLM_PROVIDER}>Custom endpoint</option>
+                                    <option value="">{t("none")}</option>
+                                    {Object.entries(LLM_PROVIDER_LABELS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+                                    <option value={CUSTOM_LLM_PROVIDER}>{t("customEndpoint")}</option>
                                 </select>
                                 <button
                                     type="button"
@@ -600,27 +610,27 @@ export function AgentDetailPanel({ agentId, agentName, runtime = null }: {
                                     onClick={() => void saveLlm()}
                                     className="text-[10px] text-cyan-400 hover:text-cyan-300 font-medium disabled:opacity-50"
                                 >
-                                    Save
+                                    {tc("save")}
                                 </button>
                                 <button
                                     type="button"
                                     onClick={closeLlmEdit}
                                     className="text-zinc-600 hover:text-zinc-400 text-[10px]"
                                 >
-                                    Cancel
+                                    {tc("cancel")}
                                 </button>
                             </span>
                         ) : (
                             <>
                                 <span className="text-zinc-300 font-medium">
-                                    {agent.llmProvider ? LLM_PROVIDER_LABELS[agent.llmProvider] || agent.llmProvider : "None"}
+                                    {agent.llmProvider ? llmLabel(agent.llmProvider) : t("none")}
                                 </span>
-                                {canAdmin && <button type="button" onClick={() => startLlmEdit()} className="text-zinc-600 hover:text-zinc-400 transition-colors" title="Configure LLM provider">
+                                {canAdmin && <button type="button" onClick={() => startLlmEdit()} className="text-zinc-600 hover:text-zinc-400 transition-colors" title={t("configureLlm")}>
                                     <IconPencil className="h-3 w-3" />
                                 </button>}
                                 {agent.llmProvider && (
-                                    <a href="/docs/v1.1/troubleshooting#5-agent-setup--llm-configuration" target="_blank" className="text-[9px] text-cyan-400 hover:text-cyan-300 underline underline-offset-2" title="Model provider setup guide">
-                                        ⓘ setup guide
+                                    <a href="/docs/v1.1/troubleshooting#5-agent-setup--llm-configuration" target="_blank" className="text-[9px] text-cyan-400 hover:text-cyan-300 underline underline-offset-2" title={t("setupGuideTitle")}>
+                                        {t("setupGuide")}
                                     </a>
                                 )}
                             </>
@@ -628,7 +638,7 @@ export function AgentDetailPanel({ agentId, agentName, runtime = null }: {
                     </span>
                     {/* Model selector — uses pricing table for cost tracking */}
                     <span className="text-zinc-500 inline-flex items-center gap-1.5">
-                        Model:{" "}
+                        {t("modelLabel")}{" "}
                         {/* A custom endpoint serves its own model names; the priced catalog would call them unavailable. */}
                         {data.agent.llmProvider === "custom" || !canAdmin ? <span className="font-medium text-zinc-300">{data.agent.llmModel || "—"}</span> : <ModelSearchSelect
                             options={pricingOpts}
@@ -652,7 +662,7 @@ export function AgentDetailPanel({ agentId, agentName, runtime = null }: {
                     </span>
                     {agent.lastSeenAt && (
                         <span className="text-zinc-500">
-                            Last seen: <span className="text-zinc-300 font-medium">{new Date(agent.lastSeenAt).toLocaleTimeString()}</span>
+                            {t("lastSeen")} <span className="text-zinc-300 font-medium">{format.dateTime(new Date(agent.lastSeenAt), { timeStyle: "medium" })}</span>
                         </span>
                     )}
                     {(agent.monthlyBudgetCents ?? 0) > 0 && (
@@ -661,7 +671,7 @@ export function AgentDetailPanel({ agentId, agentName, runtime = null }: {
                             agent.budgetStatus === "paused" ? "text-rose-400" :
                             agent.budgetStatus === "warning" ? "text-amber-400" : "text-emerald-400"
                         )}>
-                            Budget: ${((agent.monthlyTokenUsage ?? 0) / 1_000_000 * 1).toFixed(2)} / ${((agent.monthlyBudgetCents ?? 0) / 100).toFixed(0)}
+                            {t("budget", { used: ((agent.monthlyTokenUsage ?? 0) / 1_000_000 * 1).toFixed(2), limit: ((agent.monthlyBudgetCents ?? 0) / 100).toFixed(0) })}
                             {agent.budgetStatus === "paused" ? " ⏸️" : agent.budgetStatus === "warning" ? " ⚠️" : ""}
                         </span>
                     )}
@@ -671,39 +681,39 @@ export function AgentDetailPanel({ agentId, agentName, runtime = null }: {
                 <div className="border-b border-border bg-muted/40 px-4 sm:px-5 py-3 space-y-2.5 text-xs">
                     {llmDraft.pendingModel && (
                         <p className="text-muted-foreground">
-                            {llmDraft.pendingModel} runs on {llmDraftLabel}: enter its API key to switch the agent over.
+                            {t("pendingModel", { model: llmDraft.pendingModel, provider: llmDraftLabel })}
                         </p>
                     )}
                     <div className="grid max-w-3xl gap-3 sm:grid-cols-2">
                         {llmCustom && (
                             <label className="space-y-1">
-                                <span className="block font-medium text-foreground">Base URL</span>
+                                <span className="block font-medium text-foreground">{t("baseUrl")}</span>
                                 <input
                                     type="url"
                                     value={llmDraft.baseUrl}
                                     onChange={(e) => { const baseUrl = e.target.value; setLlmDraft((draft) => ({ ...draft, baseUrl })); setLlmError(null); }}
                                     onKeyDown={saveLlmOnEnter}
                                     disabled={saving}
-                                    placeholder="http://host.docker.internal:11434/v1"
+                                    placeholder={BASE_URL_EXAMPLE}
                                     autoComplete="off"
                                     className="block w-full rounded-lg border border-border bg-background px-2.5 py-1.5 text-xs text-foreground outline-none focus:ring-1 focus:ring-cyan-500"
                                 />
                                 <span className="block text-muted-foreground">
                                     {llmPlan.baseUrlHint
-                                        ?? `${agent.llmProvider === CUSTOM_LLM_PROVIDER ? "Leave blank to keep the current URL. " : ""}Agents run in containers: for a server on this machine use host.docker.internal, not localhost.`}
+                                        ?? `${agent.llmProvider === CUSTOM_LLM_PROVIDER ? `${t("keepUrl")} ` : ""}${t("dockerHostHint")}`}
                                 </span>
                             </label>
                         )}
                         {llmCustom && (
                             <label className="space-y-1">
-                                <span className="block font-medium text-foreground">Model</span>
+                                <span className="block font-medium text-foreground">{t("model")}</span>
                                 <input
                                     value={llmDraft.model}
                                     onChange={(e) => { const model = e.target.value; setLlmDraft((draft) => ({ ...draft, model })); setLlmError(null); }}
                                     onKeyDown={saveLlmOnEnter}
                                     disabled={saving}
                                     maxLength={200}
-                                    placeholder="e.g. llama3.1:8b"
+                                    placeholder={t("customModelPlaceholder")}
                                     autoComplete="off"
                                     className="block w-full rounded-lg border border-border bg-background px-2.5 py-1.5 text-xs text-foreground outline-none focus:ring-1 focus:ring-cyan-500"
                                 />
@@ -711,7 +721,7 @@ export function AgentDetailPanel({ agentId, agentName, runtime = null }: {
                         )}
                         {llmPlan.keyRequired && (
                             <div className="space-y-1">
-                                <label htmlFor={`llm-key-${agent.id}`} className="block font-medium text-foreground">API key for {llmDraftLabel}</label>
+                                <label htmlFor={`llm-key-${agent.id}`} className="block font-medium text-foreground">{t("apiKeyFor", { provider: llmDraftLabel })}</label>
                                 <input
                                     id={`llm-key-${agent.id}`}
                                     type="password"
@@ -719,7 +729,7 @@ export function AgentDetailPanel({ agentId, agentName, runtime = null }: {
                                     onChange={(e) => { const apiKey = e.target.value; setLlmDraft((draft) => ({ ...draft, apiKey })); setLlmError(null); }}
                                     onKeyDown={saveLlmOnEnter}
                                     disabled={saving || (llmCustom && llmDraft.noKey)}
-                                    placeholder={llmCustom && llmDraft.noKey ? "No key" : "Paste the new key"}
+                                    placeholder={llmCustom && llmDraft.noKey ? t("noKey") : t("pasteKey")}
                                     autoComplete="off"
                                     className="block w-full rounded-lg border border-border bg-background px-2.5 py-1.5 text-xs text-foreground outline-none focus:ring-1 focus:ring-cyan-500 disabled:opacity-60"
                                 />
@@ -731,10 +741,10 @@ export function AgentDetailPanel({ agentId, agentName, runtime = null }: {
                                             disabled={saving}
                                             onChange={(e) => { const noKey = e.target.checked; setLlmDraft((draft) => ({ ...draft, noKey, apiKey: noKey ? "" : draft.apiKey })); setLlmError(null); }}
                                         />
-                                        This endpoint needs no key
+                                        {t("needsNoKey")}
                                     </label>
                                 )}
-                                <span className="block text-muted-foreground">The saved key is never shown, and never sent to a different endpoint.</span>
+                                <span className="block text-muted-foreground">{t("keyNeverShown")}</span>
                             </div>
                         )}
                     </div>
@@ -747,13 +757,13 @@ export function AgentDetailPanel({ agentId, agentName, runtime = null }: {
                 {/* Seven tabs outgrow a phone: the strip scrolls sideways instead of overflowing the panel. */}
                 <div className="-mx-1 max-w-full overflow-x-auto px-1 pb-1">
                     <TabsList className="w-max bg-zinc-900 border border-zinc-800">
-                        <TabsTrigger value="memory">Memory</TabsTrigger>
-                        <TabsTrigger value="instructions">Instructions</TabsTrigger>
-                        <TabsTrigger value="scope">Scope</TabsTrigger>
-                        <TabsTrigger value="actions">Actions</TabsTrigger>
-                        <TabsTrigger value="chat">Direct Chat</TabsTrigger>
-                        <TabsTrigger value="threads">Threads</TabsTrigger>
-                        <TabsTrigger value="runs">Runs</TabsTrigger>
+                        <TabsTrigger value="memory">{t("tabs.memory")}</TabsTrigger>
+                        <TabsTrigger value="instructions">{t("tabs.instructions")}</TabsTrigger>
+                        <TabsTrigger value="scope">{t("tabs.scope")}</TabsTrigger>
+                        <TabsTrigger value="actions">{t("tabs.actions")}</TabsTrigger>
+                        <TabsTrigger value="chat">{t("tabs.chat")}</TabsTrigger>
+                        <TabsTrigger value="threads">{t("tabs.threads")}</TabsTrigger>
+                        <TabsTrigger value="runs">{t("tabs.runs")}</TabsTrigger>
                     </TabsList>
                 </div>
 
@@ -789,22 +799,22 @@ export function AgentDetailPanel({ agentId, agentName, runtime = null }: {
                     <div className="bg-zinc-900/50 border border-zinc-800 rounded-xl p-4">
                         <div className="flex items-center gap-2 mb-3">
                             <IconPlugConnected className="w-4 h-4 text-cyan-400" />
-                            <h3 className="text-sm font-medium text-zinc-200">Message Threads</h3>
+                            <h3 className="text-sm font-medium text-zinc-200">{t("threads")}</h3>
                         </div>
                         <div className="space-y-2 max-h-[420px] overflow-y-auto pr-1">
                             {threads.length === 0 ? (
-                                <EmptyState text="No threads recorded for this agent yet." />
+                                <EmptyState text={t("noThreads")} />
                             ) : threads.map(thread => (
                                 <div key={thread.id} className="rounded-lg border border-zinc-800 bg-zinc-950/60 p-3">
                                     <div className="flex items-center justify-between gap-2 mb-1">
                                         <div className="flex items-center gap-2">
                                             <span className="text-[10px] uppercase tracking-wider font-bold text-cyan-400">{thread.type}</span>
-                                            <span className="text-xs text-zinc-200">{thread.title || "Untitled thread"}</span>
+                                            <span className="text-xs text-zinc-200">{thread.title || t("untitledThread")}</span>
                                         </div>
-                                        <span className="text-[10px] text-zinc-600">{new Date(thread.createdAt).toLocaleString()}</span>
+                                        <span className="text-[10px] text-zinc-600">{format.dateTime(new Date(thread.createdAt), { dateStyle: "medium", timeStyle: "short" })}</span>
                                     </div>
                                     <div className="text-[11px] text-zinc-500 line-clamp-2">
-                                        {thread.lastMessage || "No messages yet."}
+                                        {thread.lastMessage || t("noMessages")}
                                     </div>
                                 </div>
                             ))}
@@ -822,6 +832,7 @@ export function AgentDetailPanel({ agentId, agentName, runtime = null }: {
 }
 
 function ContainerNameDisplay({ containerName, containerId }: { containerName: string | null; containerId: string }) {
+    const t = useTranslations("agents.detail");
     const [copied, setCopied] = useState(false);
     const display = containerName || containerId.slice(0, 12);
 
@@ -834,13 +845,13 @@ function ContainerNameDisplay({ containerName, containerId }: { containerName: s
     return (
         <span
             className="inline-flex items-center gap-1.5 rounded-full border border-zinc-700 bg-zinc-900/60 px-2.5 py-1 text-[10px] text-zinc-500"
-            title="Docker container backing this agent's Hermes runtime"
+            title={t("containerTitle")}
         >
             <span className="font-mono text-zinc-400 truncate max-w-[180px]">{display}</span>
             <button
                 type="button"
                 onClick={handleCopy}
-                title="Copy container name"
+                title={t("copyContainer")}
                 className="text-zinc-600 hover:text-zinc-300 transition-colors"
             >
                 {copied ? <IconCircleCheck className="h-3 w-3 text-emerald-400" /> : <IconCopy className="h-3 w-3" />}
@@ -862,22 +873,25 @@ function StatusDot({ status }: { status: string }) {
 // distinct from runtime turns. They are always rendered, so the Runs empty
 // state can never hide them.
 function SessionsAndActions({ sessions, runs }: { sessions: AgentDetailData["sessions"]; runs: AgentDetailData["runs"] }) {
+    const t = useTranslations("agents.detail");
+    const format = useFormatter();
+    const when = (iso: string) => format.dateTime(new Date(iso), { dateStyle: "medium", timeStyle: "short" });
     return (
         <div className="bg-zinc-900/50 border border-zinc-800 rounded-xl p-4">
             <div className="flex items-center gap-2 mb-3">
                 <IconPlugConnected className="w-4 h-4 text-cyan-400" />
-                <h3 className="text-sm font-medium text-zinc-200">Sessions and actions</h3>
+                <h3 className="text-sm font-medium text-zinc-200">{t("sessionsTitle")}</h3>
             </div>
             <div className="space-y-2 max-h-[420px] overflow-y-auto pr-1">
                 {runs.length === 0 && sessions.length === 0 ? (
-                    <EmptyState text="No execution runs or sessions recorded yet." />
+                    <EmptyState text={t("noSessions")} />
                 ) : (
                     <>
                         {sessions.map(session => (
                             <div key={session.id} className="rounded-lg border border-zinc-800 bg-zinc-950/60 p-3">
                                 <div className="flex items-center justify-between gap-2 mb-1">
-                                    <span className="text-[10px] uppercase tracking-wider font-bold text-emerald-400">session</span>
-                                    <span className="text-[10px] text-zinc-600">{new Date(session.startedAt).toLocaleString()}</span>
+                                    <span className="text-[10px] uppercase tracking-wider font-bold text-emerald-400">{t("session")}</span>
+                                    <span className="text-[10px] text-zinc-600">{when(session.startedAt)}</span>
                                 </div>
                                 <div className="text-xs text-zinc-200">{session.status}</div>
                                 {session.openclawSessionId && (
@@ -890,7 +904,7 @@ function SessionsAndActions({ sessions, runs }: { sessions: AgentDetailData["ses
                             <div key={run.id} className="rounded-lg border border-zinc-800 bg-zinc-950/60 p-3">
                                 <div className="flex items-center justify-between gap-2 mb-1">
                                     <span className="text-[10px] uppercase tracking-wider font-bold text-cyan-400">{run.kind}</span>
-                                    <span className="text-[10px] text-zinc-600">{new Date(run.startedAt).toLocaleString()}</span>
+                                    <span className="text-[10px] text-zinc-600">{when(run.startedAt)}</span>
                                 </div>
                                 <div className="text-xs text-zinc-200">{run.status}</div>
                                 {run.summary && <div className="text-[11px] text-zinc-400 mt-1 line-clamp-2">{run.summary}</div>}
@@ -912,6 +926,7 @@ function EmptyState({ text }: { text: string }) {
 }
 
 function SetupBanner({ agentId, agentName, agentRole, agentStatus, providerId, deploymentMode }: { agentId: string; agentName: string; agentRole: string; agentStatus: string; providerId: string; deploymentMode: "local" | "remote" }) {
+    const t = useTranslations("agents.setup");
     const [copied, setCopied] = useState(false);
     const [copiedCmd, setCopiedCmd] = useState(false);
     const [setupRunning, setSetupRunning] = useState(false);
@@ -943,10 +958,10 @@ function SetupBanner({ agentId, agentName, agentRole, agentStatus, providerId, d
                 body: JSON.stringify({ name: `agent: ${agentName}`, scope: "mcp_full" }),
             });
             const body = await res.json();
-            if (!res.ok || !body.secret) throw new Error(body.error || "Could not create token");
+            if (!res.ok || !body.secret) throw new Error(body.error || t("tokenFailed"));
             setGenToken(body.secret as string);
         } catch (e) {
-            setGenTokenError(e instanceof Error ? e.message : "Could not create token");
+            setGenTokenError(e instanceof Error ? e.message : t("tokenFailed"));
         } finally {
             setGenningToken(false);
         }
@@ -976,19 +991,19 @@ function SetupBanner({ agentId, agentName, agentRole, agentStatus, providerId, d
 
     if (providerId === "hermes" && isLocal) return (
         <div className="border-b border-emerald-500/20 bg-emerald-500/[0.06] p-4 space-y-3">
-            <h3 className="text-sm font-semibold text-emerald-100">Start local Hermes</h3>
-            <p className="text-xs text-zinc-400">Emperor uses this agent’s saved provider and key, installs Hermes, and connects it automatically. Retry this profile if the first setup failed.</p>
+            <h3 className="text-sm font-semibold text-emerald-100">{t("startLocal")}</h3>
+            <p className="text-xs text-zinc-400">{t("startLocalHint")}</p>
             <button type="button" disabled={setupRunning} onClick={async () => {
                 setSetupRunning(true); setSetupResult(null);
                 try {
                     const response = await fetch(`/api/agents/${agentId}/recreate-runtime`, { method: "POST" });
                     const data = await response.json();
-                    setSetupResult(response.ok ? data : { success: false, message: data.error || "Setup failed" });
+                    setSetupResult(response.ok ? data : { success: false, message: data.error || t("setupFailed") });
                     if (response.ok && data.success) setTimeout(() => window.location.reload(), 2000);
-                } catch (e) { setSetupResult({ success: false, message: e instanceof Error ? e.message : "Setup failed" }); }
+                } catch (e) { setSetupResult({ success: false, message: e instanceof Error ? e.message : t("setupFailed") }); }
                 finally { setSetupRunning(false); }
             }} className="rounded-lg border border-emerald-500/40 bg-emerald-500/15 px-4 py-2 text-sm text-emerald-200 disabled:opacity-50">
-                {setupRunning ? "Starting Hermes…" : "Retry local setup"}
+                {setupRunning ? t("startingHermes") : t("retryLocal")}
             </button>
             {setupResult && <div className="space-y-2 text-xs" role="status">
                 <p className={setupResult.success ? "text-emerald-300" : "text-rose-300"}>{setupResult.message}</p>
@@ -1005,22 +1020,20 @@ function SetupBanner({ agentId, agentName, agentRole, agentStatus, providerId, d
                 : "border-amber-500/20 bg-amber-500/[0.06]"
         )}>
             <div className="flex items-start gap-3">
-                <span className="text-xl mt-0.5">{isLocal ? "🖥️" : "🚀"}</span>
+                <span className="text-xl mt-0.5" aria-hidden="true">{isLocal ? "🖥️" : "🚀"}</span>
                 <div className="flex-1">
                     <h3 className={cn("text-sm font-semibold", isLocal ? "text-emerald-100" : "text-amber-100")}>
                         {isOnline
-                            ? `${agentName} is running`
-                            : isLocal ? "Agent created — connect on this server" : "Agent created — now connect it"
+                            ? t("isRunning", { name: agentName })
+                            : isLocal ? t("createdConnectHere") : t("createdConnect")
                         }
                     </h3>
                     <p className={cn("text-xs mt-1", isLocal ? "text-emerald-100/70" : "text-amber-100/70")}>
                         {isOnline
-                            ? `${agentName} is online and processing tasks on ${provider.name}. Bridge is active.`
-                            : agentName + " is configured as a " + agentRole + " running on " + provider.name + " " +
-                                (isLocal
-                                    ? "on this machine. Run the commands below directly — no SSH needed."
-                                    : "on a remote machine. Copy the prompt below into Claude, ChatGPT, or Codex and it will walk you through the setup."
-                                )
+                            ? t("onlineProcessing", { name: agentName, provider: provider.name })
+                            : isLocal
+                                ? t("configuredLocal", { name: agentName, role: agentRole, provider: provider.name })
+                                : t("configuredRemote", { name: agentName, role: agentRole, provider: provider.name })
                         }
                     </p>
                 </div>
@@ -1044,7 +1057,7 @@ function SetupBanner({ agentId, agentName, agentRole, agentStatus, providerId, d
                                     setTimeout(() => window.location.reload(), 2000);
                                 }
                             } catch (e) {
-                                setSetupResult({ success: false, message: e instanceof Error ? e.message : "Network error" });
+                                setSetupResult({ success: false, message: e instanceof Error ? e.message : t("networkError") });
                             } finally {
                                 setSetupRunning(false);
                             }
@@ -1052,9 +1065,9 @@ function SetupBanner({ agentId, agentName, agentRole, agentStatus, providerId, d
                         className="flex items-center gap-2 rounded-lg border border-emerald-500/40 bg-emerald-500/15 px-4 py-2.5 text-sm font-medium text-emerald-200 hover:bg-emerald-500/25 transition-colors disabled:opacity-50"
                     >
                         {setupRunning ? (
-                            <><IconLoader className="h-4 w-4 animate-spin" />Setting up Hermes...</>
+                            <><IconLoader className="h-4 w-4 animate-spin" />{t("settingUpHermes")}</>
                         ) : (
-                            <><IconPlayerPlay className="h-4 w-4" />▶ Auto-Setup Hermes (profile + plugin + bridge)</>
+                            <><IconPlayerPlay className="h-4 w-4" />{t("autoSetup")}</>
                         )}
                     </button>
 
@@ -1075,25 +1088,26 @@ function SetupBanner({ agentId, agentName, agentRole, agentStatus, providerId, d
             {/* Setup guide — Hermes-specific */}
             {providerId === "hermes" && !isOnline && (
                 <div className="rounded-xl border border-amber-500/20 bg-amber-500/[0.04] p-4 space-y-2">
-                    <span className="text-[10px] font-bold uppercase tracking-wider text-amber-300">🔧 What you need to do</span>
+                    <span className="text-[10px] font-bold uppercase tracking-wider text-amber-300">{t("whatToDo")}</span>
                     <ol className="space-y-1.5 text-[11px] text-amber-100/80 list-decimal list-inside">
                         <li className="break-words">
-                            Download and verify the installer on the host (Linux with systemd):
+                            {t("stepDownload")}
                             <code className="mt-1 block overflow-x-auto whitespace-pre-wrap break-all rounded bg-amber-500/10 px-2 py-1 text-amber-200">{installerDownloadCommand()}</code>
                         </li>
                         <li className="break-words">
-                            Create the profile: <code className="text-amber-200 bg-amber-500/10 px-1 rounded">hermes profile create {hermesProfileName(agentName)} --clone</code>, then put this agent&apos;s Emperor URL, token and id (and its LLM key) in the profile&apos;s <code className="text-amber-200/80">.env</code>.
+                            {t.rich("stepProfile", { command: `hermes profile create ${hermesProfileName(agentName)} --clone`, file: ".env", code: (chunks) => <code className="text-amber-200 bg-amber-500/10 px-1 rounded">{chunks}</code>, file1: (chunks) => <code className="text-amber-200/80">{chunks}</code> })}
                         </li>
                         <li className="break-words">
-                            Install this agent: <code className="text-amber-200 bg-amber-500/10 px-1 rounded">~/.local/bin/emperor-hermes install --profile {hermesProfileName(agentName)}</code>
-                            <span className="block text-amber-100/60">Then connect the machine under Settings → Runtime hosts to restart it from here.</span>
+                            {t.rich("stepInstall", { command: `~/.local/bin/emperor-hermes install --profile ${hermesProfileName(agentName)}`, code: (chunks) => <code className="text-amber-200 bg-amber-500/10 px-1 rounded">{chunks}</code> })}
+                            <span className="block text-amber-100/60">{t("stepConnectHost")}</span>
                         </li>
                     </ol>
                     <p className="text-[10px] text-amber-100/60 mt-2">
-                        Already running the 0.3 bridge? Follow the{" "}
-                        <a href={HERMES_MIGRATION_DOC_HREF} target="_blank" rel="noreferrer" className="text-cyan-400 underline underline-offset-2 hover:text-cyan-300">0.9 migration guide</a>{" "}
-                        (<a href="/docs/v1.1/hermes-runtime" target="_blank" rel="noreferrer" className="text-cyan-400 underline underline-offset-2 hover:text-cyan-300">full setup</a>).
-                        Once running, this agent will appear <span className="text-emerald-300">online</span> here automatically.
+                        {t.rich("migration", {
+                            guide: (chunks) => <a href={HERMES_MIGRATION_DOC_HREF} target="_blank" rel="noreferrer" className="text-cyan-400 underline underline-offset-2 hover:text-cyan-300">{chunks}</a>,
+                            full: (chunks) => <a href="/docs/v1.1/hermes-runtime" target="_blank" rel="noreferrer" className="text-cyan-400 underline underline-offset-2 hover:text-cyan-300">{chunks}</a>,
+                            online: (chunks) => <span className="text-emerald-300">{chunks}</span>,
+                        })}
                     </p>
                 </div>
             )}
@@ -1103,7 +1117,7 @@ function SetupBanner({ agentId, agentName, agentRole, agentStatus, providerId, d
                 <div className="rounded-xl border border-emerald-500/20 bg-emerald-500/[0.04] overflow-hidden">
                     <div className="flex items-center justify-between px-4 py-2 bg-emerald-500/10 border-b border-emerald-500/20">
                         <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-200">
-                            ⚡ Quick Connect Commands
+                            {t("quickConnect")}
                         </span>
                         <div className="flex items-center gap-1.5">
                             {!genToken && (
@@ -1113,7 +1127,7 @@ function SetupBanner({ agentId, agentName, agentRole, agentStatus, providerId, d
                                     disabled={genningToken}
                                     className="flex items-center gap-1.5 rounded-lg border border-emerald-500/30 px-3 py-1 text-[11px] font-medium text-emerald-200 hover:bg-emerald-500/15 transition-colors disabled:opacity-50"
                                 >
-                                    {genningToken ? "Generating…" : "Generate token"}
+                                    {genningToken ? t("generating") : t("generateToken")}
                                 </button>
                             )}
                             <button
@@ -1127,7 +1141,7 @@ function SetupBanner({ agentId, agentName, agentRole, agentStatus, providerId, d
                                 className="flex items-center gap-1.5 rounded-lg border border-emerald-500/30 px-3 py-1 text-[11px] font-medium text-emerald-200 hover:bg-emerald-500/15 transition-colors"
                             >
                                 {copiedCmd ? <IconCircleCheck className="h-3 w-3" /> : <IconCopy className="h-3 w-3" />}
-                                {copiedCmd ? "Copied!" : "Copy all"}
+                                {copiedCmd ? t("copied") : t("copyAll")}
                             </button>
                         </div>
                     </div>
@@ -1142,19 +1156,19 @@ function SetupBanner({ agentId, agentName, agentRole, agentStatus, providerId, d
                         ))}
                         {genToken ? (
                             <p className="text-[10px] text-emerald-200/90 mt-1 rounded-md bg-emerald-500/10 border border-emerald-500/20 px-2 py-1.5">
-                                ✓ A new access token was created and inserted above. Copy it now — it won&apos;t be shown again. Manage tokens in Settings → Access Tokens.
+                                {t("tokenInserted")}
                             </p>
                         ) : genTokenError ? (
-                            <p className="text-[10px] text-rose-300/90 mt-1">Could not create token: {genTokenError}. Create one manually in Settings → Access Tokens.</p>
+                            <p className="text-[10px] text-rose-300/90 mt-1">{t("tokenError", { error: genTokenError })}</p>
                         ) : (
                             <p className="text-[10px] text-emerald-100/50 mt-1">
-                                Click <span className="text-emerald-200">Generate token</span> to insert a real token, or replace <code className="text-emerald-200/80">YOUR_TOKEN</code> with one from Settings → Access Tokens.
+                                {t.rich("tokenHint", { placeholder: "YOUR_TOKEN", strong: (chunks) => <span className="text-emerald-200">{chunks}</span>, code: (chunks) => <code className="text-emerald-200/80">{chunks}</code> })}
                             </p>
                         )}
                         <p className="text-[10px] text-emerald-100/50 mt-1">
                             {isLocal
-                                ? `Assumes ${provider.name} CLI is installed on this server. Run these commands in a terminal.`
-                                : `Assumes ${provider.name} CLI is already installed. Run these on the agent's machine (or this server). Then paste the LLM prompt for doctrine + systemd configuration.`
+                                ? t("assumesLocal", { provider: provider.name })
+                                : t("assumesRemote", { provider: provider.name })
                             }
                         </p>
                     </div>
@@ -1175,7 +1189,7 @@ function SetupBanner({ agentId, agentName, agentRole, agentStatus, providerId, d
                         : "bg-amber-500/10 border-amber-500/20"
                 )}>
                     <span className={cn("text-[10px] font-bold uppercase tracking-wider", isLocal ? "text-emerald-200" : "text-amber-200")}>
-                        {isLocal ? "📋 LLM Setup Prompt (optional)" : "🤖 LLM Setup Prompt"}
+                        {isLocal ? t("promptOptional") : t("prompt")}
                     </span>
                     <button
                         type="button"
@@ -1188,7 +1202,7 @@ function SetupBanner({ agentId, agentName, agentRole, agentStatus, providerId, d
                         )}
                     >
                         {copied ? <IconCircleCheck className="h-3 w-3" /> : <IconCopy className="h-3 w-3" />}
-                        {copied ? "Copied!" : "Copy prompt"}
+                        {copied ? t("copied") : t("copyPrompt")}
                     </button>
                 </div>
                 <pre className={cn("p-4 text-[11px] whitespace-pre-wrap max-h-[200px] overflow-y-auto font-mono leading-relaxed select-all", isLocal ? "text-emerald-100/80" : "text-amber-100/80")}>
@@ -1201,7 +1215,7 @@ function SetupBanner({ agentId, agentName, agentRole, agentStatus, providerId, d
                 <div className="rounded-xl border border-emerald-500/20 bg-emerald-500/[0.04] p-3 space-y-2">
                     <div className="flex items-center justify-between">
                         <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-200">
-                            🔌 Bridge Configuration
+                            {t("bridgeConfig")}
                         </span>
                         <button
                             type="button"
@@ -1225,12 +1239,11 @@ function SetupBanner({ agentId, agentName, agentRole, agentStatus, providerId, d
                             className="flex items-center gap-1.5 rounded-lg border border-emerald-500/30 px-3 py-1 text-[11px] font-medium text-emerald-200 hover:bg-emerald-500/15 transition-colors"
                         >
                             {copiedCmd ? <IconCircleCheck className="h-3 w-3" /> : <IconCopy className="h-3 w-3" />}
-                            {copiedCmd ? "Copied!" : "Copy .env"}
+                            {copiedCmd ? t("copied") : t("copyEnv")}
                         </button>
                     </div>
                     <p className="text-[10px] text-emerald-100/60">
-                        Save this as <code className="text-emerald-200/80 bg-emerald-500/5 px-1 rounded">~/.hermes/emperor-bridge/{agentName}/.env</code>.
-                        Generate an API token in <strong>Settings → Access Tokens</strong>, replace the placeholders, and start the bridge.
+                        {t.rich("saveEnv", { path: `~/.hermes/emperor-bridge/${agentName}/.env`, code: (chunks) => <code className="text-emerald-200/80 bg-emerald-500/5 px-1 rounded">{chunks}</code>, strong: (chunks) => <strong>{chunks}</strong> })}
                     </p>
                 </div>
             )}
@@ -1238,7 +1251,7 @@ function SetupBanner({ agentId, agentName, agentRole, agentStatus, providerId, d
             {/* Checklist */}
             <div className="space-y-2">
                 <span className={cn("text-[10px] font-bold uppercase tracking-wider", isLocal ? "text-emerald-300" : "text-amber-300")}>
-                    Post-Connect Checklist
+                    {t("checklist")}
                 </span>
                 <div className="grid gap-1.5">
                     {provider.postInstallChecklist.map((step, i) => (
@@ -1251,9 +1264,9 @@ function SetupBanner({ agentId, agentName, agentRole, agentStatus, providerId, d
                     ))}
                     <div className={cn("flex items-center gap-2 text-[11px]", isLocal ? "text-emerald-100/70" : "text-amber-100/70")}>
                         <span className={cn("flex h-5 w-5 shrink-0 items-center justify-center rounded-full border text-[10px]", isLocal ? "border-emerald-500/30 text-emerald-300" : "border-amber-500/30 text-amber-300")}>
-                            ✓
+                            {"✓"}
                         </span>
-                        <span>Check Emperor dashboard — {agentName} should appear as <strong>online</strong></span>
+                        <span>{t.rich("checkDashboard", { name: agentName, strong: (chunks) => <strong>{chunks}</strong> })}</span>
                     </div>
                 </div>
             </div>

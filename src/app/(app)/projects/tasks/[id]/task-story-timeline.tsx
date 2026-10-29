@@ -2,6 +2,7 @@
 
 import { memo, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
+import { useFormatter, useTranslations } from "next-intl";
 import {
     IconAlertTriangle,
     IconArrowRight,
@@ -28,7 +29,6 @@ import { formatRunDuration, formatTokenCount } from "@/lib/run-ledger-copy";
 import {
     formatCost,
     groupStoryByDay,
-    RUN_OUTCOME_LABEL,
     type RunOutcome,
     type StoryApprovalEntry,
     type StoryArtifactEntry,
@@ -55,10 +55,11 @@ const OUTCOME_DOT: Record<RunOutcome, string> = {
 };
 
 export function OutcomePill({ outcome, className }: { outcome: RunOutcome; className?: string }) {
+    const t = useTranslations("tasks.timeline.outcomes");
     return (
         <span className={cn("inline-flex shrink-0 items-center gap-1.5 rounded-full border px-2 py-0.5 text-[11px] font-medium", OUTCOME_TONE[outcome], className)}>
             <span className={cn("h-1.5 w-1.5 rounded-full", OUTCOME_DOT[outcome])} aria-hidden="true" />
-            {RUN_OUTCOME_LABEL[outcome]}
+            {t(outcome)}
         </span>
     );
 }
@@ -69,10 +70,14 @@ function timeLabel(iso: string, timeZone: string): string {
     return new Intl.DateTimeFormat("en-GB", { hour: "2-digit", minute: "2-digit", hourCycle: "h23", timeZone }).format(date);
 }
 
-function fullTime(iso: string, timeZone: string): string {
-    const date = new Date(iso);
-    if (Number.isNaN(date.getTime())) return iso;
-    return new Intl.DateTimeFormat("en-US", { dateStyle: "medium", timeStyle: "short", timeZone }).format(date);
+/** "Oct 29, 2026, 2:05 PM" in the person's language and the given zone. */
+function useFullTime() {
+    const format = useFormatter();
+    return (iso: string, timeZone: string): string => {
+        const date = new Date(iso);
+        if (Number.isNaN(date.getTime())) return iso;
+        return format.dateTime(date, { dateStyle: "medium", timeStyle: "short", timeZone });
+    };
 }
 
 function formatBytes(bytes: number): string {
@@ -82,13 +87,15 @@ function formatBytes(bytes: number): string {
     return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
+type RunStatsLabels = { tools: (count: number) => string; tokens: (amount: string) => string };
+
 /** "4m 12s · 12 tools · 18.2k tokens · $0.21 · deepseek-v4" for a run block header. */
-export function runStats(run: Pick<StoryRun, "durationMs" | "toolCalls" | "inputTokens" | "outputTokens" | "costCents">): string[] {
+export function runStats(run: Pick<StoryRun, "durationMs" | "toolCalls" | "inputTokens" | "outputTokens" | "costCents">, labels: RunStatsLabels): string[] {
     const parts: string[] = [];
     if (run.durationMs != null) parts.push(formatRunDuration(run.durationMs));
-    if (run.toolCalls != null) parts.push(`${run.toolCalls} ${run.toolCalls === 1 ? "tool" : "tools"}`);
+    if (run.toolCalls != null) parts.push(labels.tools(run.toolCalls));
     const tokens = (run.inputTokens ?? 0) + (run.outputTokens ?? 0);
-    if (tokens > 0) parts.push(`${formatTokenCount(tokens)} tokens`);
+    if (tokens > 0) parts.push(labels.tokens(formatTokenCount(tokens)));
     const cost = formatCost(run.costCents);
     if (cost) parts.push(cost);
     return parts;
@@ -119,16 +126,18 @@ const EVENT_ICON: Record<StoryEventEntry["tone"], { icon: typeof IconNote; class
     problem: { icon: IconAlertTriangle, className: "text-amber-300" },
 };
 
-function actorLabel(entry: StoryEventEntry): string | null {
+function actorLabel(entry: StoryEventEntry, t: ReturnType<typeof useTranslations<"tasks.timeline">>): string | null {
     if (entry.actor.name) return entry.actor.name;
-    if (entry.actor.type === "human") return "A person";
-    if (entry.actor.type === "system") return "System";
+    if (entry.actor.type === "human") return t("aPerson");
+    if (entry.actor.type === "system") return t("system");
     return null;
 }
 
 function EventRow({ entry, timeZone }: { entry: StoryEventEntry; timeZone: string }) {
+    const t = useTranslations("tasks.timeline");
+    const fullTime = useFullTime();
     const { icon: Icon, className } = EVENT_ICON[entry.tone];
-    const actor = actorLabel(entry);
+    const actor = actorLabel(entry, t);
     return (
         <Row time={timeLabel(entry.at, timeZone)} title={fullTime(entry.at, timeZone)} marker={<Icon className={cn("h-3 w-3", className)} aria-hidden="true" />}>
             <p className="text-sm leading-6 text-zinc-200">
@@ -147,34 +156,31 @@ function EventRow({ entry, timeZone }: { entry: StoryEventEntry; timeZone: strin
     );
 }
 
-const ACTION_LABEL: Record<string, string> = {
-    task_done: "Mark the task done",
-    send_email: "Send an email",
-    publish: "Publish",
-    spend: "Spend money",
-    delete: "Delete something",
-};
+/** Approval actions with a label under tasks.timeline.actions (anything else shows as is). */
+const APPROVAL_ACTIONS = new Set(["task_done", "send_email", "publish", "spend", "delete"]);
 
 function ApprovalRow({ entry, timeZone }: { entry: StoryApprovalEntry; timeZone: string }) {
-    const action = ACTION_LABEL[entry.actionType] ?? entry.actionType.replace(/_/g, " ");
+    const t = useTranslations("tasks.timeline");
+    const fullTime = useFullTime();
+    const action = APPROVAL_ACTIONS.has(entry.actionType) ? t(`actions.${entry.actionType as "publish"}`) : entry.actionType.replace(/_/g, " ");
     const requested = entry.phase === "requested";
     const pending = requested && entry.status === "pending";
     const Icon = requested ? IconShieldQuestion : entry.status === "approved" ? IconShieldCheck : IconShieldX;
     const iconTone = requested ? (pending ? "text-amber-300" : "text-zinc-400") : entry.status === "approved" ? "text-emerald-300" : "text-rose-300";
-    const decision = entry.status === "approved" ? "Approved" : entry.status === "rejected" ? "Rejected" : entry.status === "expired" ? "Expired" : entry.status === "dismissed" ? "Dismissed" : entry.status;
+    const decision = entry.status === "approved" ? t("approved") : entry.status === "rejected" ? t("rejected") : entry.status === "expired" ? t("expired") : entry.status === "dismissed" ? t("dismissed") : entry.status;
     return (
         <Row time={timeLabel(entry.at, timeZone)} title={fullTime(entry.at, timeZone)} marker={<Icon className={cn("h-3 w-3", iconTone)} aria-hidden="true" />}>
             <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
                 <p className="text-sm leading-6 text-zinc-200">
                     {requested ? (
-                        <>Approval requested: <span className="text-zinc-100">{action}</span>{entry.requesterName && <span className="text-zinc-500"> · {entry.requesterName}</span>}</>
+                        <>{t("approvalRequested")} <span className="text-zinc-100">{action}</span>{entry.requesterName && <span className="text-zinc-500"> · {entry.requesterName}</span>}</>
                     ) : (
                         <>{decision}: <span className="text-zinc-100">{action}</span>{entry.resolverName && <span className="text-zinc-500"> · {entry.resolverName}</span>}</>
                     )}
                 </p>
                 {pending && (
                     <Link href="/approvals" className="inline-flex items-center gap-1 rounded-full border border-amber-500/40 bg-amber-500/10 px-2 py-0.5 text-[11px] font-medium text-amber-200 transition-colors hover:bg-amber-500/20">
-                        Review
+                        {t("review")}
                     </Link>
                 )}
             </div>
@@ -188,10 +194,12 @@ function ApprovalRow({ entry, timeZone }: { entry: StoryApprovalEntry; timeZone:
 }
 
 function ArtifactRow({ entry, timeZone }: { entry: StoryArtifactEntry; timeZone: string }) {
+    const t = useTranslations("tasks.timeline");
+    const fullTime = useFullTime();
     return (
         <Row time={timeLabel(entry.at, timeZone)} title={fullTime(entry.at, timeZone)} marker={<IconFileText className="h-3 w-3 text-sky-300" aria-hidden="true" />}>
             <p className="text-sm leading-6 text-zinc-400">
-                {entry.agentName ? `${entry.agentName} saved a file` : "File saved"}
+                {entry.agentName ? t("agentSavedFile", { name: entry.agentName }) : t("fileSaved")}
             </p>
             <Link
                 href={`/artifacts?artifact=${encodeURIComponent(entry.id)}`}
@@ -208,16 +216,18 @@ function ArtifactRow({ entry, timeZone }: { entry: StoryArtifactEntry; timeZone:
 }
 
 function MessageRow({ entry, timeZone }: { entry: StoryMessageEntry; timeZone: string }) {
+    const t = useTranslations("tasks.timeline");
+    const fullTime = useFullTime();
     return (
         <Row time={timeLabel(entry.at, timeZone)} title={fullTime(entry.at, timeZone)} marker={entry.text == null ? <IconLock className="h-3 w-3 text-zinc-500" aria-hidden="true" /> : <IconMessage2 className="h-3 w-3 text-zinc-300" aria-hidden="true" />}>
             <p className="text-sm leading-6 text-zinc-400">
-                <span className="text-zinc-200">{entry.senderLabel}</span> in {entry.threadLabel}
+                {t.rich("senderIn", { sender: entry.senderLabel, thread: entry.threadLabel, strong: (chunks) => <span className="text-zinc-200">{chunks}</span> })}
                 {entry.href && (
-                    <Link href={entry.href} className="ml-2 text-xs text-cyan-300 underline-offset-2 hover:text-cyan-200 hover:underline">Open chat</Link>
+                    <Link href={entry.href} className="ml-2 text-xs text-cyan-300 underline-offset-2 hover:text-cyan-200 hover:underline">{t("openChat")}</Link>
                 )}
             </p>
             {entry.text == null
-                ? <p className="mt-1 text-xs italic text-zinc-500">Private chat. Only its participants can read it.</p>
+                ? <p className="mt-1 text-xs italic text-zinc-500">{t("privateChat")}</p>
                 : <div className="mt-1"><RichText content={entry.text} collapsedHeight={200} /></div>}
         </Row>
     );
@@ -261,8 +271,10 @@ function RunFailure({ run, fixContext }: { run: StoryRun; fixContext: RunFixCont
  * says why in one line; `fixContext` (the task's latest run only) adds the fix.
  */
 export const RunBlock = memo(function RunBlock({ run, timeZone, defaultOpen = false, fixContext = null }: { run: StoryRun; timeZone: string; defaultOpen?: boolean; fixContext?: RunFixContext | null }) {
+    const t = useTranslations("tasks.timeline");
+    const fullTime = useFullTime();
     const [open, setOpen] = useState(defaultOpen);
-    const stats = runStats(run);
+    const stats = runStats(run, { tools: (count) => t("tools", { count }), tokens: (amount) => t("tokens", { amount }) });
     const model = run.model?.trim();
     const panelId = `run-${run.id}-steps`;
     return (
@@ -286,8 +298,8 @@ export const RunBlock = memo(function RunBlock({ run, timeZone, defaultOpen = fa
                 >
                     <span className="flex min-w-0 items-center gap-2">
                         <OutcomePill outcome={run.outcome} />
-                        <span className="truncate text-sm font-medium text-zinc-100">{run.agentName ?? "Agent"}</span>
-                        {run.private && <IconLock className="h-3.5 w-3.5 shrink-0 text-zinc-500" aria-label="Private chat" />}
+                        <span className="truncate text-sm font-medium text-zinc-100">{run.agentName ?? t("agent")}</span>
+                        {run.private && <IconLock className="h-3.5 w-3.5 shrink-0 text-zinc-500" aria-label={t("privateChatLabel")} />}
                     </span>
                     <span className="flex min-w-0 flex-1 items-center gap-2 sm:justify-end">
                         <span className="min-w-0 truncate text-xs tabular-nums text-zinc-400">
@@ -304,14 +316,14 @@ export const RunBlock = memo(function RunBlock({ run, timeZone, defaultOpen = fa
                     <div className="flex min-w-0 items-start gap-2 border-t border-zinc-800/80 px-3 py-2">
                         <IconCornerDownRight className="mt-0.5 h-3.5 w-3.5 shrink-0 text-zinc-500" aria-hidden="true" />
                         <p className="min-w-0 flex-1 text-xs leading-relaxed text-zinc-400">
-                            <span className="text-zinc-500">Reply{run.threadLabel ? ` in ${run.threadLabel}` : ""}</span>
+                            <span className="text-zinc-500">{run.threadLabel ? t("replyIn", { thread: run.threadLabel }) : t("reply")}</span>
                             {run.reply.excerpt
-                                ? <span className="line-clamp-2 text-zinc-300">“{run.reply.excerpt}”</span>
-                                : <span className="block italic text-zinc-500">Private chat. Only its participants can read it.</span>}
+                                ? <span className="line-clamp-2 text-zinc-300">{t("quoted", { text: run.reply.excerpt })}</span>
+                                : <span className="block italic text-zinc-500">{t("privateChat")}</span>}
                         </p>
                         {run.threadHref && (
                             <Link href={run.threadHref} className="shrink-0 text-xs text-cyan-300 underline-offset-2 hover:text-cyan-200 hover:underline">
-                                Open chat
+                                {t("openChat")}
                             </Link>
                         )}
                     </div>
@@ -362,6 +374,7 @@ function useFocusRunId(): string | null {
 }
 
 export function TaskStoryTimeline({ entries, timeZone, nowIso, fixContext = null }: { entries: readonly StoryEntry[]; timeZone: string; nowIso: string; fixContext?: RunFixContext | null }) {
+    const t = useTranslations("tasks.timeline");
     const focusRunId = useFocusRunId();
     const days = useMemo(() => groupStoryByDay(entries, { now: new Date(nowIso), timeZone }), [entries, nowIso, timeZone]);
     // Only the newest run can still be fixed; older failures keep their cause line without a button.
@@ -369,8 +382,8 @@ export function TaskStoryTimeline({ entries, timeZone, nowIso, fixContext = null
     if (entries.length === 0) {
         return (
             <div className="rounded-2xl border border-dashed border-zinc-800 px-5 py-10 text-center">
-                <p className="text-sm text-zinc-300">Nothing has happened on this task yet.</p>
-                <p className="mt-1 text-xs text-zinc-500">Runs, notes, approvals and files show up here as the work moves.</p>
+                <p className="text-sm text-zinc-300">{t("empty")}</p>
+                <p className="mt-1 text-xs text-zinc-500">{t("emptyHint")}</p>
             </div>
         );
     }

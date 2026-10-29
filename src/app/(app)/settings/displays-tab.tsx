@@ -14,6 +14,7 @@ import {
     IconWifi,
 } from "@tabler/icons-react";
 import { toast } from "sonner";
+import { useFormatter, useTranslations } from "next-intl";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
@@ -44,20 +45,12 @@ export type DisplayToken = {
 
 type Step = "connect" | "firmware" | "wifi" | "options" | "finish";
 
-const STEPS: { id: Step; label: string }[] = [
-    { id: "connect", label: "Connect" },
-    { id: "firmware", label: "Firmware" },
-    { id: "wifi", label: "Wi-Fi" },
-    { id: "options", label: "Options" },
-    { id: "finish", label: "Finish" },
-];
+/** Labelled by settings.displays.steps.<id>. */
+const STEPS: Step[] = ["connect", "firmware", "wifi", "options", "finish"];
 
 const OTHER = "__other__";
-const PRIVATE_CHATS_HELP =
-    "Shows your own direct conversations with each agent on the screen. Never includes other people's chats. Anyone who can see the screen can read them.";
-
-const AGENT_THOUGHTS_HELP =
-    "Shows each agent's latest reasoning in a thought bubble, shortened and with links, emails, keys and file paths removed. Anyone who can see the screen can read it.";
+// Stored on the server and shown to the whole company, so it stays English like other stored defaults.
+const DEFAULT_DISPLAY_NAME = "Desk display";
 
 const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 const noSubscribe = () => () => undefined;
@@ -66,30 +59,26 @@ const originProblem = () => {
     return check.ok ? null : check.error;
 };
 
-function failureText(failure: ProvisionFailure | null, ssid: string, detail: string | null): string {
+type DisplaysT = ReturnType<typeof useTranslations<"settings.displays">>;
+
+function failureText(t: DisplaysT, failure: ProvisionFailure | null, ssid: string, detail: string | null): string {
     switch (failure) {
-        case "wrong_password":
-            return `"${ssid}" rejected the Wi-Fi password. Check it and try again.`;
-        case "no_network":
-            return `The display can't see "${ssid}". It only uses 2.4 GHz Wi-Fi: check that the network has a 2.4 GHz band and that the display is in range.`;
-        case "wifi_timeout":
-            return `The display couldn't join "${ssid}" in time. Check the password and that the router is in range.`;
-        case "token_rejected":
-            return "The server rejected the display's key. Try again to create a new one.";
-        case "rejected_config":
-            return `The display refused the settings (${detail ?? "invalid"}).`;
-        default:
-            return "Setup did not finish.";
+        case "wrong_password": return t("failure.wrongPassword", { ssid });
+        case "no_network": return t("failure.noNetwork", { ssid });
+        case "wifi_timeout": return t("failure.wifiTimeout", { ssid });
+        case "token_rejected": return t("failure.tokenRejected");
+        case "rejected_config": return t("failure.rejectedConfig", { detail: detail ?? t("failure.invalid") });
+        default: return t("failure.other");
     }
 }
 
-function phaseText(p: ProvisionProgress, usbLost: boolean): string {
+function phaseText(t: DisplaysT, p: ProvisionProgress, usbLost: boolean): string {
     switch (p.phase) {
-        case "sending": return "Creating the display key and sending the settings";
-        case "restarting": return "Settings saved. The display is restarting";
-        case "joining_wifi": return usbLost ? "Waiting for the display to come online" : "Joining Wi-Fi";
-        case "wifi_connected": return p.lastFetchStatus && p.lastFetchStatus !== 200 ? `Wi-Fi connected, server answered ${p.lastFetchStatus}. Retrying` : "Wi-Fi connected. Contacting Emperor Claw";
-        case "live": return "Your display is live";
+        case "sending": return t("phase.sending");
+        case "restarting": return t("phase.restarting");
+        case "joining_wifi": return usbLost ? t("phase.waitingOnline") : t("phase.joiningWifi");
+        case "wifi_connected": return p.lastFetchStatus && p.lastFetchStatus !== 200 ? t("phase.serverAnswered", { status: p.lastFetchStatus }) : t("phase.contacting");
+        case "live": return t("live");
         default: return "";
     }
 }
@@ -110,6 +99,9 @@ export function DisplaysTab({
     revokingTokenId: string | null;
     confirmingRevokeId: string | null;
 }) {
+    const t = useTranslations("settings.displays");
+    const tc = useTranslations("common");
+    const format = useFormatter();
     // null while server-rendering; Web Serial support never changes at runtime.
     const supported = useSyncExternalStore(noSubscribe, isWebSerialSupported, () => null);
     // The display talks to this page's own origin; refuse plain http on a public host.
@@ -129,7 +121,7 @@ export function DisplaysTab({
     const [otherSsid, setOtherSsid] = useState("");
     const [password, setPassword] = useState("");
 
-    const [displayName, setDisplayName] = useState("Desk display");
+    const [displayName, setDisplayName] = useState(DEFAULT_DISPLAY_NAME);
     const [privateChats, setPrivateChats] = useState(false);
     const [agentThoughts, setAgentThoughts] = useState(true);
 
@@ -172,7 +164,7 @@ export function DisplaysTab({
     const selectedNetwork = networks.find((n) => n.ssid === ssidChoice);
     // A network the display saw as open never gets a password, even one typed earlier.
     const effectivePassword = selectedNetwork?.secure === false ? "" : password;
-    const displayTokens = tokens.filter((t) => t.scope === "read_only");
+    const displayTokens = tokens.filter((token) => token.scope === "read_only");
 
     const attachSession = useCallback((session: DisplaySerialSession) => {
         sessionRef.current = session;
@@ -210,7 +202,7 @@ export function DisplaysTab({
         } catch {
             return; // the user closed the picker
         }
-        setBusy("Connecting to the display");
+        setBusy(t("busy.connecting"));
         try {
             await sessionRef.current?.close();
             const session = await DisplaySerialSession.open(port);
@@ -220,8 +212,8 @@ export function DisplaysTab({
             setStep("firmware");
         } catch (e) {
             setError(e instanceof Error && /open/i.test(e.message)
-                ? "Couldn't open the port. Close any other app using the display (a serial monitor, PlatformIO) and try again."
-                : `Couldn't connect: ${e instanceof Error ? e.message : String(e)}`);
+                ? t("errors.portBusy")
+                : t("errors.connect", { error: e instanceof Error ? e.message : String(e) }));
         } finally {
             setBusy(null);
         }
@@ -232,8 +224,8 @@ export function DisplaysTab({
     const installFirmware = async () => {
         if (!manifest || !portRef.current) return;
         setError(null);
-        setBusy("Installing firmware");
-        setFlash({ percent: 0, label: "Downloading firmware" });
+        setBusy(t("busy.installing"));
+        setFlash({ percent: 0, label: t("flash.downloading") });
         try {
             const { downloadFirmwareImages, flashDisplayFirmware } = await import("@/lib/throne-display/flasher");
             const images = await downloadFirmwareImages(manifest);
@@ -242,23 +234,23 @@ export function DisplaysTab({
             sessionRef.current = null;
             setConnected(false);
             await flashDisplayFirmware(port, manifest, images, setFlash);
-            setFlash({ percent: 100, label: "Waiting for the display to restart" });
+            setFlash({ percent: 100, label: t("flash.waitingRestart") });
             await sleep(1500);
             const session = await ensureSession(20000);
             if (!session) {
-                setError("Firmware installed, but the display did not reconnect. Unplug it, plug it back in and press Reconnect.");
+                setError(t("errors.noReconnect"));
                 return;
             }
             const version = await session.queryVersion(6000);
             setBoardVersion(version);
             if (!isFirmwareCurrent(version, manifest.version)) {
-                setError(`The display restarted but reports firmware ${version ?? "nothing"}. Try installing again.`);
+                setError(t("errors.wrongVersion", { version: version ?? t("errors.nothing") }));
                 return;
             }
-            toast.success(`Firmware ${manifest.version} installed`);
+            toast.success(t("firmwareInstalled", { version: manifest.version }));
             goToWifi();
         } catch (e) {
-            setError(`Install failed: ${e instanceof Error ? e.message : String(e)}. If it keeps failing, hold BOOT while plugging the display in and try again.`);
+            setError(t("errors.install", { error: e instanceof Error ? e.message : String(e) }));
         } finally {
             setBusy(null);
             setFlash(null);
@@ -278,7 +270,7 @@ export function DisplaysTab({
             attachSession(session);
             setBoardVersion(await session.queryVersion());
         } catch (e) {
-            setError(`Couldn't reconnect: ${e instanceof Error ? e.message : String(e)}`);
+            setError(t("errors.reconnect", { error: e instanceof Error ? e.message : String(e) }));
         }
     };
 
@@ -290,7 +282,7 @@ export function DisplaysTab({
         try {
             const session = await ensureSession();
             if (!session) {
-                setError("The display is not connected. Press Reconnect.");
+                setError(t("errors.notConnected"));
                 return;
             }
             for (let attempt = 0; attempt < 2; attempt++) {
@@ -311,13 +303,13 @@ export function DisplaysTab({
                 if (outcome === "busy") await sleep(3000);
                 else await sleep(800);
             }
-            setError("The display couldn't scan for Wi-Fi networks. Try again, or type the network name under Other.");
+            setError(t("errors.scanEmpty"));
         } catch (e) {
-            setError(`Scan failed: ${e instanceof Error ? e.message : String(e)}`);
+            setError(t("errors.scan", { error: e instanceof Error ? e.message : String(e) }));
         } finally {
             setScanning(false);
         }
-    }, [ensureSession]);
+    }, [ensureSession, t]);
 
     const goToWifi = () => {
         setStep("wifi");
@@ -327,7 +319,7 @@ export function DisplaysTab({
     const wifiValid = () => {
         const probe = encodeProvisionCommand({ ssid, password: effectivePassword, server: "https://x.example", token: "probe" });
         if (!probe.ok && (probe.field === "ssid" || probe.field === "password")) return probe.error;
-        if (selectedNetwork?.secure && !password) return "This network needs a password.";
+        if (selectedNetwork?.secure && !password) return t("errors.needsPassword");
         return null;
     };
 
@@ -348,7 +340,7 @@ export function DisplaysTab({
 
         try {
             const session = await ensureSession();
-            if (!session) throw new Error("The display is not connected. Press Reconnect, then try again.");
+            if (!session) throw new Error(t("errors.notConnectedRetry"));
 
             // A key from an earlier attempt is reused unless its options changed.
             if (mintedRef.current && (mintedRef.current.includePrivateChats !== privateChats || mintedRef.current.includeAgentThoughts !== agentThoughts)) revokeUnused();
@@ -356,10 +348,10 @@ export function DisplaysTab({
                 const res = await fetch("/api/settings/tokens", {
                     method: "POST",
                     headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({ name: displayName.trim() || "Desk display", scope: "read_only", ...(privateChats ? { includePrivateChats: true } : {}), ...(agentThoughts ? { includeAgentThoughts: true } : {}) }),
+                    body: JSON.stringify({ name: displayName.trim() || DEFAULT_DISPLAY_NAME, scope: "read_only", ...(privateChats ? { includePrivateChats: true } : {}), ...(agentThoughts ? { includeAgentThoughts: true } : {}) }),
                 });
                 const data = await res.json().catch(() => ({}));
-                if (!res.ok) throw new Error(data.error || "Couldn't create the display key.");
+                if (!res.ok) throw new Error(data.error || t("errors.createKey"));
                 mintedRef.current = { id: data.token.id, secret: data.secret, includePrivateChats: privateChats, includeAgentThoughts: agentThoughts };
                 onTokenCreated(data.token);
             }
@@ -373,7 +365,7 @@ export function DisplaysTab({
             await session.send(encoded.command);
             const ok = await ack;
             if (ok === false) return; // advanceProvision recorded rejected_config
-            if (ok === null && state.phase === "sending") throw new Error("The display did not answer. Check the cable and try again.");
+            if (ok === null && state.phase === "sending") throw new Error(t("errors.noAnswer"));
 
             // The board restarts; its USB port may vanish for a moment. Meanwhile the
             // server sees the key's first use, which proves the display is live even
@@ -401,7 +393,7 @@ export function DisplaysTab({
                     nextPoll = Date.now() + 3000;
                     const res = await fetch("/api/settings/tokens", { cache: "no-store" }).catch(() => null);
                     const data = res?.ok ? await res.json().catch(() => null) : null;
-                    const seen = (data?.tokens as DisplayToken[] | undefined)?.find((t) => t.id === minted.id);
+                    const seen = (data?.tokens as DisplayToken[] | undefined)?.find((token) => token.id === minted.id);
                     if (seen?.lastUsedAt) apply({ ...state, phase: "live", failure: null });
                 }
                 await sleep(400);
@@ -410,7 +402,7 @@ export function DisplaysTab({
             if (run !== runRef.current) return;
             if (state.phase === "live") {
                 mintedRef.current = null; // the board owns the key now
-                toast.success("Your display is live");
+                toast.success(t("live"));
             } else if (state.phase !== "failed") {
                 setTimedOut(true);
             }
@@ -433,7 +425,7 @@ export function DisplaysTab({
 
     // ------------------------------------------------------------ render
 
-    const stepIndex = STEPS.findIndex((s) => s.id === step);
+    const stepIndex = STEPS.indexOf(step);
     const failed = progress.phase === "failed";
     const live = progress.phase === "live";
 
@@ -441,10 +433,10 @@ export function DisplaysTab({
         <section className="grid gap-4 sm:gap-6 grid-cols-1 lg:grid-cols-[minmax(0,1.3fr)_minmax(300px,1fr)]">
             <div className="emperor-panel rounded-2xl sm:rounded-2xl p-4 sm:p-6">
                 <h2 className="flex items-center text-lg font-semibold text-foreground">
-                    <IconDeviceDesktop className="mr-2 h-5 w-5 text-primary" /> Set up a display
+                    <IconDeviceDesktop className="mr-2 h-5 w-5 text-primary" /> {t("title")}
                 </h2>
                 <p className="mt-2 text-sm leading-6 text-muted-foreground">
-                    The Throne Display is a small round desk screen (ESP32-C3, 240x240) that shows your agents working around the Emperor&apos;s throne, their health and the latest messages, live. Plug it into this computer with a USB cable and this page installs the firmware, connects it to Wi-Fi and gives it its own read-only key. You never copy a token.
+                    {t("intro")}
                 </p>
 
                 {serverProblem && (
@@ -457,21 +449,21 @@ export function DisplaysTab({
                 {supported === false && (
                     <div className="mt-4 flex items-start gap-3 rounded-xl border border-amber-500/25 bg-amber-500/[0.07] p-3 text-sm text-amber-800 dark:text-amber-100/85">
                         <IconAlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
-                        <span>Requires Chrome or Edge on a computer (Web Serial). Phones, Safari and Firefox can&apos;t talk to USB devices; you can still set the display up from its own Wi-Fi setup page (hold the screen for 5 seconds).</span>
+                        <span>{t("unsupported")}</span>
                     </div>
                 )}
 
-                <ol className="mt-5 flex flex-wrap gap-1.5" aria-label="Setup steps">
+                <ol className="mt-5 flex flex-wrap gap-1.5" aria-label={t("setupSteps")}>
                     {STEPS.map((s, i) => (
                         <li
-                            key={s.id}
-                            aria-current={s.id === step ? "step" : undefined}
+                            key={s}
+                            aria-current={s === step ? "step" : undefined}
                             className={cn(
                                 "rounded-full border px-3 py-1 text-xs font-medium",
-                                s.id === step ? "border-cyan-400/40 bg-cyan-400/10 text-primary" : i < stepIndex ? "border-emerald-500/25 text-emerald-700 dark:text-emerald-200/80" : "border-border text-muted-foreground",
+                                s === step ? "border-cyan-400/40 bg-cyan-400/10 text-primary" : i < stepIndex ? "border-emerald-500/25 text-emerald-700 dark:text-emerald-200/80" : "border-border text-muted-foreground",
                             )}
                         >
-                            {i + 1}. {s.label}
+                            {i + 1}. {t(`steps.${s}`)}
                         </li>
                     ))}
                 </ol>
@@ -479,9 +471,9 @@ export function DisplaysTab({
                 <div className="mt-5 space-y-4">
                     {step === "connect" && (
                         <div className="space-y-3">
-                            <p className="text-sm text-muted-foreground">Plug the display into this computer, then pick it in the browser&apos;s list (it shows up as a USB JTAG/serial device).</p>
+                            <p className="text-sm text-muted-foreground">{t("connectHint")}</p>
                             <Button onClick={connect} disabled={!supported || !!serverProblem || !!busy}>
-                                {busy ? <IconLoader2 className="h-4 w-4 animate-spin" /> : <IconUsb className="h-4 w-4" />} {busy ?? "Connect display"}
+                                {busy ? <IconLoader2 className="h-4 w-4 animate-spin" /> : <IconUsb className="h-4 w-4" />} {busy ?? t("connect")}
                             </Button>
                         </div>
                     )}
@@ -489,10 +481,10 @@ export function DisplaysTab({
                     {step === "firmware" && (
                         <div className="space-y-3">
                             <div className="rounded-xl border border-border bg-muted/30 p-4 text-sm">
-                                <div className="flex items-center gap-2 text-foreground"><IconCpu className="h-4 w-4 text-primary" /> Display firmware</div>
+                                <div className="flex items-center gap-2 text-foreground"><IconCpu className="h-4 w-4 text-primary" /> {t("firmwareTitle")}</div>
                                 <p className="mt-2 text-muted-foreground">
-                                    On the display: <span className="font-mono text-foreground">{boardVersion === "unknown" ? "an older version" : boardVersion ?? "not detected"}</span>
-                                    {" · "}Latest: <span className="font-mono text-foreground">{manifest?.version ?? "unavailable"}</span>
+                                    {t("onDisplay")} <span className="font-mono text-foreground">{boardVersion === "unknown" ? t("olderVersion") : boardVersion ?? t("notDetected")}</span>
+                                    {" · "}{t("latest")} <span className="font-mono text-foreground">{manifest?.version ?? t("unavailable")}</span>
                                 </p>
                             </div>
                             {flash && (
@@ -506,56 +498,56 @@ export function DisplaysTab({
                             <div className="flex flex-wrap gap-2">
                                 {manifest && isFirmwareCurrent(boardVersion, manifest.version) ? (
                                     <>
-                                        <Button onClick={goToWifi} disabled={!!busy}>Skip — already installed</Button>
-                                        <Button variant="outline" onClick={installFirmware} disabled={!!busy || !connected}>Reinstall</Button>
+                                        <Button onClick={goToWifi} disabled={!!busy}>{t("skipInstalled")}</Button>
+                                        <Button variant="outline" onClick={installFirmware} disabled={!!busy || !connected}>{t("reinstall")}</Button>
                                     </>
                                 ) : (
                                     <Button onClick={installFirmware} disabled={!!busy || !manifest || !portRef.current}>
-                                        {busy ? <IconLoader2 className="h-4 w-4 animate-spin" /> : <IconCpu className="h-4 w-4" />} {busy ?? `Install firmware ${manifest?.version ?? ""}`}
+                                        {busy ? <IconLoader2 className="h-4 w-4 animate-spin" /> : <IconCpu className="h-4 w-4" />} {busy ?? t("installFirmware", { version: manifest?.version ?? "" })}
                                     </Button>
                                 )}
-                                {!connected && !busy && <Button variant="outline" onClick={reconnect}><IconUsb className="h-4 w-4" /> Reconnect</Button>}
+                                {!connected && !busy && <Button variant="outline" onClick={reconnect}><IconUsb className="h-4 w-4" /> {t("reconnect")}</Button>}
                             </div>
-                            <p className="text-xs leading-5 text-muted-foreground">Installing keeps the display&apos;s saved settings. It takes about a minute; don&apos;t unplug the cable.</p>
+                            <p className="text-xs leading-5 text-muted-foreground">{t("installHint")}</p>
                         </div>
                     )}
 
                     {step === "wifi" && (
                         <div className="space-y-3">
                             <div className="flex items-center justify-between gap-2">
-                                <span className="text-sm font-medium text-foreground">Wi-Fi network</span>
+                                <span className="text-sm font-medium text-foreground">{t("wifiNetwork")}</span>
                                 <Button size="sm" variant="ghost" onClick={() => void scan()} disabled={scanning}>
-                                    <IconRefresh className={cn("h-4 w-4", scanning && "animate-spin")} /> {scanning ? "Scanning" : "Scan again"}
+                                    <IconRefresh className={cn("h-4 w-4", scanning && "animate-spin")} /> {scanning ? t("scanning") : t("scanAgain")}
                                 </Button>
                             </div>
-                            <div className="max-h-72 divide-y divide-border overflow-y-auto rounded-xl border border-border" role="radiogroup" aria-label="Wi-Fi networks">
+                            <div className="max-h-72 divide-y divide-border overflow-y-auto rounded-xl border border-border" role="radiogroup" aria-label={t("wifiNetworks")}>
                                 {networks.length === 0 && (
-                                    <div className="p-4 text-sm text-muted-foreground">{scanning ? "The display is looking for networks..." : "No networks found."}</div>
+                                    <div className="p-4 text-sm text-muted-foreground">{scanning ? t("looking") : t("noNetworks")}</div>
                                 )}
                                 {networks.map((n) => (
                                     <label key={n.ssid} className={cn("flex cursor-pointer items-center gap-3 px-3 py-2.5 text-sm", ssidChoice === n.ssid ? "bg-cyan-400/[0.07]" : "hover:bg-black/[0.04] dark:hover:bg-white/[0.03]")}>
                                         <input type="radio" name="display-ssid" className="accent-cyan-400" checked={ssidChoice === n.ssid} onChange={() => setSsidChoice(n.ssid)} />
                                         <span className="min-w-0 flex-1 truncate text-foreground">{n.ssid}</span>
-                                        {n.secure && <IconLock className="h-3.5 w-3.5 text-muted-foreground" aria-label="Password protected" />}
+                                        {n.secure && <IconLock className="h-3.5 w-3.5 text-muted-foreground" aria-label={t("passwordProtected")} />}
                                         <SignalBars rssi={n.rssi} />
                                     </label>
                                 ))}
                                 <label className={cn("flex cursor-pointer items-center gap-3 px-3 py-2.5 text-sm", ssidChoice === OTHER ? "bg-cyan-400/[0.07]" : "hover:bg-black/[0.04] dark:hover:bg-white/[0.03]")}>
                                     <input type="radio" name="display-ssid" className="accent-cyan-400" checked={ssidChoice === OTHER} onChange={() => setSsidChoice(OTHER)} />
-                                    <span className="text-foreground">Other network (hidden, or not listed)</span>
+                                    <span className="text-foreground">{t("otherNetwork")}</span>
                                 </label>
                             </div>
                             {ssidChoice === OTHER && (
-                                <Input placeholder="Network name" value={otherSsid} onChange={(e) => setOtherSsid(e.target.value)} aria-label="Network name" autoComplete="off" />
+                                <Input placeholder={t("networkName")} value={otherSsid} onChange={(e) => setOtherSsid(e.target.value)} aria-label={t("networkName")} autoComplete="off" />
                             )}
                             <p className="text-xs leading-5 text-muted-foreground">
                                 <IconWifi className="mr-1 inline h-3.5 w-3.5" />
-                                The list comes from the display itself, so it only shows 2.4 GHz networks. The display can&apos;t use 5 GHz Wi-Fi; if your router has separate 2.4 and 5 GHz names, pick the 2.4 GHz one.
+                                {t("band24Hint")}
                             </p>
                             {(ssidChoice === OTHER || selectedNetwork?.secure !== false) && (
                                 <label className="block space-y-2">
-                                    <span className="text-sm font-medium text-foreground">Wi-Fi password</span>
-                                    <Input type="password" value={password} onChange={(e) => setPassword(e.target.value)} autoComplete="off" placeholder={ssidChoice === OTHER ? "Leave empty for an open network" : ""} />
+                                    <span className="text-sm font-medium text-foreground">{t("wifiPassword")}</span>
+                                    <Input type="password" value={password} onChange={(e) => setPassword(e.target.value)} autoComplete="off" placeholder={ssidChoice === OTHER ? t("openNetworkHint") : ""} />
                                 </label>
                             )}
                             <div className="flex flex-wrap items-center gap-2">
@@ -570,9 +562,9 @@ export function DisplaysTab({
                                     }}
                                     disabled={!ssid || scanning}
                                 >
-                                    Continue
+                                    {t("continue")}
                                 </Button>
-                                {!connected && <Button variant="outline" onClick={reconnect}><IconUsb className="h-4 w-4" /> Reconnect</Button>}
+                                {!connected && <Button variant="outline" onClick={reconnect}><IconUsb className="h-4 w-4" /> {t("reconnect")}</Button>}
                             </div>
                         </div>
                     )}
@@ -580,27 +572,27 @@ export function DisplaysTab({
                     {step === "options" && (
                         <div className="space-y-4">
                             <label className="block space-y-2">
-                                <span className="text-sm font-medium text-foreground">Display name</span>
+                                <span className="text-sm font-medium text-foreground">{t("displayName")}</span>
                                 <Input value={displayName} onChange={(e) => setDisplayName(e.target.value)} maxLength={80} />
-                                <span className="block text-xs text-muted-foreground">Shown in the list of displays below, so you can revoke the right one later.</span>
+                                <span className="block text-xs text-muted-foreground">{t("displayNameHint")}</span>
                             </label>
                             <label className="flex items-start gap-3 rounded-xl border border-border bg-black/[0.03] dark:bg-white/[0.02] p-3">
                                 <input type="checkbox" className="mt-0.5 h-4 w-4 accent-cyan-400" checked={privateChats} onChange={(e) => setPrivateChats(e.target.checked)} />
                                 <span className="space-y-1">
-                                    <span className="block text-sm font-medium text-foreground">Include my private chats</span>
-                                    <span className="block text-xs leading-5 text-muted-foreground">{PRIVATE_CHATS_HELP}</span>
+                                    <span className="block text-sm font-medium text-foreground">{t("privateChats")}</span>
+                                    <span className="block text-xs leading-5 text-muted-foreground">{t("privateChatsHelp")}</span>
                                 </span>
                             </label>
                             <label className="flex items-start gap-3 rounded-xl border border-border bg-black/[0.03] dark:bg-white/[0.02] p-3">
                                 <input type="checkbox" className="mt-0.5 h-4 w-4 accent-cyan-400" checked={agentThoughts} onChange={(e) => setAgentThoughts(e.target.checked)} />
                                 <span className="space-y-1">
-                                    <span className="block text-sm font-medium text-foreground">Show agent thoughts</span>
-                                    <span className="block text-xs leading-5 text-muted-foreground">{AGENT_THOUGHTS_HELP}</span>
+                                    <span className="block text-sm font-medium text-foreground">{t("agentThoughts")}</span>
+                                    <span className="block text-xs leading-5 text-muted-foreground">{t("agentThoughtsHelp")}</span>
                                 </span>
                             </label>
                             <div className="flex flex-wrap gap-2">
-                                <Button variant="outline" onClick={() => setStep("wifi")}>Back</Button>
-                                <Button onClick={() => void provision()} disabled={!displayName.trim() || !!serverProblem}>Finish setup</Button>
+                                <Button variant="outline" onClick={() => setStep("wifi")}>{tc("back")}</Button>
+                                <Button onClick={() => void provision()} disabled={!displayName.trim() || !!serverProblem}>{t("finishSetup")}</Button>
                             </div>
                         </div>
                     )}
@@ -609,34 +601,34 @@ export function DisplaysTab({
                         <div className="space-y-4">
                             {live ? (
                                 <div className="rounded-2xl border border-emerald-500/25 bg-emerald-500/10 p-4">
-                                    <div className="flex items-center gap-2 font-medium text-emerald-800 dark:text-emerald-100"><IconCircleCheck className="h-5 w-5" /> Your display is live</div>
-                                    <p className="mt-1 text-sm text-emerald-700 dark:text-emerald-100/75">It is connected to &quot;{ssid}&quot; and reading {typeof window !== "undefined" ? window.location.host : "this server"}. You can unplug it from the computer and power it from any USB charger.</p>
+                                    <div className="flex items-center gap-2 font-medium text-emerald-800 dark:text-emerald-100"><IconCircleCheck className="h-5 w-5" /> {t("live")}</div>
+                                    <p className="mt-1 text-sm text-emerald-700 dark:text-emerald-100/75">{t("liveBody", { ssid, host: typeof window !== "undefined" ? window.location.host : t("thisServer") })}</p>
                                 </div>
                             ) : failed || error || timedOut ? (
                                 <div className="rounded-2xl border border-red-500/25 bg-red-500/[0.07] p-4">
-                                    <div className="flex items-center gap-2 font-medium text-red-700 dark:text-red-100"><IconAlertTriangle className="h-5 w-5" /> Setup didn&apos;t finish</div>
+                                    <div className="flex items-center gap-2 font-medium text-red-700 dark:text-red-100"><IconAlertTriangle className="h-5 w-5" /> {t("didNotFinish")}</div>
                                     <p className="mt-1 text-sm text-red-700 dark:text-red-100/80">
                                         {error ?? (timedOut
                                             ? usbLost
-                                                ? "The display restarted and the USB connection did not come back, and it hasn't reached the server yet. Look at the screen: a green dot near the top right means it is live; \"Joining Wi-Fi\" or a red dot means it could not connect."
-                                                : `The display hasn't reached the server yet. Check the Wi-Fi password and that ${typeof window !== "undefined" ? window.location.host : "this server"} is reachable from that network.`
-                                            : failureText(progress.failure, ssid, progress.detail))}
+                                                ? t("timedOutUsbLost")
+                                                : t("timedOut", { host: typeof window !== "undefined" ? window.location.host : t("thisServer") })
+                                            : failureText(t, progress.failure, ssid, progress.detail))}
                                     </p>
                                 </div>
                             ) : (
                                 <div className="flex items-center gap-3 rounded-xl border border-border bg-muted/30 p-4 text-sm text-foreground">
-                                    <IconLoader2 className="h-4 w-4 animate-spin text-primary" /> {phaseText(progress, usbLost)}...
+                                    <IconLoader2 className="h-4 w-4 animate-spin text-primary" /> {phaseText(t, progress, usbLost)}...
                                 </div>
                             )}
                             {!live && (failed || error || timedOut) && (
                                 <div className="flex flex-wrap gap-2">
-                                    {progress.failure !== "rejected_config" && <Button onClick={() => void provision()}>Try again</Button>}
-                                    <Button variant="outline" onClick={startOver}>Change Wi-Fi settings</Button>
-                                    {!connected && <Button variant="outline" onClick={reconnect}><IconUsb className="h-4 w-4" /> Reconnect</Button>}
+                                    {progress.failure !== "rejected_config" && <Button onClick={() => void provision()}>{t("tryAgain")}</Button>}
+                                    <Button variant="outline" onClick={startOver}>{t("changeWifi")}</Button>
+                                    {!connected && <Button variant="outline" onClick={reconnect}><IconUsb className="h-4 w-4" /> {t("reconnect")}</Button>}
                                 </div>
                             )}
                             {live && (
-                                <Button variant="outline" onClick={() => { setStep("connect"); setNetworks([]); setPassword(""); setProgress(initialProvisionProgress); }}>Set up another display</Button>
+                                <Button variant="outline" onClick={() => { setStep("connect"); setNetworks([]); setPassword(""); setProgress(initialProvisionProgress); }}>{t("setUpAnother")}</Button>
                             )}
                         </div>
                     )}
@@ -651,24 +643,24 @@ export function DisplaysTab({
 
             <div className="overflow-hidden rounded-2xl sm:rounded-2xl border border-border bg-background/70 self-start">
                 <div className="border-b border-border p-4 sm:p-5">
-                    <h2 className="text-lg font-semibold text-foreground">Your displays</h2>
-                    <p className="mt-1 text-sm text-muted-foreground">Each display has its own read-only key. Revoke it when a display leaves your desk.</p>
+                    <h2 className="text-lg font-semibold text-foreground">{t("yourDisplays")}</h2>
+                    <p className="mt-1 text-sm text-muted-foreground">{t("yourDisplaysIntro")}</p>
                 </div>
                 <div className="divide-y divide-border">
                     {displayTokens.length === 0 ? (
-                        <div className="p-8 text-center text-sm text-muted-foreground">No displays yet.</div>
+                        <div className="p-8 text-center text-sm text-muted-foreground">{t("noDisplays")}</div>
                     ) : (
                         displayTokens.map((token) => (
                             <div key={token.id} className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between">
                                 <div className="min-w-0">
                                     <h3 className="font-medium text-foreground">{token.name}</h3>
                                     <p className="mt-1 text-xs text-muted-foreground">
-                                        Created {new Date(token.createdAt).toLocaleDateString()} · Last used {token.lastUsedAt ? new Date(token.lastUsedAt).toLocaleString() : "never"}
+                                        {t("tokenDates", { created: format.dateTime(new Date(token.createdAt), { dateStyle: "medium" }), used: token.lastUsedAt ? format.dateTime(new Date(token.lastUsedAt), { dateStyle: "medium", timeStyle: "short" }) : t("never") })}
                                     </p>
-                                    <p className="mt-1 text-xs text-muted-foreground">Private chats: {token.includePrivateChats ? "on" : "off"} · Agent thoughts: {token.includeAgentThoughts ? "on" : "off"}</p>
+                                    <p className="mt-1 text-xs text-muted-foreground">{t("tokenOptions", { privateChats: token.includePrivateChats ? "on" : "off", thoughts: token.includeAgentThoughts ? "on" : "off" })}</p>
                                 </div>
                                 <Button variant="destructive" size="sm" onClick={() => onRevoke(token.id)} disabled={revokingTokenId === token.id}>
-                                    <IconTrash className="h-4 w-4" /> {revokingTokenId === token.id ? "Revoking..." : confirmingRevokeId === token.id ? "Click again to confirm" : "Revoke"}
+                                    <IconTrash className="h-4 w-4" /> {revokingTokenId === token.id ? t("revoking") : confirmingRevokeId === token.id ? t("confirmRevoke") : t("revoke")}
                                 </Button>
                             </div>
                         ))
@@ -680,9 +672,10 @@ export function DisplaysTab({
 }
 
 function SignalBars({ rssi }: { rssi: number }) {
+    const t = useTranslations("settings.displays");
     const bars = signalBars(rssi);
     return (
-        <span className="flex items-end gap-0.5" aria-label={`Signal ${bars} of 4`} title={`${rssi} dBm`}>
+        <span className="flex items-end gap-0.5" aria-label={t("signal", { bars })} title={t("dbm", { rssi })}>
             {[1, 2, 3, 4].map((b) => (
                 <span key={b} className={cn("w-1 rounded-sm", b <= bars ? "bg-cyan-300" : "bg-black/15 dark:bg-white/15")} style={{ height: `${b * 3 + 2}px` }} />
             ))}

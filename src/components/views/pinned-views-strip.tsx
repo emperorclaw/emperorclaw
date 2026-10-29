@@ -2,12 +2,13 @@
 
 import Link from "next/link";
 import { IconLayoutDashboard } from "@tabler/icons-react";
+import { useTranslations } from "next-intl";
 import { formatChartValue } from "@/lib/rich-blocks";
 import type { MetricPanelData, ProgressPanelData } from "@/lib/view-spec";
 import type { PinnedViewCard } from "@/lib/views";
 import { viewStaleness } from "@/lib/view-access";
 import { StaleNote } from "./view-meta";
-import { formatAgo, useNowMs } from "./view-panels";
+import { useFormatAgo, useNowMs } from "./view-panels";
 
 function headline(item: PinnedViewCard["highlights"][number]): string {
     if (item.type === "progress") {
@@ -20,13 +21,15 @@ function headline(item: PinnedViewCard["highlights"][number]): string {
 
 /** Home: the views this person pinned, compact (title plus up to three headline numbers). */
 export function PinnedViewsStrip({ views }: { views: PinnedViewCard[] }) {
+    const t = useTranslations("views");
+    const formatAgo = useFormatAgo();
     const now = useNowMs();
     if (views.length === 0) return null;
     return (
         <section aria-labelledby="pinned-views-heading" className="space-y-2">
             <div className="flex items-baseline justify-between gap-3">
-                <h2 id="pinned-views-heading" className="text-sm font-semibold text-foreground">Pinned views</h2>
-                <Link href="/views" className="text-xs text-muted-foreground hover:text-foreground">All views</Link>
+                <h2 id="pinned-views-heading" className="text-sm font-semibold text-foreground">{t("pinnedViews")}</h2>
+                <Link href="/views" className="text-xs text-muted-foreground hover:text-foreground">{t("allViews")}</Link>
             </div>
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
                 {views.map((view) => (
@@ -45,13 +48,13 @@ export function PinnedViewsStrip({ views }: { views: PinnedViewCard[] }) {
                                 ))}
                             </dl>
                         ) : (
-                            <p className="mt-2 text-xs text-muted-foreground">{view.panelCount} panel{view.panelCount === 1 ? "" : "s"}</p>
+                            <p className="mt-2 text-xs text-muted-foreground">{t("row.panels", { count: view.panelCount })}</p>
                         )}
                         {viewStaleness({ lastAt: view.dataUpdatedAt, since: view.createdAt, refreshEveryMinutes: view.refreshEveryMinutes }, now).overdue ? (
                             <StaleNote lastAt={view.dataUpdatedAt} since={view.createdAt} refreshEveryMinutes={view.refreshEveryMinutes} now={now} className="mt-2 max-w-full text-[11px]" />
                         ) : (
                             <p className="mt-2 truncate text-[11px] text-muted-foreground" suppressHydrationWarning>
-                                {view.dataUpdatedAt ? `Updated ${formatAgo(view.dataUpdatedAt, now)}` : "No values yet"}
+                                {view.dataUpdatedAt ? t("row.updated", { ago: formatAgo(view.dataUpdatedAt, now) }) : t("noValuesYet")}
                             </p>
                         )}
                     </Link>

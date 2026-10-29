@@ -1,8 +1,9 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { IconArrowDownRight, IconArrowRight, IconArrowUpRight, IconMessageQuestion } from "@tabler/icons-react";
+import { useTranslations } from "next-intl";
 import { CartesianChart, Legend, seriesColor, useWidth } from "@/components/rich/chart-block";
 import { Sparkline } from "@/components/rich/stats-block";
 import { MarkdownRenderer } from "@/components/markdown-renderer";
@@ -34,14 +35,17 @@ const ROW_SPAN: Record<number, string> = {
 /** One grid row on md+ (panel heights are multiples of it). */
 const ROW_PX = 92;
 
-/** "just now", "5 min ago", "2 h ago", "3 d ago". */
-export function formatAgo(iso: string | null, nowMs: number): string {
-    if (!iso) return "never";
-    const minutes = Math.floor((nowMs - Date.parse(iso)) / 60_000);
-    if (!Number.isFinite(minutes) || minutes < 1) return "just now";
-    if (minutes < 60) return `${minutes} min ago`;
-    if (minutes < 60 * 24) return `${Math.floor(minutes / 60)} h ago`;
-    return `${Math.floor(minutes / 1440)} d ago`;
+/** "just now", "5 min ago", "2 h ago", "3 d ago" (or "never"), in the person's language. */
+export function useFormatAgo() {
+    const t = useTranslations("views.ago");
+    return useCallback((iso: string | null, nowMs: number): string => {
+        if (!iso) return t("never");
+        const minutes = Math.floor((nowMs - Date.parse(iso)) / 60_000);
+        if (!Number.isFinite(minutes) || minutes < 1) return t("justNow");
+        if (minutes < 60) return t("minutes", { count: minutes });
+        if (minutes < 60 * 24) return t("hours", { count: Math.floor(minutes / 60) });
+        return t("days", { count: Math.floor(minutes / 1440) });
+    }, [t]);
 }
 
 /** Re-renders every minute so "Updated … ago" stays true while the page is open. */
@@ -64,11 +68,12 @@ export function ViewGrid({ panels, emptyHint, refreshEveryMinutes = null, since,
     /** "Ask about this panel"; omitted when the person cannot chat with the maintaining agent. */
     onAsk?: (panel: ViewPanelView) => void;
 }) {
+    const t = useTranslations("views.panel");
     const now = useNowMs();
     if (panels.length === 0) {
         return (
             <div className="rounded-2xl border border-dashed border-border bg-card px-5 py-10 text-center text-sm text-muted-foreground">
-                {emptyHint ?? "This view has no panels yet."}
+                {emptyHint ?? t("noPanels")}
             </div>
         );
     }
@@ -82,7 +87,9 @@ export function ViewGrid({ panels, emptyHint, refreshEveryMinutes = null, since,
 function PanelCard({ panel, nowMs, refreshEveryMinutes, since, onAsk }: {
     panel: ViewPanelView; nowMs: number; refreshEveryMinutes: number | null; since?: string; onAsk?: (panel: ViewPanelView) => void;
 }) {
-    const by = panel.updatedBy?.name ?? (panel.updatedBy?.type === "agent" ? "an agent" : panel.updatedBy ? "someone" : null);
+    const t = useTranslations("views.panel");
+    const formatAgo = useFormatAgo();
+    const by = panel.updatedBy?.name ?? (panel.updatedBy?.type === "agent" ? t("anAgent") : panel.updatedBy ? t("someone") : null);
     const stale = viewStaleness({ lastAt: panel.updatedAt, since: since ?? panel.updatedAt ?? "", refreshEveryMinutes }, nowMs);
     const scrolls = panel.type === "table" || panel.type === "list" || panel.type === "markdown";
     return (
@@ -96,7 +103,7 @@ function PanelCard({ panel, nowMs, refreshEveryMinutes, since, onAsk }: {
                     {panel.subtitle && <p className="truncate text-xs text-muted-foreground">{panel.subtitle}</p>}
                 </div>
                 {onAsk && (
-                    <button type="button" onClick={() => onAsk(panel)} title="Ask the agent about this panel" aria-label={`Ask about the panel ${panel.title}`}
+                    <button type="button" onClick={() => onAsk(panel)} title={t("askTitle")} aria-label={t("askLabel", { title: panel.title })}
                         className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
                         <IconMessageQuestion className="h-4 w-4" aria-hidden />
                     </button>
@@ -104,12 +111,12 @@ function PanelCard({ panel, nowMs, refreshEveryMinutes, since, onAsk }: {
             </header>
             <div className={cn("min-h-0 min-w-0 flex-1", scrolls && "max-h-[420px] overflow-auto md:max-h-none")}>
                 {panel.data ? <PanelBody type={panel.type} data={panel.data} height={panel.h * ROW_PX} /> : (
-                    <p className="text-sm text-muted-foreground">No data yet.</p>
+                    <p className="text-sm text-muted-foreground">{t("noData")}</p>
                 )}
             </div>
             <footer className={cn("mt-2 truncate text-[11px]", stale.overdue ? "font-medium text-amber-400" : "text-muted-foreground")} title={panel.updatedAt ?? undefined} suppressHydrationWarning>
-                {stale.overdue && "Overdue: "}
-                {panel.updatedAt ? `Updated ${formatAgo(panel.updatedAt, nowMs)}${by ? ` by ${by}` : ""}` : "Waiting for its first update"}
+                {stale.overdue && t("overduePrefix")}
+                {panel.updatedAt ? (by ? t("updatedBy", { ago: formatAgo(panel.updatedAt, nowMs), by }) : t("updated", { ago: formatAgo(panel.updatedAt, nowMs) })) : t("waitingFirstUpdate")}
             </footer>
         </section>
     );
@@ -203,6 +210,11 @@ function useBoxHeight<T extends HTMLElement>(fallback: number): [React.RefObject
     return [ref, height];
 }
 
+function NoPoints() {
+    const t = useTranslations("views.panel");
+    return <p className="text-sm text-muted-foreground">{t("noPoints")}</p>;
+}
+
 function ChartBody({ type, data, height }: { type: "line" | "bar"; data: ChartPanelData; height: number }) {
     const [ref, width] = useWidth<HTMLDivElement>(480);
     const [boxRef, box] = useBoxHeight<HTMLDivElement>(height - 88);
@@ -210,7 +222,7 @@ function ChartBody({ type, data, height }: { type: "line" | "bar"; data: ChartPa
     // Room for the axis caption and the legend under the plot.
     const plotHeight = Math.max(150, Math.min(640, box - (data.yLabel || data.xLabel ? 20 : 0) - (multi ? 30 : 0)));
     const spec = useMemo(() => ({ ...toChartSpec(type, data, height), height: plotHeight }), [type, data, height, plotHeight]);
-    if (spec.labels.length === 0) return <p className="text-sm text-muted-foreground">No points yet.</p>;
+    if (spec.labels.length === 0) return <NoPoints />;
     return (
         <div ref={boxRef} className="h-full min-h-0 w-full">
         <div ref={ref} className="w-full min-w-0">
@@ -227,9 +239,9 @@ function ChartBody({ type, data, height }: { type: "line" | "bar"; data: ChartPa
     );
 }
 
-function formatCell(value: unknown, column: TablePanelData["columns"][number]): string {
+function formatCell(value: unknown, column: TablePanelData["columns"][number], yesNo: { yes: string; no: string }): string {
     if (value === null || value === undefined || value === "") return "—";
-    if (typeof value === "boolean") return value ? "Yes" : "No";
+    if (typeof value === "boolean") return value ? yesNo.yes : yesNo.no;
     if (typeof value === "number") {
         switch (column.format) {
             case "integer": return Math.round(value).toLocaleString("en-US");
@@ -254,9 +266,11 @@ function formatCell(value: unknown, column: TablePanelData["columns"][number]): 
 const ALIGN = { left: "text-left", right: "text-right", center: "text-center" } as const;
 
 function TableBody({ data }: { data: TablePanelData }) {
+    const t = useTranslations("views.panel");
+    const yesNo = { yes: t("yes"), no: t("no") };
     const alignOf = (column: TablePanelData["columns"][number]): keyof typeof ALIGN => column.align
         ?? (column.format && ["number", "integer", "percent", "currency"].includes(column.format) ? "right" : "left");
-    if (data.rows.length === 0) return <p className="text-sm text-muted-foreground">No rows.</p>;
+    if (data.rows.length === 0) return <p className="text-sm text-muted-foreground">{t("noRows")}</p>;
     return (
         <table className="w-full min-w-max border-collapse text-sm">
             <thead className="sticky top-0 bg-card">
@@ -271,7 +285,7 @@ function TableBody({ data }: { data: TablePanelData }) {
                     <tr key={i} className="border-b border-border/60 last:border-0">
                         {data.columns.map((column) => (
                             <td key={column.key} className={cn("px-2 py-1.5 text-foreground", ALIGN[alignOf(column)], alignOf(column) === "right" && "tabular-nums")}>
-                                {formatCell(row[column.key], column)}
+                                {formatCell(row[column.key], column, yesNo)}
                             </td>
                         ))}
                     </tr>
@@ -289,7 +303,8 @@ function ItemLink({ href, children }: { href: string | undefined; children: Reac
 }
 
 function ListBody({ data }: { data: ListPanelData }) {
-    if (data.items.length === 0) return <p className="text-sm text-muted-foreground">Nothing here.</p>;
+    const t = useTranslations("views.panel");
+    if (data.items.length === 0) return <p className="text-sm text-muted-foreground">{t("nothingHere")}</p>;
     return (
         <ul className="divide-y divide-border/60">
             {data.items.map((item, i) => (
@@ -310,6 +325,7 @@ function ListBody({ data }: { data: ListPanelData }) {
 }
 
 function ProgressBody({ data }: { data: ProgressPanelData }) {
+    const t = useTranslations("views.panel");
     const share = Math.max(0, Math.min(1, data.value / data.max));
     const unit = data.unit ?? "";
     return (
@@ -317,10 +333,10 @@ function ProgressBody({ data }: { data: ProgressPanelData }) {
             <div className="flex items-baseline justify-between gap-3">
                 <span className="text-2xl font-semibold text-foreground tabular-nums">{Math.round(share * 100)}%</span>
                 <span className="truncate text-xs text-muted-foreground tabular-nums">
-                    {formatChartValue(data.value, "", unit, true)} of {formatChartValue(data.max, "", unit, true)}
+                    {t("progressOf", { value: formatChartValue(data.value, "", unit, true), max: formatChartValue(data.max, "", unit, true) })}
                 </span>
             </div>
-            <div className="h-2 w-full overflow-hidden rounded-full bg-muted" role="progressbar" aria-valuenow={Math.round(share * 100)} aria-valuemin={0} aria-valuemax={100} aria-label={data.label ?? "Progress"}>
+            <div className="h-2 w-full overflow-hidden rounded-full bg-muted" role="progressbar" aria-valuenow={Math.round(share * 100)} aria-valuemin={0} aria-valuemax={100} aria-label={data.label ?? t("progress")}>
                 <div className="h-full rounded-full bg-primary" style={{ width: `${share * 100}%` }} />
             </div>
             {data.label && <p className="truncate text-xs text-muted-foreground">{data.label}</p>}

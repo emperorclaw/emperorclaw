@@ -2,11 +2,12 @@
 
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
+import { useTranslations } from "next-intl";
 import { IconLock } from "@tabler/icons-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { PersonChip } from "@/components/views/view-meta";
-import { agentAccessSummary, type AgentAccessMode } from "@/lib/agent-access";
+import { normalizeAgentAccess, type AgentAccessMode } from "@/lib/agent-access";
 import { cn } from "@/lib/utils";
 
 type Named = { id: string; name: string };
@@ -16,11 +17,19 @@ export type AgentAccessValue = { access: AgentAccessMode; userIds: string[]; own
 
 export const EVERYONE_ACCESS: AgentAccessValue = { access: "everyone", userIds: [], ownerUserId: null };
 
-const OPTIONS: { value: AgentAccessMode; label: string }[] = [
-    { value: "everyone", label: "Everyone" },
-    { value: "people", label: "Specific people" },
-    { value: "owner", label: "Only one person" },
-];
+const OPTIONS: AgentAccessMode[] = ["everyone", "people", "owner"];
+
+/** "Everyone", "Only Ana", "Ana + 2 people" (lib/agent-access.ts agentAccessSummary, translated). */
+export function useAgentAccessSummary() {
+    const t = useTranslations("access.agent");
+    return (agent: { access: string; ownerName: string | null; peopleCount: number }): string => {
+        const owner = agent.ownerName ?? t("itsOwner");
+        const mode = normalizeAgentAccess(agent.access);
+        if (mode === "everyone") return t("summaryEveryone");
+        if (mode === "owner" || agent.peopleCount === 0) return t("summaryOnly", { owner });
+        return t("summaryPeople", { owner, count: agent.peopleCount });
+    };
+}
 
 async function errorOf(res: Response, fallback: string): Promise<string> {
     const data = await res.json().catch(() => ({})) as { error?: string };
@@ -35,11 +44,13 @@ export function hireAccessBody(value: AgentAccessValue): Record<string, unknown>
 
 /** The lock badge on a limited agent: "Only Ana", "Ana + 2 people". */
 export function AgentLockBadge({ access, ownerName, peopleCount = 0, className }: { access: string; ownerName: string | null; peopleCount?: number; className?: string }) {
+    const t = useTranslations("access.agent");
+    const summarize = useAgentAccessSummary();
     if (access === "everyone") return null;
-    const text = agentAccessSummary({ access, ownerName, peopleCount });
+    const text = summarize({ access, ownerName, peopleCount });
     return (
-        <span title={`Who can use it: ${text}`} className={cn("inline-flex shrink-0 items-center gap-1 rounded-full border border-border bg-background px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground", className)}>
-            <IconLock className="h-3 w-3" aria-hidden />{ownerName ?? "Limited"}
+        <span title={t("badgeTitle", { summary: text })} className={cn("inline-flex shrink-0 items-center gap-1 rounded-full border border-border bg-background px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground", className)}>
+            <IconLock className="h-3 w-3" aria-hidden />{ownerName ?? t("limited")}
         </span>
     );
 }
@@ -55,42 +66,43 @@ export function WhoCanUseField({ value, onChange, people, me, disabled }: {
     me: string | null;
     disabled?: boolean;
 }) {
+    const t = useTranslations("access.agent");
     const [filter, setFilter] = useState("");
     const owner = value.ownerUserId ?? me;
     const shown = people.filter((p) => p.id !== owner && p.name.toLowerCase().includes(filter.trim().toLowerCase()));
     return (
         <fieldset className="grid gap-2" disabled={disabled}>
-            <legend className="mb-1 text-sm font-medium text-foreground">Who can use it</legend>
-            <div role="radiogroup" aria-label="Who can use it" className="grid grid-cols-3 gap-1 rounded-xl border border-border bg-background p-1">
+            <legend className="mb-1 text-sm font-medium text-foreground">{t("whoCanUse")}</legend>
+            <div role="radiogroup" aria-label={t("whoCanUse")} className="grid grid-cols-3 gap-1 rounded-xl border border-border bg-background p-1">
                 {OPTIONS.map((option) => (
-                    <button key={option.value} type="button" role="radio" aria-checked={value.access === option.value}
-                        onClick={() => onChange({ ...value, access: option.value, ownerUserId: option.value === "everyone" ? value.ownerUserId : owner ?? people[0]?.id ?? null })}
+                    <button key={option} type="button" role="radio" aria-checked={value.access === option}
+                        onClick={() => onChange({ ...value, access: option, ownerUserId: option === "everyone" ? value.ownerUserId : owner ?? people[0]?.id ?? null })}
                         className={cn("whitespace-nowrap rounded-lg px-2 py-1.5 text-xs transition-colors sm:text-sm",
-                            value.access === option.value ? "bg-accent font-medium text-foreground" : "text-muted-foreground hover:text-foreground")}>
-                        {option.label}
+                            value.access === option ? "bg-accent font-medium text-foreground" : "text-muted-foreground hover:text-foreground")}>
+                        {t(`options.${option}`)}
                     </button>
                 ))}
             </div>
-            {value.access === "everyone" && <p className="text-xs text-muted-foreground">Everyone in the company who can see agents can chat with it and give it work.</p>}
+            {value.access === "everyone" && <p className="text-xs text-muted-foreground">{t("everyoneHint")}</p>}
             {value.access !== "everyone" && (
                 <div className="grid gap-1.5">
-                    <label className="text-xs text-muted-foreground" htmlFor="agent-access-owner">Owner</label>
+                    <label className="text-xs text-muted-foreground" htmlFor="agent-access-owner">{t("owner")}</label>
                     <select id="agent-access-owner" value={owner ?? ""} onChange={(e) => onChange({ ...value, ownerUserId: e.target.value || null })}
                         className="h-9 rounded-lg border border-border bg-card px-2 text-sm text-foreground">
-                        {people.map((p) => <option key={p.id} value={p.id}>{p.id === me ? `${p.name} (me)` : p.name}</option>)}
+                        {people.map((p) => <option key={p.id} value={p.id}>{p.id === me ? t("me", { name: p.name }) : p.name}</option>)}
                     </select>
                     <p className="text-xs text-muted-foreground">
                         {value.access === "owner"
-                            ? "Only the owner can chat with it, mention it or give it work. It never sees more data than its owner."
-                            : "The owner and the people below can use it. Admins see its name, owner, status and cost, never its chats."}
+                            ? t("ownerHint")
+                            : t("peopleHint")}
                     </p>
                 </div>
             )}
             {value.access === "people" && (
                 <div className="grid gap-1.5">
-                    <Input value={filter} onChange={(e) => setFilter(e.target.value)} placeholder="Find a person" aria-label="Find a person" />
+                    <Input value={filter} onChange={(e) => setFilter(e.target.value)} placeholder={t("findPerson")} aria-label={t("findPerson")} />
                     <div className="max-h-48 overflow-y-auto rounded-xl border border-border">
-                        {shown.length === 0 && <p className="p-3 text-sm text-muted-foreground">Nobody else to add.</p>}
+                        {shown.length === 0 && <p className="p-3 text-sm text-muted-foreground">{t("nobodyElse")}</p>}
                         <ul className="divide-y divide-border">
                             {shown.map((person) => (
                                 <li key={person.id}>
@@ -136,6 +148,9 @@ type AccessInfo = {
 
 /** The agent settings' "Who can use it" (its owner, owners and admins change it; others read it). */
 export function AgentAccessSettings({ agentId, onChanged }: { agentId: string; onChanged?: () => void }) {
+    const t = useTranslations("access.agent");
+    const tc = useTranslations("common");
+    const summarize = useAgentAccessSummary();
     const [info, setInfo] = useState<AccessInfo | null>(null);
     const [draft, setDraft] = useState<AgentAccessValue | null>(null);
     const [saving, setSaving] = useState(false);
@@ -149,11 +164,11 @@ export function AgentAccessSettings({ agentId, onChanged }: { agentId: string; o
     useEffect(() => { void load(); // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [agentId]);
     if (!info || !draft) return null;
-    const summary = agentAccessSummary({ access: info.access, ownerName: info.owner?.name ?? null, peopleCount: info.people.length });
+    const summary = summarize({ access: info.access, ownerName: info.owner?.name ?? null, peopleCount: info.people.length });
     if (!info.canManage) {
         return (
             <section className="rounded-2xl border border-border bg-card p-3">
-                <h3 className="text-sm font-medium text-foreground">Who can use it</h3>
+                <h3 className="text-sm font-medium text-foreground">{t("whoCanUse")}</h3>
                 <p className="text-xs text-muted-foreground">{summary}{info.people.length > 0 && info.access === "people" ? `: ${[info.owner?.name, ...info.people.map((p) => p.name)].filter(Boolean).join(", ")}` : ""}</p>
             </section>
         );
@@ -167,12 +182,12 @@ export function AgentAccessSettings({ agentId, onChanged }: { agentId: string; o
                 method: "PUT", headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({ access: draft.access, userIds: draft.userIds, ownerUserId: draft.ownerUserId }),
             });
-            if (!res.ok) throw new Error(await errorOf(res, "Couldn't change who can use this agent"));
-            toast.success("Who can use it updated");
+            if (!res.ok) throw new Error(await errorOf(res, t("saveFailed")));
+            toast.success(t("saved"));
             await load();
             onChanged?.();
         } catch (error) {
-            toast.error(error instanceof Error ? error.message : "Couldn't change who can use this agent");
+            toast.error(error instanceof Error ? error.message : t("saveFailed"));
         } finally {
             setSaving(false);
         }
@@ -181,8 +196,8 @@ export function AgentAccessSettings({ agentId, onChanged }: { agentId: string; o
         <section className="grid gap-3 rounded-2xl border border-border bg-card p-3">
             <WhoCanUseField value={draft} onChange={setDraft} people={info.candidates} me={null} disabled={saving} />
             <div className="flex justify-end gap-2">
-                <Button size="sm" variant="ghost" disabled={!dirty || saving} onClick={() => setDraft({ access: info.access, userIds: info.people.map((p) => p.id), ownerUserId: info.owner?.id ?? null })}>Reset</Button>
-                <Button size="sm" disabled={!dirty || saving} onClick={() => void save()}>{saving ? "Saving…" : "Save"}</Button>
+                <Button size="sm" variant="ghost" disabled={!dirty || saving} onClick={() => setDraft({ access: info.access, userIds: info.people.map((p) => p.id), ownerUserId: info.owner?.id ?? null })}>{tc("reset")}</Button>
+                <Button size="sm" disabled={!dirty || saving} onClick={() => void save()}>{saving ? tc("saving") : tc("save")}</Button>
             </div>
         </section>
     );
@@ -198,6 +213,8 @@ export function LockedAgentCard({ agent, ownerName, onChanged }: {
     ownerName: string | null;
     onChanged?: () => void;
 }) {
+    const t = useTranslations("access.locked");
+    const owner = ownerName ?? t("itsOwner");
     return (
         <main className="emperor-panel space-y-4 rounded-2xl p-4 sm:p-5">
             <div className="flex items-start gap-3">
@@ -205,15 +222,15 @@ export function LockedAgentCard({ agent, ownerName, onChanged }: {
                 <div className="min-w-0 space-y-1">
                     <h2 className="text-lg font-semibold text-foreground">{agent.name}</h2>
                     <p className="text-sm text-muted-foreground">
-                        {agent.access === "owner" ? `Only ${ownerName ?? "its owner"} can use this agent.` : `Only ${ownerName ?? "its owner"} and the people they picked can use this agent.`}
-                        {" "}As an admin you see who owns it, its status and its cost, not its chats. You can change who can use it, hand it to someone else or delete it.
+                        {agent.access === "owner" ? t("onlyOwner", { owner }) : t("ownerAndPeople", { owner })}
+                        {" "}{t("adminNote")}
                     </p>
                 </div>
             </div>
             <dl className="grid gap-3 text-sm sm:grid-cols-3">
-                <div><dt className="text-xs text-muted-foreground">Owner</dt><dd className="text-foreground">{ownerName ?? "No owner"}</dd></div>
-                <div><dt className="text-xs text-muted-foreground">Status</dt><dd className="capitalize text-foreground">{agent.status}</dd></div>
-                <div><dt className="text-xs text-muted-foreground">Cost this month</dt><dd className="text-foreground">${(agent.monthlyCostCents / 100).toFixed(2)}</dd></div>
+                <div><dt className="text-xs text-muted-foreground">{t("owner")}</dt><dd className="text-foreground">{ownerName ?? t("noOwner")}</dd></div>
+                <div><dt className="text-xs text-muted-foreground">{t("status")}</dt><dd className="capitalize text-foreground">{agent.status}</dd></div>
+                <div><dt className="text-xs text-muted-foreground">{t("costThisMonth")}</dt><dd className="text-foreground">${(agent.monthlyCostCents / 100).toFixed(2)}</dd></div>
             </dl>
             <AgentAccessSettings agentId={agent.id} onChanged={onChanged} />
         </main>

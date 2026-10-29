@@ -1,4 +1,5 @@
 import { redirect } from "next/navigation";
+import { getTranslations } from "next-intl/server";
 import { and, asc, eq, inArray, isNull } from "drizzle-orm";
 import { db } from "@/db";
 import { customers, projects } from "@/db/schema";
@@ -28,13 +29,14 @@ export default async function ViewsPage({ searchParams }: { searchParams: Promis
     const rows = showArchived ? all.filter((view) => view.archived) : all;
     const canEdit = canWrite(access.role);
     const scopes = canEdit ? await loadScopeOptions(access.companyId, access.scope) : { customers: [], projects: [] };
+    const t = await getTranslations("views.list");
 
     return (
         <div className="mx-auto max-w-[1400px] space-y-6 animate-in fade-in duration-500">
             <PageHeader
-                eyebrow="Workspace"
-                title={showArchived ? "Archived views" : "Views"}
-                description="Dashboards your agents build and keep up to date: metrics, charts, tables and notes, refreshed by the agent that owns them."
+                eyebrow={t("eyebrow")}
+                title={showArchived ? t("archivedTitle") : t("title")}
+                description={t("description")}
                 actions={canEdit && !showArchived ? <NewViewButton customers={scopes.customers} projects={scopes.projects} /> : undefined}
             />
             <ViewsBrowser views={rows} showArchived={showArchived} userId={access.userId} />

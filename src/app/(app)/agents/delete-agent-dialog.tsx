@@ -14,6 +14,7 @@ import {
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
+import { useTranslations } from "next-intl";
 
 type HostRemoval =
     | { status: "queued"; hostName: string; hostOnline: boolean; needsUpdate: boolean }
@@ -36,6 +37,8 @@ export function DeleteAgentDialog({
     trigger?: ReactNode;
     onDeleted?: () => void;
 }) {
+    const t = useTranslations("agents.delete");
+    const tc = useTranslations("common");
     const router = useRouter();
     const [open, setOpen] = useState(false);
     const [confirmation, setConfirmation] = useState("");
@@ -58,13 +61,13 @@ export function DeleteAgentDialog({
             });
             const payload = await response.json().catch(() => ({}));
             if (!response.ok) {
-                throw new Error(typeof payload.error === "string" ? payload.error : "Agent deletion failed.");
+                throw new Error(typeof payload.error === "string" ? payload.error : t("failed"));
             }
 
             const cleanup = payload.cleanup as { warnings?: string[] } | undefined;
             const warnings = Array.isArray(cleanup?.warnings) ? cleanup.warnings : [];
             if (warnings.length > 0) {
-                toast.warning("Agent deleted, but its runtime was not fully cleaned up", {
+                toast.warning(t("partialCleanup"), {
                     description: warnings.join(" "),
                     duration: 10000,
                 });
@@ -72,15 +75,15 @@ export function DeleteAgentDialog({
 
             const removal = payload.hostRemoval as HostRemoval | undefined;
             if (removal?.status === "queued") {
-                toast.success(`${agentName} deleted`, {
+                toast.success(t("deleted", { name: agentName }), {
                     description: removal.needsUpdate
-                        ? `Its profile is removed from ${removal.hostName} once that host is updated to 0.22.`
+                        ? t("removedAfterUpdate", { host: removal.hostName })
                         : removal.hostOnline
-                            ? `Removing its profile from ${removal.hostName}.`
-                            : `${removal.hostName} is offline: its profile is removed when it is back.`,
+                            ? t("removingFromHost", { host: removal.hostName })
+                            : t("hostOffline", { host: removal.hostName }),
                 });
             } else if (removal?.status === "admin_required") {
-                toast.warning(`${agentName} deleted`, { description: "Its profile is still on its host: an owner or admin can remove it (emperor-hermes remove)." });
+                toast.warning(t("deleted", { name: agentName }), { description: t("adminRequired") });
             }
 
             setOpen(false);
@@ -89,7 +92,7 @@ export function DeleteAgentDialog({
             router.refresh();
             if (redirectToAgents) router.push("/agents");
         } catch (deleteError) {
-            setError(deleteError instanceof Error ? deleteError.message : "Agent deletion failed.");
+            setError(deleteError instanceof Error ? deleteError.message : t("failed"));
         } finally {
             setIsDeleting(false);
         }
@@ -107,39 +110,38 @@ export function DeleteAgentDialog({
                 {trigger ?? (
                     <Button type="button" variant="destructive" size="sm" className="bg-rose-600/90 hover:bg-rose-500">
                         <IconTrash className="w-4 h-4" />
-                        Delete Agent
+                        {t("button")}
                     </Button>
                 )}
             </DialogTrigger>
             <DialogContent className="sm:max-w-[480px] bg-zinc-950 border-zinc-800 text-zinc-200">
                 <DialogHeader>
-                    <DialogTitle className="text-zinc-100">Delete {agentName}?</DialogTitle>
+                    <DialogTitle className="text-zinc-100">{t("title", { name: agentName })}</DialogTitle>
                     <DialogDescription className="text-zinc-500">
-                        This removes the Emperor agent profile from normal views and deletes its runtime data.
+                        {t("description")}
                     </DialogDescription>
                 </DialogHeader>
 
                 <div className="space-y-4">
                     <div className="rounded-lg border border-rose-500/25 bg-rose-500/10 p-3 text-sm leading-6 text-rose-100/90">
-                        Deleted: memory entries, snapshots, sessions, action runs, direct chat threads, access logs, and runtime integrations.
-                        Detached: assigned tasks, project lead links, approvals, Storage files, Knowledge & Rules, and shared history.
+                        {t("whatIsDeleted")}
                     </div>
                     {host && host.canRemove && (
                         <label className="flex items-start gap-2 text-sm text-zinc-200">
                             <input type="checkbox" checked={removeFromHost} onChange={(event) => setRemoveFromHost(event.target.checked)}
                                 className="mt-1 h-4 w-4 accent-rose-500" />
                             <span>
-                                Also remove it from {host.name}
-                                <span className="block text-xs text-zinc-500">Its Hermes profile and services there are deleted (when the host is online; it waits if not). Its token stops working right away either way.</span>
+                                {t("alsoRemove", { host: host.name })}
+                                <span className="block text-xs text-zinc-500">{t("alsoRemoveHint")}</span>
                             </span>
                         </label>
                     )}
                     {host && !host.canRemove && (
-                        <p className="text-xs text-zinc-500">It runs on {host.name}: an owner or admin removes its profile there.</p>
+                        <p className="text-xs text-zinc-500">{t("adminRemoves", { host: host.name })}</p>
                     )}
                     <label className="block space-y-2">
                         <span className="text-xs font-bold uppercase tracking-wider text-zinc-500">
-                            Type the agent name to confirm
+                            {t("typeName")}
                         </span>
                         <input
                             value={confirmation}
@@ -157,10 +159,10 @@ export function DeleteAgentDialog({
 
                 <DialogFooter>
                     <Button type="button" variant="outline" onClick={() => setOpen(false)} className="border-zinc-800 text-zinc-300 hover:bg-zinc-800">
-                        Cancel
+                        {tc("cancel")}
                     </Button>
                     <Button type="button" variant="destructive" onClick={handleDelete} disabled={!canDelete}>
-                        {isDeleting ? "Deleting..." : "Delete agent and data"}
+                        {isDeleting ? t("deleting") : t("confirm")}
                     </Button>
                 </DialogFooter>
             </DialogContent>

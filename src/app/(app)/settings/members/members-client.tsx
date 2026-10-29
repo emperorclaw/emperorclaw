@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { IconMail, IconTrash, IconUserCog, IconUsers, IconShield, IconClock, IconLoader2, IconAlertTriangle } from "@tabler/icons-react";
 import { toast } from "sonner";
+import { useFormatter, useTranslations } from "next-intl";
 import { PageHeader } from "@/components/page-header";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -50,18 +51,27 @@ const ROLE_COLORS: Record<string, string> = {
 
 const ROLE_OPTIONS = ["admin", "member", "viewer"] as const;
 
-function roleBadge(role: string) {
+/** Roles with a badge label under settings.members.roleBadges (anything else shows as is). */
+const ROLE_BADGE_KEYS = { instance_admin: "instanceAdmin", owner: "owner", admin: "admin", member: "member", viewer: "viewer" } as const;
+const INVITATION_STATUSES = new Set(["pending", "expired", "consumed"]);
+
+function RoleBadge({ role }: { role: string }) {
+    const t = useTranslations("settings.members.roleBadges");
     return (
         <span className={cn(
             "inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium border",
             ROLE_COLORS[role] || ROLE_COLORS.member
         )}>
-            {role.replace("_", " ")}
+            {role in ROLE_BADGE_KEYS ? t(ROLE_BADGE_KEYS[role as keyof typeof ROLE_BADGE_KEYS]) : role.replace("_", " ")}
         </span>
     );
 }
 
 export default function MembersClient({ currentUserId, currentUserRole, initialMembers, agents, customersData, embedded = false }: Props) {
+    const t = useTranslations("settings.members");
+    const tc = useTranslations("common");
+    const format = useFormatter();
+    const date = (iso: string) => format.dateTime(new Date(iso), { dateStyle: "medium" });
     const [members, setMembers] = useState<Member[]>(initialMembers);
     const [invitations, setInvitations] = useState<InvitationRow[]>([]);
 
@@ -121,13 +131,13 @@ export default function MembersClient({ currentUserId, currentUserRole, initialM
 
             if (!res.ok) {
                 const data = await res.json();
-                throw new Error(data.error || "Failed to send invitation");
+                throw new Error(data.error || t("inviteFailed"));
             }
 
             const data = await res.json();
             const msg = data.emailSent
-                ? `Invitation sent to ${inviteEmail.trim()}`
-                : `Invite created, but email could not be sent. Share this link manually.`;
+                ? t("inviteSent", { email: inviteEmail.trim() })
+                : t("inviteNoEmail");
             
             if (!data.emailSent && data.inviteUrl) {
                 toast.error(msg, {
@@ -141,7 +151,7 @@ export default function MembersClient({ currentUserId, currentUserRole, initialM
             setInviteEmail("");
             await loadInvitations();
         } catch (err: unknown) {
-            toast.error(err instanceof Error ? err.message : "Failed to send invitation");
+            toast.error(err instanceof Error ? err.message : t("inviteFailed"));
         } finally {
             setSending(false);
         }
@@ -150,22 +160,22 @@ export default function MembersClient({ currentUserId, currentUserRole, initialM
     const handleRevokeInvitation = async (id: string) => {
         try {
             const res = await fetch(`/api/instance/invitations/${id}`, { method: "DELETE" });
-            if (!res.ok) throw new Error("Failed to revoke");
-            toast.success("Invitation revoked");
+            if (!res.ok) throw new Error("revoke");
+            toast.success(t("invitationRevoked"));
             await loadInvitations();
         } catch {
-            toast.error("Failed to revoke invitation");
+            toast.error(t("revokeFailed"));
         }
     };
 
     const handleResendInvitation = async (id: string) => {
         try {
             const res = await fetch(`/api/instance/invitations/${id}`, { method: "POST" });
-            if (!res.ok) throw new Error("Failed to resend");
-            toast.success("Invitation resent");
+            if (!res.ok) throw new Error("resend");
+            toast.success(t("invitationResent"));
             await loadInvitations();
         } catch {
-            toast.error("Failed to resend invitation");
+            toast.error(t("resendFailed"));
         }
     };
 
@@ -180,17 +190,17 @@ export default function MembersClient({ currentUserId, currentUserRole, initialM
 
             if (!res.ok) {
                 const data = await res.json();
-                throw new Error(data.error || "Failed to change role");
+                throw new Error(data.error || t("roleFailed"));
             }
 
             setMembers((prev) =>
                 prev.map((m) => (m.id === userId ? { ...m, companyRole: newRole } : m))
             );
-            toast.success("Role updated");
+            toast.success(t("roleUpdated"));
             setChangingRoleFor(null);
             setNewRole("");
         } catch (err: unknown) {
-            toast.error(err instanceof Error ? err.message : "Failed to change role");
+            toast.error(err instanceof Error ? err.message : t("roleFailed"));
         }
     };
 
@@ -199,14 +209,14 @@ export default function MembersClient({ currentUserId, currentUserRole, initialM
             const res = await fetch(`/api/instance/members/${userId}`, { method: "DELETE" });
             if (!res.ok) {
                 const data = await res.json();
-                throw new Error(data.error || "Failed to remove member");
+                throw new Error(data.error || t("removeFailed"));
             }
 
             setMembers((prev) => prev.filter((m) => m.id !== userId));
-            toast.success("Member removed");
+            toast.success(t("memberRemoved"));
             setRemovingMember(null);
         } catch (err: unknown) {
-            toast.error(err instanceof Error ? err.message : "Failed to remove member");
+            toast.error(err instanceof Error ? err.message : t("removeFailed"));
         }
     };
 
@@ -214,16 +224,16 @@ export default function MembersClient({ currentUserId, currentUserRole, initialM
         const request = ++scopeRequest.current;
         try {
             const res = await fetch(`/api/instance/members/${userId}/scope`);
-            if (!res.ok) throw new Error("Could not load this member's access scope. Try again.");
+            if (!res.ok) throw new Error("scope");
             const data = await res.json();
             if (request !== scopeRequest.current) return;
-            if (!data.scope || typeof data.scope !== "object" || Array.isArray(data.scope) || !["all", "restricted"].includes(data.scope.mode ?? "all")) throw new Error("Could not read this member's access scope. Try again.");
+            if (!data.scope || typeof data.scope !== "object" || Array.isArray(data.scope) || !["all", "restricted"].includes(data.scope.mode ?? "all")) throw new Error("scope");
             setScopeMode(data.scope.mode ?? "all");
             setScopeAgentIds(data.scope.agentIds || []);
             setScopeCustomerIds(data.scope.customerIds || []);
             setScopeFor(userId);
         } catch {
-            if (request === scopeRequest.current) toast.error("Could not load this member's access scope. Try again.");
+            if (request === scopeRequest.current) toast.error(t("scopeLoadFailed"));
         }
     };
 
@@ -242,11 +252,11 @@ export default function MembersClient({ currentUserId, currentUserRole, initialM
                     },
                 }),
             });
-            if (!res.ok) throw new Error("Failed to save");
-            toast.success("Access scope updated");
+            if (!res.ok) throw new Error("save");
+            toast.success(t("scopeUpdated"));
             setScopeFor(null);
         } catch {
-            toast.error("Failed to save scope");
+            toast.error(t("scopeSaveFailed"));
         } finally {
             setSavingScope(false);
         }
@@ -259,9 +269,9 @@ export default function MembersClient({ currentUserId, currentUserRole, initialM
     return (
         <div className="min-w-0 space-y-6 max-w-4xl">
             {!embedded && <PageHeader
-                eyebrow="Team"
-                title="Members"
-                description="Manage team members, roles, and invitations."
+                eyebrow={t("eyebrow")}
+                title={t("title")}
+                description={t("description")}
             />}
 
             {/* ── Invite Form ─────────────────────────────────────────── */}
@@ -269,20 +279,20 @@ export default function MembersClient({ currentUserId, currentUserRole, initialM
                 <div className="emperor-panel rounded-2xl border border-border bg-card p-6">
                     <h3 className="text-lg font-semibold text-foreground mb-4 flex items-center gap-2">
                         <IconMail className="w-5 h-5 text-indigo-400" />
-                        Invite Member
+                        {t("inviteTitle")}
                     </h3>
                     <form onSubmit={handleInvite} className="flex gap-3 flex-wrap">
                         <Input
                             type="email"
-                            aria-label="Invitation email"
+                            aria-label={t("invitationEmail")}
                             value={inviteEmail}
                             onChange={(e) => setInviteEmail(e.target.value)}
-                            placeholder="colleague@company.com"
+                            placeholder={t("invitePlaceholder")}
                             className="min-h-11 flex-1 min-w-[200px]"
                             required
                         />
                         <select
-                            aria-label="Invitation role"
+                            aria-label={t("invitationRole")}
                             value={inviteRole}
                             onChange={(e) => setInviteRole(e.target.value)}
                             className="min-h-11 bg-muted/30 border border-border rounded-lg px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-indigo-500/50"
@@ -290,13 +300,13 @@ export default function MembersClient({ currentUserId, currentUserRole, initialM
                             {/* Only owners grant admin, by invite or role change. */}
                             {ROLE_OPTIONS.filter((r) => r !== "admin" || canChangeRoles).map((r) => (
                                 <option key={r} value={r} className="bg-muted">
-                                    {r.charAt(0).toUpperCase() + r.slice(1)}
+                                    {t(`roles.${r}`)}
                                 </option>
                             ))}
                         </select>
                         <Button type="submit" className="min-h-11" disabled={sending}>
                             {sending ? <IconLoader2 className="w-4 h-4 animate-spin mr-1" /> : null}
-                            Send Invitation
+                            {t("sendInvitation")}
                         </Button>
                     </form>
                 </div>
@@ -306,19 +316,19 @@ export default function MembersClient({ currentUserId, currentUserRole, initialM
             <div className="emperor-panel rounded-2xl border border-border bg-card p-6">
                 <h3 className="text-lg font-semibold text-foreground mb-4 flex items-center gap-2">
                     <IconUsers className="w-5 h-5 text-indigo-400" />
-                    Team Members ({members.length})
+                    {t("teamMembers", { count: members.length })}
                 </h3>
 
-                {members.length === 0 ? <p className="py-8 text-center text-sm text-muted-foreground">No members found.</p> : <div className="overflow-x-auto">
+                {members.length === 0 ? <p className="py-8 text-center text-sm text-muted-foreground">{t("noMembers")}</p> : <div className="overflow-x-auto">
                     <table className="w-full min-w-[640px] text-sm [&_th]:whitespace-nowrap [&_th]:pr-4 [&_td]:pr-4 [&_th:last-child]:pr-0 [&_td:last-child]:pr-0">
-                        <caption className="sr-only">Team members and access</caption>
+                        <caption className="sr-only">{t("tableCaption")}</caption>
                         <thead>
                             <tr className="border-b border-border text-muted-foreground text-left">
-                                <th className="pb-3 font-medium">Email</th>
-                                <th className="pb-3 font-medium">Company Role</th>
-                                <th className="pb-3 font-medium">Instance Role</th>
-                                <th className="pb-3 font-medium">Joined</th>
-                                <th className="pb-3 font-medium text-right">Actions</th>
+                                <th className="pb-3 font-medium">{t("columns.email")}</th>
+                                <th className="pb-3 font-medium">{t("columns.companyRole")}</th>
+                                <th className="pb-3 font-medium">{t("columns.instanceRole")}</th>
+                                <th className="pb-3 font-medium">{t("columns.joined")}</th>
+                                <th className="pb-3 font-medium text-right">{t("columns.actions")}</th>
                             </tr>
                         </thead>
                         <tbody>
@@ -329,12 +339,12 @@ export default function MembersClient({ currentUserId, currentUserRole, initialM
                                         {member.displayName && <br />}
                                         <span className={member.displayName ? "text-xs text-muted-foreground" : ""}>{member.email}</span>
                                         {member.roleTitle && <span className="block text-xs text-cyan-400/70 mt-0.5">{member.roleTitle}</span>}
-                                        {member.customAccess && <span className="mt-0.5 block text-xs text-muted-foreground">Custom access: {member.customAccess}</span>}
+                                        {member.customAccess && <span className="mt-0.5 block text-xs text-muted-foreground">{t("customAccess", { access: member.customAccess })}</span>}
                                     </td>
-                                    <td className="py-3">{roleBadge(member.companyRole)}</td>
-                                    <td className="py-3">{roleBadge(member.instanceRole)}</td>
+                                    <td className="py-3"><RoleBadge role={member.companyRole} /></td>
+                                    <td className="py-3"><RoleBadge role={member.instanceRole} /></td>
                                     <td className="py-3 text-muted-foreground">
-                                        {member.joinedAt ? new Date(member.joinedAt).toLocaleDateString() : "—"}
+                                        {member.joinedAt ? date(member.joinedAt) : "—"}
                                     </td>
                                     <td className="py-3 text-right">
                                         {member.id !== currentUserId && (
@@ -342,7 +352,7 @@ export default function MembersClient({ currentUserId, currentUserRole, initialM
                                                 <button
                                                     onClick={(event) => { dialogOpener.current = event.currentTarget; void openScope(member.id); }}
                                                     className="inline-flex h-11 w-11 items-center justify-center rounded-lg hover:bg-muted text-muted-foreground hover:text-cyan-400 transition-colors"
-                                                    title="Access scope"
+                                                    title={t("accessScope")}
                                                 >
                                                     <IconShield className="w-4 h-4" />
                                                 </button>
@@ -350,7 +360,7 @@ export default function MembersClient({ currentUserId, currentUserRole, initialM
                                                     <button
                                                         onClick={(event) => { dialogOpener.current = event.currentTarget; setChangingRoleFor(member.id); setNewRole(member.companyRole); }}
                                                         className="inline-flex h-11 w-11 items-center justify-center rounded-lg hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
-                                                        title="Change role"
+                                                        title={t("changeRole")}
                                                     >
                                                         <IconUserCog className="w-4 h-4" />
                                                     </button>
@@ -359,7 +369,7 @@ export default function MembersClient({ currentUserId, currentUserRole, initialM
                                                     <button
                                                         onClick={(event) => { dialogOpener.current = event.currentTarget; setRemovingMember(member.id); }}
                                                         className="inline-flex h-11 w-11 items-center justify-center rounded-lg hover:bg-red-500/10 text-muted-foreground hover:text-red-400 transition-colors"
-                                                        title="Remove member"
+                                                        title={t("removeMember")}
                                                     >
                                                         <IconTrash className="w-4 h-4" />
                                                     </button>
@@ -372,7 +382,7 @@ export default function MembersClient({ currentUserId, currentUserRole, initialM
                             {members.length === 0 && (
                                 <tr>
                                     <td colSpan={5} className="py-8 text-center text-muted-foreground">
-                                        No members found.
+                                        {t("noMembers")}
                                     </td>
                                 </tr>
                             )}
@@ -386,30 +396,30 @@ export default function MembersClient({ currentUserId, currentUserRole, initialM
                 <div className="emperor-panel rounded-2xl border border-border bg-card p-6">
                     <h3 className="text-lg font-semibold text-foreground mb-4 flex items-center gap-2">
                         <IconClock className="w-5 h-5 text-indigo-400" />
-                        Pending Invitations ({invitations.length})
+                        {t("pendingInvitations", { count: invitations.length })}
                     </h3>
                     <div className="overflow-x-auto">
                         <table className="w-full min-w-[640px] text-sm [&_th]:whitespace-nowrap [&_th]:pr-4 [&_td]:pr-4 [&_th:last-child]:pr-0 [&_td:last-child]:pr-0">
                             <thead>
                                 <tr className="border-b border-border text-muted-foreground text-left">
-                                    <th className="pb-3 font-medium">Email</th>
-                                    <th className="pb-3 font-medium">Role</th>
-                                    <th className="pb-3 font-medium">Created</th>
-                                    <th className="pb-3 font-medium">Expires</th>
-                                    <th className="pb-3 font-medium">Status</th>
-                                    <th className="pb-3 font-medium text-right">Actions</th>
+                                    <th className="pb-3 font-medium">{t("columns.email")}</th>
+                                    <th className="pb-3 font-medium">{t("columns.role")}</th>
+                                    <th className="pb-3 font-medium">{t("columns.created")}</th>
+                                    <th className="pb-3 font-medium">{t("columns.expires")}</th>
+                                    <th className="pb-3 font-medium">{t("columns.status")}</th>
+                                    <th className="pb-3 font-medium text-right">{t("columns.actions")}</th>
                                 </tr>
                             </thead>
                             <tbody>
                                 {invitations.map((inv) => (
                                     <tr key={inv.id} className="border-b border-border">
                                         <td className="py-3 text-foreground">{inv.email}</td>
-                                        <td className="py-3">{roleBadge(inv.role)}</td>
+                                        <td className="py-3"><RoleBadge role={inv.role} /></td>
                                         <td className="py-3 text-muted-foreground">
-                                            {new Date(inv.createdAt).toLocaleDateString()}
+                                            {date(inv.createdAt)}
                                         </td>
                                         <td className="py-3 text-muted-foreground">
-                                            {new Date(inv.expiresAt).toLocaleDateString()}
+                                            {date(inv.expiresAt)}
                                         </td>
                                         <td className="py-3">
                                             <span className={cn(
@@ -420,7 +430,7 @@ export default function MembersClient({ currentUserId, currentUserRole, initialM
                                                         ? "bg-amber-500/10 text-amber-700 dark:text-amber-400 border-amber-500/20"
                                                         : "bg-zinc-500/10 text-muted-foreground border-zinc-500/20"
                                             )}>
-                                                {inv.status}
+                                                {INVITATION_STATUSES.has(inv.status) ? t(`invitationStatus.${inv.status}`) : inv.status}
                                             </span>
                                         </td>
                                         <td className="py-3 text-right">
@@ -429,14 +439,14 @@ export default function MembersClient({ currentUserId, currentUserRole, initialM
                                                     <button
                                                         onClick={() => handleResendInvitation(inv.id)}
                                                         className="inline-flex h-11 w-11 items-center justify-center rounded-lg hover:bg-blue-500/10 text-muted-foreground hover:text-blue-400 transition-colors"
-                                                        title="Resend"
+                                                        title={t("resend")}
                                                     >
                                                         <IconMail className="w-4 h-4" />
                                                     </button>
                                                     <button
                                                         onClick={() => handleRevokeInvitation(inv.id)}
                                                         className="inline-flex h-11 w-11 items-center justify-center rounded-lg hover:bg-red-500/10 text-muted-foreground hover:text-red-400 transition-colors"
-                                                        title="Revoke"
+                                                        title={t("revoke")}
                                                     >
                                                         <IconTrash className="w-4 h-4" />
                                                     </button>
@@ -455,26 +465,26 @@ export default function MembersClient({ currentUserId, currentUserRole, initialM
             {changingRoleFor && (
                 <Dialog open={Boolean(changingRoleFor)} onOpenChange={(open) => { if (!open) setChangingRoleFor(null); }}>
                     <DialogContent onCloseAutoFocus={restoreDialogFocus} className="max-h-[90dvh] overflow-y-auto bg-background text-foreground sm:max-w-sm">
-                        <DialogTitle>Change Role</DialogTitle>
-                        <DialogDescription>Select the workspace role for this member.</DialogDescription>
+                        <DialogTitle>{t("changeRoleTitle")}</DialogTitle>
+                        <DialogDescription>{t("changeRoleDescription")}</DialogDescription>
                         <select
                             value={newRole}
                             onChange={(e) => setNewRole(e.target.value)}
-                            aria-label="Workspace role"
+                            aria-label={t("workspaceRole")}
                             className="min-h-11 w-full bg-muted/30 border border-border rounded-lg px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-indigo-500/50 mb-4"
                         >
                             {ROLE_OPTIONS.map((r) => (
                                 <option key={r} value={r} className="bg-muted">
-                                    {r.charAt(0).toUpperCase() + r.slice(1)}
+                                    {t(`roles.${r}`)}
                                 </option>
                             ))}
                         </select>
                         <div className="flex gap-3 justify-end">
                             <Button variant="ghost" onClick={() => setChangingRoleFor(null)}>
-                                Cancel
+                                {tc("cancel")}
                             </Button>
                             <Button onClick={() => handleChangeRole(changingRoleFor)}>
-                                Save
+                                {tc("save")}
                             </Button>
                         </div>
                     </DialogContent>
@@ -488,21 +498,21 @@ export default function MembersClient({ currentUserId, currentUserRole, initialM
                         <div className="flex items-start gap-3 mb-4">
                             <IconAlertTriangle className="w-5 h-5 text-red-400 shrink-0 mt-0.5" />
                             <div>
-                                <DialogTitle>Remove Member</DialogTitle>
+                                <DialogTitle>{t("removeTitle")}</DialogTitle>
                                 <DialogDescription className="mt-1">
-                                    Are you sure you want to remove this member from the workspace? This action can be undone by re-inviting them.
+                                    {t("removeDescription")}
                                 </DialogDescription>
                             </div>
                         </div>
                         <div className="flex gap-3 justify-end">
                             <Button variant="ghost" onClick={() => setRemovingMember(null)}>
-                                Cancel
+                                {tc("cancel")}
                             </Button>
                             <Button
                                 variant="destructive"
                                 onClick={() => handleRemoveMember(removingMember)}
                             >
-                                Remove
+                                {tc("remove")}
                             </Button>
                         </div>
                     </DialogContent>
@@ -515,7 +525,7 @@ export default function MembersClient({ currentUserId, currentUserRole, initialM
                     <DialogContent onCloseAutoFocus={restoreDialogFocus} showCloseButton={!savingScope} className="max-h-[90dvh] overflow-y-auto bg-background text-foreground sm:max-w-lg">
                         <DialogTitle className="flex items-center gap-2">
                             <IconShield className="w-5 h-5 text-cyan-400" />
-                            Access Scope
+                            {t("scopeTitle")}
                         </DialogTitle>
                         <DialogDescription>
                             {members.find(m => m.id === scopeFor)?.email}
@@ -529,29 +539,28 @@ export default function MembersClient({ currentUserId, currentUserRole, initialM
                                     onChange={(e) => setScopeMode(e.target.checked ? "restricted" : "all")}
                                     className="rounded border-border bg-muted text-cyan-400 focus:ring-cyan-400"
                                 />
-                                <span className="text-sm text-foreground">Restricted access</span>
-                                <span className="text-xs text-muted-foreground">(unchecked = see everything)</span>
+                                <span className="text-sm text-foreground">{t("restricted")}</span>
+                                <span className="text-xs text-muted-foreground">{t("restrictedHint")}</span>
                             </label>
 
                             {scopeMode === "restricted" && (
                                 <>
                                     <p className="text-xs text-muted-foreground">
-                                        A restricted member sees only what is ticked: the chosen agents, and the projects, tasks,
-                                        files and knowledge of the chosen customers. Nothing ticked in a list means nothing from it.
+                                        {t("restrictedExplain")}
                                     </p>
                                     {(scopeAgentIds.length === 0 || scopeCustomerIds.length === 0) && (
                                         <div className="rounded-lg border border-amber-700/40 bg-amber-900/20 px-3 py-2 text-xs text-amber-300" role="status">
                                             {scopeAgentIds.length === 0 && scopeCustomerIds.length === 0
-                                                ? "No agents or customers selected: this member will see no agents and no customer work."
+                                                ? t("noneSelected")
                                                 : scopeAgentIds.length === 0
-                                                    ? "No agents selected: this member will see no agents or their chats."
-                                                    : "No customers selected: this member will see no projects, tasks or customer files."}
+                                                    ? t("noAgentsSelected")
+                                                    : t("noCustomersSelected")}
                                         </div>
                                     )}
                                     <div>
-                                        <h4 className="text-sm font-medium text-foreground mb-2">Visible Agents</h4>
+                                        <h4 className="text-sm font-medium text-foreground mb-2">{t("visibleAgents")}</h4>
                                         <div className="max-h-40 overflow-y-auto space-y-1 rounded-lg border border-border bg-muted/50 p-2">
-                                            {agents.length === 0 && <p className="text-xs text-muted-foreground p-2">No agents</p>}
+                                            {agents.length === 0 && <p className="text-xs text-muted-foreground p-2">{t("noAgents")}</p>}
                                             {agents.map((a) => (
                                                 <label key={a.id} className="flex items-center gap-2 min-h-11 cursor-pointer px-2 py-1 rounded hover:bg-muted/50">
                                                     <input
@@ -566,9 +575,9 @@ export default function MembersClient({ currentUserId, currentUserRole, initialM
                                         </div>
                                     </div>
                                     <div>
-                                        <h4 className="text-sm font-medium text-foreground mb-2">Visible Customers</h4>
+                                        <h4 className="text-sm font-medium text-foreground mb-2">{t("visibleCustomers")}</h4>
                                         <div className="max-h-40 overflow-y-auto space-y-1 rounded-lg border border-border bg-muted/50 p-2">
-                                            {customersData.length === 0 && <p className="text-xs text-muted-foreground p-2">No customers</p>}
+                                            {customersData.length === 0 && <p className="text-xs text-muted-foreground p-2">{t("noCustomers")}</p>}
                                             {customersData.map((c) => (
                                                 <label key={c.id} className="flex items-center gap-2 min-h-11 cursor-pointer px-2 py-1 rounded hover:bg-muted/50">
                                                     <input
@@ -587,10 +596,10 @@ export default function MembersClient({ currentUserId, currentUserRole, initialM
                         </div>
 
                         <div className="flex gap-3 justify-end mt-6">
-                            <Button variant="ghost" onClick={() => setScopeFor(null)} disabled={savingScope}>Cancel</Button>
+                            <Button variant="ghost" onClick={() => setScopeFor(null)} disabled={savingScope}>{tc("cancel")}</Button>
                             <Button onClick={saveScope} disabled={savingScope}>
                                 {savingScope ? <IconLoader2 className="w-4 h-4 animate-spin mr-1" /> : null}
-                                Save Scope
+                                {t("saveScope")}
                             </Button>
                         </div>
                     </DialogContent>

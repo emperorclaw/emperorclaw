@@ -2,26 +2,20 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { IconCheck, IconLock, IconUsers } from "@tabler/icons-react";
+import { useTranslations } from "next-intl";
 import { cn } from "@/lib/utils";
 import type { DirectChatMode } from "@/lib/direct-chat-mode";
 
-const OPTIONS: { mode: DirectChatMode; label: string; description: string; icon: typeof IconUsers }[] = [
-    {
-        mode: "shared",
-        label: "Shared with the whole team",
-        description: "Each agent has one direct chat that every member sees and can reply in.",
-        icon: IconUsers,
-    },
-    {
-        mode: "private",
-        label: "Private per person",
-        description: "Each person gets their own chat with each agent; nobody else can read it.",
-        icon: IconLock,
-    },
+/** Labelled by settings.directChats.<mode> and <mode>Description. */
+const OPTIONS: { mode: DirectChatMode; icon: typeof IconUsers }[] = [
+    { mode: "shared", icon: IconUsers },
+    { mode: "private", icon: IconLock },
 ];
 
 /** Direct chats with agents: shared per agent, or private per person. Owners and admins change it. */
 export function DirectChatSettingsTab({ isAdmin }: { isAdmin: boolean }) {
+    const t = useTranslations("settings.directChats");
+    const tc = useTranslations("common");
     const [mode, setMode] = useState<DirectChatMode | null>(null);
     const [loadError, setLoadError] = useState(false);
     const [saving, setSaving] = useState(false);
@@ -32,7 +26,7 @@ export function DirectChatSettingsTab({ isAdmin }: { isAdmin: boolean }) {
         setLoadError(false);
         try {
             const res = await fetch("/api/settings/direct-chats");
-            if (!res.ok) throw new Error("Could not load direct chat settings");
+            if (!res.ok) throw new Error("load");
             const data = await res.json();
             setMode(data.mode === "private" ? "private" : "shared");
         } catch {
@@ -51,18 +45,18 @@ export function DirectChatSettingsTab({ isAdmin }: { isAdmin: boolean }) {
         try {
             const res = await fetch("/api/settings/direct-chats", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ mode: next }) });
             const data = await res.json().catch(() => ({}));
-            if (!res.ok) throw new Error(data.error || "Could not save direct chat settings");
+            if (!res.ok) throw new Error(data.error || t("saveFailed"));
             setSaved(true);
             setTimeout(() => setSaved(false), 1500);
         } catch (err) {
             setMode(previous);
-            setError(err instanceof Error ? err.message : "Could not save direct chat settings");
+            setError(err instanceof Error ? err.message : t("saveFailed"));
         } finally {
             setSaving(false);
         }
     };
 
-    if (loadError && !mode) return <div className="emperor-panel rounded-2xl p-6" role="alert"><p className="text-sm text-destructive">Could not load direct chat settings.</p><button type="button" onClick={() => void load()} className="mt-3 min-h-11 rounded-lg border border-border px-4 text-sm">Retry</button></div>;
+    if (loadError && !mode) return <div className="emperor-panel rounded-2xl p-6" role="alert"><p className="text-sm text-destructive">{t("loadFailed")}</p><button type="button" onClick={() => void load()} className="mt-3 min-h-11 rounded-lg border border-border px-4 text-sm">{tc("retry")}</button></div>;
     if (!mode) return <div className="emperor-panel h-40 animate-pulse rounded-3xl" />;
 
     return (
@@ -70,13 +64,13 @@ export function DirectChatSettingsTab({ isAdmin }: { isAdmin: boolean }) {
             <article className="emperor-panel rounded-2xl p-4 sm:rounded-2xl sm:p-6">
                 <div className="flex items-center gap-3">
                     <div className="min-w-0 flex-1">
-                        <h2 className="text-base font-semibold text-foreground">Direct chats with agents</h2>
-                        <p className="text-xs text-muted-foreground">Who can see a conversation someone has with an agent.</p>
+                        <h2 className="text-base font-semibold text-foreground">{t("title")}</h2>
+                        <p className="text-xs text-muted-foreground">{t("intro")}</p>
                     </div>
-                    {saved && <span className="inline-flex items-center gap-1 text-xs text-emerald-700 dark:text-emerald-400"><IconCheck className="h-3.5 w-3.5" />Saved</span>}
+                    {saved && <span className="inline-flex items-center gap-1 text-xs text-emerald-700 dark:text-emerald-400"><IconCheck className="h-3.5 w-3.5" />{t("saved")}</span>}
                 </div>
 
-                <div role="radiogroup" aria-label="Direct chats with agents" className="mt-5 grid gap-3 sm:grid-cols-2">
+                <div role="radiogroup" aria-label={t("title")} className="mt-5 grid gap-3 sm:grid-cols-2">
                     {OPTIONS.map((option) => {
                         const selected = option.mode === mode;
                         const Icon = option.icon;
@@ -96,8 +90,8 @@ export function DirectChatSettingsTab({ isAdmin }: { isAdmin: boolean }) {
                             >
                                 <Icon className={cn("mt-0.5 h-4 w-4 shrink-0", selected ? "text-primary" : "text-muted-foreground")} />
                                 <span className="min-w-0">
-                                    <span className="block text-sm font-medium text-foreground">{option.label}</span>
-                                    <span className="mt-1 block text-xs text-muted-foreground">{option.description}</span>
+                                    <span className="block text-sm font-medium text-foreground">{t(option.mode)}</span>
+                                    <span className="mt-1 block text-xs text-muted-foreground">{t(`${option.mode}Description`)}</span>
                                 </span>
                             </button>
                         );
@@ -105,9 +99,8 @@ export function DirectChatSettingsTab({ isAdmin }: { isAdmin: boolean }) {
                 </div>
 
                 <p className="mt-4 text-xs text-muted-foreground">
-                    Switching to private does not split existing conversations: each agent&apos;s current shared chat stays visible to everyone as its &quot;Operations&quot; thread, where system updates also land.
-                    Switching back to shared keeps private chats private; new chats use the shared thread.
-                    {!isAdmin && " Only owners and admins can change this."}
+                    {t("switchNote")}
+                    {!isAdmin && ` ${t("adminsOnly")}`}
                 </p>
                 {error && <p role="alert" className="mt-3 text-xs text-destructive">{error}</p>}
             </article>
