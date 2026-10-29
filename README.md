@@ -20,6 +20,10 @@
 </p>
 
 <p align="center">
+  <a href="https://trendshift.io/repositories/86799?utm_source=trendshift-badge&amp;utm_medium=badge&amp;utm_campaign=badge-trendshift-86799" target="_blank" rel="noopener noreferrer"><img src="https://trendshift.io/api/badge/trendshift/repositories/86799/daily?language=TypeScript" alt="emperorclaw%2Femperorclaw | Trendshift" width="250" height="55"/></a>
+</p>
+
+<p align="center">
   <img src="docs/assets/emperorclaw-dashboard.webp" alt="The EmperorClaw dashboard: agents at work, an action inbox with approvals, and each agent's live status" width="820" />
 </p>
 
