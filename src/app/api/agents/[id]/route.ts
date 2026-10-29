@@ -9,6 +9,7 @@ import {
     agentSessions,
     agents,
     llmPricing,
+    runtimeHosts,
     messageThreads,
     threadMessages,
     threadParticipants,
@@ -383,11 +384,30 @@ export async function GET(
         .orderBy(desc(agentRuns.startedAt)).limit(PROVIDER_TROUBLE_RUNS)
         .catch(() => []);
 
+    // The paired runtime host it runs on (0.21): Settings -> Runtime hosts.
+    const [runtimeHost] = agent.runtimeHostId
+        ? await db.select({ id: runtimeHosts.id, name: runtimeHosts.name, status: runtimeHosts.status, inventoryJson: runtimeHosts.inventoryJson })
+            .from(runtimeHosts).where(and(eq(runtimeHosts.id, agent.runtimeHostId), eq(runtimeHosts.companyId, companyId), isNull(runtimeHosts.revokedAt))).limit(1)
+        : [];
+    const hostProfiles = ((runtimeHost?.inventoryJson as { profiles?: { profile?: string; topology?: string }[] } | null)?.profiles) ?? [];
+
     return NextResponse.json({
         agent: redactAgent(agent),
         access: "full",
         accessInfo,
         providerTrouble: providerTroubleFromRuns(latestRuns),
+        runtimeHost: runtimeHost ? {
+            id: runtimeHost.id,
+            name: runtimeHost.name,
+            status: runtimeHost.status,
+            profile: agent.runtimeProfile,
+            // As last reported (display only: the host's own record decides what a restart touches).
+            topology: (() => {
+                const reported = hostProfiles.find((p) => p.profile === agent.runtimeProfile)?.topology;
+                return reported === "shared" || reported === "standalone" ? reported : "unknown";
+            })(),
+            sharedAgents: hostProfiles.filter((p) => p.topology === "shared").length,
+        } : null,
         directChatMode: await getDirectChatMode(companyId),
         latestSnapshot,
         memoryEntries,

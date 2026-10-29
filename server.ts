@@ -14,6 +14,8 @@ import { CLOSE_SESSION_INVALID, CLOSE_TOO_MANY_SOCKETS } from './src/lib/realtim
 import { getValidatedSessionFromNodeRequest, isBrowserSessionActive } from './src/lib/auth';
 import { resolveHumanRealtimeContext } from './src/lib/realtime-human';
 import { loadAgentScopeContext } from './src/lib/agent-scope';
+import { createHostSocketServer, HOST_SOCKET_PATH } from './src/lib/runtime-hosts/socket-server';
+import { HOST_JOBS_CHANNEL } from './src/lib/runtime-hosts/store';
 
 const dev = process.env.NODE_ENV === 'development';
 const hostname = '0.0.0.0'; // Bind to all interfaces for VPS
@@ -158,9 +160,17 @@ app.prepare().then(() => {
   const humanWss = new WebSocketServer({ noServer: true, maxPayload: HUMAN_MAX_PAYLOAD });
   /** Each user's open browser sockets, oldest first (Set keeps insertion order). */
   const humanSocketsByUser = new Map<string, Set<HumanSocket>>();
+  // Paired runtime hosts (0.21): their own socket server and token, never a
+  // CompanySocket and never fed mcp_events (lib/runtime-hosts/socket-server.ts).
+  const hostServer = createHostSocketServer({ clientIp: resolveClientIp });
 
   server.on('upgrade', async (request, socket, head) => {
     const { pathname } = parse(request.url || '');
+
+    if (pathname === HOST_SOCKET_PATH) {
+        await hostServer.handleUpgrade(request, socket, head);
+        return;
+    }
 
     if (pathname === '/api/mcp/ws' || pathname === '/api/ws') {
         // Registered before any await: a client that resets mid-handshake must
@@ -437,6 +447,11 @@ app.prepare().then(() => {
 
       listener.on('notification', (msg) => {
         if (!msg.payload) return;
+        // Runtime host jobs/revocations: only the host socket server cares.
+        if (msg.channel === HOST_JOBS_CHANNEL) {
+          hostServer.handleNotification(msg.payload);
+          return;
+        }
         try {
           const notification = parseRealtimeNotification(msg.payload);
           if (!notification) return;
@@ -493,7 +508,8 @@ app.prepare().then(() => {
       listener.once('end', () => handleDisconnect());
 
       await listener.query('LISTEN mcp_events');
-      console.log('PostgreSQL Pub/Sub linked. Listening for mcp_events...');
+      await listener.query(`LISTEN ${HOST_JOBS_CHANNEL}`);
+      console.log(`PostgreSQL Pub/Sub linked. Listening for mcp_events and ${HOST_JOBS_CHANNEL}...`);
       if (listenerAttachedBefore) {
         // NOTIFYs sent while the listener was down are gone: tell every
         // browser to refetch what it shows.
@@ -531,6 +547,8 @@ app.prepare().then(() => {
   };
 
   void attachPubsubListener();
+  // Offline hosts, unacknowledged and overdue jobs (one instance at a time, advisory lock).
+  hostServer.startSweeper();
 
   // Liveness: every socket answers protocol pings (browsers and ws clients do so
   // automatically). One that missed the previous round is a zombie (sleeping
@@ -557,7 +575,10 @@ app.prepare().then(() => {
       }
   }, SOCKET_HEARTBEAT_MS);
   heartbeat.unref();
-  server.once('close', () => clearInterval(heartbeat));
+  server.once('close', () => {
+    clearInterval(heartbeat);
+    hostServer.close();
+  });
 
   agentWss.on('connection', (ws: CompanySocket) => {
       trackLiveness(ws);
@@ -605,6 +626,6 @@ app.prepare().then(() => {
 
   server.listen(port, () => {
     console.log(`> Ready on http://${hostname}:${port}`);
-    console.log(`> WebSocket attached to /api/mcp/ws and /api/ws`);
+    console.log(`> WebSocket attached to /api/mcp/ws, /api/ws and ${HOST_SOCKET_PATH}`);
   });
 });

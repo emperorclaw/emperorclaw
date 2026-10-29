@@ -7,9 +7,10 @@
 #
 # Bundle layout (top directory emperor-hermes-bridge-<ver>/):
 #   VERSION                  bridge version
-#   bridge/                  python package `emperor_bridge` (+ goal adapter); PYTHONPATH for the units
+#   bridge/                  python packages `emperor_bridge` (+ goal adapter) and `emperor_hostd`
+#                            (the runtime host daemon); PYTHONPATH for the units
 #   plugin/emperor-claw/     Hermes plugin copied into each profile
-#   systemd/*.service        the four unit templates
+#   systemd/*.service        the unit templates (gateway, bridge, shared pair, hostd)
 #   logrotate.conf           user logrotate config template
 #   emperor-hermes.sh        installer copy
 #
@@ -38,6 +39,8 @@ done
 bridge_dir="$plugin_dir/bridge"
 [ -f "$bridge_dir/emperor_bridge/__main__.py" ] ||
     die "$bridge_dir/emperor_bridge/__main__.py is missing: the bridge 0.9 package must exist before packaging"
+[ -f "$bridge_dir/emperor_hostd/__main__.py" ] ||
+    die "$bridge_dir/emperor_hostd/__main__.py is missing: the host daemon ships in the bundle"
 
 if [ -z "$version" ]; then
     # BRIDGE_VERSION = "x.y.z" in emperor_bridge/version.py is the source of truth.
@@ -50,6 +53,7 @@ for f in "$repo/integrations/hermes/systemd/emperor-hermes-gateway@.service" \
     "$repo/integrations/hermes/systemd/emperor-hermes-bridge@.service" \
     "$repo/integrations/hermes/systemd/emperor-hermes-gateway-shared.service" \
     "$repo/integrations/hermes/systemd/emperor-hermes-bridge-shared.service" \
+    "$repo/integrations/hermes/systemd/emperor-hermes-hostd.service" \
     "$repo/integrations/hermes/install/logrotate.conf" \
     "$repo/integrations/hermes/install/emperor-hermes.sh"; do
     [ -f "$f" ] || die "missing $f"

@@ -38,7 +38,7 @@ Requirements: Linux with systemd, `curl`, `git`, `tar`, `python3`, and a user ac
 
    ```bash
    mkdir -p ~/.local/bin
-   curl -fsSL https://github.com/emperorclaw/emperorclaw/releases/download/v0.19.0/emperor-hermes.sh -o ~/.local/bin/emperor-hermes
+   curl -fsSL https://github.com/emperorclaw/emperorclaw/releases/download/v0.21.0/emperor-hermes.sh -o ~/.local/bin/emperor-hermes
    chmod +x ~/.local/bin/emperor-hermes
    ```
 
@@ -112,8 +112,33 @@ A token rotation takes effect on the agent's next tool call. A model key rotatio
 | Memory in use | `emperor-hermes doctor --measure` |
 | Go back to the previous bridge bundle | `emperor-hermes rollback --bridge-only` |
 | Go back to bridge 0.3 | `emperor-hermes rollback --profile <p>` |
+| Status for scripts (JSON) | `emperor-hermes status --json` |
+| Take an agent off this host | `emperor-hermes remove --profile <p>` (archives the profile; `--purge` deletes it) |
 
 Stopping a turn from Emperor interrupts it in about a second. If the network drops mid-turn, the turn keeps running and its reply and live steps are delivered when the connection returns.
+
+## Connect a host
+
+Connecting the machine lets Emperor show it under **Settings → Runtime hosts** (owners and admins): its agents, free memory and disk, model providers (names only, never keys), whether a browser is installed, and the bridge and Hermes versions with an "Update available" badge. From there, and from an agent's panel (the "Runs on" badge), you can restart an agent's bridge or gateway and watch the progress live.
+
+1. In Emperor, open **Settings → Runtime hosts → Connect a host**. You get a one-time code, valid for 10 minutes, and a command.
+2. Paste the command on the machine, as the user that runs the agents (not root). It downloads `emperor-hermes.sh` and its `.sha256` for the current bridge version, checks the checksum, and runs:
+
+   ```bash
+   emperor-hermes host connect --url https://your-emperor.example.com ABCD-EFGH
+   ```
+
+   `host connect` installs Hermes and the bridge bundle if they are missing, pairs the machine, writes `~/.config/emperor-hermes/hostd.env` (mode 600, the host's own key) and starts the `emperor-hermes-hostd` user unit. Agents that already run there are found automatically when their profile `.env` points at the same Emperor.
+
+| Task | Command |
+| --- | --- |
+| Is the host daemon connected? | `emperor-hermes host status` |
+| Daemon log | `tail -f ~/.local/share/emperor-hermes/hostd.log` |
+| Stop the daemon and delete its key | `emperor-hermes host disconnect` (then revoke the host in Emperor) |
+
+Use https. Plain `http://` is accepted only for `localhost` or a private IP address written as numbers (10.x, 172.16-31.x, 192.168.x, 127.x); anything else needs `--insecure`, because the host key would travel unencrypted.
+
+The host key is separate from the agents' tokens and works only for the host connection. Revoking the host in Emperor disconnects it at once; the daemon stops and does not restart. On a shared gateway (one Hermes for every agent, typical on a Raspberry Pi), restarting the gateway restarts all its agents, so Emperor waits until they are idle unless you choose otherwise.
 
 ## The Emperor Hermes Plugin
 
@@ -301,7 +326,7 @@ I need to connect a Hermes agent to Emperor Claw, an open-source AI workforce co
 
 Repository & docs: https://github.com/emperorclaw/emperorclaw
 Hermes runtime docs: docs/v1.1/hermes-runtime.md in that repository
-Installer: https://github.com/emperorclaw/emperorclaw/releases/download/v0.19.0/emperor-hermes.sh
+Installer: https://github.com/emperorclaw/emperorclaw/releases/download/v0.21.0/emperor-hermes.sh
 
 My agent role is: [DESCRIBE YOUR AGENT'S ROLE HERE, e.g. "SEO Specialist"]
 

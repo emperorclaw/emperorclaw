@@ -17,6 +17,7 @@ import { RoutineSettingsTab } from "./routine-settings-tab";
 import { DirectChatSettingsTab } from "./direct-chat-settings-tab";
 import { DisplaysTab } from "./displays-tab";
 import { ModulesSettingsTab } from "./modules-settings-tab";
+import { RuntimeHostsTab } from "./runtime-hosts-tab";
 import type { ModuleState } from "@/lib/modules";
 
 type SettingsToken = {
@@ -299,6 +300,10 @@ export default function SettingsClient({
 
             {activeTab === "modules" && isAdmin && (
                 <ModulesSettingsTab isAdmin={isAdmin} />
+            )}
+
+            {activeTab === "runtime-hosts" && isAdmin && (
+                <RuntimeHostsTab />
             )}
 
             {activeTab === "notifications" && (

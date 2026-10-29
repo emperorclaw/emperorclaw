@@ -1,0 +1,26 @@
+# Emperor Claw runtime host daemon (0.21): one per machine. Keeps a socket to Emperor with the host
+# token from hostd.env (written by `emperor-hermes host connect`), reports this host's agents and runs
+# allowlisted jobs via systemd-run. Runs on Hermes' own venv interpreter (HERMES_PYTHON in host.env).
+[Unit]
+Description=Emperor Claw runtime host daemon
+Documentation=https://emperorclaw.malecu.eu/docs/v1.1/hermes-runtime
+After=network-online.target
+
+[Service]
+Type=simple
+# HERMES_PYTHON, HERMES_CHECKOUT
+EnvironmentFile=%h/.config/emperor-hermes/host.env
+Environment=PYTHONUNBUFFERED=1
+Environment=PYTHONPATH=%h/.hermes/emperor-bridge/current/bridge
+WorkingDirectory=%h
+ExecStart=/bin/sh -c 'exec "$${HERMES_PYTHON}" -m emperor_hostd run'
+Restart=always
+RestartSec=5
+# 78 = revoked in Emperor, disconnected, or hostd.env missing: do not restart in a loop.
+RestartPreventExitStatus=78
+TimeoutStopSec=20
+StandardOutput=append:%h/.local/share/emperor-hermes/hostd.log
+StandardError=inherit
+
+[Install]
+WantedBy=default.target

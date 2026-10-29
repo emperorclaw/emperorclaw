@@ -15,6 +15,7 @@ export const SETTINGS_SECTIONS = [
     { label: 'Connections', items: [
         { id:'connections', label:'Agent connections', description:'Add agents or connect a runtime you already use.' },
         { id:'tokens', label:'Access tokens', description:'Manage credentials for agents and external connections.' },
+        { id:'runtime-hosts', label:'Runtime hosts', description:'Machines that run your Hermes agents: connect, check and restart.', admin:true },
         { id:'displays', label:'Displays', description:'Connect a physical display to your live agent feed.', admin:true, module:'displays' },
     ] },
     { label: 'System', items: [

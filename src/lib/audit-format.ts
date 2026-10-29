@@ -16,7 +16,7 @@ export type AuditActor = { type: AuditActorType; id: string | null; tokenId?: st
 
 export const AUDIT_TARGET_TYPES = [
     "agent", "task", "approval", "member", "invitation", "company", "organization", "project", "customer", "knowledge_note",
-    "pricing", "view",
+    "pricing", "view", "runtime_host",
 ] as const;
 export type AuditTargetType = (typeof AUDIT_TARGET_TYPES)[number];
 
@@ -70,6 +70,8 @@ export const AUDIT_FIELD_ALLOWLIST: Record<AuditTargetType, Record<string, Field
         actionKey: "enum", permission: "enum",
         // Who can use it (0.20, lib/agent-access.ts).
         access: "enum", ownerUserId: "id", accessCount: "number", toName: "label",
+        // The runtime host it runs on (0.21, lib/runtime-hosts) and its Hermes profile there.
+        runtimeHostId: "id", runtimeProfile: "enum",
     },
     task: {
         title: "label", state: "enum", priority: "number", projectId: "id",
@@ -108,6 +110,11 @@ export const AUDIT_FIELD_ALLOWLIST: Record<AuditTargetType, Record<string, Field
         archived: "bool", pinnedToHome: "bool", fromVersion: "number",
         visibility: "enum", ownerUserId: "id", sharedCount: "number", toName: "label",
         ownerSource: "enum", threadId: "id",
+    },
+    // A paired machine running agents (0.21): its name, platform and state, and the jobs sent to it.
+    runtime_host: {
+        name: "label", os: "enum", arch: "enum", status: "enum", hostdVersion: "enum",
+        command: "enum", jobId: "id", agentId: "id", profile: "enum", target: "enum",
     },
 };
 
@@ -210,7 +217,7 @@ export function scopeAuditFields(scopeJson: unknown): AuditFields {
 const TARGET_NOUNS: Record<string, string> = {
     agent: "agent", task: "task", approval: "approval", member: "", invitation: "an invitation for",
     company: "", organization: "", project: "project", customer: "customer", knowledge_note: "note",
-    pricing: "pricing for", view: "view",
+    pricing: "pricing for", view: "view", runtime_host: "host",
 };
 
 /** "<verb> <noun> <label>"; a verb with "{target}" places the target itself. */
@@ -263,6 +270,15 @@ const VERBS: Record<string, string> = {
     "view.owner_transferred": "transferred",
     "view.deleted": "deleted",
     "view.read_unbound_token": "opened with a company-wide token",
+    "agent.runtime_host_changed": "changed the host of",
+    "company.host_pairing_created": "created a code to connect a host",
+    "runtime_host.paired": "paired",
+    "runtime_host.renamed": "renamed",
+    "runtime_host.revoked": "revoked",
+    "runtime_host.connected": "connected",
+    "runtime_host.disconnected": "lost the connection to",
+    "runtime_host.job_queued": "sent a command to",
+    "runtime_host.job_finished": "finished a command on",
     // Rows written before 0.14 by lib/mcp.ts logAudit.
     register_agent: "created",
     delete_agent: "deleted",
@@ -430,6 +446,7 @@ export function auditTargetHref(targetType: string, targetId: string, payload: A
         case "organization": return "/agents/organization";
         case "pricing": return "/costs?tab=budgets";
         case "view": return `/views/${encodeURIComponent(targetId)}`;
+        case "runtime_host": return "/settings?tab=runtime-hosts";
         default: return null;
     }
 }

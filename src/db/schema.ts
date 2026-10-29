@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { pgTable, text, timestamp, boolean, jsonb, uuid, integer, uniqueIndex, index, check, doublePrecision, date, primaryKey } from "drizzle-orm/pg-core";
+import { pgTable, text, timestamp, boolean, jsonb, uuid, integer, uniqueIndex, index, check, doublePrecision, date, primaryKey, type AnyPgColumn } from "drizzle-orm/pg-core";
 
 // --- Auth Tables ---
 export const users = pgTable("users", {
@@ -294,6 +294,10 @@ export const agents = pgTable("agents", {
     // An 'owner' agent never sees more data than its owner (lib/agent-scope.ts).
     ownerUserId: uuid("owner_user_id").references(() => users.id, { onDelete: 'set null' }),
     access: text("access").default("everyone").notNull(),
+    // The paired runtime host this agent runs on (0.21, lib/runtime-hosts), and
+    // its Hermes profile there. Set by adoption from the host's inventory.
+    runtimeHostId: uuid("runtime_host_id").references((): AnyPgColumn => runtimeHosts.id, { onDelete: 'set null' }),
+    runtimeProfile: text("runtime_profile"),
     createdAt: timestamp("created_at").defaultNow().notNull(),
     deletedAt: timestamp("deleted_at"),
 }, (table) => ({
@@ -1490,4 +1494,109 @@ export const agentAccess = pgTable("agent_access", {
 }, (table) => ({
     pk: primaryKey({ columns: [table.agentId, table.userId] }),
     companyUserIdx: index("agent_access_company_user_idx").on(table.companyId, table.userId),
+}));
+
+// ---- Runtime hosts (0.21, lib/runtime-hosts) ----
+// A machine running Hermes agents, paired once with a short code; its daemon
+// (emperor-hermes-hostd) keeps a socket to /api/hosts/ws and runs allowlisted
+// jobs. The host token is not a company token: only its sha256 lives here, so
+// it can never authenticate an MCP route.
+
+export const RUNTIME_HOST_COMMANDS = [
+    "provision_agent", "update_runtime", "restart_agent", "remove_agent", "rotate_agent_token", "refresh_inventory", "disconnect",
+] as const;
+export const RUNTIME_HOST_JOB_STATUSES = ["queued", "sent", "running", "succeeded", "failed", "timed_out", "canceled", "lost"] as const;
+
+export const runtimeHosts = pgTable("runtime_hosts", {
+    id: uuid("id").primaryKey().defaultRandom(),
+    companyId: uuid("company_id").notNull().references(() => companies.id, { onDelete: 'cascade' }),
+    name: text("name").notNull(),
+    hostname: text("hostname"),
+    // sha256 of /etc/machine-id (emperor_bridge.config.host_fingerprint); the
+    // key that joins this host to the runtime_nodes its bridges register.
+    hostFingerprint: text("host_fingerprint").notNull(),
+    os: text("os"),
+    arch: text("arch"),
+    tokenHash: text("token_hash").notNull(),
+    status: text("status").default("offline").notNull(),
+    protocol: integer("protocol"),
+    hostdVersion: text("hostd_version"),
+    installerVersion: text("installer_version"),
+    bridgeVersion: text("bridge_version"),
+    hermesVersion: text("hermes_version"),
+    inventoryJson: jsonb("inventory_json").default("{}").notNull(),
+    lastSeenAt: timestamp("last_seen_at"),
+    // When the current socket connected; a closing socket only marks the host
+    // offline while it is still the current one.
+    connectedAt: timestamp("connected_at"),
+    // Why it is offline when known: disconnected (socket closed), silent (no
+    // heartbeat for 90 s). Revoked hosts say so in status.
+    offlineReason: text("offline_reason"),
+    // Set when connections of this host keep replacing each other: two
+    // daemons (two machines?) use the same host token.
+    duplicateDaemonAt: timestamp("duplicate_daemon_at"),
+    createdByUserId: uuid("created_by_user_id").references(() => users.id, { onDelete: 'set null' }),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    revokedAt: timestamp("revoked_at"),
+}, (table) => ({
+    tokenHashUnique: uniqueIndex("runtime_hosts_token_hash_unique").on(table.tokenHash),
+    fingerprintUnique: uniqueIndex("runtime_hosts_company_fingerprint_unique").on(table.companyId, table.hostFingerprint).where(sql`${table.revokedAt} IS NULL`),
+    statusCheck: check("runtime_hosts_status_check", sql`${table.status} IN ('online', 'offline', 'revoked')`),
+}));
+
+export const runtimeHostPairings = pgTable("runtime_host_pairings", {
+    id: uuid("id").primaryKey().defaultRandom(),
+    companyId: uuid("company_id").notNull().references(() => companies.id, { onDelete: 'cascade' }),
+    codeHash: text("code_hash").notNull(),
+    createdByUserId: uuid("created_by_user_id").references(() => users.id, { onDelete: 'set null' }),
+    expiresAt: timestamp("expires_at").notNull(),
+    usedAt: timestamp("used_at"),
+    hostId: uuid("host_id").references(() => runtimeHosts.id, { onDelete: 'set null' }),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (table) => ({
+    codeHashUnique: uniqueIndex("runtime_host_pairings_code_hash_unique").on(table.codeHash),
+}));
+
+export const runtimeHostJobs = pgTable("runtime_host_jobs", {
+    id: uuid("id").primaryKey().defaultRandom(),
+    companyId: uuid("company_id").notNull().references(() => companies.id, { onDelete: 'cascade' }),
+    hostId: uuid("host_id").notNull().references(() => runtimeHosts.id, { onDelete: 'cascade' }),
+    agentId: uuid("agent_id").references(() => agents.id, { onDelete: 'set null' }),
+    batchId: uuid("batch_id"),
+    command: text("command").notNull(),
+    // Validated, allowlisted arguments; never a token or key.
+    argsJson: jsonb("args_json").default("{}").notNull(),
+    status: text("status").default("queued").notNull(),
+    attempts: integer("attempts").default(0).notNull(),
+    idempotencyKey: text("idempotency_key"),
+    // A token minted for this job at dispatch (later commands); only its hash.
+    mintedTokenHash: text("minted_token_hash"),
+    requestedByUserId: uuid("requested_by_user_id").references(() => users.id, { onDelete: 'set null' }),
+    resultJson: jsonb("result_json"),
+    error: text("error"),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at").defaultNow().notNull(),
+    sentAt: timestamp("sent_at"),
+    startedAt: timestamp("started_at"),
+    finishedAt: timestamp("finished_at"),
+    deadlineAt: timestamp("deadline_at"),
+    // More progress lines than the server keeps per job arrived; the rest were dropped.
+    progressTruncated: boolean("progress_truncated").default(false).notNull(),
+}, (table) => ({
+    commandCheck: check("runtime_host_jobs_command_check", sql`${table.command} IN ('provision_agent', 'update_runtime', 'restart_agent', 'remove_agent', 'rotate_agent_token', 'refresh_inventory', 'disconnect')`),
+    statusCheck: check("runtime_host_jobs_status_check", sql`${table.status} IN ('queued', 'sent', 'running', 'succeeded', 'failed', 'timed_out', 'canceled', 'lost')`),
+    idempotencyUnique: uniqueIndex("runtime_host_jobs_idempotency_unique").on(table.companyId, table.idempotencyKey).where(sql`${table.idempotencyKey} IS NOT NULL`),
+    hostStatusIdx: index("runtime_host_jobs_host_status_idx").on(table.hostId, table.status, table.createdAt),
+    agentIdx: index("runtime_host_jobs_agent_idx").on(table.agentId, table.createdAt),
+}));
+
+export const runtimeHostJobEvents = pgTable("runtime_host_job_events", {
+    id: uuid("id").primaryKey().defaultRandom(),
+    jobId: uuid("job_id").notNull().references(() => runtimeHostJobs.id, { onDelete: 'cascade' }),
+    seq: integer("seq").notNull(),
+    at: timestamp("at").defaultNow().notNull(),
+    step: text("step"),
+    line: text("line"),
+}, (table) => ({
+    jobSeqUnique: uniqueIndex("runtime_host_job_events_job_seq_unique").on(table.jobId, table.seq),
 }));

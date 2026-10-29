@@ -41,9 +41,9 @@ import { HERMES_MIGRATION_DOC_HREF } from "@/lib/live-activity";
 import { directThreadLink, workLogThreadTitle } from "@/lib/direct-chat-mode";
 import { CUSTOM_LLM_PROVIDER } from "@/lib/llm-endpoint";
 import { planLlmEndpointEdit } from "@/lib/llm-endpoint-edit";
+import { installerDownloadCommand } from "@/lib/runtime-hosts/connect-command";
+import { RestartAgentButton } from "@/components/runtime-hosts/restart-agent-button";
 
-/** The 0.9 remote installer (src/content/docs/v1.1/hermes-runtime.md). */
-const HERMES_INSTALLER_URL = "https://github.com/emperorclaw/emperorclaw/releases/download/v0.9.0/emperor-hermes.sh";
 
 /** A Hermes profile name suggestion for an agent: lowercase, dashes, no spaces. */
 function hermesProfileName(agentName: string): string {
@@ -92,6 +92,8 @@ type AgentDetailData = {
     };
     /** Set when the agent's latest runs failed on the model provider (it may still be online). */
     providerTrouble?: ProviderTrouble | null;
+    /** The paired runtime host it runs on (0.21, Settings -> Runtime hosts). */
+    runtimeHost?: { id: string; name: string; status: string; profile: string | null; topology: "standalone" | "shared" | "unknown"; sharedAgents?: number } | null;
     latestSnapshot: { id: string; content: string; createdAt: string } | null;
     memoryEntries: Array<{
         id: string;
@@ -381,6 +383,12 @@ export function AgentDetailPanel({ agentId, agentName, runtime = null }: {
                                 </span>
                             )}
                             {agent.provider === "hermes" && <BridgeBadge runtime={runtime} />}
+                            {data.runtimeHost && (
+                                <Link href="/settings?tab=runtime-hosts" title={`Profile ${data.runtimeHost.profile ?? "?"} (${data.runtimeHost.topology}); host ${data.runtimeHost.status}`}
+                                    className="rounded border border-border px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground hover:text-foreground">
+                                    Runs on {data.runtimeHost.name}{data.runtimeHost.status !== "online" ? ` (${data.runtimeHost.status})` : ""}
+                                </Link>
+                            )}
                         </div>
                     </div>
                 </div>
@@ -410,6 +418,10 @@ export function AgentDetailPanel({ agentId, agentName, runtime = null }: {
                         >
                             {recreating ? <IconLoader className="h-4 w-4 animate-spin" /> : <IconRefresh className="h-4 w-4" />}
                         </button>
+                    )}
+                    {data.runtimeHost && canAdmin && (
+                        <RestartAgentButton hostId={data.runtimeHost.id} agentId={agent.id} agentName={agent.name}
+                            topology={data.runtimeHost.topology} sharedAgents={data.runtimeHost.sharedAgents} hostOnline={data.runtimeHost.status === "online"} />
                     )}
                     <DeleteAgentDialog agentId={agent.id} agentName={agent.name} />
                 </div>
@@ -1051,14 +1063,15 @@ function SetupBanner({ agentId, agentName, agentRole, agentStatus, providerId, d
                     <span className="text-[10px] font-bold uppercase tracking-wider text-amber-300">🔧 What you need to do</span>
                     <ol className="space-y-1.5 text-[11px] text-amber-100/80 list-decimal list-inside">
                         <li className="break-words">
-                            Download the installer on the host (Linux with systemd):
-                            <code className="mt-1 block overflow-x-auto whitespace-pre rounded bg-amber-500/10 px-2 py-1 text-amber-200">{`mkdir -p ~/.local/bin
-curl -fsSL ${HERMES_INSTALLER_URL} -o ~/.local/bin/emperor-hermes
-chmod +x ~/.local/bin/emperor-hermes`}</code>
+                            Download and verify the installer on the host (Linux with systemd):
+                            <code className="mt-1 block overflow-x-auto whitespace-pre-wrap break-all rounded bg-amber-500/10 px-2 py-1 text-amber-200">{installerDownloadCommand()}</code>
                         </li>
                         <li className="break-words">
-                            Install this agent: <code className="text-amber-200 bg-amber-500/10 px-1 rounded">emperor-hermes install --profile {hermesProfileName(agentName)}</code>
-                            <span className="block text-amber-100/60">It creates a missing profile; put this agent&apos;s Emperor token and LLM key in the profile&apos;s <code className="text-amber-200/80">.env</code> and run it again.</span>
+                            Create the profile: <code className="text-amber-200 bg-amber-500/10 px-1 rounded">hermes profile create {hermesProfileName(agentName)} --clone</code>, then put this agent&apos;s Emperor URL, token and id (and its LLM key) in the profile&apos;s <code className="text-amber-200/80">.env</code>.
+                        </li>
+                        <li className="break-words">
+                            Install this agent: <code className="text-amber-200 bg-amber-500/10 px-1 rounded">~/.local/bin/emperor-hermes install --profile {hermesProfileName(agentName)}</code>
+                            <span className="block text-amber-100/60">Then connect the machine under Settings → Runtime hosts to restart it from here.</span>
                         </li>
                     </ol>
                     <p className="text-[10px] text-amber-100/60 mt-2">

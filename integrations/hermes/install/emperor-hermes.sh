@@ -7,6 +7,7 @@
 #
 # Layout it manages (all under the invoking user's $HOME):
 #   ~/.config/emperor-hermes/host.env          install-specific paths for the units
+#   ~/.config/emperor-hermes/hostd.env         the host daemon's Emperor URL, host id and token (0600)
 #   ~/.config/systemd/user/emperor-hermes-*    unit templates (from the bridge bundle)
 #   ~/.local/share/emperor-hermes/             python symlink, per-profile records, log
 #   ~/.hermes/hermes-agent-v0.22.4/            pinned Hermes, side by side with the old one
@@ -15,7 +16,7 @@
 set -Eeuo pipefail
 umask 077
 
-readonly EMPEROR_HERMES_VERSION="0.19.0"
+readonly EMPEROR_HERMES_VERSION="0.21.0"
 readonly HERMES_REF="v0.22.4"
 readonly HERMES_SHA="4d04303818b61bf3aa09278af48356315515965b"
 readonly HERMES_CODE_VERSION="${HERMES_REF#v}"
@@ -42,6 +43,9 @@ readonly RECORDS_DIR="$DATA_DIR/profiles"
 readonly HOST_STATE="$DATA_DIR/host.state"
 readonly STABLE_PYTHON="$DATA_DIR/python"
 readonly LOG_FILE="$DATA_DIR/emperor-hermes.log"
+readonly HOSTD_ENV="$CONFIG_DIR/hostd.env"
+readonly HOSTD_UNIT="emperor-hermes-hostd.service"
+readonly HOSTD_LOG="$DATA_DIR/hostd.log"
 readonly LOCAL_HERMES="$HOME/.local/bin/hermes"
 readonly DEFAULT_HERMES_DIR="$HERMES_ROOT/hermes-agent-${HERMES_REF}"
 
@@ -67,6 +71,13 @@ OPT_DISABLE_WATCHDOGS=0
 OPT_MAX_PARALLEL=""
 OPT_DELTA_MIB="${EMPEROR_HERMES_SHARED_DELTA_MIB:-40}"
 OPT_TIMEOUT=900
+OPT_URL=""
+OPT_INSECURE=0
+OPT_JSON=0
+# No prompts, explicit --gateway, agent id required. Implied when the host daemon runs us (HOSTD_PROGRESS=1).
+OPT_NON_INTERACTIVE=0
+if [ "${HOSTD_PROGRESS:-0}" = 1 ]; then OPT_NON_INTERACTIVE=1; fi
+OPT_ARGS=()
 
 # Runtime globals.
 HERMES_DIR=""
@@ -132,7 +143,17 @@ Commands
                        Stop the 0.9 units, restore state.db/config/.env/plugin, restart the 0.3 unit.
   rollback --bridge-only
                        Point the bridge back at the previous bundle and restart the bridges.
-  status [--profile p]  Gateway, bridge and legacy unit status. Exit 1 if anything is wrong.
+  status [--profile p] [--json]
+                       Gateway, bridge and legacy unit status. Exit 1 if anything is wrong.
+                       --json: one JSON object on stdout (for scripts and the host daemon).
+  remove --profile p [--purge]
+                       Stop the agent's units, drop it from the shared bridge, archive its Hermes
+                       profile (--purge deletes it and its backups). Asks first unless --yes.
+  host connect [--url URL] CODE
+                       Pair this machine with Emperor (code from Settings -> Runtime hosts) and start
+                       the host daemon (emperor-hermes-hostd). Installs Hermes and the bridge if needed.
+  host status | host disconnect
+                       Show the host daemon / stop it and delete its token.
   restart-gateway [--profile p | --shared] [--when-idle] [--timeout S]
   finalize [--purge]   After the soak: point ~/.local/bin/hermes at $HERMES_REF, retire the 0.3 units,
                        bridge file and old checkout (archived; --purge deletes it).
@@ -145,6 +166,11 @@ Options
   --max-parallel N     Set EMPEROR_CLAW_HERMES_MAX_PARALLEL_TURNS in the profiles' .env.
   --delta-mib N        Shared-gateway memory per extra profile for --plan (default 40, see R-1).
   --yes                Accept the shared-gateway trade-off without the interactive prompt.
+  --non-interactive    Never prompt: install needs --gateway, a profile .env with EMPEROR_CLAW_API_URL,
+                       _API_TOKEN and _AGENT_ID, and --yes for shared. Progress lines start with '==> '.
+  --url URL            Emperor address for host connect (default: the URL the profiles use).
+  --insecure           host connect: allow plain http to a public address (the host key travels unencrypted).
+                       Without it, http is only accepted for localhost and literal private IPs.
   --force              Override the memory plan and the duplicate-runtime guard.
   --take-over-gateway  Stop and disable Hermes gateways emperor-hermes did not start (for example
                        hermes-gateway-<profile>.service) that serve the same profiles. Rollback restores them.
@@ -240,10 +266,11 @@ managed_profiles() { # profiles with a record whose status is active
     done
     return 0
 }
-recorded_profiles() {
+recorded_profiles() { # every profile emperor-hermes installed and did not remove
     local f p
     for f in "$RECORDS_DIR"/*.env; do
         [ -e "$f" ] || continue
+        [ "$(env_get "$f" status)" = removed ] && continue
         p=${f##*/}; printf '%s\n' "${p%.env}"
     done
     return 0
@@ -280,7 +307,7 @@ helper_python() {
 
 confirm() { # prompt text -> 0 when accepted
     if [ "$OPT_YES" = 1 ]; then return 0; fi
-    if [ ! -t 0 ]; then return 1; fi
+    if [ "$OPT_NON_INTERACTIVE" = 1 ] || [ ! -t 0 ]; then return 1; fi
     local answer
     printf '%s [type yes]: ' "$1" >&2
     read -r answer || return 1
@@ -937,7 +964,10 @@ check_credentials() {
     penv="$(profile_home "$1")/.env"
     [ -n "$(env_get "$penv" EMPEROR_CLAW_API_URL)" ] || die "$1: EMPEROR_CLAW_API_URL is missing in $penv"
     [ -n "$(env_get "$penv" EMPEROR_CLAW_API_TOKEN)" ] || die "$1: EMPEROR_CLAW_API_TOKEN is missing in $penv"
-    [ -n "$(env_get "$penv" EMPEROR_CLAW_AGENT_ID)" ] || warn "$1: EMPEROR_CLAW_AGENT_ID is not set; the bridge resolves the agent by name"
+    if [ -z "$(env_get "$penv" EMPEROR_CLAW_AGENT_ID)" ]; then
+        [ "$OPT_NON_INTERACTIVE" != 1 ] || die "$1: EMPEROR_CLAW_AGENT_ID is missing in $penv (required with --non-interactive)"
+        warn "$1: EMPEROR_CLAW_AGENT_ID is not set; the bridge resolves the agent by name"
+    fi
 }
 
 install_plugin() { # profile
@@ -1042,6 +1072,7 @@ own_unit() { # unit name -> 0 when it is ours (0.9 units) or a 0.3 bridge unit, 
     case "$1" in
         emperor-hermes-gateway@* | emperor-hermes-gateway-shared.service | \
         emperor-hermes-bridge@* | emperor-hermes-bridge-*.service | \
+        emperor-hermes-hostd.service | emperor-hostd-job-*.service | \
         emperor-hermes-logrotate.service | emperor-hermes-logrotate.timer) return 0 ;;
         *) return 1 ;;
     esac
@@ -1503,6 +1534,9 @@ cmd_install() { # topology from --gateway, profiles from --profile/--all
     local profiles=() shared_new=()
     mapfile -t profiles < <(target_profiles)
     [ "${#profiles[@]}" -gt 0 ] || die "no profiles: pass --profile p[,q] or --all"
+    if [ "$OPT_NON_INTERACTIVE" = 1 ] && [ -z "$OPT_GATEWAY" ]; then
+        die "--non-interactive needs an explicit --gateway standalone|shared"
+    fi
     topo=${OPT_GATEWAY:-$(default_topology "${profiles[@]}")}
     case "$topo" in standalone | shared) ;; *) die "--gateway must be standalone or shared" ;; esac
     take_lock
@@ -1532,6 +1566,7 @@ cmd_install() { # topology from --gateway, profiles from --profile/--all
     step "Bridge bundle"
     install_bundle
     install_units
+    hostd_follow_bundle 0
 
     # Phase A, the 0.3 bridge still runs: back up and check everything we can first.
     step "Checking profiles"
@@ -1687,6 +1722,7 @@ cmd_update() {
     done
     if [ -n "$(shared_list)" ]; then apply_default_home_shared; fi
     write_host_env "$(shared_csv)"
+    hostd_follow_bundle 1
     if [ "$OPT_RESTART_GATEWAYS" = 1 ] || [ "$old_py" != "$new_py" ] || [ "$old_launcher" != "$HERMES_LAUNCHER" ]; then
         step "Restarting gateways (Hermes changed)"
         for p in "${profiles[@]}"; do
@@ -1764,6 +1800,7 @@ cmd_rollback_bridge() {
     env_set "$HOST_STATE" bridge_version "$prev"
     step "Bridge bundle back to $prev; restarting bridges"
     restart_bridges
+    hostd_follow_bundle 0
 }
 
 cmd_rollback() {
@@ -1891,13 +1928,16 @@ cmd_restart_gateway() {
                 sleep 5
             done
         fi
+        # "Restarted <unit>" tells the host daemon the restart happened even if the gateway is then slow to get ready.
         if [ "$p" = shared ]; then
             guard_foreign_gateways shared
             sc restart emperor-hermes-gateway-shared.service
+            step "Restarted emperor-hermes-gateway-shared.service"
             wait_ready "$HERMES_ROOT" shared emperor-hermes-gateway-shared.service
         else
             guard_foreign_gateways standalone "$p"
             sc restart "emperor-hermes-gateway@$p.service"
+            step "Restarted emperor-hermes-gateway@$p.service"
             wait_ready "$(profile_home "$p")" "$p" "emperor-hermes-gateway@$p.service"
         fi
     done
@@ -1979,6 +2019,9 @@ cmd_status() {
     [ -x "$STABLE_PYTHON" ] || bad=1
     printf '  bridge:   %s\n' "$(bridge_version)"
     printf '  finalized: %s\n' "$( [ "$(host_state finalized)" = 1 ] && printf yes || printf no)"
+    if [ -f "$HOSTD_ENV" ]; then
+        printf '  host daemon: %s (%s)\n' "$(sc is-active "$HOSTD_UNIT" 2>/dev/null || true)" "$(env_get "$HOSTD_ENV" EMPEROR_URL)"
+    fi
     if report_watchdogs; then bad=1; fi
     if [ -n "$(shared_list)" ]; then
         out=$(identify "$HERMES_ROOT")
@@ -2087,6 +2130,349 @@ cmd_doctor() {
     if [ -e "$STABLE_PYTHON" ]; then printf 'Bridge python: %s\n' "$(python_target)"; fi
 }
 
+# ── status --json ───────────────────────────────────────────────────────────────────────────
+
+cmd_status_json() { # one JSON object on stdout; exit 1 when anything is wrong (same rules as status)
+    local p topo st head bad=0 gw br ident u ustate dup shared_gw="" shared_br="" shared_ident="" profiles=()
+    ensure_user_bus || die "systemd user bus not reachable"
+    load_host
+    if [ -n "$OPT_PROFILES" ]; then mapfile -t profiles < <(split_csv "$OPT_PROFILES"); else mapfile -t profiles < <(recorded_profiles); fi
+    head=$(checkout_head "$HERMES_DIR")
+    [ "$head" = "$HERMES_SHA" ] || bad=1
+    [ -x "$STABLE_PYTHON" ] || bad=1
+    if report_watchdogs >/dev/null; then bad=1; fi
+    if [ -n "$(shared_list)" ]; then
+        shared_gw=$(sc is-active emperor-hermes-gateway-shared.service 2>/dev/null || true)
+        shared_br=$(sc is-active emperor-hermes-bridge-shared.service 2>/dev/null || true)
+        shared_ident=$(identify "$HERMES_ROOT")
+        [ "$shared_gw" = active ] && [ "$shared_br" = active ] || bad=1
+        case "$shared_ident" in "ready $HERMES_CODE_VERSION "*) ;; *) bad=1 ;; esac
+    fi
+    local rows=()
+    for p in "${profiles[@]}"; do
+        valid_profile "$p" || continue
+        topo=$(rec_get "$p" topology)
+        st=$(rec_get "$p" status)
+        gw="" br="" ident="" ustate="" dup=0
+        if [ "$st" != active ]; then
+            bad=1
+        elif [ "$topo" = standalone ]; then
+            gw=$(sc is-active "emperor-hermes-gateway@$p.service" 2>/dev/null || true)
+            br=$(sc is-active "emperor-hermes-bridge@$p.service" 2>/dev/null || true)
+            ident=$(identify "$(profile_home "$p")")
+            [ "$gw" = active ] && [ "$br" = active ] || bad=1
+            case "$ident" in "ready $HERMES_CODE_VERSION "*) ;; *) bad=1 ;; esac
+        else
+            gw=$shared_gw br=$shared_br ident=$shared_ident
+            in_shared "$p" || bad=1
+        fi
+        u=$(rec_get "$p" legacy_unit)
+        if [ -n "$u" ] && [ -f "$UNIT_DIR/$u" ]; then
+            ustate="$(sc is-active "$u" 2>/dev/null || true)"
+            if unit_active "$u"; then dup=1; bad=1; fi
+        elif [ -n "$u" ] && [ -e "$BACKUP_ROOT/retired-units/$u" ]; then
+            ustate=retired
+        fi
+        if [ -n "$(legacy_procs_for "$p")" ]; then dup=1; bad=1; fi
+        rows+=("$(printf 'P\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s' "$p" "${topo:-}" "${st:-}" "$gw" "$br" "$ident" "$u" "$ustate" "$dup")")
+    done
+    {
+        printf 'H\tversion\t%s\n' "$EMPEROR_HERMES_VERSION"
+        printf 'H\thostname\t%s\n' "$(uname -n)"
+        printf 'H\tarch\t%s\n' "$(uname -m)"
+        printf 'H\thermesRef\t%s\n' "$HERMES_REF"
+        printf 'H\thermesDir\t%s\n' "$HERMES_DIR"
+        printf 'H\thermesPinned\t%s\n' "$([ "$head" = "$HERMES_SHA" ] && printf 1 || printf 0)"
+        printf 'H\tpython\t%s\n' "$(python_target)"
+        printf 'H\tbridgeVersion\t%s\n' "$(bridge_version)"
+        printf 'H\tfinalized\t%s\n' "$([ "$(host_state finalized)" = 1 ] && printf 1 || printf 0)"
+        printf 'H\thostConnected\t%s\n' "$([ -f "$HOSTD_ENV" ] && printf 1 || printf 0)"
+        printf 'H\thostDaemon\t%s\n' "$(sc is-active "$HOSTD_UNIT" 2>/dev/null || true)"
+        printf 'H\tsharedProfiles\t%s\n' "$(shared_csv)"
+        printf 'H\tsharedGateway\t%s\n' "$shared_gw"
+        printf 'H\tsharedBridge\t%s\n' "$shared_br"
+        printf 'H\tsharedIdentify\t%s\n' "$shared_ident"
+        printf 'H\tok\t%s\n' "$([ "$bad" = 0 ] && printf 1 || printf 0)"
+        [ "${#rows[@]}" -eq 0 ] || printf '%s\n' "${rows[@]}"
+    } | "$(helper_python)" -c '
+import json, os, sys
+home = sys.argv[1]
+host, profiles = {}, []
+for line in sys.stdin.read().splitlines():
+    parts = line.split("\t")
+    if parts[0] == "H" and len(parts) >= 3:
+        host[parts[1]] = parts[2]
+    elif parts[0] == "P" and len(parts) >= 10:
+        name, topo, status, gw, br, ident, unit, ustate, dup = parts[1:10]
+        try:
+            h = json.load(open(os.path.join(home, name, "emperor", "health.json")))
+        except Exception:
+            h = {}
+        keys = ("bridgeVersion", "registered", "duplicateRuntime", "sharedHostOk", "gatewayTopology", "lastError", "agentId", "updatedAt")
+        profiles.append({"profile": name, "topology": topo or None, "status": status or None,
+                         "gateway": gw or None, "bridge": br or None, "gatewayIdentify": ident or None,
+                         "legacyUnit": unit or None, "legacyUnitState": ustate or None, "duplicate": dup == "1",
+                         "health": {k: h[k] for k in keys if k in h} if isinstance(h, dict) else {}})
+flag = lambda k: host.get(k) == "1"
+print(json.dumps({
+    "version": host.get("version"), "hostname": host.get("hostname"), "arch": host.get("arch"),
+    "hermes": {"ref": host.get("hermesRef"), "dir": host.get("hermesDir"), "pinned": flag("hermesPinned")},
+    "python": host.get("python") or None, "bridgeVersion": host.get("bridgeVersion"), "finalized": flag("finalized"),
+    "hostDaemon": {"connected": flag("hostConnected"), "state": host.get("hostDaemon") or None},
+    "shared": {"profiles": [p for p in host.get("sharedProfiles", "").split(",") if p],
+               "gateway": host.get("sharedGateway") or None, "bridge": host.get("sharedBridge") or None,
+               "gatewayIdentify": host.get("sharedIdentify") or None},
+    "profiles": profiles, "ok": flag("ok"),
+}, indent=2))
+' "$PROFILES_ROOT"
+    [ "$bad" = 0 ]
+}
+
+# ── remove ──────────────────────────────────────────────────────────────────────────────────
+
+cmd_remove() { # --profile p[,q] [--purge]
+    local p remaining ts dest touched_shared=0 profiles=() keep=()
+    mapfile -t profiles < <(split_csv "$OPT_PROFILES")
+    [ "${#profiles[@]}" -gt 0 ] || die "remove what? pass --profile p"
+    for p in "${profiles[@]}"; do
+        valid_profile "$p" || die "invalid profile name: $p"
+        if [ ! -f "$(record_file "$p")" ] || [ "$(rec_get "$p" status)" = removed ]; then die "$p is not installed by emperor-hermes"; fi
+    done
+    confirm "Remove ${profiles[*]} from this host ($([ "$OPT_PURGE" = 1 ] && printf 'DELETING' || printf 'archiving') the Hermes profile)?" ||
+        die "not confirmed (re-run with --yes)"
+    take_lock
+    ensure_user_bus || die "systemd user bus not reachable"
+    load_host
+    step "Stopping units: ${profiles[*]}"
+    for p in "${profiles[@]}"; do
+        stop_new_units_for "$p"
+        if in_shared "$p"; then touched_shared=1; fi
+    done
+    while IFS= read -r p; do
+        [ -n "$p" ] && ! in_list "$p" "${profiles[@]}" && keep+=("$p")
+    done < <(shared_list)
+    remaining=$(join_csv "${keep[@]}")
+    if [ -f "$HOST_ENV" ] && [ -n "$HERMES_LAUNCHER" ]; then write_host_env "$remaining"; fi
+    if [ "$touched_shared" = 1 ]; then
+        if [ -n "$remaining" ]; then
+            sc restart emperor-hermes-bridge-shared.service
+            log "  shared bridge restarted for: $remaining"
+        else
+            sc disable --now emperor-hermes-bridge-shared.service emperor-hermes-gateway-shared.service >/dev/null 2>&1 || true
+            log "  no shared profiles left: the shared gateway and bridge are stopped"
+        fi
+    fi
+    ts=$(date -u +%Y%m%dT%H%M%SZ)
+    step "Removing profiles: ${profiles[*]}"
+    for p in "${profiles[@]}"; do
+        if [ -d "$(profile_home "$p")" ]; then
+            if [ "$OPT_PURGE" = 1 ]; then
+                rm -rf "$(profile_home "$p")"
+                log "  $p: Hermes profile deleted"
+            else
+                dest="$BACKUP_ROOT/removed/$p-$ts"
+                mkdir -p "$BACKUP_ROOT/removed"
+                mv "$(profile_home "$p")" "$dest"
+                log "  $p: Hermes profile archived to $dest"
+            fi
+        fi
+        if [ "$OPT_PURGE" = 1 ]; then
+            rm -f "$(record_file "$p")"
+            rm -rf "${BACKUP_ROOT:?}/$p"
+        else
+            rec_set "$p" status removed
+            rec_set "$p" removed_at "$ts"
+        fi
+    done
+    log "Removed: ${profiles[*]}"
+}
+
+# ── host daemon (runtime hosts) ─────────────────────────────────────────────────────────────
+
+valid_url() { # http(s)://host[:port], port 1-65535
+    [[ "$1" =~ ^https?://([A-Za-z0-9.-]+|\[::1\])(:([0-9]{1,5}))?$ ]] || return 1
+    [ -z "${BASH_REMATCH[3]}" ] || { [ "${BASH_REMATCH[3]}" -ge 1 ] && [ "${BASH_REMATCH[3]}" -le 65535 ]; }
+}
+
+private_http_url() { # url -> 0 for http://localhost or a LITERAL private IP (10/8, 172.16/12, 192.168/16, 127/8, ::1)
+    local hostport host a b
+    hostport=${1#http://}
+    hostport=${hostport%%/*}
+    if [ "$hostport" = "[::1]" ] || [[ "$hostport" == "[::1]:"* ]]; then return 0; fi
+    host=${hostport%%:*}
+    [ "$host" = localhost ] && return 0
+    [[ "$host" =~ ^([0-9]{1,3})\.([0-9]{1,3})\.[0-9]{1,3}\.[0-9]{1,3}$ ]] || return 1
+    a=${BASH_REMATCH[1]}
+    b=${BASH_REMATCH[2]}
+    [ "$a" = 10 ] || [ "$a" = 127 ] || { [ "$a" = 192 ] && [ "$b" = 168 ]; } || { [ "$a" = 172 ] && [ "$b" -ge 16 ] && [ "$b" -le 31 ]; }
+}
+
+# The host daemon ships in the bridge bundle (0.21+). When the current bundle has no daemon (a
+# rollback to an older bridge), stop it and remember that; when a bundle with the daemon is back,
+# start it again. With restart=1 (update), a running daemon is restarted to run the new code.
+hostd_follow_bundle() { # restart(0|1)
+    if [ ! -f "$BRIDGE_ROOT/current/bridge/emperor_hostd/__main__.py" ]; then
+        if unit_enabled "$HOSTD_UNIT" || unit_active "$HOSTD_UNIT"; then
+            sc disable --now "$HOSTD_UNIT" >/dev/null 2>&1 || true
+            env_set "$HOST_STATE" hostd_paused_by_bundle 1
+            warn "bridge $(bridge_version) has no host daemon: $HOSTD_UNIT stopped until a newer bundle is installed"
+        fi
+        return 0
+    fi
+    if [ "$(host_state hostd_paused_by_bundle)" = 1 ]; then
+        env_unset "$HOST_STATE" hostd_paused_by_bundle
+        if [ -f "$HOSTD_ENV" ]; then
+            sc enable --now "$HOSTD_UNIT" >/dev/null 2>&1 || warn "could not start $HOSTD_UNIT"
+            log "  $HOSTD_UNIT started again"
+        fi
+    elif [ "$1" = 1 ] && unit_enabled "$HOSTD_UNIT"; then
+        sc restart "$HOSTD_UNIT" || warn "could not restart $HOSTD_UNIT"
+        log "  $HOSTD_UNIT restarted on bridge $(bridge_version)"
+    fi
+}
+
+default_emperor_url() { # hostd.env's URL, else the one URL every managed profile uses
+    local p urls
+    if [ -f "$HOSTD_ENV" ]; then env_get "$HOSTD_ENV" EMPEROR_URL; return 0; fi
+    urls=$(for p in $(managed_profiles); do env_get "$(profile_home "$p")/.env" EMPEROR_CLAW_API_URL; done |
+        sed -E 's#/+$##' | sort -u | grep . || true)
+    if [ -n "$urls" ] && [ "$(printf '%s\n' "$urls" | grep -c .)" = 1 ]; then printf '%s\n' "$urls"; fi
+    return 0
+}
+
+hostd_fingerprint() { # the same id the bridges send (emperor_bridge.config.host_fingerprint)
+    "$STABLE_PYTHON" -c 'import sys
+sys.path.insert(0, sys.argv[1])
+from emperor_bridge.config import host_fingerprint
+print(host_fingerprint() or "")' "$BRIDGE_ROOT/current/bridge"
+}
+
+cmd_host() {
+    case "${OPT_ARGS[0]:-}" in
+        connect) cmd_host_connect ;;
+        status) cmd_host_status ;;
+        disconnect) cmd_host_disconnect ;;
+        *) die "usage: emperor-hermes host connect [--url URL] CODE | host status | host disconnect" ;;
+    esac
+}
+
+cmd_host_connect() {
+    local code=${OPT_ARGS[1]:-} url fingerprint body response status host_id="" host_token="" host_name="" tmp i line profiles=()
+    [ "${#OPT_ARGS[@]}" -le 2 ] || die "host connect takes one CODE"
+    [[ "$code" =~ ^[0-9A-Za-z]{4}-?[0-9A-Za-z]{4}$ ]] ||
+        die "pass the pairing code from Emperor (Settings -> Runtime hosts -> Connect a host), e.g. ABCD-EFGH"
+    url=${OPT_URL:-$(default_emperor_url)}
+    url=${url%/}
+    [ -n "$url" ] || die "pass --url with the address you open Emperor at (e.g. --url https://emperor.example.com)"
+    valid_url "$url" || die "--url must be http(s)://host[:port] (got $url)"
+    case "$url" in
+        https://*) ;;
+        *)
+            if ! private_http_url "$url"; then
+                [ "$OPT_INSECURE" = 1 ] || die "$url is plain http to a public address: the host key would travel unencrypted. Use https, or pass --insecure if you accept that"
+                warn "$url is not https: the host key travels in clear text (--insecure)"
+            fi
+            ;;
+    esac
+    take_lock
+    mkdir -p "$DATA_DIR" "$CONFIG_DIR"
+    step "Preflight"
+    preflight 1
+    load_host
+    mapfile -t profiles < <(managed_profiles)
+    step "Hermes $HERMES_REF"
+    ensure_hermes "${profiles[@]}"
+    resolve_python
+    step "Bridge bundle"
+    install_bundle
+    install_units
+    if [ ! -f "$HOST_ENV" ]; then write_host_env "$(shared_csv)"; fi
+    fingerprint=$(hostd_fingerprint || true)
+    [[ "$fingerprint" =~ ^[0-9a-f]{64}$ ]] || die "cannot read /etc/machine-id (it identifies this host to Emperor)"
+    step "Pairing with $url"
+    # The code goes through stdin, never argv.
+    body=$(printf '%s\n%s\n' "$code" "$fingerprint" | "$STABLE_PYTHON" -c 'import json, platform, re, socket, sys
+code, fingerprint = sys.stdin.read().split()[:2]
+osname = platform.system()
+try:
+    m = re.search(r"^PRETTY_NAME=\"?([^\"\n]+)", open("/etc/os-release").read(), re.M)
+    osname = m.group(1) if m else osname
+except OSError:
+    pass
+print(json.dumps({"code": code, "hostFingerprint": fingerprint, "hostname": socket.gethostname()[:255],
+                  "os": osname[:80], "arch": platform.machine()[:40]}))')
+    response=$(printf '%s' "$body" | curl -sS --max-time 30 -H 'Content-Type: application/json' --data-binary @- \
+        -w '\n%{http_code}' "$url/api/runtime-hosts/pair") || die "cannot reach $url"
+    status=${response##*$'\n'}
+    response=${response%$'\n'*}
+    case "$status" in
+        201) ;;
+        400) die "Emperor refused the code: it is wrong, expired (codes last 10 minutes) or already used. Create a new one in Settings -> Runtime hosts." ;;
+        429) die "too many attempts from this address; wait a few minutes and try a new code" ;;
+        *) die "pairing failed (HTTP $status from $url/api/runtime-hosts/pair)" ;;
+    esac
+    i=0
+    while IFS= read -r line; do
+        case "$i" in 0) host_id=$line ;; 1) host_token=$line ;; 2) host_name=$line ;; esac
+        i=$((i + 1))
+    done < <(printf '%s' "$response" | "$STABLE_PYTHON" -c 'import json, re, sys
+d = json.load(sys.stdin)
+hid, tok = str(d.get("hostId", "")), str(d.get("hostToken", ""))
+if not re.fullmatch(r"[0-9a-f-]{36}", hid) or not re.fullmatch(r"ech_[0-9a-f]{64}", tok):
+    sys.exit(1)
+print(hid); print(tok); print(re.sub(r"[^\w.-]", "", str(d.get("name", "")))[:63] or "host")' || true)
+    if [ -z "$host_id" ] || [ -z "$host_token" ]; then die "unexpected answer from $url"; fi
+    tmp=$(mktemp "$HOSTD_ENV.XXXXXX")
+    {
+        printf '# Written by emperor-hermes %s on %s (host connect). Holds this host'"'"'s token: keep it private.\n' \
+            "$EMPEROR_HERMES_VERSION" "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+        printf 'EMPEROR_URL="%s"\n' "$url"
+        printf 'HOST_ID="%s"\n' "$host_id"
+        printf 'HOST_TOKEN="%s"\n' "$host_token"
+        if [ "$OPT_INSECURE" = 1 ]; then printf 'INSECURE="1"\n'; fi
+    } >"$tmp"
+    chmod 600 "$tmp"
+    mv -f "$tmp" "$HOSTD_ENV"
+    host_token=""
+    env_unset "$HOST_STATE" hostd_paused_by_bundle
+    step "Starting $HOSTD_UNIT"
+    sc enable "$HOSTD_UNIT" >/dev/null 2>&1
+    sc restart "$HOSTD_UNIT"
+    for i in $(seq 1 20); do
+        unit_active "$HOSTD_UNIT" && break
+        sleep 0.5
+    done
+    unit_active "$HOSTD_UNIT" || die "$HOSTD_UNIT did not start. See: journalctl --user -u $HOSTD_UNIT and $HOSTD_LOG"
+    log "Connected as \"$host_name\" ($host_id). It shows up in Emperor under Settings -> Runtime hosts."
+}
+
+cmd_host_status() {
+    if [ ! -f "$HOSTD_ENV" ]; then
+        printf 'not connected (run: emperor-hermes host connect --url URL CODE)\n'
+        return 1
+    fi
+    ensure_user_bus || die "systemd user bus not reachable"
+    printf 'emperor:  %s\n' "$(env_get "$HOSTD_ENV" EMPEROR_URL)"
+    printf 'host id:  %s\n' "$(env_get "$HOSTD_ENV" HOST_ID)"
+    printf 'daemon:   %s, %s\n' "$(sc is-active "$HOSTD_UNIT" 2>/dev/null || true)" "$(sc is-enabled "$HOSTD_UNIT" 2>/dev/null || true)"
+    if [ -f "$HOSTD_LOG" ]; then
+        printf 'log:      %s (last lines)\n' "$HOSTD_LOG"
+        tail -n 5 "$HOSTD_LOG" | sed 's/^/  /'
+    fi
+    unit_active "$HOSTD_UNIT"
+}
+
+cmd_host_disconnect() {
+    take_lock
+    ensure_user_bus || die "systemd user bus not reachable"
+    sc disable --now "$HOSTD_UNIT" >/dev/null 2>&1 || true
+    if [ -f "$HOSTD_ENV" ]; then
+        rm -f "$HOSTD_ENV"
+        log "  deleted $HOSTD_ENV (the host token)"
+    fi
+    log "Host daemon stopped. Revoke this host in Emperor too (Settings -> Runtime hosts) so its token can never be used again."
+}
+
 parse_args() {
     while [ "$#" -gt 0 ]; do
         case "$1" in
@@ -2115,8 +2501,14 @@ parse_args() {
             --bridge-only) OPT_BRIDGE_ONLY=1 ;;
             --restart-gateways) OPT_RESTART_GATEWAYS=1 ;;
             --disable-watchdogs) OPT_DISABLE_WATCHDOGS=1 ;;
+            --non-interactive) OPT_NON_INTERACTIVE=1 ;;
+            --insecure) OPT_INSECURE=1 ;;
+            --json) OPT_JSON=1 ;;
+            --url) [ "$#" -ge 2 ] || die "--url needs a value"; OPT_URL=$2; shift ;;
+            --url=*) OPT_URL=${1#*=} ;;
             -h | --help) usage; exit 0 ;;
-            *) die "unknown option: $1 (see emperor-hermes help)" ;;
+            -*) die "unknown option: $1 (see emperor-hermes help)" ;;
+            *) OPT_ARGS+=("$1") ;;
         esac
         shift
     done
@@ -2129,6 +2521,7 @@ parse_args() {
     [[ "$OPT_DELTA_MIB" =~ ^[0-9]+$ ]] || die "--delta-mib must be a number"
     [[ "$OPT_TIMEOUT" =~ ^[0-9]+$ ]] || die "--timeout must be a number"
     [ -z "$OPT_MAX_PARALLEL" ] || [[ "$OPT_MAX_PARALLEL" =~ ^[1-9][0-9]*$ ]] || die "--max-parallel must be a positive number"
+    if [ "${#OPT_ARGS[@]}" -gt 0 ] && [ "$CMD" != host ]; then die "unexpected argument: ${OPT_ARGS[0]} (see emperor-hermes help)"; fi
     return 0
 }
 
@@ -2144,7 +2537,11 @@ main() {
         migrate) cmd_migrate ;;
         update) cmd_update ;;
         rollback) cmd_rollback ;;
-        status) cmd_status || exit 1 ;;
+        status)
+            if [ "$OPT_JSON" = 1 ]; then cmd_status_json || exit 1; else cmd_status || exit 1; fi
+            ;;
+        remove) cmd_remove ;;
+        host) cmd_host || exit 1 ;;
         doctor) cmd_doctor ;;
         finalize) cmd_finalize ;;
         restart-gateway) cmd_restart_gateway ;;

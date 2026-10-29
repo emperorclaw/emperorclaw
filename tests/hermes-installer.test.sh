@@ -9,7 +9,9 @@
 # Covers: shellcheck, unit verification, packaging, doctor (plain/--plan/--measure), install
 # (canary, idempotent, memory refusal, duplicate-runtime guard), migrate --all from a fake 0.3
 # layout, update, rollback (--bridge-only, per profile, --all, after finalize), status,
-# restart-gateway (--when-idle), shared topology, shared -> standalone switch, finalize.
+# restart-gateway (--when-idle), shared topology, shared -> standalone switch, finalize, status --json,
+# non-interactive install, remove, and the runtime host daemon (host connect against a fake Emperor,
+# a restart job end to end, no secrets in its frames, exit 78 when revoked, host disconnect).
 #
 # Usage: bash tests/hermes-installer.test.sh        (needs Docker; ~2-4 min, first build longer)
 #        KEEP=1 bash tests/hermes-installer.test.sh (keep the container for debugging)
@@ -20,7 +22,7 @@ PIN_SHA=4d04303818b61bf3aa09278af48356315515965b
 # ════════════════════════════════════ host side ════════════════════════════════════════════
 
 host_main() {
-    local repo image=emperor-hermes-installer-test:1 name="emperor-hermes-installer-test-$$" mount rc=0
+    local repo image=emperor-hermes-installer-test:2 name="emperor-hermes-installer-test-$$" mount rc=0
     repo=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
     mount=$repo
     if command -v cygpath >/dev/null 2>&1; then mount=$(cygpath -w "$repo"); fi
@@ -32,8 +34,9 @@ FROM ubuntu:24.04
 ENV DEBIAN_FRONTEND=noninteractive
 RUN apt-get update && apt-get install -y --no-install-recommends \
       systemd systemd-sysv dbus dbus-user-session python3 git curl ca-certificates \
-      shellcheck logrotate procps cron \
+      shellcheck logrotate procps cron python3-pip \
  && rm -rf /var/lib/apt/lists/* \
+ && pip3 install --break-system-packages --no-cache-dir "websockets==15.0.1" \
  && systemctl mask getty.target console-getty.service systemd-udevd.service \
       systemd-networkd-wait-online.service 2>/dev/null || true \
  && useradd -m -s /bin/bash -u 1000 jose 2>/dev/null || (userdel -r ubuntu && useradd -m -s /bin/bash -u 1000 jose) \
@@ -182,11 +185,15 @@ while [ \$# -gt 0 ]; do
   shift
 done
 echo "install \$branch \$dir\$flags" >> "\$HOME/.hermes/fake-install.log"
-mkdir -p "\$dir/hermes_cli" "\$dir/websockets" "\$dir/.hermes/bin"
+mkdir -p "\$dir/hermes_cli" "\$dir/.hermes/bin"
 git -C "\$dir" init -q
 echo $PIN_SHA > "\$dir/.git/HEAD"
 : > "\$dir/hermes_cli/__init__.py"
-echo '__version__ = "15.0.1"' > "\$dir/websockets/__init__.py"
+# The host daemon needs the real websockets 15 (installed in the image); older images get a stub.
+if ! python3 -c 'import websockets.asyncio.client' 2>/dev/null; then
+  mkdir -p "\$dir/websockets"
+  echo '__version__ = "15.0.1"' > "\$dir/websockets/__init__.py"
+fi
 printf '#!/bin/sh\nexec python3 $F/hermes.py --install-dir "%s" "\$@"\n' "\$dir" > "\$dir/.hermes/bin/hermes"
 chmod +x "\$dir/.hermes/bin/hermes"
 # Like v0.22.4: installs/<sha256(realpath(checkout))[:16]>/facts.json names the venv, and the
@@ -195,17 +202,27 @@ key=\$(python3 -c 'import hashlib, os, sys; print(hashlib.sha256(os.path.realpat
 env_dir="\$HOME/.hermes/installs/\$key/environments/9bfa"
 venv="\$env_dir/venv/bin"
 mkdir -p "\$venv" "\$env_dir/workspace"
-cp -R "\$dir/hermes_cli" "\$dir/websockets" "\$env_dir/workspace/"
+cp -R "\$dir/hermes_cli" "\$env_dir/workspace/"
+if [ -d "\$dir/websockets" ]; then cp -R "\$dir/websockets" "\$env_dir/workspace/"; fi
 printf '{"packages": {"venv": {"environment": "%s"}}}\n' "\$env_dir/venv" > "\$HOME/.hermes/installs/\$key/facts.json"
 printf '#!/bin/sh\nexport FAKE_VENV=new0224\nexport PYTHONPATH="%s\${PYTHONPATH:+:\$PYTHONPATH}"\nexec python3 "\$@"\n' "\$env_dir/workspace" > "\$venv/python"
 chmod +x "\$venv/python"
 EOF
     chmod +x "$F/install.sh"
 
-    # Fake Emperor: GET /api/mcp/runtime/profile-defaults with a bearer token.
+    # Fake Emperor: GET /api/mcp/runtime/profile-defaults with a bearer token, and
+    # POST /api/runtime-hosts/pair (code ABCD-EFGH; anything else is refused like the real one).
     cat >"$F/emperor.py" <<'PY'
+import json, re
 from http.server import BaseHTTPRequestHandler, HTTPServer
 class H(BaseHTTPRequestHandler):
+    def do_POST(self):
+        body = json.loads(self.rfile.read(int(self.headers.get("Content-Length", "0"))) or b"{}")
+        ok = (self.path == "/api/runtime-hosts/pair" and body.get("code") == "ABCD-EFGH"
+              and re.fullmatch(r"[0-9a-f]{64}", body.get("hostFingerprint", "")) and body.get("hostname"))
+        out = json.dumps({"hostId": "22222222-2222-4222-8222-222222222222", "hostToken": "ech_" + "a" * 64, "name": body.get("hostname")}
+                         if ok else {"error": "Invalid or expired pairing code"}).encode()
+        self.send_response(201 if ok else 400); self.send_header("content-type", "application/json"); self.end_headers(); self.wfile.write(out)
     def do_GET(self):
         if self.path != "/api/mcp/runtime/profile-defaults" or not self.headers.get("Authorization", "").startswith("Bearer test-token-"):
             self.send_response(401); self.end_headers(); return
@@ -217,12 +234,50 @@ HTTPServer(("127.0.0.1", 18080), H).serve_forever()
 PY
     nohup python3 "$F/emperor.py" >/dev/null 2>&1 &
 
+    cat >"$F/emperor_hosts.py" <<'PY'
+import asyncio, json, os, sys
+from websockets.asyncio.server import serve
+TOKEN = "ech_" + "a" * 64
+LOG, PROFILE, REVOKE = sys.argv[1], sys.argv[2], sys.argv[3]
+JOB = "11111111-1111-4111-8111-111111111111"
+def log(frame):
+    with open(LOG, "a") as f:
+        f.write(json.dumps(frame) + "\n")
+def process_request(conn, request):
+    if request.headers.get("Authorization") != "Bearer " + TOKEN:
+        return conn.respond(401, "unknown token\n")
+async def handler(ws):
+    sent = False
+    async for raw in ws:
+        log({"raw": raw})
+        frame = json.loads(raw)
+        if frame["type"] == "hello" and os.path.exists(REVOKE):
+            await ws.close(4401, "revoked")  # like Emperor: revocation is a close on an upgraded socket
+            return
+        if frame["type"] == "hello":
+            await ws.send(json.dumps({"type": "welcome", "hostId": "22222222-2222-4222-8222-222222222222", "protocol": 1,
+                                      "serverVersion": "test", "heartbeatSec": 30, "inventorySec": 300}))
+        elif frame["type"] == "inventory" and not sent:
+            sent = True
+            await ws.send(json.dumps({"type": "command", "jobId": JOB, "command": "restart_agent",
+                                      "args": {"profile": PROFILE, "target": "bridge"}, "deadlineSec": 300}))
+async def main():
+    async with serve(handler, "127.0.0.1", 18091, process_request=process_request):
+        await asyncio.Future()
+asyncio.run(main())
+PY
+
     # Bridge 0.9 stand-in: writes health.json per profile, then idles until SIGTERM.
     mkdir -p "$F/plugin-src"
     cp -R /repo/integrations/hermes/emperor-claw/. "$F/plugin-src/"
     rm -rf "$F/plugin-src/bridge/emperor_bridge"
     mkdir -p "$F/plugin-src/bridge/emperor_bridge"
     : >"$F/plugin-src/bridge/emperor_bridge/__init__.py"
+    mkdir -p "$F/plugin-src/bridge/emperor_bridge/gateway"
+    cp /repo/integrations/hermes/emperor-claw/bridge/emperor_bridge/config.py \
+        /repo/integrations/hermes/emperor-claw/bridge/emperor_bridge/interfaces.py "$F/plugin-src/bridge/emperor_bridge/"
+    cp /repo/integrations/hermes/emperor-claw/bridge/emperor_bridge/gateway/__init__.py \
+        /repo/integrations/hermes/emperor-claw/bridge/emperor_bridge/gateway/discovery.py "$F/plugin-src/bridge/emperor_bridge/gateway/"
     echo 'BRIDGE_VERSION = "0.9.0"' >"$F/plugin-src/bridge/emperor_bridge/version.py"
     cat >"$F/plugin-src/bridge/emperor_bridge/__main__.py" <<'PY'
 import json, os, signal, sys, time
@@ -346,7 +401,8 @@ inside_main() {
     out=$(tar -tzf "$bundle")
     for f in VERSION bridge/emperor_bridge/__main__.py plugin/emperor-claw/plugin.yaml systemd/emperor-hermes-gateway@.service \
         systemd/emperor-hermes-bridge@.service systemd/emperor-hermes-gateway-shared.service \
-        systemd/emperor-hermes-bridge-shared.service logrotate.conf emperor-hermes.sh; do
+        systemd/emperor-hermes-bridge-shared.service systemd/emperor-hermes-hostd.service \
+        bridge/emperor_hostd/__main__.py bridge/emperor_hostd/jobwrap.py logrotate.conf emperor-hermes.sh; do
         check "bundle has $f" grep -qx "emperor-hermes-bridge-0.9.0/$f" <<<"$out"
     done
     check_not "bundle has no caches or the 0.3 bridge" grep -Eq '__pycache__|emperor_hermes_bridge.py|plugin/emperor-claw/bridge' <<<"$out"
@@ -796,6 +852,108 @@ EOF
     check "a '* * * * *' cron is detected in a directory with files" grep -q 'restart emperor-hermes-bridge-qa.service' <<<"$out"
     crontab -r 2>/dev/null || true
     rm -rf "$F/globs"
+
+    section "status --json, non-interactive install, remove"
+    out_rc=0
+    eh install --profile qa --non-interactive --bundle "$bundle" >/dev/null 2>&1 || out_rc=$?
+    check_not "--non-interactive install refuses without --gateway" test "$out_rc" = 0
+    check "non-interactive install (pre-written .env, explicit gateway)" eh install --profile qa --gateway standalone --non-interactive --bundle "$bundle"
+    check "gateway@qa + bridge@qa active" bash -c "systemctl --user is-active --quiet emperor-hermes-gateway@qa && systemctl --user is-active --quiet emperor-hermes-bridge@qa"
+    out_rc=0
+    eh status --json --profile qa >"$F/status.json" || out_rc=$?
+    eq "status --json exit" "$out_rc" 0
+    eq "status --json content" "$(python3 -c 'import json, sys
+d = json.load(open(sys.argv[1])); p = d["profiles"][0]
+print(d["ok"], p["profile"], p["topology"], p["gateway"], p["bridge"], d["hermes"]["pinned"], d["hostDaemon"]["connected"])' "$F/status.json")" \
+        "True qa standalone active active True False"
+
+    section "host connect (runtime host daemon) and a restart job"
+    nohup python3 "$F/emperor_hosts.py" "$F/hostd-frames.jsonl" qa "$F/revoke" >"$F/emperor_hosts.log" 2>&1 &
+    sleep 1
+    out_rc=0
+    eh host connect --url http://127.0.0.1:18080 ZZZZ-ZZZZ --bundle "$bundle" >/dev/null 2>&1 || out_rc=$?
+    check_not "a wrong pairing code is refused" test "$out_rc" = 0
+    out_rc=0
+    out=$(eh host connect --url http://emperor.example.com ABCD-EFGH --bundle "$bundle" 2>&1) || out_rc=$?
+    check_not "plain http to a public address is refused" test "$out_rc" = 0
+    check "the refusal names --insecure" grep -q -- '--insecure' <<<"$out"
+    out_rc=0
+    eh host connect --url http://10.evil.com ABCD-EFGH --bundle "$bundle" >/dev/null 2>&1 || out_rc=$?
+    check_not "a name that only looks private is refused" test "$out_rc" = 0
+    check_not "no hostd.env after a refused code" test -e "$HOME/.config/emperor-hermes/hostd.env"
+    check "host connect" eh host connect --url http://127.0.0.1:18080 ABCD-EFGH --bundle "$bundle"
+    eq "hostd.env is private" "$(stat -c %a "$HOME/.config/emperor-hermes/hostd.env")" 600
+    check "hostd.env holds the host token" contains "$HOME/.config/emperor-hermes/hostd.env" 'HOST_TOKEN="ech_'
+    check "hostd unit enabled" enabled emperor-hermes-hostd.service
+    check "systemd-analyze verify hostd unit" systemd-analyze --user verify emperor-hermes-hostd.service
+    # The fake serves the socket on another port (websockets cannot serve the POST); point the daemon there.
+    sed -i 's#^EMPEROR_URL=.*#EMPEROR_URL="http://127.0.0.1:18091"#' "$HOME/.config/emperor-hermes/hostd.env"
+    pid=$(mainpid emperor-hermes-bridge@qa)
+    systemctl --user restart emperor-hermes-hostd.service
+    for _ in $(seq 1 60); do
+        grep -q '\\"type\\": *\\"result\\"\|"type":"result"' "$F/hostd-frames.jsonl" 2>/dev/null && break
+        sleep 0.5
+    done
+    check "hostd active" active emperor-hermes-hostd.service
+    frames() { python3 -c 'import json, sys
+for line in open(sys.argv[1]):
+    print(json.loads(json.loads(line)["raw"])["type"])' "$F/hostd-frames.jsonl" 2>/dev/null | tr '\n' ' '; }
+    out=$(frames)
+    check "hello, inventory, ack, progress, result" bash -c "grep -q 'hello inventory' <<<'$out' && grep -q 'ack' <<<'$out' && grep -q 'result' <<<'$out'"
+    eq "frame checks" "$(python3 -c 'import json, re, sys
+fr = [json.loads(json.loads(l)["raw"]) for l in open(sys.argv[1])]
+by = {}
+for f in fr:
+    by.setdefault(f["type"], []).append(f)
+hello, inv, ack, res = by["hello"][0], by["inventory"][0], by["ack"][0], by["result"][0]
+qa = [p for p in inv["profiles"] if p["profile"] == "qa"][0]
+print(bool(re.fullmatch(r"[0-9a-f]{64}", hello["hostFingerprint"])), hello["installerVersion"] is not None,
+      qa["agentId"], qa["sameEmperor"], "deepseek" in inv["llmProviders"], ack["accepted"], res["ok"], res["exitCode"], res.get("units"))' "$F/hostd-frames.jsonl")" \
+        "True True 00000000-0000-4000-8000-000000000002 False True True True 0 ['emperor-hermes-bridge@qa.service']"
+    check_not "bridge@qa restarted by the job" test "$(mainpid emperor-hermes-bridge@qa)" = "$pid"
+    check "job log kept" test -f "$HOME/.local/share/emperor-hermes/jobs/11111111-1111-4111-8111-111111111111.log"
+    check_not "no LLM key in any frame" grep -q 'sk-fake-' "$F/hostd-frames.jsonl"
+    check_not "no agent token in any frame" grep -q 'test-token-' "$F/hostd-frames.jsonl"
+    check_not "no host token in any frame" grep -q "ech_aaaa" "$F/hostd-frames.jsonl"
+    check "host status" eh host status
+    check "jobs dir is private" bash -c "[ \"\$(stat -c %a $HOME/.local/share/emperor-hermes/jobs)\" = 700 ]"
+
+    # A rollback to a bridge without the daemon stops it; installing a bundle with it starts it again.
+    rel="$HOME/.hermes/emperor-bridge/releases"
+    rm -rf "$rel/0.8.0"
+    cp -R "$(readlink -f "$HOME/.hermes/emperor-bridge/current")" "$rel/0.8.0"
+    rm -rf "$rel/0.8.0/bridge/emperor_hostd"
+    echo 0.8.0 >"$rel/0.8.0/VERSION"
+    sed -i 's/^bridge_previous=.*//' "$HOME/.local/share/emperor-hermes/host.state"
+    printf 'bridge_previous="0.8.0"\n' >>"$HOME/.local/share/emperor-hermes/host.state"
+    check "rollback --bridge-only to a bundle without the daemon" eh rollback --bridge-only
+    check_not "hostd stopped on the old bundle" active emperor-hermes-hostd.service
+    check_not "hostd disabled on the old bundle" enabled emperor-hermes-hostd.service
+    check "update back to a bundle with the daemon" eh update --bundle "$bundle"
+    check "hostd enabled again" enabled emperor-hermes-hostd.service
+    check "hostd running again" active emperor-hermes-hostd.service
+
+    : >"$F/revoke"
+    systemctl --user restart emperor-hermes-hostd.service
+    for _ in $(seq 1 30); do active emperor-hermes-hostd.service || break; sleep 0.5; done
+    check_not "a revoked host's daemon stops" active emperor-hermes-hostd.service
+    eq "and exits 78 (no restart loop)" "$(systemctl --user show -p ExecMainStatus --value emperor-hermes-hostd.service)" 78
+    rm -f "$F/revoke"
+    check "host disconnect" eh host disconnect
+    check_not "hostd disabled" enabled emperor-hermes-hostd.service
+    check_not "host token deleted" test -e "$HOME/.config/emperor-hermes/hostd.env"
+    check_not "host status reports not connected" eh host status
+
+    out_rc=0
+    eh remove --profile qa </dev/null >/dev/null 2>&1 || out_rc=$?
+    check_not "remove asks first (refuses without a terminal or --yes)" test "$out_rc" = 0
+    check "qa still runs after the refusal" active emperor-hermes-bridge@qa
+    check "remove --yes" eh remove --profile qa --yes
+    check_not "gateway@qa stopped" active emperor-hermes-gateway@qa
+    check_not "bridge@qa disabled" enabled emperor-hermes-bridge@qa
+    check "qa profile archived" bash -c "ls -d $HOME/.hermes/backups/emperor-hermes/removed/qa-*"
+    check_not "qa profile dir gone" test -d "$HOME/.hermes/profiles/qa"
+    eq "qa record says removed" "$(sed -n 's/^status="\(.*\)"/\1/p' "$HOME/.local/share/emperor-hermes/profiles/qa.env")" removed
 
     section "/proc scan noise"
     out=$( { tr '\0' ' ' 2>/dev/null <"/proc/99999999/cmdline"; tr '\0' '\n' 2>/dev/null <"/proc/99999999/environ"; } 2>&1 || true)
