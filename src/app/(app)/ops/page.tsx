@@ -1,7 +1,8 @@
 import { and, desc, eq, gte, isNull, sql } from "drizzle-orm";
 import { db } from "@/db";
 import { agents, companies, opsEvents, runtimeNodes, users } from "@/db/schema";
-import { OpsCard, OpsSection, OpsTable, formatDateTime } from "./ui";
+import { getTranslations } from "next-intl/server";
+import { OpsCard, OpsSection, OpsTable, getOpsFormat } from "./ui";
 import { UpdatePanel } from "@/components/update-panel";
 
 export const dynamic = "force-dynamic";
@@ -36,28 +37,30 @@ export default async function OpsOverviewPage() {
     ]);
 
     const verificationRate = totalUsers > 0 ? Math.round((verifiedUsers / totalUsers) * 100) : 0;
+    const [t, format] = await Promise.all([getTranslations("ops"), getOpsFormat()]);
+    const formatDateTime = format.dateTime;
 
     return (
         <div className="space-y-8 pb-12">
             <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
-                <OpsCard title="Users" value={String(totalUsers)} detail={`${verifiedUsers} verified (${verificationRate}%)`} />
-                <OpsCard title="Companies" value={String(totalCompanies)} detail="Active workspaces on the platform" />
-                <OpsCard title="Agents" value={String(totalAgents)} detail="Registered durable worker identities" />
-                <OpsCard title="Active Runtimes" value={String(activeRuntimes)} detail="Runtime nodes reporting active status" />
-                <OpsCard title="Errors (24h)" value={String(errorsLast24h)} detail="Ops events recorded at error level in the last 24 hours" />
-                <OpsCard title="Recent Signups" value={String(recentUsers.length)} detail="Newest accounts created on the platform" />
+                <OpsCard title={t("overview.users")} value={String(totalUsers)} detail={t("overview.usersDetail", { verified: verifiedUsers, rate: verificationRate })} />
+                <OpsCard title={t("overview.companies")} value={String(totalCompanies)} detail={t("overview.companiesDetail")} />
+                <OpsCard title={t("overview.agents")} value={String(totalAgents)} detail={t("overview.agentsDetail")} />
+                <OpsCard title={t("overview.activeRuntimes")} value={String(activeRuntimes)} detail={t("overview.activeRuntimesDetail")} />
+                <OpsCard title={t("overview.errors")} value={String(errorsLast24h)} detail={t("overview.errorsDetail")} />
+                <OpsCard title={t("overview.signups")} value={String(recentUsers.length)} detail={t("overview.signupsDetail")} />
             </div>
 
             <UpdatePanel />
 
             <div className="grid grid-cols-1 gap-8 xl:grid-cols-2">
                 <OpsSection
-                    title="Recent Platform Errors"
-                    description="Newest captured server and auth/mailer failures."
+                    title={t("overview.recentErrors")}
+                    description={t("overview.recentErrorsDescription")}
                     actionHref="/ops/errors"
-                    actionLabel="Open full error feed"
+                    actionLabel={t("overview.openErrors")}
                 >
-                    <OpsTable headers={["When", "Level", "Source", "Message"]} empty="No ops events recorded yet.">
+                    <OpsTable headers={[t("columns.when"), t("columns.level"), t("columns.source"), t("columns.message")]} empty={t("noEvents")}>
                         {recentErrors.map((event) => (
                             <tr key={event.id} className="align-top">
                                 <td className="px-4 py-3 text-zinc-400">{formatDateTime(event.createdAt)}</td>
@@ -80,21 +83,21 @@ export default async function OpsOverviewPage() {
                 </OpsSection>
 
                 <OpsSection
-                    title="Newest Users"
-                    description="Recent account creation and verification state."
+                    title={t("overview.newestUsers")}
+                    description={t("overview.newestUsersDescription")}
                     actionHref="/ops/users"
-                    actionLabel="Open user directory"
+                    actionLabel={t("overview.openUsers")}
                 >
-                    <OpsTable headers={["Email", "Created", "Verified"]} empty="No users found.">
+                    <OpsTable headers={[t("columns.email"), t("columns.created"), t("columns.verified")]} empty={t("noUsers")}>
                         {recentUsers.map((user) => (
                             <tr key={user.id}>
                                 <td className="px-4 py-3 text-zinc-200">{user.email}</td>
                                 <td className="px-4 py-3 text-zinc-400">{formatDateTime(user.createdAt)}</td>
                                 <td className="px-4 py-3 text-zinc-400">
                                     {user.emailVerifiedAt ? (
-                                        <span className="text-emerald-300">Verified</span>
+                                        <span className="text-emerald-300">{t("verified")}</span>
                                     ) : (
-                                        <span className="text-amber-300">Pending</span>
+                                        <span className="text-amber-300">{t("pending")}</span>
                                     )}
                                 </td>
                             </tr>

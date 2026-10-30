@@ -1,9 +1,15 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { createElement } from "react";
-import { renderToStaticMarkup } from "react-dom/server";
+import { createElement, type ReactElement } from "react";
+import { renderToStaticMarkup as renderMarkup } from "react-dom/server";
+import { NextIntlClientProvider } from "next-intl";
+import en from "../../messages/en.json";
 import { MarkdownRenderer } from "../../src/components/markdown-renderer";
 import { RichText } from "../../src/components/rich-text";
+
+/** The renderers read their few labels from messages/*.json, so render them inside the English provider. */
+const renderToStaticMarkup = (element: ReactElement) =>
+    renderMarkup(createElement(NextIntlClientProvider, { locale: "en", messages: en, timeZone: "UTC" }, element));
 
 const render = (content: string, props: Record<string, unknown> = {}) =>
     renderToStaticMarkup(createElement(MarkdownRenderer, { content, density: "compact", allowWidgets: false, ...props }));

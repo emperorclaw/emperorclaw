@@ -4,7 +4,8 @@
  * model that went away). The heartbeat alone says Online, so the Agents page
  * reads the agent's latest finished runs too. Pure, unit-tested.
  */
-import { classifyFailure, failureHeadline, type FailureCause } from "@/lib/failure-cause";
+import { classifyFailure, failureHeadline, failureHeadlineCopy, type FailureCause } from "@/lib/failure-cause";
+import { copy, type CodedCopy } from "@/lib/coded-copy";
 
 /** Causes that live at the model provider, not in Emperor or the runtime. */
 export const PROVIDER_CAUSES: ReadonlySet<FailureCause> = new Set([
@@ -55,4 +56,14 @@ export function providerTroubleLabel(cause: FailureCause): string {
         case "rate_limited": return "rate limited";
         default: return "model failing";
     }
+}
+
+/** providerTroubleLabel as coded copy (failures.trouble.*), for the viewer's language. */
+export function providerTroubleLabelCopy(cause: FailureCause): CodedCopy {
+    return copy(`failures.trouble.${PROVIDER_CAUSES.has(cause) ? cause : "other"}`);
+}
+
+/** The trouble's headline as coded copy (failures.headlines.*). */
+export function providerTroubleHeadlineCopy(cause: FailureCause): CodedCopy {
+    return failureHeadlineCopy(cause);
 }

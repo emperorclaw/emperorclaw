@@ -5,6 +5,10 @@
 // task-story-reads.ts.
 
 import type { MemberScope } from "@/lib/member-scope";
+import { copy, type CodedCopy, type CopyValue } from "@/lib/coded-copy";
+
+/** Where the task timeline's event lines live in messages/en.json. */
+const EVENT_COPY = "tasks.timeline.events";
 
 /** Entries per page; older ones load with "Load older". */
 export const TASK_STORY_PAGE_SIZE = 50;
@@ -94,6 +98,8 @@ export interface StoryEventEntry {
     tone: EventTone;
     /** One line ("Moved to Review", "Assigned to Atlas"). */
     text: string;
+    /** The line as coded copy for the viewer's language; null for an event type this build has no line for. */
+    textCopy: CodedCopy | null;
     /** Full note text for notes and handoffs, shown expanded. */
     note: string | null;
 }
@@ -207,13 +213,29 @@ export interface StoryNames {
     member: (id: string | null | undefined) => string | null;
 }
 
-function assigneeName(value: unknown, names: StoryNames): string | null {
+/** A name for a line: the known name, or "an agent" / "a person" (with its message key). */
+type StoryWho = { text: string; value: CopyValue };
+
+const SOMEONE: Record<"agent" | "person", StoryWho> = {
+    agent: { text: "an agent", value: copy(`${EVENT_COPY}.anAgent`) },
+    person: { text: "a person", value: copy(`${EVENT_COPY}.aPerson`) },
+};
+
+function knownOr(name: string | null, fallback: "agent" | "person"): StoryWho {
+    return name ? { text: name, value: name } : SOMEONE[fallback];
+}
+
+function assigneeName(value: unknown, names: StoryNames): StoryWho | null {
     const assignee = record(value);
     const id = str(assignee.id);
-    if (assignee.type === "agent") return names.agent(id) ?? "an agent";
-    if (assignee.type === "human" || assignee.type === "member") return names.member(id) ?? "a person";
+    if (assignee.type === "agent") return knownOr(names.agent(id), "agent");
+    if (assignee.type === "human" || assignee.type === "member") return knownOr(names.member(id), "person");
     return null;
 }
+
+/** A task state as a message value: tasks.states.<state> (an unknown state falls back to the English line). */
+const stateCopy = (state: string) => copy(`tasks.states.${state}`);
+const line = (key: string, values?: Record<string, CopyValue>) => copy(`${EVENT_COPY}.${key}`, values);
 
 /** One task_events row as a timeline line. Unknown event types still read sensibly. */
 export function describeTaskEvent(event: TaskEventInput, names: StoryNames): Omit<StoryEventEntry, "kind" | "id" | "at"> {
@@ -226,30 +248,44 @@ export function describeTaskEvent(event: TaskEventInput, names: StoryNames): Omi
     if (type === "task_note" || type === "task_handoff") {
         const handoff = record(payload.handoff);
         const kind = str(payload.kind);
+        const from = str(handoff.fromRole);
+        const to = str(handoff.toRole);
         const text = type === "task_handoff"
-            ? `Handoff${str(handoff.fromRole) && str(handoff.toRole) ? ` from ${str(handoff.fromRole)} to ${str(handoff.toRole)}` : ""}`
+            ? `Handoff${from && to ? ` from ${from} to ${to}` : ""}`
             : kind === "blocker" ? "Blocker noted" : "Note";
-        return { actor, tone: kind === "blocker" ? "problem" : "note", text, note: str(payload.note) };
+        const textCopy = type === "task_handoff"
+            ? (from && to ? line("handoffFromTo", { from, to }) : line("handoff"))
+            : line(kind === "blocker" ? "blockerNoted" : "note");
+        return { actor, tone: kind === "blocker" ? "problem" : "note", text, textCopy, note: str(payload.note) };
     }
     if (type === "task_generated") {
         const assignee = assigneeName(payload.assignee, names);
-        return { actor, tone: "created", text: assignee ? `Created and assigned to ${assignee}` : "Created", note: null };
+        return {
+            actor, tone: "created", text: assignee ? `Created and assigned to ${assignee.text}` : "Created",
+            textCopy: assignee ? line("createdAndAssigned", { who: assignee.value }) : line("created"), note: null,
+        };
     }
     if (type === "task_assigned" || type === "task_claimed") {
-        const who = actor.name ?? "an agent";
-        return { actor, tone: "assign", text: type === "task_claimed" ? `Claimed by ${who}` : `Assigned to ${who}`, note: null };
+        const who = knownOr(actor.name, "agent");
+        return {
+            actor, tone: "assign", text: type === "task_claimed" ? `Claimed by ${who.text}` : `Assigned to ${who.text}`,
+            textCopy: line(type === "task_claimed" ? "claimedBy" : "assignedTo", { who: who.value }), note: null,
+        };
     }
     if (type === "task_reassigned") {
         const next = assigneeName(payload.assignee, names);
-        return { actor, tone: "assign", text: next ? `Reassigned to ${next}` : "Unassigned", note: null };
+        return { actor, tone: "assign", text: next ? `Reassigned to ${next.text}` : "Unassigned", textCopy: next ? line("reassignedTo", { who: next.value }) : line("unassigned"), note: null };
     }
     if (type === "task_updated") {
         const state = str(payload.state);
-        return { actor, tone: "system", text: state ? `Updated · ${taskStateLabel(state)}` : "Details updated", note: null };
+        return { actor, tone: "system", text: state ? `Updated · ${taskStateLabel(state)}` : "Details updated", textCopy: state ? line("updatedState", { state: stateCopy(state) }) : line("detailsUpdated"), note: null };
     }
-    if (type === "lease_expired_retry") return { actor, tone: "problem", text: "Lease expired, queued for retry", note: null };
-    if (type === "dead_lettered") return { actor, tone: "problem", text: "Moved to dead letter after too many retries", note: null };
-    if (type.startsWith("stall_")) return { actor, tone: "problem", text: type === "stall_escalation" ? "Stall escalated to a person" : "Nudged after no progress", note: null };
+    if (type === "lease_expired_retry") return { actor, tone: "problem", text: "Lease expired, queued for retry", textCopy: line("leaseExpired"), note: null };
+    if (type === "dead_lettered") return { actor, tone: "problem", text: "Moved to dead letter after too many retries", textCopy: line("deadLettered"), note: null };
+    if (type.startsWith("stall_")) {
+        const escalated = type === "stall_escalation";
+        return { actor, tone: "problem", text: escalated ? "Stall escalated to a person" : "Nudged after no progress", textCopy: line(escalated ? "stallEscalated" : "stallNudged"), note: null };
+    }
     if (type.startsWith("task_")) {
         const state = type.slice("task_".length);
         const comment = str(payload.comment);
@@ -258,10 +294,11 @@ export function describeTaskEvent(event: TaskEventInput, names: StoryNames): Omi
             actor,
             tone: state === "failed" || state === "blocked" || state === "dead_letter" ? "problem" : "state",
             text: `Moved to ${taskStateLabel(state)}`,
+            textCopy: line("movedTo", { state: stateCopy(state) }),
             note: comment ?? blockedReason,
         };
     }
-    return { actor, tone: "system", text: type.replace(/_/g, " "), note: null };
+    return { actor, tone: "system", text: type.replace(/_/g, " "), textCopy: null, note: null };
 }
 
 // ─── Merge, cap and group ───────────────────────────────────────────────────
@@ -319,6 +356,24 @@ export function dayLabel(key: string, now: Date, timeZone: string): string {
     return new Intl.DateTimeFormat("en-US", sameYear
         ? { weekday: "short", month: "short", day: "numeric", timeZone: "UTC" }
         : { month: "short", day: "numeric", year: "numeric", timeZone: "UTC" }).format(noonUtc);
+}
+
+/**
+ * dayLabel's parts, for rendering in the viewer's language: today, yesterday,
+ * or the day (noon UTC of that local date, formatted in UTC) with or without
+ * its year. "raw" only for a key that is not a date.
+ */
+export function dayHeading(key: string, now: Date, timeZone: string):
+    | { kind: "today" }
+    | { kind: "yesterday" }
+    | { kind: "raw" }
+    | { kind: "date"; date: Date; sameYear: boolean } {
+    const today = dayKey(now.toISOString(), timeZone);
+    if (key === today) return { kind: "today" };
+    if (key === shiftDay(today, -1)) return { kind: "yesterday" };
+    const [y, m, d] = key.split("-").map(Number);
+    if (!y || !m || !d) return { kind: "raw" };
+    return { kind: "date", date: new Date(Date.UTC(y, m - 1, d, 12)), sameYear: today.slice(0, 4) === key.slice(0, 4) };
 }
 
 export interface StoryDay<T extends { at: string } = StoryEntry> {

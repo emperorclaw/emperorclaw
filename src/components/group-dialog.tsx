@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { IconCheck, IconRobot, IconSearch, IconTrash, IconUser, IconUsersGroup } from "@tabler/icons-react";
+import { useTranslations } from "next-intl";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
 import { agentAvatarSrc } from "@/lib/avatar";
@@ -18,11 +19,13 @@ export type GroupDialogGroup = {
     members: { kind: "agent" | "human"; id: string; name: string; role: string }[];
 };
 
+// The title and description are saved as the group's name and purpose (agents read them), so they stay
+// English; only the button label is translated (groups.templates.{id}).
 const TEMPLATES = [
-    { title: "Development team", icon: "💻", description: "Build, review, and test features. Devs implement, the tester verifies, and blockers are raised here." },
-    { title: "Marketing", icon: "📣", description: "Campaigns, content, and launch coordination." },
-    { title: "Support", icon: "🛟", description: "Customer issues, escalations, and follow-ups." },
-];
+    { id: "development", title: "Development team", icon: "💻", description: "Build, review, and test features. Devs implement, the tester verifies, and blockers are raised here." },
+    { id: "marketing", title: "Marketing", icon: "📣", description: "Campaigns, content, and launch coordination." },
+    { id: "support", title: "Support", icon: "🛟", description: "Customer issues, escalations, and follow-ups." },
+] as const;
 
 function avatarFor(agent: GroupDialogAgent) {
     return agentAvatarSrc(agent);
@@ -52,6 +55,7 @@ export function GroupDialog({
     onSaved: (groupId: string) => void;
     onArchived?: (groupId: string) => void;
 }) {
+    const t = useTranslations("groups");
     const editing = Boolean(group);
     const initialAgents = useMemo(() => new Set(group?.members.filter((m) => m.kind === "agent").map((m) => m.id) ?? []), [group]);
     const initialHumans = useMemo(() => new Set(group?.members.filter((m) => m.kind === "human").map((m) => m.id) ?? []), [group]);
@@ -84,13 +88,13 @@ export function GroupDialog({
     const call = async (url: string, method: string, body?: unknown) => {
         const res = await fetch(url, { method, headers: { "Content-Type": "application/json" }, body: body === undefined ? undefined : JSON.stringify(body) });
         const data = await res.json().catch(() => ({}));
-        if (!res.ok) throw new Error(data.error || "Something went wrong");
+        if (!res.ok) throw new Error(data.error || t("somethingWrong"));
         return data;
     };
 
     const save = async () => {
         if (!title.trim()) {
-            setError("Give the group a name.");
+            setError(t("nameRequired"));
             return;
         }
         setSaving(true);
@@ -127,7 +131,7 @@ export function GroupDialog({
             }
             onOpenChange(false);
         } catch (e) {
-            setError(e instanceof Error ? e.message : "Could not save the group");
+            setError(e instanceof Error ? e.message : t("saveFailed"));
         } finally {
             setSaving(false);
         }
@@ -141,7 +145,7 @@ export function GroupDialog({
             onArchived?.(group.id);
             onOpenChange(false);
         } catch (e) {
-            setError(e instanceof Error ? e.message : "Could not archive the group");
+            setError(e instanceof Error ? e.message : t("archiveFailed"));
         } finally {
             setSaving(false);
         }
@@ -153,32 +157,32 @@ export function GroupDialog({
                 <div className="border-b border-zinc-800 px-5 pb-4 pt-5">
                     <DialogTitle className="flex items-center gap-2 text-base">
                         <IconUsersGroup className="h-5 w-5 text-cyan-300" />
-                        {editing ? "Manage group" : "New group"}
+                        {editing ? t("manageTitle") : t("newTitle")}
                     </DialogTitle>
                     <DialogDescription className="mt-1 text-xs">
-                        A shared workspace for selected agents and people. Agents reply when you @mention them.
+                        {t("description")}
                     </DialogDescription>
                 </div>
 
                 <div className="min-h-0 flex-1 space-y-4 overflow-y-auto px-5 py-4">
                     {!editing && (
                         <div className="flex flex-wrap gap-1.5">
-                            {TEMPLATES.map((t) => (
+                            {TEMPLATES.map((template) => (
                                 <button
-                                    key={t.title}
+                                    key={template.id}
                                     type="button"
-                                    onClick={() => { setTitle(t.title); setDescription(t.description); setIcon(t.icon); }}
+                                    onClick={() => { setTitle(template.title); setDescription(template.description); setIcon(template.icon); }}
                                     className="min-h-11 rounded-full border border-zinc-700 px-2.5 py-1 text-xs text-zinc-300 transition-colors hover:border-cyan-400/50 hover:bg-cyan-400/10 hover:text-cyan-100"
                                 >
-                                    {t.title}
+                                    {t(`templates.${template.id}`)}
                                 </button>
                             ))}
                         </div>
                     )}
                     <div>
-                        <span className="text-xs font-medium text-zinc-400">Icon</span>
-                        <div className="mt-1 flex flex-wrap gap-1.5" role="radiogroup" aria-label="Group icon">
-                            <button type="button" role="radio" aria-checked={!icon} onClick={() => setIcon(null)} title="Default"
+                        <span className="text-xs font-medium text-zinc-400">{t("icon")}</span>
+                        <div className="mt-1 flex flex-wrap gap-1.5" role="radiogroup" aria-label={t("iconLabel")}>
+                            <button type="button" role="radio" aria-checked={!icon} onClick={() => setIcon(null)} title={t("defaultIcon")}
                                 className={cn("grid h-11 w-11 place-items-center rounded-lg border transition-colors", !icon ? "border-cyan-400/60 bg-cyan-400/10 text-cyan-200" : "border-zinc-800 text-zinc-500 hover:border-zinc-600")}>
                                 <GroupIcon className="h-4 w-4" />
                             </button>
@@ -191,39 +195,39 @@ export function GroupDialog({
                         </div>
                     </div>
                     <label className="block">
-                        <span className="text-xs font-medium text-zinc-400">Name</span>
+                        <span className="text-xs font-medium text-zinc-400">{t("name")}</span>
                         <input
                             value={title}
                             onChange={(e) => setTitle(e.target.value)}
                             maxLength={80}
-                            placeholder="Development team"
+                            placeholder={t("namePlaceholder")}
                             className="mt-1 h-11 w-full rounded-lg border border-zinc-700 bg-zinc-900 px-3 text-base text-zinc-100 placeholder:text-zinc-600 focus:outline-none focus:ring-2 focus:ring-cyan-400/60"
                         />
                     </label>
                     <label className="block">
-                        <span className="text-xs font-medium text-zinc-400">Purpose <span className="text-zinc-600">(agents read this every turn)</span></span>
+                        <span className="text-xs font-medium text-zinc-400">{t("purpose")} <span className="text-zinc-600">{t("purposeHint")}</span></span>
                         <textarea
                             value={description}
                             onChange={(e) => setDescription(e.target.value)}
                             maxLength={600}
                             rows={2}
-                            placeholder="What this group works on, and how members should use it."
+                            placeholder={t("purposePlaceholder")}
                             className="mt-1 w-full resize-none rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 text-base text-zinc-100 placeholder:text-zinc-600 focus:outline-none focus:ring-2 focus:ring-cyan-400/60"
                         />
                     </label>
 
                     <div>
                         <div className="mb-1.5 flex items-center justify-between">
-                            <span className="text-xs font-medium text-zinc-400">Members</span>
-                            <span className="text-[11px] text-zinc-500">{agentIds.size} agent{agentIds.size === 1 ? "" : "s"} · {humanIds.size + (editing ? 0 : 1)} human{humanIds.size + (editing ? 0 : 1) === 1 ? "" : "s"}</span>
+                            <span className="text-xs font-medium text-zinc-400">{t("members")}</span>
+                            <span className="text-[11px] text-zinc-500">{t("memberCounts", { agents: agentIds.size, humans: humanIds.size + (editing ? 0 : 1) })}</span>
                         </div>
                         <div className="relative mb-2">
                             <IconSearch className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-zinc-500" />
                             <input
                                 value={query}
                                 onChange={(e) => setQuery(e.target.value)}
-                                placeholder="Find agents or people"
-                                aria-label="Find members"
+                                placeholder={t("findPlaceholder")}
+                                aria-label={t("findLabel")}
                                 className="h-11 w-full rounded-lg border border-zinc-800 bg-zinc-950 pl-9 pr-3 text-base text-zinc-200 placeholder:text-zinc-600 focus:outline-none focus:ring-2 focus:ring-cyan-400/60"
                             />
                         </div>
@@ -243,7 +247,7 @@ export function GroupDialog({
                                         <img src={avatarFor(agent)} alt="" className="h-7 w-7 shrink-0 rounded-lg border border-zinc-800 object-cover" />
                                         <span className="min-w-0 flex-1">
                                             <span className="block truncate text-sm text-zinc-100">{agent.name}</span>
-                                            <span className="block truncate text-[11px] text-zinc-500">{agent.role || "Agent"}</span>
+                                            <span className="block truncate text-[11px] text-zinc-500">{agent.role || t("agent")}</span>
                                         </span>
                                         <IconRobot className="h-3.5 w-3.5 shrink-0 text-zinc-600" />
                                         <span className={cn("flex h-5 w-5 shrink-0 items-center justify-center rounded-md border", selected ? "border-cyan-400 bg-cyan-400 text-cyan-950" : "border-zinc-700")}>
@@ -274,19 +278,19 @@ export function GroupDialog({
                                 );
                             })}
                             {visibleAgents.length + visibleHumans.length === 0 && (
-                                <div className="px-3 py-6 text-center text-xs text-zinc-500">Nobody matches “{query}”.</div>
+                                <div className="px-3 py-6 text-center text-xs text-zinc-500">{t("noMatches", { query })}</div>
                             )}
                         </div>
-                        {!editing && <p className="mt-1.5 text-[11px] text-zinc-500">You are added automatically. Anyone in the company can open the group; people become members when they post.</p>}
+                        {!editing && <p className="mt-1.5 text-[11px] text-zinc-500">{t("autoAdded")}</p>}
                     </div>
                     <label className="block">
-                        <span className="text-sm font-medium text-zinc-300">Coordinator <span className="font-normal text-zinc-500">(optional)</span></span>
+                        <span className="text-sm font-medium text-zinc-300">{t("coordinator")} <span className="font-normal text-zinc-500">{t("optional")}</span></span>
                         <select value={selectedCoordinator} onChange={(e) => setCoordinator(e.target.value)} className="mt-2 min-h-11 w-full rounded-lg border border-zinc-700 bg-zinc-900 px-3 text-base text-zinc-100 focus:outline-none focus:ring-2 focus:ring-cyan-400/60">
-                            <option value="">No coordinator</option>
-                            {agents.filter((a) => agentIds.has(a.id)).map((a) => <option key={a.id} value={`agent:${a.id}`}>{a.name} · Agent</option>)}
-                            {humans.filter((h) => humanIds.has(h.id) || (!editing && h.id === currentUserId)).map((h) => <option key={h.id} value={`human:${h.id}`}>{h.name} · Human</option>)}
+                            <option value="">{t("noCoordinator")}</option>
+                            {agents.filter((a) => agentIds.has(a.id)).map((a) => <option key={a.id} value={`agent:${a.id}`}>{t("agentOption", { name: a.name })}</option>)}
+                            {humans.filter((h) => humanIds.has(h.id) || (!editing && h.id === currentUserId)).map((h) => <option key={h.id} value={`human:${h.id}`}>{t("humanOption", { name: h.name })}</option>)}
                         </select>
-                        <span className="mt-1.5 block text-xs leading-relaxed text-zinc-400">Coordinates work and helps resolve blockers in this team. Members can belong to other teams too.</span>
+                        <span className="mt-1.5 block text-xs leading-relaxed text-zinc-400">{t("coordinatorHint")}</span>
                     </label>
                     {error && <div role="alert" className="rounded-lg border border-rose-500/30 bg-rose-500/10 px-3 py-2 text-xs text-rose-200">{error}</div>}
                 </div>
@@ -295,25 +299,25 @@ export function GroupDialog({
                     {editing && (
                         confirmArchive ? (
                             <span className="flex items-center gap-2 text-xs text-zinc-400">
-                                Archive this group?
-                                <button type="button" onClick={archive} disabled={saving} className="rounded-md bg-rose-500/15 px-2 py-1 font-medium text-rose-200 hover:bg-rose-500/25">Archive</button>
-                                <button type="button" onClick={() => setConfirmArchive(false)} className="rounded-md px-2 py-1 text-zinc-400 hover:text-zinc-200">Keep</button>
+                                {t("archiveConfirm")}
+                                <button type="button" onClick={archive} disabled={saving} className="rounded-md bg-rose-500/15 px-2 py-1 font-medium text-rose-200 hover:bg-rose-500/25">{t("archive")}</button>
+                                <button type="button" onClick={() => setConfirmArchive(false)} className="rounded-md px-2 py-1 text-zinc-400 hover:text-zinc-200">{t("keep")}</button>
                             </span>
                         ) : (
                             <button type="button" onClick={() => setConfirmArchive(true)} className="inline-flex items-center gap-1.5 rounded-md px-2 py-1.5 text-xs text-zinc-500 hover:bg-rose-500/10 hover:text-rose-300">
-                                <IconTrash className="h-3.5 w-3.5" /> Archive
+                                <IconTrash className="h-3.5 w-3.5" /> {t("archive")}
                             </button>
                         )
                     )}
                     <span className="flex-1" />
-                    <button type="button" onClick={() => onOpenChange(false)} className="rounded-lg px-3 py-2 text-sm text-zinc-400 hover:text-zinc-100">Cancel</button>
+                    <button type="button" onClick={() => onOpenChange(false)} className="rounded-lg px-3 py-2 text-sm text-zinc-400 hover:text-zinc-100">{t("cancel")}</button>
                     <button
                         type="button"
                         onClick={save}
                         disabled={saving || !title.trim()}
                         className="rounded-lg bg-cyan-400 px-4 py-2 text-sm font-semibold text-cyan-950 transition-colors hover:bg-cyan-300 disabled:cursor-not-allowed disabled:opacity-50"
                     >
-                        {saving ? "Saving…" : editing ? "Save" : "Create group"}
+                        {saving ? t("saving") : editing ? t("save") : t("create")}
                     </button>
                 </div>
             </DialogContent>

@@ -1,0 +1,515 @@
+{
+  "failures": {
+    "headlines": {
+      "provider_credits": "LLM provider is out of credits",
+      "provider_auth": "The model provider rejected the API key",
+      "rate_limited": "Rate limited by the model provider",
+      "model_unavailable": "This model isn't available",
+      "provider_unreachable": "Can't reach the model provider",
+      "budget": "Budget limit reached",
+      "runtime_offline": "Agent runtime is offline",
+      "scope_denied": "Agent needs access to this project",
+      "unknown": "Run failed",
+      "stalledTimedOut": "No progress before it timed out",
+      "stalledMinutes": "No progress for {count} min",
+      "stalledHours": "No progress for {count} h"
+    },
+    "fixes": {
+      "openProviderSettings": "Open provider settings",
+      "updateKey": "Update key",
+      "raiseBudget": "Raise budget",
+      "openAgentScope": "Open agent scope",
+      "chooseModel": "Choose a model",
+      "checkProviderSettings": "Check provider settings",
+      "reconnectRuntime": "Reconnect runtime",
+      "retry": "Retry",
+      "nudge": "Nudge"
+    },
+    "trouble": {
+      "provider_unreachable": "model unreachable",
+      "provider_auth": "model key rejected",
+      "provider_credits": "provider out of credits",
+      "model_unavailable": "model unavailable",
+      "rate_limited": "rate limited",
+      "other": "model failing"
+    }
+  },
+  "inbox": {
+    "entries": {
+      "titles": {
+        "agentBlocked": "{name} is blocked",
+        "agentNoConnection": "{name} has no recent connection with work waiting",
+        "agentOfflineWithWork": "{name} is offline with work in progress",
+        "allowOnce": "Allow once: {action}",
+        "approve": "Approve {what}",
+        "approveAction": "Approve {action}: {what}",
+        "messageFailed": "Message failed: “{text}”",
+        "awaitingResponse": "Awaiting agent response: “{text}”",
+        "paused": "Agents were going back and forth without progress",
+        "runFailed": "{name}'s last run failed",
+        "runTimedOut": "{name}'s last run timed out",
+        "runLost": "{name}'s last run was lost",
+        "stalledAgent": "{name} is running with no progress"
+      },
+      "reasons": {
+        "causeWithDetail": "{cause}: {detail}",
+        "exceededRetries": "task exceeded retries",
+        "stateBlocked": "Blocked",
+        "stateGaveUp": "Gave up after retries",
+        "stateFailed": "Failed",
+        "stateWithCause": "{state}: {cause}",
+        "requestedFrom": "{state}. Requested from {source}",
+        "requestedFromVia": "{state}. Requested from {by} via {source}"
+      },
+      "actions": {
+        "openTask": "Open task",
+        "inspectConnection": "Inspect connection",
+        "reviewWork": "Review work",
+        "reviewRequest": "Review request",
+        "inspectDelivery": "Inspect delivery",
+        "openChat": "Open chat",
+        "resume": "Resume",
+        "openRuns": "Open runs",
+        "openAgent": "Open agent",
+        "openConversation": "Open conversation"
+      },
+      "areas": {
+        "messages": "Messages",
+        "teamChat": "Team chat"
+      }
+    }
+  },
+  "tasks": {
+    "timeline": {
+      "today": "Today",
+      "yesterday": "Yesterday",
+      "events": {
+        "handoff": "Handoff",
+        "handoffFromTo": "Handoff from {from} to {to}",
+        "blockerNoted": "Blocker noted",
+        "note": "Note",
+        "created": "Created",
+        "createdAndAssigned": "Created and assigned to {who}",
+        "claimedBy": "Claimed by {who}",
+        "assignedTo": "Assigned to {who}",
+        "reassignedTo": "Reassigned to {who}",
+        "unassigned": "Unassigned",
+        "updatedState": "Updated · {state}",
+        "detailsUpdated": "Details updated",
+        "leaseExpired": "Lease expired, queued for retry",
+        "deadLettered": "Moved to dead letter after too many retries",
+        "stallEscalated": "Stall escalated to a person",
+        "stallNudged": "Nudged after no progress",
+        "movedTo": "Moved to {state}",
+        "anAgent": "an agent",
+        "aPerson": "a person"
+      }
+    }
+  },
+  "timeline": {
+    "events": {
+      "kinds": {
+        "created": "Created",
+        "assigned": "Assigned",
+        "status": "Status",
+        "note": "Note",
+        "approval_requested": "Approval requested",
+        "approval_decided": "Approval decided",
+        "file": "File"
+      },
+      "by": {
+        "created": "Created by {name}",
+        "assigned": "Assigned by {name}",
+        "status": "Status changed by {name}",
+        "note": "Note by {name}",
+        "approval_requested": "Approval requested by {name}",
+        "file": "File added by {name}"
+      },
+      "decidedBy": {
+        "approved": "Approved by {name}",
+        "rejected": "Rejected by {name}",
+        "dismissed": "Dismissed by {name}",
+        "other": "Decided by {name}"
+      }
+    },
+    "edges": {
+      "created": "Created and assigned",
+      "assigned": "Assigned",
+      "reassigned": "Reassigned",
+      "triggered_run": "Triggered a run"
+    }
+  },
+  "runTimeline": {
+    "thinkingLine": "Thinking · {summary}",
+    "rows": {
+      "thinking": "Thinking",
+      "note": "Note",
+      "tidyingMemory": "Tidying memory",
+      "memoryTidied": "Memory tidied",
+      "delegating": "Delegating",
+      "subagentFinished": "Subagent finished",
+      "autoApproved": "Auto-approved",
+      "bestJudgment": "Proceeded with best judgment",
+      "failed": "Failed",
+      "stopped": "Stopped"
+    }
+  },
+  "runStatus": {
+    "succeeded": "Succeeded",
+    "failed": "Failed",
+    "timeout": "Timed out",
+    "cancelled": "Cancelled",
+    "blocked": "Blocked",
+    "lost": "Lost",
+    "running": "Running"
+  },
+  "delivery": {
+    "noVerdict": "No delivery decision recorded — this message predates the ledger or addressed nobody",
+    "verdicts": {
+      "self": "Not delivered — the agent's own message",
+      "targeted": "Delivered — directed to this agent",
+      "targeted_other": "Not delivered — addressed to another agent",
+      "direct": "Delivered — direct message",
+      "mention": "Delivered — mentioned",
+      "all": "Delivered — @all in the group",
+      "agent_pair": "Delivered — pair handoff",
+      "task_assigned": "Delivered — task assigned",
+      "not_addressed": "Not delivered — not addressed",
+      "out_of_scope": "Not delivered — the sender's agent scope does not reach this agent",
+      "loop_paused": "Not delivered — paused by the loop guard ({streak} of {max} agent messages without a human)",
+      "otherDelivered": "Delivered — {reason}",
+      "otherNotDelivered": "Not delivered — {reason}"
+    }
+  },
+  "directChat": {
+    "requestSource": "{source} (via API)",
+    "requestSourceOnBehalf": "{source} (via API) · on behalf of {by}"
+  },
+  "agents": {
+    "roles": {
+      "templates": {
+        "boss": {
+          "title": "Boss (Team Lead)",
+          "description": "Runs the team: turns goals into projects and tasks, assigns each task to the right agent or person, and verifies it closes. Coordinates specialists and keeps work moving."
+        },
+        "seo": {
+          "title": "SEO Specialist",
+          "description": "Keyword research, rank tracking, content audits, backlink analysis, and search visibility reporting. Works with Ahrefs, GSC, and content tools."
+        },
+        "developer": {
+          "title": "Technical Developer",
+          "description": "Full-stack implementation, code review, debugging, testing, and deployment. Works with Git, CI/CD, and any language stack."
+        },
+        "qa": {
+          "title": "QA & Testing Agent",
+          "description": "Automated testing, bug verification, regression suites, test plan execution, and quality reporting. Works with any test framework."
+        },
+        "growth": {
+          "title": "Growth & Lead Gen",
+          "description": "Lead research, outreach preparation, CRM enrichment, campaign analysis, and growth reporting. Works with LinkedIn, email, and CRM tools."
+        },
+        "content": {
+          "title": "Content & Copywriter",
+          "description": "Blog posts, social media, email campaigns, landing page copy, and content strategy. SEO-aware writing with brand voice consistency."
+        },
+        "accountant": {
+          "title": "Accountant & Bookkeeper",
+          "description": "Invoice processing, expense classification, reconciliation, financial reporting, and tax preparation support. Works with accounting software and spreadsheets."
+        },
+        "support": {
+          "title": "Customer Support",
+          "description": "Ticket triage, customer communication, FAQ maintenance, issue escalation, and satisfaction tracking. Works with helpdesk and communication tools."
+        },
+        "analyst": {
+          "title": "Data Analyst",
+          "description": "Data extraction, analysis, visualization, reporting, and dashboard maintenance. Works with SQL, spreadsheets, and BI tools."
+        }
+      }
+    },
+    "providers": {
+      "openclaw": {
+        "description": "Native plugin. Creates workspace, bridge, and bootstrap files automatically. Doctor/repair commands included."
+      },
+      "hermes": {
+        "description": "Warm Hermes gateway plus Emperor bridge per agent, installed with one command. Best for a workstation, VPS, or Raspberry Pi."
+      },
+      "mcp": {
+        "description": "Any MCP-compatible runtime. You handle the agent logic; Emperor provides the API, tasks, and context."
+      },
+      "claude": {
+        "description": "Claude Code CLI as an on-demand agent. Emperor spawns claude with workspace context per task. Coming soon."
+      },
+      "codex": {
+        "description": "OpenAI Codex CLI as an on-demand agent. Coming soon."
+      },
+      "bash": {
+        "description": "Any shell script or CLI tool as an agent. Cron-compatible. Coming soon."
+      }
+    },
+    "easySetup": {
+      "availability": {
+        "sign_in": "Sign in to create a worker.",
+        "not_admin": "Ask a workspace owner or administrator to hire local agents.",
+        "no_docker": "This installation needs Docker with its socket mounted for automatic Hermes setup.",
+        "docker_unresponsive": "Docker is not responding. Restart Docker and retry.",
+        "docker_access": "The app cannot access Docker. Rerun the installer to repair socket permissions, then retry."
+      }
+    }
+  },
+  "runtimeHosts": {
+    "hireReasons": {
+      "revoked": "This host was revoked",
+      "offline": "Offline",
+      "update": "Update this host to hire here",
+      "no_provider": "No model provider key on this host (add one to ~/.hermes/.env)",
+      "memory": "Not enough free memory ({free} MB free, a new agent needs {need} MB)",
+      "memoryReserved": "Not enough free memory ({left} MB left after the {reserved} MB the setups already queued need; a new agent needs {need} MB)"
+    }
+  },
+  "apiErrors": {
+    "internal": "Something went wrong on the server. Try again.",
+    "unauthorized": "You're not signed in.",
+    "signInRequired": "Sign in to continue.",
+    "forbidden": "You don't have permission to do that.",
+    "noMembership": "You're not a member of this workspace.",
+    "notFound": "Not found.",
+    "jsonBodyRequired": "The request was empty or malformed.",
+    "validationFailed": "Some fields are not valid.",
+    "rateLimited": "Too many requests. Wait a moment and try again.",
+    "agentNotFound": "Agent not found.",
+    "taskNotFound": "Task not found.",
+    "projectNotFound": "Project not found.",
+    "folderNotFound": "Folder not found.",
+    "artifactNotFound": "File not found.",
+    "customerNotFound": "Customer not found.",
+    "viewNotFound": "View not found.",
+    "resourceNotFound": "Not found.",
+    "memberNotFound": "Member not found.",
+    "companyNotFound": "Workspace not found.",
+    "approvalNotFound": "Approval not found.",
+    "authFieldsRequired": "Enter your email and password.",
+    "missingFields": "Some required fields are missing.",
+    "emailRequired": "Enter your email address.",
+    "invalidEmail": "Enter a valid email address.",
+    "emailInUse": "An account with this email already exists.",
+    "passwordLength": "Password must be between 8 and 128 characters.",
+    "passwordTooShort": "Password must be at least 8 characters.",
+    "companyNameRequired": "Enter a company name.",
+    "companyNameLength": "Company name must be between 2 and 120 characters.",
+    "betaDisclaimerRequired": "Acknowledge the beta data disclaimer to create a workspace.",
+    "inviteOnly": "This instance is invite-only. Ask your administrator for an invitation.",
+    "noCompany": "No workspace found. Contact your administrator.",
+    "inviteExpired": "This invitation has expired. Ask your administrator for a new one.",
+    "inviteConsumed": "This invitation has already been used.",
+    "inviteInvalid": "This invitation is invalid or has expired.",
+    "inviteEmailMismatch": "This invitation is for a different email address.",
+    "verificationIncomplete": "This verification link is incomplete.",
+    "verificationInvalid": "This verification link is invalid or expired.",
+    "resetInvalid": "This reset request is invalid.",
+    "resetLinkExpired": "This reset link has expired or is invalid."
+  },
+  "email": {
+    "greeting": "Hello {email},",
+    "linkFallback": "If the button does not work, copy and paste this link into your browser:",
+    "welcome": {
+      "preheader": "Your Emperor Claw workspace is ready.",
+      "eyebrow": "Workspace Ready",
+      "title": "Welcome to Emperor Claw",
+      "intro": "Your control plane is ready. You can now log in and start operating agents inside your workspace.",
+      "thanks": "Thanks for joining Emperor Claw. This workspace gives your OpenClaw agents durable coordination, scoped resources, and operational state inside a shared company environment.",
+      "start": "Start by logging in, connecting your first agents, and reviewing the setup guide before you rely on the workspace for production-critical operations.",
+      "footnote": "Beta software. Emperor Claw is provided as-is without warranties or guarantees of safety, retention, recovery, availability, or fitness for any purpose. You remain responsible for what you store and operate in the workspace."
+    },
+    "verification": {
+      "subject": "Verify your Emperor Claw email",
+      "preheader": "Verify your email to activate your Emperor Claw workspace.",
+      "eyebrow": "Email Verification",
+      "title": "Confirm your email address",
+      "intro": "Verify this address to activate your workspace and finish signup.",
+      "created": "A new Emperor Claw workspace was created for {company}. Confirm this email address to activate access.",
+      "beforeTitle": "Before you continue",
+      "beforeBody": "Emperor Claw is in beta. We do not guarantee safety, retention, recovery, uninterrupted availability, or suitability for regulated or business-critical workloads.",
+      "noSecrets": "Do not store secrets, regulated data, production-only credentials, or any information you cannot afford to expose, lose, or recreate.",
+      "expiry": "This verification link expires in 24 hours. If you did not initiate this signup, you can ignore this email.",
+      "cta": "Verify Email",
+      "footnote": "By activating the workspace, you acknowledge that Emperor Claw is beta software provided as-is and that you remain responsible for how it is used and what data is stored inside it.",
+      "yourCompany": "your company"
+    },
+    "passwordReset": {
+      "subject": "Reset your Emperor Claw Password",
+      "preheader": "Reset your Emperor Claw password.",
+      "eyebrow": "Account Security",
+      "title": "Reset your password",
+      "intro": "Use the secure link below to choose a new password for your Emperor Claw account.",
+      "received": "We received a request to reset the password for this account. If that was you, use the link below to set a new password.",
+      "ignore": "If you did not request a reset, you can ignore this message. Your existing password will remain unchanged.",
+      "cta": "Reset Password",
+      "footnote": "For your protection, password reset links expire automatically and active browser sessions are revoked after a successful password change."
+    },
+    "invitation": {
+      "subject": "You're invited to join {company} on Emperor Claw",
+      "invited": "You've been invited to join {company} as a {role}.",
+      "accept": "Click here to accept the invitation",
+      "expires": "This invitation expires on {date, date, long}.",
+      "theWorkspace": "the workspace"
+    },
+    "notification": {
+      "open": "Open in EmperorClaw",
+      "footer": "You can change which notifications you get by email in Settings → Notifications."
+    }
+  },
+  "activity": {
+    "sentences": {
+      "agent": {
+        "created": "<who>{actor}</who> created <target>agent {label}</target> {detail}",
+        "updated": "<who>{actor}</who> updated <target>agent {label}</target> {detail}",
+        "paused": "<who>{actor}</who> paused <target>agent {label}</target> {detail}",
+        "resumed": "<who>{actor}</who> resumed <target>agent {label}</target> {detail}",
+        "deleted": "<who>{actor}</who> deleted <target>agent {label}</target> {detail}",
+        "scope_changed": "<who>{actor}</who> changed the data scope of <target>agent {label}</target> {detail}",
+        "budget_changed": "<who>{actor}</who> changed the budget of <target>agent {label}</target> {detail}",
+        "permission_changed": "<who>{actor}</who> changed an action permission of <target>agent {label}</target> {detail}",
+        "access_changed": "<who>{actor}</who> changed who can use <target>agent {label}</target> {detail}",
+        "owner_transferred": "<who>{actor}</who> transferred <target>agent {label}</target> {detail}",
+        "runtime_host_changed": "<who>{actor}</who> changed the host of <target>agent {label}</target> {detail}"
+      },
+      "company": {
+        "permission_changed": "<who>{actor}</who> changed a company action permission {detail}",
+        "settings_changed": "<who>{actor}</who> changed company settings {detail}",
+        "host_pairing_created": "<who>{actor}</who> created a code to connect a host {detail}",
+        "direct_chat_mode_changed": "<who>{actor}</who> changed company settings {detail}"
+      },
+      "task": {
+        "state_changed": "<who>{actor}</who> moved <target>task {label}</target> {detail}",
+        "assigned": "<who>{actor}</who> reassigned <target>task {label}</target> {detail}",
+        "archived": "<who>{actor}</who> archived <target>task {label}</target> {detail}",
+        "unarchived": "<who>{actor}</who> restored <target>task {label}</target> {detail}"
+      },
+      "approval": {
+        "approved": "<who>{actor}</who> approved <target>approval {label}</target> {detail}",
+        "rejected": "<who>{actor}</who> rejected <target>approval {label}</target> {detail}",
+        "dismissed": "<who>{actor}</who> dismissed <target>approval {label}</target> {detail}"
+      },
+      "member": {
+        "role_changed": "<who>{actor}</who> changed the role of <target>{label}</target> {detail}",
+        "scope_changed": "<who>{actor}</who> changed the access of <target>{label}</target> {detail}",
+        "removed": "<who>{actor}</who> removed <target>{label}</target> {detail}",
+        "invited": "<who>{actor}</who> invited <target>{label}</target> {detail}",
+        "access_granted": "<who>{actor}</who> gave <target>{label}</target> {detail}",
+        "access_changed": "<who>{actor}</who> changed the access of <target>{label}</target> {detail}",
+        "access_removed": "<who>{actor}</who> removed the access of <target>{label}</target> {detail}"
+      },
+      "invitation": {
+        "revoked": "<who>{actor}</who> revoked <target>an invitation for {label}</target> {detail}"
+      },
+      "organization": {
+        "updated": "<who>{actor}</who> edited the org chart {detail}"
+      },
+      "project": {
+        "created": "<who>{actor}</who> created <target>project {label}</target> {detail}",
+        "updated": "<who>{actor}</who> updated <target>project {label}</target> {detail}",
+        "archived": "<who>{actor}</who> archived <target>project {label}</target> {detail}"
+      },
+      "customer": {
+        "created": "<who>{actor}</who> added <target>customer {label}</target> {detail}",
+        "updated": "<who>{actor}</who> updated <target>customer {label}</target> {detail}",
+        "deleted": "<who>{actor}</who> deleted <target>customer {label}</target> {detail}"
+      },
+      "knowledge_note": {
+        "created": "<who>{actor}</who> created <target>note {label}</target> {detail}",
+        "moved": "<who>{actor}</who> moved <target>note {label}</target> {detail}",
+        "deleted": "<who>{actor}</who> deleted <target>note {label}</target> {detail}"
+      },
+      "pricing": {
+        "created": "<who>{actor}</who> added <target>pricing for {label}</target> {detail}",
+        "updated": "<who>{actor}</who> changed <target>pricing for {label}</target> {detail}"
+      },
+      "view": {
+        "created": "<who>{actor}</who> created <target>view {label}</target> {detail}",
+        "updated": "<who>{actor}</who> updated <target>view {label}</target> {detail}",
+        "archived": "<who>{actor}</who> archived <target>view {label}</target> {detail}",
+        "restored": "<who>{actor}</who> restored <target>view {label}</target> {detail}",
+        "reverted": "<who>{actor}</who> reverted <target>view {label}</target> {detail}",
+        "visibility_changed": "<who>{actor}</who> changed who can see <target>view {label}</target> {detail}",
+        "owner_transferred": "<who>{actor}</who> transferred <target>view {label}</target> {detail}",
+        "deleted": "<who>{actor}</who> deleted <target>view {label}</target> {detail}",
+        "read_unbound_token": "<who>{actor}</who> opened with a company-wide token <target>view {label}</target> {detail}"
+      },
+      "runtime_host": {
+        "paired": "<who>{actor}</who> paired <target>host {label}</target> {detail}",
+        "renamed": "<who>{actor}</who> renamed <target>host {label}</target> {detail}",
+        "revoked": "<who>{actor}</who> revoked <target>host {label}</target> {detail}",
+        "connected": "<who>{actor}</who> connected <target>host {label}</target> {detail}",
+        "disconnected": "<who>{actor}</who> lost the connection to <target>host {label}</target> {detail}",
+        "job_queued": "<who>{actor}</who> sent a command to <target>host {label}</target> {detail}",
+        "job_finished": "<who>{actor}</who> finished a command on <target>host {label}</target> {detail}",
+        "job_dismissed": "<who>{actor}</who> dismissed a failed removal on <target>host {label}</target> {detail}",
+        "removal_canceled": "<who>{actor}</who> canceled the removal of an agent's profile from <target>host {label}</target> {detail}",
+        "removal_abandoned": "<who>{actor}</who> left an agent's profile on <target>host {label}</target> {detail}"
+      },
+      "register_agent": "<who>{actor}</who> created <target>agent {label}</target> {detail}",
+      "delete_agent": "<who>{actor}</who> deleted <target>agent {label}</target> {detail}",
+      "hire_hermes_agent": "<who>{actor}</who> hired <target>agent {label}</target> {detail}"
+    },
+    "unnamedActors": {
+      "agent": "An agent",
+      "human": "Someone",
+      "system": "System"
+    },
+    "untitled": "(untitled)",
+    "details": {
+      "toState": "to {state}",
+      "toName": "to {name}",
+      "toNobody": "to nobody",
+      "toRole": "to {role}",
+      "asRole": "as {role}",
+      "invitedTo": "to {resource} as {role}",
+      "accessTo": "access to {resource}",
+      "accessToAs": "access to {resource} ({role})",
+      "onResource": "on {resource}",
+      "onResourceTo": "on {resource} to {role}",
+      "agentAccess": {
+        "everyone": "(everyone)",
+        "people": "(specific people)",
+        "owner": "(only its owner)"
+      },
+      "setting": "({setting})",
+      "permission": "({action}: {permission})",
+      "budgetMonthly": "to {amount} a month",
+      "budgetNoLimit": "to no limit",
+      "toVersion": "to version {version}",
+      "viewVisibility": {
+        "private": "(only its owner)",
+        "shared": "(shared people)",
+        "scope": "(everyone in scope)"
+      },
+      "toPath": "to {path}",
+      "toTopLevel": "to the top level",
+      "taskCount": "({count} tasks)"
+    },
+    "words": {
+      "aPerson": "a person",
+      "anAgent": "an agent",
+      "someResource": "a client or project",
+      "roles": {
+        "owner": "owner",
+        "admin": "admin",
+        "member": "member",
+        "viewer": "viewer"
+      },
+      "settings": {
+        "directChatMode": "direct chat mode",
+        "contextNotes": "company context",
+        "agentRoutine": "daily agent routine",
+        "instance": "instance settings",
+        "modules": "modules"
+      },
+      "permissions": {
+        "off": "off",
+        "ask": "ask first",
+        "allowed": "allowed",
+        "default": "default"
+      }
+    }
+  }
+}

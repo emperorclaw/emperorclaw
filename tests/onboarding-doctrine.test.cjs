@@ -64,7 +64,8 @@ test("Provisioning passes role doctrine to the Hermes runtime", () => {
 });
 
 test("Onboarding confirms the created agent and opens its direct chat", () => {
-  const tour = read("src/components/setup-wizard.tsx");
+  // The wizard's copy lives in messages/en.json (i18n).
+  const tour = `${read("src/components/setup-wizard.tsx")}\n${read("messages/en.json")}`;
   assert.match(tour, /is created/i, "the setup wizard should confirm the agent was created");
   assert.ok(tour.includes("Open direct chat"), "the setup wizard should offer to open the direct chat");
   assert.ok(tour.includes("/messages?agent="), "the setup wizard should deep-link into the agent's direct thread");

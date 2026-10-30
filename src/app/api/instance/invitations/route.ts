@@ -8,7 +8,9 @@ import {
 import { isSelfHosted } from "@/lib/instance";
 import { getAppUrl } from "@/lib/env";
 import { consumeRateLimit, getClientIp } from "@/lib/rate-limit";
-import { sendEmail } from "@/lib/email";
+import { getInvitationEmail, sendEmail } from "@/lib/email";
+import { emailLocale } from "@/i18n/server-translator";
+import { readUserLocale } from "@/i18n/user-locale";
 import { recordOpsError } from "@/lib/ops-events";
 import { db } from "@/db";
 import { companies } from "@/db/schema";
@@ -73,14 +75,16 @@ export const POST = withRoleApi("admin")(async (req, ctx) => {
             .from(companies)
             .where(eq(companies.id, ctx.companyId))
             .limit(1);
-        const companyName = company?.name ?? "the workspace";
+        // Written in the inviter's language: their saved preference, else their browser's.
+        const inviterLocale = emailLocale(req, await readUserLocale({ userId: ctx.userId }).catch(() => undefined));
+        const invitation = getInvitationEmail({ companyName: company?.name ?? null, role: result.role, inviteUrl, expiresAt: result.expiresAt, locale: inviterLocale });
 
         let emailSent = false;
         try {
             emailSent = await sendEmail({
                 to: result.email,
-                subject: `You're invited to join ${companyName} on Emperor Claw`,
-                html: `<p>You've been invited to join <strong>${companyName}</strong> as a <strong>${result.role}</strong>.</p><p><a href="${inviteUrl}">Click here to accept the invitation</a></p><p>This invitation expires on ${result.expiresAt.toLocaleDateString()}.</p>`,
+                subject: invitation.subject,
+                html: invitation.html,
             });
         } catch (emailErr) {
             recordOpsError({

@@ -3,6 +3,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { useSession } from "next-auth/react";
+import { useFormatter, useTranslations } from "next-intl";
+import { useCopy } from "@/lib/i18n/use-copy";
 import { IconPaperclip, IconUser, IconSend, IconAt } from "@tabler/icons-react";
 import { MarkdownRenderer } from "@/components/markdown-renderer";
 import { RichMessageActionsContext } from "@/components/rich/rich-message-actions";
@@ -16,7 +18,7 @@ import { agentAvatarSrc } from "@/lib/avatar";
 import { cn } from "@/lib/utils";
 import { LiveStatusRow } from "@/components/live-status-row";
 import { LiveRunSteps, ReplyRunFooter, type ReplyRun } from "@/components/run-timeline";
-import { chatPollDelayMs, eventsSinceParam, isTimedStepKind, lastReasoningLine, mergeLiveRuns, type ClientLiveRun } from "@/lib/live-activity";
+import { chatPollDelayMs, eventsSinceParam, isTimedStepKind, lastReasoningCopy, lastReasoningLine, mergeLiveRuns, type ClientLiveRun } from "@/lib/live-activity";
 import { useLivePoll } from "@/lib/use-realtime";
 import type { RunLive } from "@/lib/run-events";
 
@@ -105,14 +107,19 @@ function isGroupContinuation(
     return (new Date(curr.createdAt).getTime() - new Date(prev.createdAt).getTime()) < 5 * 60 * 1000;
 }
 
-function dateSeparatorLabel(date: string | Date) {
-    const d = new Date(date);
-    const today = new Date();
-    const yesterday = new Date(today);
-    yesterday.setDate(today.getDate() - 1);
-    if (isSameDay(d, today)) return "Today";
-    if (isSameDay(d, yesterday)) return "Yesterday";
-    return d.toLocaleDateString([], { month: "short", day: "numeric" });
+/** "Today", "Yesterday" or "Oct 29", in the viewer's language. */
+function useDateSeparatorLabel() {
+    const t = useTranslations("teamChat");
+    const format = useFormatter();
+    return (date: string | Date) => {
+        const d = new Date(date);
+        const today = new Date();
+        const yesterday = new Date(today);
+        yesterday.setDate(today.getDate() - 1);
+        if (isSameDay(d, today)) return t("today");
+        if (isSameDay(d, yesterday)) return t("yesterday");
+        return format.dateTime(d, { month: "short", day: "numeric" });
+    };
 }
 
 function messageCursor(value: string | Date) {
@@ -127,7 +134,7 @@ export function AgentTeamChat({
     teamThreadId,
     groupId,
     mentionAgents,
-    placeholder = "Message the team… (@ to mention)",
+    placeholder: placeholderProp,
 }: {
     initialMessages: TeamMessage[];
     initialHasMore?: boolean;
@@ -140,6 +147,11 @@ export function AgentTeamChat({
     mentionAgents?: Agent[];
     placeholder?: string;
 }) {
+    const t = useTranslations("teamChat");
+    const render = useCopy();
+    const format = useFormatter();
+    const dateSeparatorLabel = useDateSeparatorLabel();
+    const placeholder = placeholderProp ?? t("teamPlaceholder");
     // Same component for the team channel and group chats: a group just adds
     // its id to every request, and marks itself read under that id.
     const readThreadId = groupId ?? teamThreadId;
@@ -350,7 +362,7 @@ export function AgentTeamChat({
                 form.append("file", file);
                 const uploadRes = await fetch("/api/chat/attachments", { method: "POST", body: form });
                 if (!uploadRes.ok) {
-                    let errMsg = "Upload failed";
+                    let errMsg = t("uploadFailed");
                     try { const body = await uploadRes.json(); if (body.error) errMsg = body.error; } catch {}
                     setAttachError(errMsg);
                     continue;
@@ -358,7 +370,7 @@ export function AgentTeamChat({
                 const data = await uploadRes.json() as { id: string; name: string; contentType: string; sizeBytes: number };
                 setPendingAttachments((prev) => [...prev, { id: data.id, name: data.name, contentType: data.contentType, sizeBytes: data.sizeBytes }]);
             } catch {
-                setAttachError("Upload failed");
+                setAttachError(t("uploadFailed"));
             }
         }
     };
@@ -430,9 +442,9 @@ export function AgentTeamChat({
     }, [groupId]);
 
     const getAgentName = (id: string | null | undefined) => {
-        if (!id) return "System";
+        if (!id) return t("system");
         const agent = agents.find((a) => a.id === id);
-        return agent ? agent.name : "Unknown Agent";
+        return agent ? agent.name : t("unknownAgent");
     };
 
     const handleResume = async () => {
@@ -484,7 +496,7 @@ export function AgentTeamChat({
         ? null
         : typingAgents.length === 1
             ? typingAgents[0].name
-            : `${typingAgents.slice(0, -1).map((a) => a.name).join(", ")} and ${typingAgents[typingAgents.length - 1].name}`;
+            : t("namesAnd", { names: typingAgents.slice(0, -1).map((a) => a.name).join(", "), last: typingAgents[typingAgents.length - 1].name });
 
     const agentReadTimes: Record<string, number> = {};
     const onlineAgents = agents.filter(a => a.status === "online");
@@ -500,21 +512,21 @@ export function AgentTeamChat({
         <div className="relative flex h-full flex-col">
             <div className="flex min-h-12 items-center justify-between gap-2 border-b border-zinc-800/80 px-3 py-2 sm:px-4">
                 <div className="flex min-w-0 items-center gap-2 sm:space-x-3">
-                    <h2 className="hidden text-sm font-medium text-zinc-300 lg:block">{groupId ? "Group chat" : "Agent Team Chat"}</h2>
+                    <h2 className="hidden text-sm font-medium text-zinc-300 lg:block">{groupId ? t("groupChat") : t("agentTeamChat")}</h2>
                     {unreadCount > 0 && (
                         <span className="rounded-full border border-rose-500/30 bg-rose-500/20 px-2 py-0.5 text-[10px] text-rose-300">
-                            {unreadCount} new
+                            {t("newCount", { count: unreadCount })}
                         </span>
                     )}
                 </div>
                 <div className="ml-auto flex min-w-0 items-center gap-1.5 sm:space-x-2">
                     {offlineAgents.length > 0 && (
                         <span className="truncate rounded-full border border-amber-500/30 bg-amber-500/10 px-2 py-0.5 text-[10px] font-medium text-amber-300">
-                            {offlineAgents.length} agent{offlineAgents.length !== 1 ? "s" : ""} offline
+                            {t("offline", { count: offlineAgents.length })}
                         </span>
                     )}
                     <div className="h-1.5 w-1.5 animate-pulse rounded-full bg-cyan-500" />
-                    <span className="hidden text-xs font-medium uppercase tracking-tight text-zinc-500 xs:inline sm:inline">Live Feed</span>
+                    <span className="hidden text-xs font-medium uppercase tracking-tight text-zinc-500 xs:inline sm:inline">{t("liveFeed")}</span>
                 </div>
             </div>
 
@@ -524,13 +536,13 @@ export function AgentTeamChat({
                     onClick={scrollToLatest}
                     className="absolute bottom-20 left-1/2 z-10 -translate-x-1/2 rounded-full border border-cyan-500/30 bg-zinc-900/95 px-3 py-1.5 text-xs font-medium text-cyan-300 shadow-lg transition-colors hover:bg-zinc-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400/70"
                 >
-                    {unreadCount} new message{unreadCount === 1 ? "" : "s"} · Jump to latest
+                    {t("jumpToLatest", { count: unreadCount })}
                 </button>
             )}
 
             <div ref={scrollRef} onScroll={handleScroll} style={{ overflowAnchor: "none" }} className="flex-1 overflow-y-auto px-3 py-3 sm:px-4">
                 {messages.length === 0 ? (
-                    <div className="flex h-full items-center justify-center px-6 text-center text-sm italic text-zinc-600">{groupId ? "No messages yet. @mention a member to get their reply." : "No communications yet."}</div>
+                    <div className="flex h-full items-center justify-center px-6 text-center text-sm italic text-zinc-600">{groupId ? t("emptyGroup") : t("emptyTeam")}</div>
                 ) : (
                     <div>
                         {hasOlderMessages && (
@@ -541,7 +553,7 @@ export function AgentTeamChat({
                                     disabled={isLoadingOlder}
                                     className="rounded-full border border-zinc-800 bg-zinc-950/80 px-3 py-1.5 text-xs font-medium text-zinc-400 transition-colors hover:border-cyan-500/40 hover:text-cyan-300 disabled:cursor-not-allowed disabled:opacity-50"
                                 >
-                                    {isLoadingOlder ? "Loading..." : "Load older messages"}
+                                    {isLoadingOlder ? t("loading") : t("loadOlder")}
                                 </button>
                             </div>
                         )}
@@ -615,7 +627,7 @@ export function AgentTeamChat({
                                             )}
                                             {!isContinuation && isHuman && (
                                                 <span className="text-[10px] font-medium text-zinc-400 mb-1 mr-1">
-                                                    {isOwn ? "You" : getMessageSenderName(msg) || "Member"}
+                                                    {isOwn ? t("you") : getMessageSenderName(msg) || t("member")}
                                                 </span>
                                             )}
 
@@ -645,7 +657,7 @@ export function AgentTeamChat({
                                                         onClick={handleResume}
                                                         className="mt-2 inline-flex items-center gap-1.5 rounded-lg border border-cyan-500/40 bg-cyan-500/10 px-3 py-1.5 text-xs font-semibold text-cyan-300 transition-colors hover:bg-cyan-500/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400/70"
                                                     >
-                                                        Resume
+                                                        {t("resume")}
                                                     </button>
                                                 )}
                                                 {messageAttachments.length > 0 && (
@@ -675,7 +687,7 @@ export function AgentTeamChat({
                                                     "text-[10px] mt-1.5 text-right opacity-50",
                                                     isHuman ? "text-zinc-400" : "text-zinc-500"
                                                 )}>
-                                                    {new Date(msg.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                                                    {format.dateTime(new Date(msg.createdAt), { hour: "2-digit", minute: "2-digit" })}
                                                 </div>
                                             </div>
 
@@ -694,7 +706,7 @@ export function AgentTeamChat({
                                                         ))}
                                                     </div>
                                                     <span className="text-[10px] font-medium text-cyan-500">
-                                                        {readByAgents.length === 1 ? `Read by ${readByAgents[0].name}` : `Read by ${readByAgents.length} agents`}
+                                                        {readByAgents.length === 1 ? t("readBy", { name: readByAgents[0].name }) : t("readByCount", { count: readByAgents.length })}
                                                     </span>
                                                 </div>
                                             )}
@@ -702,7 +714,7 @@ export function AgentTeamChat({
                                             {isHuman && isLastInGroup && readByAgents.length === 0 && now - msgTime > 30000 && (
                                                 <div className="mt-1 px-1">
                                                     <span className="text-[10px] font-medium text-amber-400">
-                                                        {offlineAgents.length > 0 ? "Agent offline — message queued" : "Waiting for agent..."}
+                                                        {offlineAgents.length > 0 ? t("queued") : t("waiting")}
                                                     </span>
                                                 </div>
                                             )}
@@ -722,12 +734,12 @@ export function AgentTeamChat({
                 activityKey={ownActingMessageId}
                 activity={soloTypingActivity}
                 label={liveLabel}
-                idleVerb={typingAgents.length > 1 ? "are working" : "is working"}
-                fallbackText="Working on your message"
+                idleVerb={typingAgents.length > 1 ? t("areWorking") : t("isWorking")}
+                fallbackText={t("workingOnMessage")}
                 variant="team"
                 step={soloLiveRun?.current.summary ?? null}
                 stepStartedAt={soloLiveRun && isTimedStepKind(soloLiveRun.current.kind) ? soloLiveRun.currentStartedAt : null}
-                detail={soloLiveRun ? lastReasoningLine(soloLiveRun) : null}
+                detail={soloLiveRun ? render(lastReasoningCopy(soloLiveRun), lastReasoningLine(soloLiveRun) ?? "") || null : null}
             />
             {liveActive && soloLiveRun && (
                 <div className="px-4 pb-1.5 pl-[42px]">
@@ -760,12 +772,12 @@ export function AgentTeamChat({
                             multiple
                             className="hidden"
                             onChange={handleAttachFiles}
-                            aria-label="Attach files"
+                            aria-label={t("attachFiles")}
                         />
                         <button
                             type="button"
                             onClick={() => fileInputRef.current?.click()}
-                            title="Attach files"
+                            title={t("attachFiles")}
                             className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-zinc-700 bg-zinc-800 text-zinc-500 transition-colors hover:border-cyan-500/50 hover:text-cyan-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400/70"
                         >
                             <IconPaperclip className="h-4 w-4" />
@@ -776,7 +788,7 @@ export function AgentTeamChat({
                                 setDraft((prev) => (prev.trimEnd() ? `${prev.trimEnd()} @` : "@"));
                                 requestAnimationFrame(() => teamTextareaRef.current?.focus());
                             }}
-                            title="Mention an agent"
+                            title={t("mention")}
                             className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-zinc-700 bg-zinc-800 text-zinc-500 transition-colors hover:border-cyan-500/50 hover:text-cyan-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400/70"
                         >
                             <IconAt className="h-4 w-4" />
@@ -795,17 +807,17 @@ export function AgentTeamChat({
                         <button
                             type="submit"
                             disabled={(!draft.trim() && pendingAttachments.length === 0) || isSending}
-                            aria-label="Send message"
+                            aria-label={t("send")}
                             className="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-xl bg-cyan-600 transition-colors hover:bg-cyan-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300 disabled:cursor-not-allowed disabled:opacity-40"
                         >
                             <IconSend className="h-4 w-4 text-white" />
                         </button>
                     </div>
-                    <p className="mt-1.5 px-1 text-[10px] text-zinc-600">Enter to send · Shift+Enter for a new line</p>
+                    <p className="mt-1.5 px-1 text-[10px] text-zinc-600">{t("sendHint")}</p>
                 </form>
             ) : (
                 <div className="flex items-center justify-center space-x-2 border-t border-zinc-800/80 bg-zinc-900/30 p-3">
-                    <span className="text-xs font-medium text-zinc-500">Read-only preview — open Team Channel to participate</span>
+                    <span className="text-xs font-medium text-zinc-500">{t("readOnly")}</span>
                 </div>
             )}
         </div>
@@ -842,6 +854,7 @@ function AgentMessageActions({
 }
 
 function ParsedMessage({ text }: { text: string }) {
+    const t = useTranslations("teamChat.sections");
     if (!text) return null;
 
     // Only treat a message as a structured Update/Evidence/Next status report
@@ -865,13 +878,13 @@ function ParsedMessage({ text }: { text: string }) {
         <div className="my-2 space-y-4">
             {sections.update && (
                 <div className="space-y-1">
-                    <div className="text-[10px] font-bold uppercase tracking-tighter text-zinc-500">Update</div>
+                    <div className="text-[10px] font-bold uppercase tracking-tighter text-zinc-500">{t("update")}</div>
                     <ChatMarkdown content={sections.update[1].trim()} accent="cyan" />
                 </div>
             )}
             {sections.evidence && (
                 <div className="space-y-1">
-                    <div className="text-[10px] font-bold uppercase tracking-tighter text-zinc-500">Evidence</div>
+                    <div className="text-[10px] font-bold uppercase tracking-tighter text-zinc-500">{t("evidence")}</div>
                     <div className="rounded border border-zinc-800/50 bg-zinc-950/50 p-3">
                         <ChatMarkdown content={sections.evidence[1].trim()} accent="cyan" compact />
                     </div>
@@ -879,7 +892,7 @@ function ParsedMessage({ text }: { text: string }) {
             )}
             {sections.next && (
                 <div className="space-y-1">
-                    <div className="text-[10px] font-bold uppercase tracking-tighter text-zinc-500">Next</div>
+                    <div className="text-[10px] font-bold uppercase tracking-tighter text-zinc-500">{t("next")}</div>
                     <ChatMarkdown content={sections.next[1].trim()} accent="cyan" />
                 </div>
             )}

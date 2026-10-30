@@ -24,6 +24,7 @@ import { matchesInboxSearch } from "@/lib/inbox-state-rules";
 import { isPlainKey, isTypingTarget } from "@/lib/keyboard-shortcuts";
 import type { AttentionEntry } from "@/lib/team-scene";
 import { useTimeAgo } from "@/lib/i18n/format";
+import { useCopy } from "@/lib/i18n/use-copy";
 import { useSceneCopy } from "@/components/team-dashboard/use-scene-copy";
 import { cn } from "@/lib/utils";
 import { useModuleEnabled } from "@/components/modules-provider";
@@ -433,10 +434,11 @@ function InboxRow({ entry, now, selected, unread, archivedView, onSelect, onArch
     const t = useTranslations("inbox.row");
     const timeAgo = useTimeAgo();
     const scene = useSceneCopy();
+    const render = useCopy();
     const style = KIND_STYLE[entry.kind];
     const group = attentionGroup(entry);
     const isAgentArea = entry.kind === "agent" || entry.kind === "run_failed";
-    const project = isAgentArea ? null : entry.area;
+    const project = isAgentArea || !entry.area ? null : render(entry.areaCopy, entry.area);
     const archiveButton = (
         <button type="button" onClick={(e) => { e.stopPropagation(); onArchive(); }} aria-keyshortcuts="e"
             title={archivedView ? t("moveBackTitle") : t("archiveTitle")} aria-label={archivedView ? t("moveBackLabel") : t("archive")}
@@ -471,10 +473,10 @@ function InboxRow({ entry, now, selected, unread, archivedView, onSelect, onArch
                                 {entry.taskCount && entry.taskCount > 1 ? <span className="rounded-md bg-amber-400/15 px-1.5 py-px normal-case tracking-normal text-amber-700 dark:text-amber-200">{t("coversTasks", { count: entry.taskCount })}</span> : null}
                             </div>
                             <Link data-entry-link href={entry.href} className={cn("mt-0.5 block break-words text-[15px] leading-snug text-foreground hover:text-primary focus-visible:rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400", unread ? "font-bold" : "font-medium")}>
-                                {entry.title}
+                                {render(entry.titleCopy, entry.title)}
                             </Link>
                             {entry.reason && (
-                                <p className={cn("mt-1 line-clamp-2 text-sm", group === "blocked" ? "text-rose-600/90 dark:text-rose-300/90" : "text-muted-foreground")}>{entry.reason}</p>
+                                <p className={cn("mt-1 line-clamp-2 text-sm", group === "blocked" ? "text-rose-600/90 dark:text-rose-300/90" : "text-muted-foreground")}>{render(entry.reasonCopy, entry.reason)}</p>
                             )}
                             {entry.detail && <p className="mt-1 line-clamp-2 text-sm text-muted-foreground">{entry.detail}</p>}
                             {entry.actionArgs && (
@@ -559,8 +561,9 @@ function RowActions({ entry, busy, disabled, agents, onReject, onDecide, onResum
     onMarkRead: (entry: AttentionEntry) => void;
 }) {
     const t = useTranslations("inbox");
+    const render = useCopy();
     const [confirmDays, setConfirmDays] = useState<number | null>(null);
-    const open = <Link href={entry.href} className={cn(BTN, NEUTRAL)}>{entry.actionLabel || t("actions.open")}<IconArrowRight className="h-3.5 w-3.5" /></Link>;
+    const open = <Link href={entry.href} className={cn(BTN, NEUTRAL)}>{entry.actionLabel ? render(entry.actionCopy, entry.actionLabel) : t("actions.open")}<IconArrowRight className="h-3.5 w-3.5" /></Link>;
     // A failure's one fix (already filtered for this viewer's role) leads; the rest step back.
     const fix = entry.failure?.fix ?? null;
     const fixButton = fix ? <FailureFixButton fix={fix} disabled={disabled} onDone={() => void refreshNavBadges()} className={cn(BTN, PRIMARY)} /> : null;

@@ -4,6 +4,7 @@ import Link from "next/link";
 import { createClientRequestId } from "@/lib/client-request-id";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useTranslations } from "next-intl";
 import {
     IconArrowLeft, IconArrowRight, IconBook2, IconBuilding, IconCheck, IconCircleCheck, IconCpu,
     IconExternalLink, IconKey, IconLoader2, IconMessage, IconRocket, IconSparkles, IconUsersGroup, IconAlertTriangle, IconX,
@@ -14,7 +15,7 @@ import { SampleClientOffer } from "@/components/sample-client";
 import { DisabledReason } from "@/components/ui/disabled-reason";
 import { Input } from "@/components/ui/input";
 import { agentRoleTemplates, getAgentTemplate } from "@/lib/agent-templates";
-import { BUSINESS_TYPES, COMFORTABLE_AGENT_COUNT, DEFAULT_AGENT_NAMES, TEAM_TEMPLATES, planTeam, suggestedTeams, teamPlanProblem, type PlannedGroup } from "@/lib/onboarding-shared";
+import { BUSINESS_TYPES, COMFORTABLE_AGENT_COUNT, DEFAULT_AGENT_NAMES, MAX_WIZARD_AGENTS, TEAM_TEMPLATES, planTeam, suggestedTeams, teamPlanProblemKind, type PlannedGroup } from "@/lib/onboarding-shared";
 import { cn } from "@/lib/utils";
 import { CUSTOM_LLM_PROVIDER, normalizeLlmBaseUrl } from "@/lib/llm-endpoint";
 import { COMPANY_TEMPLATES, DEFAULT_COMPANY_TEMPLATE, type CompanyTemplateId } from "@/lib/modules";
@@ -34,23 +35,32 @@ type Created = { name: string; agentId: string | null; success: boolean; message
 type AgentRow = { id: string; name: string; status: string; lastSeenAt: string | null; role?: string | null; createdAt?: string };
 type DocProgress = { taskId: string; state: string; agentId: string | null; taskUrl: string; notesTouched: string[]; totalNotes: number };
 
+// Provider names are brands (never translated); the custom endpoint's label and the hints are messages.
 const PROVIDERS = [
-    { id: "openrouter", label: "OpenRouter", hint: "One key for hundreds of models, including free ones.", keyUrl: "https://openrouter.ai/keys", defaultModel: "nvidia/nemotron-3-ultra-550b-a55b:free" },
-    { id: "deepseek", label: "DeepSeek", hint: "Low-cost DeepSeek models, billed by DeepSeek.", keyUrl: "https://platform.deepseek.com/api_keys", defaultModel: "" },
-    { id: CUSTOM_LLM_PROVIDER, label: "Custom (OpenAI-compatible)", hint: "Your own endpoint: Ollama, LM Studio, vLLM or LiteLLM.", keyUrl: "", defaultModel: "" },
+    { id: "openrouter", copy: "openrouter", label: "OpenRouter", keyUrl: "https://openrouter.ai/keys", defaultModel: "nvidia/nemotron-3-ultra-550b-a55b:free" },
+    { id: "deepseek", copy: "deepseek", label: "DeepSeek", keyUrl: "https://platform.deepseek.com/api_keys", defaultModel: "" },
+    { id: CUSTOM_LLM_PROVIDER, copy: "custom", label: null, keyUrl: "", defaultModel: "" },
 ] as const;
 
-const STEPS: { id: Step; label: string; icon: typeof IconBuilding }[] = [
-    { id: "welcome", label: "Welcome", icon: IconSparkles },
-    { id: "company", label: "Your company", icon: IconBuilding },
-    { id: "model", label: "AI model", icon: IconCpu },
-    { id: "team", label: "Your teams", icon: IconUsersGroup },
-    { id: "launch", label: "Launch", icon: IconRocket },
+const STEPS: { id: Step; icon: typeof IconBuilding }[] = [
+    { id: "welcome", icon: IconSparkles },
+    { id: "company", icon: IconBuilding },
+    { id: "model", icon: IconCpu },
+    { id: "team", icon: IconUsersGroup },
+    { id: "launch", icon: IconRocket },
 ];
 
 const STARTUP_GRACE_MS = 3 * 60 * 1000;
+/** Technical examples shown as placeholders: a URL and API key prefixes, never translated. */
+const CUSTOM_BASE_URL_EXAMPLE = "http://host.docker.internal:11434/v1";
+const KEY_PREFIX_HINTS = { openrouter: "sk-or-v1-…", other: "sk-…" };
 
 export function SetupWizard({ initialCompanyName, initialBusinessType = "", profileComplete, hasAgents: hasAgentsNow, offerSampleClient = false }: { initialCompanyName: string; initialBusinessType?: string; profileComplete: boolean; hasAgents: boolean; offerSampleClient?: boolean }) {
+    const t = useTranslations("onboarding.wizard");
+    const tBusiness = useTranslations("onboarding.businessTypes");
+    const tTeams = useTranslations("agents.easySetup.teams");
+    const tTemplates = useTranslations("settings.modules.templates");
+    const tSetup = useTranslations("agents.easySetup");
     const router = useRouter();
     // The mode is fixed when the wizard opens. The launch saves agents before
     // their runtimes start, and the dashboard refreshes every few seconds: a
@@ -112,6 +122,7 @@ export function SetupWizard({ initialCompanyName, initialBusinessType = "", prof
     const [, setTick] = useState(0);
 
     const providerInfo = PROVIDERS.find((p) => p.id === provider) ?? PROVIDERS[0];
+    const providerLabel = (p: (typeof PROVIDERS)[number]) => p.label ?? tSetup("customEndpoint");
     const customEndpoint = provider === CUSTOM_LLM_PROVIDER;
     const baseUrlCheck = customEndpoint && baseUrl.trim() ? normalizeLlmBaseUrl(baseUrl) : null;
     // A custom endpoint needs its URL and model; the key is optional (local servers have none).
@@ -128,7 +139,7 @@ export function SetupWizard({ initialCompanyName, initialBusinessType = "", prof
                 setAvailable(Boolean(data.available));
                 setUnavailableReason(data.reason || "");
             } catch {
-                if (!cancelled) { setAvailable(false); setUnavailableReason("Could not check whether this installation can start agents."); }
+                if (!cancelled) { setAvailable(false); setUnavailableReason(t("availabilityCheckFailed")); }
             }
         })();
         return () => { cancelled = true; };
@@ -179,11 +190,11 @@ export function SetupWizard({ initialCompanyName, initialBusinessType = "", prof
                 body: JSON.stringify({ companyName, whatYouDo, businessType, website, houseRules }),
             });
             const data = await res.json().catch(() => ({}));
-            if (!res.ok) throw new Error(data.error || "Could not save your company.");
+            if (!res.ok) throw new Error(data.error || t("saveCompanyFailed"));
             if (!hasAgents) {
                 // A template only sets the starting modules; it changes nothing else.
                 const applied = await fetch("/api/settings/modules", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ template }) });
-                if (!applied.ok) throw new Error((await applied.json().catch(() => ({}))).error || "Could not save your modules.");
+                if (!applied.ok) throw new Error((await applied.json().catch(() => ({}))).error || t("saveModulesFailed"));
             }
             if (hasAgents) {
                 await finish("completed");
@@ -193,7 +204,7 @@ export function SetupWizard({ initialCompanyName, initialBusinessType = "", prof
             }
             setStep("model");
         } catch (e) {
-            setError(e instanceof Error ? e.message : "Could not save your company.");
+            setError(e instanceof Error ? e.message : t("saveCompanyFailed"));
         } finally {
             setSavingProfile(false);
         }
@@ -206,11 +217,11 @@ export function SetupWizard({ initialCompanyName, initialBusinessType = "", prof
         try {
             const res = await fetch("/api/onboarding/validate-key", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ provider, apiKey, ...(customEndpoint ? { baseUrl, model } : {}) }) });
             const data = await res.json();
-            if (data.ok === true) { setKeyState({ status: "ok", message: data.detail || "Key works." }); setStep("team"); }
+            if (data.ok === true) { setKeyState({ status: "ok", message: data.detail || t("keyWorks") }); setStep("team"); }
             else if (data.ok === false) setKeyState({ status: "bad", message: data.error });
-            else setKeyState({ status: "unknown", message: data.error || "Couldn't check the key." });
+            else setKeyState({ status: "unknown", message: data.error || t("keyCheckFailed") });
         } catch {
-            setKeyState({ status: "unknown", message: "Couldn't check the key from here." });
+            setKeyState({ status: "unknown", message: t("keyCheckUnreachable") });
         }
     };
 
@@ -237,7 +248,8 @@ export function SetupWizard({ initialCompanyName, initialBusinessType = "", prof
         setExtraRoles((current) => (current.includes(role) ? current : [...current, role]));
     };
     const renameMember = (templateId: string, name: string) => setNames((current) => ({ ...current, [templateId]: name }));
-    const planProblem = teamPlanProblem(plan);
+    const planProblemKind = teamPlanProblemKind(plan);
+    const planProblem = planProblemKind ? t(`planProblems.${planProblemKind}`, { max: MAX_WIZARD_AGENTS }) : null;
     const teamValid = !planProblem;
     const addable = agentRoleTemplates.filter((t) => !team.some((m) => m.templateId === t.id));
 
@@ -274,9 +286,9 @@ export function SetupWizard({ initialCompanyName, initialBusinessType = "", prof
                 }),
             }) : null;
             const data = res ? await res.json().catch(() => ({})) : { results: [] };
-            if (res && !res.ok) throw new Error(data.error || "Could not create your agents.");
+            if (res && !res.ok) throw new Error(data.error || t("createAgentsFailed"));
             const returnedByRole = new Map<string, Created>(requested.map((member, index) => [member.templateId, {
-                ...(data.results?.[index] ?? { name: member.name, agentId: null, success: false, message: "Setup returned no result for this profile." }), templateId: member.templateId,
+                ...(data.results?.[index] ?? { name: member.name, agentId: null, success: false, message: t("noResult") }), templateId: member.templateId,
             }]));
             const results = ordered.map(member => previousByRole.get(member.templateId) ?? returnedByRole.get(member.templateId)!);
             setCreated(results);
@@ -285,7 +297,7 @@ export function SetupWizard({ initialCompanyName, initialBusinessType = "", prof
             await createGroups(plan.groups, results);
             router.refresh();
         } catch (e) {
-            setError(e instanceof Error ? e.message : "Could not create your agents.");
+            setError(e instanceof Error ? e.message : t("createAgentsFailed"));
         } finally {
             setLaunching(false);
         }
@@ -320,7 +332,7 @@ export function SetupWizard({ initialCompanyName, initialBusinessType = "", prof
             if (teamIds.length && teamIds.length === groups.length) {
                 const leaderId = byRole.get("boss")?.agentId ?? results.find(result => result.agentId)?.agentId;
                 const response = await fetch("/api/organization", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ initialize: true, leader: leaderId ? { kind: "agent", id: leaderId } : null, teamIds }) }).catch(() => null);
-                if (!response?.ok && response?.status !== 409) setError("Team chats are ready, but the reporting setup needs a retry. Review it in Agents → Organization.");
+                if (!response?.ok && response?.status !== 409) setError(t("reportingRetry"));
             }
             setGroupsMade(made);
         } finally {
@@ -373,11 +385,11 @@ export function SetupWizard({ initialCompanyName, initialBusinessType = "", prof
         try {
             const response = await fetch(`/api/agents/${agentId}/recreate-runtime`, { method: "POST" });
             const data = await response.json().catch(() => ({}));
-            if (!response.ok || !data.success) throw new Error(data.error || data.message || "Could not restart this runtime");
+            if (!response.ok || !data.success) throw new Error(data.error || data.message || t("restartFailed"));
             setCreated(previous => previous?.map(result => result.agentId === agentId ? { ...result, success: true, message: data.message } : result) ?? null);
             setLaunchedAt(Date.now());
         } catch (error) {
-            setError(error instanceof Error ? error.message : "Could not restart this runtime");
+            setError(error instanceof Error ? error.message : t("restartFailed"));
         } finally {
             setRetrying(null);
         }
@@ -396,11 +408,11 @@ export function SetupWizard({ initialCompanyName, initialBusinessType = "", prof
 
     const docLabel = useMemo(() => {
         if (!lead) return "";
-        if (!doc) return online ? "Handing over the job…" : `Starts as soon as ${lead.name} is online.`;
-        if (doc.state === "done") return `Done: ${doc.notesTouched.length || "its"} note${doc.notesTouched.length === 1 ? "" : "s"} written. Every agent now reads them.`;
-        if (doc.state === "inbox") return `Sent. Waiting for ${lead.name} to pick it up…`;
-        return doc.notesTouched.length ? `Writing… updated ${doc.notesTouched.slice(0, 4).join(", ")}` : `${lead.name} is reading your profile and website…`;
-    }, [doc, lead, online]);
+        if (!doc) return online ? t("doc.handingOver") : t("doc.startsWhenOnline", { name: lead.name });
+        if (doc.state === "done") return t("doc.done", { count: doc.notesTouched.length });
+        if (doc.state === "inbox") return t("doc.waiting", { name: lead.name });
+        return doc.notesTouched.length ? t("doc.writing", { notes: doc.notesTouched.slice(0, 4).join(", ") }) : t("doc.reading", { name: lead.name });
+    }, [doc, lead, online, t]);
 
     if (hidden) return null;
 
@@ -411,7 +423,7 @@ export function SetupWizard({ initialCompanyName, initialBusinessType = "", prof
             <div className="flex h-full w-full max-w-5xl flex-col overflow-hidden border-border bg-background shadow-2xl sm:h-[min(760px,100%)] sm:flex-row sm:rounded-3xl sm:border">
                 {/* Step rail */}
                 <aside className="hidden w-60 shrink-0 flex-col border-r border-border bg-muted/20 p-6 sm:flex">
-                    <p className="text-xs font-semibold uppercase tracking-[0.2em] text-cyan-700 dark:text-cyan-300">Emperor setup</p>
+                    <p className="text-xs font-semibold uppercase tracking-[0.2em] text-cyan-700 dark:text-cyan-300">{t("railTitle")}</p>
                     <ol className="mt-8 space-y-1">
                         {stepsShown.map((s, i) => {
                             const done = i < stepIndex;
@@ -422,21 +434,21 @@ export function SetupWizard({ initialCompanyName, initialBusinessType = "", prof
                                     <span className={cn("flex h-7 w-7 items-center justify-center rounded-full ring-1", current ? "bg-cyan-400/20 text-cyan-800 dark:text-cyan-200 ring-cyan-400/40" : done ? "bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 ring-emerald-500/30" : "ring-border")}>
                                         {done ? <IconCheck className="h-3.5 w-3.5" /> : <Icon className="h-3.5 w-3.5" />}
                                     </span>
-                                    {s.label}
+                                    {t(`steps.${s.id}`)}
                                 </li>
                             );
                         })}
                     </ol>
                     <button type="button" onClick={() => void setUpLater()} className="mt-auto min-h-11 text-left text-xs text-muted-foreground underline-offset-2 hover:text-muted-foreground hover:underline">
-                        Set up later
+                        {t("setUpLater")}
                     </button>
                 </aside>
 
                 <main className="flex min-h-0 flex-1 flex-col">
                     {/* Mobile progress */}
                     <div className="flex items-center justify-between border-b border-border px-5 py-3 sm:hidden">
-                        <span className="text-xs text-muted-foreground">Step {stepIndex + 1} of {stepsShown.length} · {STEPS[stepIndex].label}</span>
-                        <button type="button" onClick={() => void setUpLater()} className="text-xs text-muted-foreground underline">Later</button>
+                        <span className="text-xs text-muted-foreground">{t("stepOf", { step: stepIndex + 1, total: stepsShown.length, label: t(`steps.${STEPS[stepIndex].id}`) })}</span>
+                        <button type="button" onClick={() => void setUpLater()} className="text-xs text-muted-foreground underline">{t("later")}</button>
                     </div>
                     <div className="min-h-0 flex-1 overflow-y-auto px-5 py-8 sm:px-12 sm:py-12">
                         {error && <p role="alert" className="mb-6 flex items-start gap-2 rounded-xl border border-rose-500/30 bg-rose-500/10 p-3 text-sm text-rose-700 dark:text-rose-200"><IconAlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />{error}</p>}
@@ -446,17 +458,17 @@ export function SetupWizard({ initialCompanyName, initialBusinessType = "", prof
                                 <div className="flex h-20 w-20 items-center justify-center rounded-3xl bg-gradient-to-br from-cyan-400/25 to-violet-500/20 ring-1 ring-border">
                                     <IconSparkles className="h-10 w-10 text-cyan-800 dark:text-cyan-200" />
                                 </div>
-                                <h1 id="setup-title" className="mt-8 text-3xl font-semibold tracking-tight text-foreground sm:text-4xl">Let&apos;s set up your AI team</h1>
+                                <h1 id="setup-title" className="mt-8 text-3xl font-semibold tracking-tight text-foreground sm:text-4xl">{t("welcome.title")}</h1>
                                 <p className="mt-4 text-base leading-7 text-muted-foreground">
                                     {hasAgents || profileComplete
-                                        ? hasAgents ? "Tell your agents about the company so they work from the same facts. It takes a minute." : "Your company is on file. Connect an AI model and choose your team; your agents start working in about two minutes."
-                                        : "Four short steps: your company, an AI model key, the team you want, and then your agents start working. About three minutes."}
+                                        ? hasAgents ? t("welcome.introProfileOnly") : t("welcome.introProfileDone")
+                                        : t("welcome.intro")}
                                 </p>
                                 <ul className="mt-8 grid w-full gap-3 text-left text-sm sm:grid-cols-3">
                                     {[
-                                        { icon: IconBuilding, title: "Your company", body: "So agents know what you do" },
-                                        { icon: IconUsersGroup, title: "Your teams", body: "Ready-made teams with their own group chats" },
-                                        { icon: IconBook2, title: "Documented", body: "Your lead writes the company handbook" },
+                                        { icon: IconBuilding, title: t("welcome.companyTitle"), body: t("welcome.companyBody") },
+                                        { icon: IconUsersGroup, title: t("welcome.teamsTitle"), body: t("welcome.teamsBody") },
+                                        { icon: IconBook2, title: t("welcome.documentedTitle"), body: t("welcome.documentedBody") },
                                     ].map(({ icon: Icon, title, body }) => (
                                         <li key={title} className="rounded-2xl border border-border bg-muted/30 p-4">
                                             <Icon className="h-5 w-5 text-cyan-700 dark:text-cyan-300" />
@@ -473,60 +485,60 @@ export function SetupWizard({ initialCompanyName, initialBusinessType = "", prof
                         {step === "company" && (
                             <section className="mx-auto max-w-2xl space-y-6">
                                 <header>
-                                    <h1 id="setup-title" className="text-2xl font-semibold text-foreground">Tell us about your company</h1>
-                                    <p className="mt-2 text-sm leading-6 text-muted-foreground">Every agent reads this before it works. You can change it any time in Knowledge &amp; Rules.</p>
+                                    <h1 id="setup-title" className="text-2xl font-semibold text-foreground">{t("company.title")}</h1>
+                                    <p className="mt-2 text-sm leading-6 text-muted-foreground">{t("company.intro")}</p>
                                 </header>
                                 {editingName ? (
                                     <label className="block space-y-2">
-                                        <span className="text-sm font-medium text-foreground">Company name</span>
-                                        <Input value={companyName} onChange={(e) => setCompanyName(e.target.value)} placeholder="Acme Robotics" autoFocus />
+                                        <span className="text-sm font-medium text-foreground">{t("company.nameLabel")}</span>
+                                        <Input value={companyName} onChange={(e) => setCompanyName(e.target.value)} placeholder={t("company.namePlaceholder")} autoFocus />
                                     </label>
                                 ) : (
                                     <p className="flex flex-wrap items-baseline gap-2 text-sm text-muted-foreground">
-                                        Company <span className="text-base font-medium text-foreground">{companyName}</span>
-                                        <button type="button" onClick={() => setEditingName(true)} className="min-h-11 text-xs text-cyan-700 underline-offset-2 hover:underline dark:text-cyan-300">Change</button>
+                                        {t("company.company")} <span className="text-base font-medium text-foreground">{companyName}</span>
+                                        <button type="button" onClick={() => setEditingName(true)} className="min-h-11 text-xs text-cyan-700 underline-offset-2 hover:underline dark:text-cyan-300">{t("company.change")}</button>
                                     </p>
                                 )}
                                 <label className="block space-y-2">
-                                    <span className="text-sm font-medium text-foreground">What does it do, and for whom?</span>
-                                    <textarea value={whatYouDo} onChange={(e) => setWhatYouDo(e.target.value)} rows={3} autoFocus={!editingName} placeholder="We build warehouse robots for mid-size logistics companies in Europe."
+                                    <span className="text-sm font-medium text-foreground">{t("company.whatLabel")}</span>
+                                    <textarea value={whatYouDo} onChange={(e) => setWhatYouDo(e.target.value)} rows={3} autoFocus={!editingName} placeholder={t("company.whatPlaceholder")}
                                         className="w-full resize-y rounded-xl border border-border bg-muted/30 px-3 py-2.5 text-sm text-foreground outline-none placeholder:text-muted-foreground focus:border-cyan-300/60 focus:ring-2 focus:ring-cyan-300/20" />
                                 </label>
                                 <fieldset className="space-y-2">
-                                    <legend className="text-sm font-medium text-foreground">What kind of company is it?</legend>
+                                    <legend className="text-sm font-medium text-foreground">{t("company.kindLabel")}</legend>
                                     <div className="grid gap-2 sm:grid-cols-3">
-                                        {BUSINESS_TYPES.map((t) => (
-                                            <button key={t.id} type="button" aria-pressed={businessType === t.id} onClick={() => setBusinessType(t.id)}
-                                                className={cn("rounded-xl border p-3 text-left transition-colors", businessType === t.id ? "border-cyan-400/50 bg-cyan-400/10" : "border-border bg-muted/20 hover:border-input")}>
-                                                <span className="block text-sm font-medium text-foreground">{t.label}</span>
-                                                <span className="mt-0.5 block text-xs text-muted-foreground">{t.hint}</span>
+                                        {BUSINESS_TYPES.map((type) => (
+                                            <button key={type.id} type="button" aria-pressed={businessType === type.id} onClick={() => setBusinessType(type.id)}
+                                                className={cn("rounded-xl border p-3 text-left transition-colors", businessType === type.id ? "border-cyan-400/50 bg-cyan-400/10" : "border-border bg-muted/20 hover:border-input")}>
+                                                <span className="block text-sm font-medium text-foreground">{tBusiness(`${type.id}.label`)}</span>
+                                                <span className="mt-0.5 block text-xs text-muted-foreground">{tBusiness(`${type.id}.hint`)}</span>
                                             </button>
                                         ))}
                                     </div>
                                 </fieldset>
                                 {!hasAgents && (
                                     <fieldset className="space-y-2">
-                                        <legend className="text-sm font-medium text-foreground">How will you use Emperor?</legend>
+                                        <legend className="text-sm font-medium text-foreground">{t("company.useLabel")}</legend>
                                         <div className="grid gap-2 sm:grid-cols-3">
-                                            {COMPANY_TEMPLATES.map((t) => (
-                                                <button key={t.id} type="button" aria-pressed={template === t.id} onClick={() => setTemplate(t.id)}
-                                                    className={cn("rounded-xl border p-3 text-left transition-colors", template === t.id ? "border-cyan-400/50 bg-cyan-400/10" : "border-border bg-muted/20 hover:border-input")}>
-                                                    <span className="block text-sm font-medium text-foreground">{t.label}</span>
-                                                    <span className="mt-0.5 block text-xs text-muted-foreground">{t.description}</span>
+                                            {COMPANY_TEMPLATES.map((option) => (
+                                                <button key={option.id} type="button" aria-pressed={template === option.id} onClick={() => setTemplate(option.id)}
+                                                    className={cn("rounded-xl border p-3 text-left transition-colors", template === option.id ? "border-cyan-400/50 bg-cyan-400/10" : "border-border bg-muted/20 hover:border-input")}>
+                                                    <span className="block text-sm font-medium text-foreground">{tTemplates(`${option.id}.label`)}</span>
+                                                    <span className="mt-0.5 block text-xs text-muted-foreground">{tTemplates(`${option.id}.description`)}</span>
                                                 </button>
                                             ))}
                                         </div>
-                                        <p className="text-xs text-muted-foreground">This only picks which modules are on. Change them any time in Settings → Modules.</p>
+                                        <p className="text-xs text-muted-foreground">{t("company.useHint")}</p>
                                     </fieldset>
                                 )}
                                 <div className="grid gap-4 sm:grid-cols-2">
                                     <label className="block space-y-2">
-                                        <span className="text-sm font-medium text-foreground">Website <span className="font-normal text-muted-foreground">(optional)</span></span>
-                                        <Input value={website} onChange={(e) => setWebsite(e.target.value)} placeholder="https://acme.example" type="url" />
+                                        <span className="text-sm font-medium text-foreground">{t("company.website")} <span className="font-normal text-muted-foreground">{t("optional")}</span></span>
+                                        <Input value={website} onChange={(e) => setWebsite(e.target.value)} placeholder={t("company.websitePlaceholder")} type="url" />
                                     </label>
                                     <label className="block space-y-2">
-                                        <span className="text-sm font-medium text-foreground">House rules <span className="font-normal text-muted-foreground">(optional, one per line)</span></span>
-                                        <textarea value={houseRules} onChange={(e) => setHouseRules(e.target.value)} rows={2} placeholder={"Never quote prices without approval\nReply to customers in Spanish"}
+                                        <span className="text-sm font-medium text-foreground">{t("company.houseRules")} <span className="font-normal text-muted-foreground">{t("company.houseRulesHint")}</span></span>
+                                        <textarea value={houseRules} onChange={(e) => setHouseRules(e.target.value)} rows={2} placeholder={t("company.houseRulesPlaceholder")}
                                             className="w-full resize-y rounded-xl border border-border bg-muted/30 px-3 py-2 text-sm text-foreground outline-none placeholder:text-muted-foreground focus:border-cyan-300/60 focus:ring-2 focus:ring-cyan-300/20" />
                                     </label>
                                 </div>
@@ -534,8 +546,8 @@ export function SetupWizard({ initialCompanyName, initialBusinessType = "", prof
                                     <label className="flex cursor-pointer items-start gap-3 rounded-2xl border border-cyan-400/20 bg-cyan-400/[0.05] p-4">
                                         <input type="checkbox" checked={documentIt} onChange={(e) => setDocumentIt(e.target.checked)} className="mt-1 h-4 w-4 accent-cyan-400" />
                                         <span>
-                                            <span className="flex items-center gap-2 text-sm font-medium text-foreground"><IconBook2 className="h-4 w-4 text-cyan-700 dark:text-cyan-300" />Have my lead agent document the company</span>
-                                            <span className="mt-1 block text-xs leading-5 text-muted-foreground">Once it&apos;s online, it turns this profile{website ? " and your website" : ""} into Knowledge &amp; Rules notes (overview, products, customers, brand voice) and asks you what it couldn&apos;t find. You&apos;ll watch it happen.</span>
+                                            <span className="flex items-center gap-2 text-sm font-medium text-foreground"><IconBook2 className="h-4 w-4 text-cyan-700 dark:text-cyan-300" />{t("company.documentIt")}</span>
+                                            <span className="mt-1 block text-xs leading-5 text-muted-foreground">{t("company.documentItHint", { website: website ? "yes" : "no" })}</span>
                                         </span>
                                     </label>
                                 )}
@@ -545,17 +557,17 @@ export function SetupWizard({ initialCompanyName, initialBusinessType = "", prof
                         {step === "model" && (
                             <section className="mx-auto max-w-2xl space-y-6">
                                 <header>
-                                    <h1 id="setup-title" className="text-2xl font-semibold text-foreground">Connect an AI model</h1>
-                                    <p className="mt-2 text-sm leading-6 text-muted-foreground">Your agents think with a language model, so they need an API key. It&apos;s stored encrypted and only your agents use it.</p>
+                                    <h1 id="setup-title" className="text-2xl font-semibold text-foreground">{t("model.title")}</h1>
+                                    <p className="mt-2 text-sm leading-6 text-muted-foreground">{t("model.intro")}</p>
                                 </header>
                                 {available === false ? (
                                     <div className="rounded-2xl border border-amber-500/25 bg-amber-500/10 p-5 text-sm text-amber-900 dark:text-amber-100">
-                                        <p className="font-medium">This installation can&apos;t start agents by itself.</p>
+                                        <p className="font-medium">{t("model.unavailableTitle")}</p>
                                         <p className="mt-1 text-amber-900 dark:text-amber-100/80">{unavailableReason}</p>
-                                        <p className="mt-3 text-amber-900 dark:text-amber-100/80">Run Hermes on another machine and connect it, or reinstall with Docker so Emperor can start agents for you. You set the model key in Hermes in that case.</p>
+                                        <p className="mt-3 text-amber-900 dark:text-amber-100/80">{t("model.unavailableHint")}</p>
                                         <div className="mt-4 flex flex-wrap gap-3">
-                                            <Link href="/docs/v1.1/hermes-runtime" className="inline-flex items-center gap-1 text-cyan-700 dark:text-cyan-300 underline">Connect a Hermes agent <IconExternalLink className="h-3.5 w-3.5" /></Link>
-                                            <Link href="/docs/v1.1/installation" className="inline-flex items-center gap-1 text-cyan-700 dark:text-cyan-300 underline">Docker install guide <IconExternalLink className="h-3.5 w-3.5" /></Link>
+                                            <Link href="/docs/v1.1/hermes-runtime" className="inline-flex items-center gap-1 text-cyan-700 dark:text-cyan-300 underline">{t("model.connectHermes")} <IconExternalLink className="h-3.5 w-3.5" /></Link>
+                                            <Link href="/docs/v1.1/installation" className="inline-flex items-center gap-1 text-cyan-700 dark:text-cyan-300 underline">{t("model.dockerGuide")} <IconExternalLink className="h-3.5 w-3.5" /></Link>
                                         </div>
                                     </div>
                                 ) : (
@@ -565,45 +577,45 @@ export function SetupWizard({ initialCompanyName, initialBusinessType = "", prof
                                                 <button key={p.id} type="button" aria-pressed={provider === p.id}
                                                     onClick={() => { setProvider(p.id); setModel(p.defaultModel); setKeyState({ status: "idle", message: "" }); }}
                                                     className={cn("rounded-2xl border p-4 text-left transition-colors", provider === p.id ? "border-cyan-400/50 bg-cyan-400/10" : "border-border bg-muted/20 hover:border-input")}>
-                                                    <span className="flex items-center justify-between text-sm font-medium text-foreground">{p.label}{p.id === "openrouter" && <span className="rounded-full bg-emerald-500/15 px-2 py-0.5 text-xs font-semibold uppercase tracking-wider text-emerald-700 dark:text-emerald-300">Recommended</span>}</span>
-                                                    <span className="mt-1 block text-xs leading-5 text-muted-foreground">{p.hint}</span>
+                                                    <span className="flex items-center justify-between text-sm font-medium text-foreground">{providerLabel(p)}{p.id === "openrouter" && <span className="rounded-full bg-emerald-500/15 px-2 py-0.5 text-xs font-semibold uppercase tracking-wider text-emerald-700 dark:text-emerald-300">{t("model.recommended")}</span>}</span>
+                                                    <span className="mt-1 block text-xs leading-5 text-muted-foreground">{t(`model.providerHints.${p.copy}`)}</span>
                                                 </button>
                                             ))}
                                         </div>
                                         {customEndpoint && (
                                             <div className="grid gap-4 sm:grid-cols-2">
                                                 <label className="block space-y-2">
-                                                    <span className="text-sm font-medium text-foreground">Base URL</span>
-                                                    <Input type="url" autoComplete="off" value={baseUrl} onChange={(e) => { setBaseUrl(e.target.value); setKeyState({ status: "idle", message: "" }); }} placeholder="http://host.docker.internal:11434/v1" aria-invalid={baseUrlCheck?.ok === false} />
+                                                    <span className="text-sm font-medium text-foreground">{tSetup("baseUrl")}</span>
+                                                    <Input type="url" autoComplete="off" value={baseUrl} onChange={(e) => { setBaseUrl(e.target.value); setKeyState({ status: "idle", message: "" }); }} placeholder={CUSTOM_BASE_URL_EXAMPLE} aria-invalid={baseUrlCheck?.ok === false} />
                                                 </label>
                                                 <label className="block space-y-2">
-                                                    <span className="text-sm font-medium text-foreground">Model</span>
-                                                    <Input value={model} onChange={(e) => { setModel(e.target.value); setKeyState({ status: "idle", message: "" }); }} placeholder="e.g. llama3.1:8b" />
+                                                    <span className="text-sm font-medium text-foreground">{tSetup("model")}</span>
+                                                    <Input value={model} onChange={(e) => { setModel(e.target.value); setKeyState({ status: "idle", message: "" }); }} placeholder={tSetup("customModelPlaceholder")} />
                                                 </label>
                                                 {baseUrlCheck?.ok === false
                                                     ? <p role="alert" className="text-xs text-rose-700 dark:text-rose-300 sm:col-span-2">{baseUrlCheck.error}</p>
-                                                    : <p className="text-xs leading-5 text-muted-foreground sm:col-span-2">{baseUrlCheck?.ok && baseUrlCheck.hint ? baseUrlCheck.hint : "Agents run in their own containers, so localhost there is not this machine: for a server here, use host.docker.internal."}</p>}
+                                                    : <p className="text-xs leading-5 text-muted-foreground sm:col-span-2">{baseUrlCheck?.ok && baseUrlCheck.hint ? baseUrlCheck.hint : t("model.localhostHint")}</p>}
                                             </div>
                                         )}
                                         <label className="block space-y-2">
                                             <span className="flex items-center justify-between text-sm font-medium text-foreground">
-                                                <span className="flex items-center gap-2"><IconKey className="h-4 w-4 text-cyan-700 dark:text-cyan-300" />{customEndpoint ? <>API key <span className="font-normal text-muted-foreground">(optional)</span></> : `${providerInfo.label} API key`}</span>
-                                                {providerInfo.keyUrl && <a href={providerInfo.keyUrl} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-xs font-normal text-cyan-700 dark:text-cyan-300 hover:underline">Get a key <IconExternalLink className="h-3 w-3" /></a>}
+                                                <span className="flex items-center gap-2"><IconKey className="h-4 w-4 text-cyan-700 dark:text-cyan-300" />{customEndpoint ? <>{t("model.apiKey")} <span className="font-normal text-muted-foreground">{t("optional")}</span></> : t("model.providerApiKey", { provider: providerLabel(providerInfo) })}</span>
+                                                {providerInfo.keyUrl && <a href={providerInfo.keyUrl} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-xs font-normal text-cyan-700 dark:text-cyan-300 hover:underline">{t("model.getKey")} <IconExternalLink className="h-3 w-3" /></a>}
                                             </span>
-                                            <Input type="password" autoComplete="off" value={apiKey} onChange={(e) => { setApiKey(e.target.value); setKeyState({ status: "idle", message: "" }); }} placeholder={customEndpoint ? "Only if your endpoint needs one" : provider === "openrouter" ? "sk-or-v1-…" : "sk-…"} aria-invalid={keyState.status === "bad"} />
+                                            <Input type="password" autoComplete="off" value={apiKey} onChange={(e) => { setApiKey(e.target.value); setKeyState({ status: "idle", message: "" }); }} placeholder={customEndpoint ? tSetup("keyOptionalPlaceholder") : provider === "openrouter" ? KEY_PREFIX_HINTS.openrouter : KEY_PREFIX_HINTS.other} aria-invalid={keyState.status === "bad"} />
                                             {keyState.status === "ok" && <p className="flex items-center gap-1.5 text-xs text-emerald-700 dark:text-emerald-300"><IconCircleCheck className="h-3.5 w-3.5" />{keyState.message}</p>}
                                             {keyState.status === "bad" && <p role="alert" className="text-xs text-rose-700 dark:text-rose-300">{keyState.message}</p>}
-                                            {keyState.status === "unknown" && <p className="text-xs text-amber-800 dark:text-amber-200">{keyState.message} Click Continue again to go on.</p>}
+                                            {keyState.status === "unknown" && <p className="text-xs text-amber-800 dark:text-amber-200">{keyState.message} {t("model.continueAgain")}</p>}
                                         </label>
                                         {provider === "openrouter" && (
                                             <p className="rounded-xl border border-border bg-muted/20 p-3 text-xs leading-5 text-muted-foreground">
-                                                Starts on a <strong className="text-foreground">free model</strong>, so you can try everything at no cost. Switch to a stronger model per agent later.
+                                                {t.rich("model.freeModel", { strong: (chunks) => <strong className="text-foreground">{chunks}</strong> })}
                                             </p>
                                         )}
                                         {!customEndpoint && <div>
-                                            <button type="button" onClick={() => setShowModel((v) => !v)} className="text-xs text-muted-foreground underline-offset-2 hover:text-muted-foreground hover:underline">{showModel ? "Hide" : "Choose a specific"} model</button>
+                                            <button type="button" onClick={() => setShowModel((v) => !v)} className="text-xs text-muted-foreground underline-offset-2 hover:text-muted-foreground hover:underline">{showModel ? t("model.hideModel") : t("model.chooseModel")}</button>
                                             {showModel && (
-                                                <Input className="mt-2" value={model} onChange={(e) => setModel(e.target.value)} placeholder={provider === "openrouter" ? "e.g. anthropic/claude-sonnet-5-5" : "e.g. deepseek-chat"} aria-label="Model" />
+                                                <Input className="mt-2" value={model} onChange={(e) => setModel(e.target.value)} placeholder={t("model.modelExample", { model: provider === "openrouter" ? "anthropic/claude-sonnet-5-5" : "deepseek-chat" })} aria-label={tSetup("model")} />
                                             )}
                                         </div>}
                                     </>
@@ -614,25 +626,25 @@ export function SetupWizard({ initialCompanyName, initialBusinessType = "", prof
                         {step === "team" && (
                             <section className="mx-auto max-w-2xl space-y-6">
                                 <header>
-                                    <h1 id="setup-title" className="text-2xl font-semibold text-foreground">Choose your teams</h1>
+                                    <h1 id="setup-title" className="text-2xl font-semibold text-foreground">{t("team.title")}</h1>
                                     <p className="mt-2 text-sm leading-6 text-muted-foreground">
-                                        {businessType && businessType !== "other" ? "Suggested for your kind of company. " : ""}Pick any mix. Each team gets its specialists and its own group chat; the Boss leads them all.
+                                        {businessType && businessType !== "other" ? `${t("team.suggested")} ` : ""}{t("team.intro")}
                                     </p>
                                 </header>
-                                <div className="grid gap-2 sm:grid-cols-2" role="group" aria-label="Team templates">
-                                    {TEAM_TEMPLATES.map((t) => {
-                                        const on = teams.includes(t.id);
+                                <div className="grid gap-2 sm:grid-cols-2" role="group" aria-label={t("team.templatesLabel")}>
+                                    {TEAM_TEMPLATES.map((teamTemplate) => {
+                                        const on = teams.includes(teamTemplate.id);
                                         return (
-                                            <button key={t.id} type="button" aria-pressed={on} onClick={() => toggleTeam(t.id)}
+                                            <button key={teamTemplate.id} type="button" aria-pressed={on} onClick={() => toggleTeam(teamTemplate.id)}
                                                 className={cn("flex items-start gap-3 rounded-2xl border p-3 text-left transition-colors", on ? "border-cyan-400/50 bg-cyan-400/10" : "border-border bg-muted/20 hover:border-input")}>
-                                                <span className="text-xl leading-none" aria-hidden>{t.icon}</span>
+                                                <span className="text-xl leading-none" aria-hidden>{teamTemplate.icon}</span>
                                                 <span className="min-w-0 flex-1">
                                                     <span className="flex items-center justify-between gap-2 text-sm font-medium text-foreground">
-                                                        {t.label}
+                                                        {tTeams(`${teamTemplate.id}.label`)}
                                                         <span className={cn("grid h-4 w-4 shrink-0 place-items-center rounded border", on ? "border-cyan-400 bg-cyan-400 text-primary-foreground" : "border-input")}>{on && <IconCheck className="h-3 w-3" />}</span>
                                                     </span>
-                                                    <span className="mt-0.5 block text-xs text-muted-foreground">{t.hint}</span>
-                                                    <span className="mt-1 block text-xs text-muted-foreground">{t.roles.map((r) => getAgentTemplate(r)?.title ?? r).join(" · ")}</span>
+                                                    <span className="mt-0.5 block text-xs text-muted-foreground">{tTeams(`${teamTemplate.id}.hint`)}</span>
+                                                    <span className="mt-1 block text-xs text-muted-foreground">{teamTemplate.roles.map((r) => getAgentTemplate(r)?.title ?? r).join(" · ")}</span>
                                                 </span>
                                             </button>
                                         );
@@ -641,26 +653,26 @@ export function SetupWizard({ initialCompanyName, initialBusinessType = "", prof
 
                                 <div>
                                     <div className="mb-2 flex items-center justify-between">
-                                        <h2 className="text-sm font-medium text-foreground">Your agents <span className="font-normal text-muted-foreground">({team.length})</span></h2>
-                                        <select aria-label="Add a specialist" value="" onChange={(e) => addRole(e.target.value)}
+                                        <h2 className="text-sm font-medium text-foreground">{t("team.yourAgents")} <span className="font-normal text-muted-foreground">({team.length})</span></h2>
+                                        <select aria-label={t("team.addSpecialist")} value="" onChange={(e) => addRole(e.target.value)}
                                             className="h-11 rounded-lg border border-border bg-background px-2 text-xs text-muted-foreground outline-none focus:border-cyan-300/60">
-                                            <option value="">+ Add an agent</option>
-                                            {addable.map((t) => <option key={t.id} value={t.id}>{t.title}</option>)}
+                                            <option value="">{t("team.addAgent")}</option>
+                                            {addable.map((role) => <option key={role.id} value={role.id}>{role.title}</option>)}
                                         </select>
                                     </div>
                                     <ul className="space-y-2">
                                         {team.map((m) => {
-                                            const t = getAgentTemplate(m.templateId);
+                                            const role = getAgentTemplate(m.templateId);
                                             const inGroups = plan.groups.filter((g) => g.roles.includes(m.templateId)).map((g) => g.title);
                                             return (
                                                 <li key={m.templateId} className="grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-3 rounded-xl border border-border bg-muted/20 p-2.5 sm:flex">
-                                                    <span className="text-lg" aria-hidden>{t?.emoji ?? "🤖"}</span>
-                                                    <Input value={names[m.templateId] ?? m.name} onChange={(e) => renameMember(m.templateId, e.target.value)} aria-label={`${t?.title ?? m.templateId} name`} maxLength={40} className="col-span-3 h-11 w-full min-w-0 text-sm sm:w-32" />
+                                                    <span className="text-lg" aria-hidden>{role?.emoji ?? "🤖"}</span>
+                                                    <Input value={names[m.templateId] ?? m.name} onChange={(e) => renameMember(m.templateId, e.target.value)} aria-label={t("team.nameLabel", { role: role?.title ?? m.templateId })} maxLength={40} className="col-span-3 h-11 w-full min-w-0 text-sm sm:w-32" />
                                                     <div className="col-start-2 row-start-1 min-w-0 flex-1">
-                                                        <p className="truncate text-xs text-muted-foreground">{t?.title ?? m.templateId}{m.templateId === "boss" && <span className="ml-1.5 rounded-full bg-violet-500/15 px-1.5 py-0.5 text-xs font-semibold text-violet-700 dark:text-violet-200">Lead</span>}</p>
-                                                        <p className="truncate text-xs text-muted-foreground">{inGroups.length ? inGroups.join(" · ") : m.templateId === "boss" ? "Leads every team" : "No group"}</p>
+                                                        <p className="truncate text-xs text-muted-foreground">{role?.title ?? m.templateId}{m.templateId === "boss" && <span className="ml-1.5 rounded-full bg-violet-500/15 px-1.5 py-0.5 text-xs font-semibold text-violet-700 dark:text-violet-200">{t("team.lead")}</span>}</p>
+                                                        <p className="truncate text-xs text-muted-foreground">{inGroups.length ? inGroups.join(" · ") : m.templateId === "boss" ? t("team.leadsEveryTeam") : t("team.noGroup")}</p>
                                                     </div>
-                                                    <button type="button" onClick={() => removeRole(m.templateId)} aria-label={`Remove ${m.name || t?.title}`} className="col-start-3 row-start-1 flex h-11 w-11 shrink-0 items-center justify-center rounded-lg text-muted-foreground hover:bg-muted/50 hover:text-foreground">
+                                                    <button type="button" onClick={() => removeRole(m.templateId)} aria-label={t("team.remove", { name: m.name || role?.title || m.templateId })} className="col-start-3 row-start-1 flex h-11 w-11 shrink-0 items-center justify-center rounded-lg text-muted-foreground hover:bg-muted/50 hover:text-foreground">
                                                         <IconX className="h-4 w-4" />
                                                     </button>
                                                 </li>
@@ -671,11 +683,11 @@ export function SetupWizard({ initialCompanyName, initialBusinessType = "", prof
 
                                 {plan.groups.length > 0 && (
                                     <div>
-                                        <h2 className="mb-2 text-sm font-medium text-foreground">Group chats</h2>
+                                        <h2 className="mb-2 text-sm font-medium text-foreground">{t("team.groupChats")}</h2>
                                         <ul className="flex flex-wrap gap-2">
                                             {plan.groups.map((g) => (
                                                 <li key={g.teamId} className="rounded-full border border-border px-3 py-1 text-xs text-muted-foreground">
-                                                    <span aria-hidden>{g.icon}</span> {g.title} <span className="text-muted-foreground">· {g.roles.map((r) => (names[r] ?? DEFAULT_AGENT_NAMES[r] ?? r).trim()).join(", ")}, you</span>
+                                                    <span aria-hidden>{g.icon}</span> {g.title} <span className="text-muted-foreground">· {t("team.groupMembers", { names: g.roles.map((r) => (names[r] ?? DEFAULT_AGENT_NAMES[r] ?? r).trim()).join(", ") })}</span>
                                                 </li>
                                             ))}
                                         </ul>
@@ -684,10 +696,10 @@ export function SetupWizard({ initialCompanyName, initialBusinessType = "", prof
 
                                 {planProblem && team.length > 0 && <p role="alert" className="text-xs text-rose-700 dark:text-rose-300">{planProblem}</p>}
                                 {!planProblem && team.length > COMFORTABLE_AGENT_COUNT && (
-                                    <p className="text-xs text-amber-800 dark:text-amber-200">Each agent runs its own runtime. On a small machine (a Raspberry Pi, a laptop), start with {COMFORTABLE_AGENT_COUNT} or fewer and add more later.</p>
+                                    <p className="text-xs text-amber-800 dark:text-amber-200">{t("team.smallMachine", { count: COMFORTABLE_AGENT_COUNT })}</p>
                                 )}
                                 {!team.some((m) => m.templateId === "boss") && team.length > 1 && (
-                                    <p className="text-xs text-amber-800 dark:text-amber-200">Without a Boss, assign work to each specialist yourself.</p>
+                                    <p className="text-xs text-amber-800 dark:text-amber-200">{t("team.noBoss")}</p>
                                 )}
                             </section>
                         )}
@@ -695,51 +707,51 @@ export function SetupWizard({ initialCompanyName, initialBusinessType = "", prof
                         {step === "launch" && (
                             <section className="mx-auto max-w-2xl space-y-6">
                                 <header>
-                                    <h1 id="setup-title" className="text-2xl font-semibold text-foreground">{online ? "Your team is ready" : "Starting your team"}</h1>
+                                    <h1 id="setup-title" className="text-2xl font-semibold text-foreground">{online ? t("launch.ready") : t("launch.starting")}</h1>
                                     <p className="mt-2 text-sm leading-6 text-muted-foreground">
-                                        {launching ? "Creating your agents…" : online ? "Talk to your lead in its private chat, or give it a project." : "The first start downloads and connects each agent. This can take a minute or two."}
+                                        {launching ? t("launch.creating") : online ? t("launch.readyHint") : t("launch.startingHint")}
                                     </p>
                                 </header>
                                 {/* The first hire waits on the one-time runtime download; show it when one is running. */}
                                 <HermesImageProgress
                                     active={launching}
-                                    fallback={launching && <p className="flex items-center gap-2 text-sm text-muted-foreground"><IconLoader2 className="h-4 w-4 animate-spin" />Creating {team.length} agent{team.length === 1 ? "" : "s"}…</p>}
+                                    fallback={launching && <p className="flex items-center gap-2 text-sm text-muted-foreground"><IconLoader2 className="h-4 w-4 animate-spin" />{t("launch.creatingCount", { count: team.length })}</p>}
                                 />
                                 {created && (
                                     <ul className="space-y-2">
                                         {created.map((r) => {
-                                            const t = getAgentTemplate(r.templateId);
+                                            const role = getAgentTemplate(r.templateId);
                                             const up = isOnline(r.agentId);
                                             return (
                                                 <li key={r.name} className="flex items-center gap-3 rounded-2xl border border-border bg-muted/20 p-3">
-                                                    <span className="text-xl" aria-hidden>{t?.emoji ?? "🤖"}</span>
+                                                    <span className="text-xl" aria-hidden>{role?.emoji ?? "🤖"}</span>
                                                     <div className="min-w-0 flex-1">
                                                         <p className="text-sm font-medium text-foreground">{r.name}</p>
-                                                        <p className="text-xs text-muted-foreground">{!r.success && !up ? r.message : up ? `${r.name} is created and online` : `${r.name} is created and starting up…`}</p>
+                                                        <p className="text-xs text-muted-foreground">{!r.success && !up ? r.message : up ? t("launch.createdOnline", { name: r.name }) : t("launch.createdStarting", { name: r.name })}</p>
                                                     </div>
-                                                    {!r.success && !r.agentId ? <span className="rounded-full bg-rose-500/15 px-2.5 py-1 text-xs text-rose-700 dark:text-rose-200">Failed</span>
-                                                        : up ? <span className="flex items-center gap-1 rounded-full bg-emerald-500/15 px-2.5 py-1 text-xs text-emerald-700 dark:text-emerald-300"><IconCircleCheck className="h-3.5 w-3.5" />Online</span>
-                                                            : (!r.success || offlineTooLong) && r.agentId ? <Button size="sm" variant="outline" onClick={() => void retryRuntime(r.agentId!)} disabled={retrying === r.agentId}>{retrying === r.agentId ? "Restarting…" : "Retry"}</Button>
-                                                                : <IconLoader2 className="h-4 w-4 animate-spin text-muted-foreground" aria-label="Starting" />}
+                                                    {!r.success && !r.agentId ? <span className="rounded-full bg-rose-500/15 px-2.5 py-1 text-xs text-rose-700 dark:text-rose-200">{t("launch.failed")}</span>
+                                                        : up ? <span className="flex items-center gap-1 rounded-full bg-emerald-500/15 px-2.5 py-1 text-xs text-emerald-700 dark:text-emerald-300"><IconCircleCheck className="h-3.5 w-3.5" />{t("launch.online")}</span>
+                                                            : (!r.success || offlineTooLong) && r.agentId ? <Button size="sm" variant="outline" onClick={() => void retryRuntime(r.agentId!)} disabled={retrying === r.agentId}>{retrying === r.agentId ? tSetup("restarting") : t("launch.retry")}</Button>
+                                                                : <IconLoader2 className="h-4 w-4 animate-spin text-muted-foreground" aria-label={t("launch.startingLabel")} />}
                                                 </li>
                                             );
                                         })}
                                     </ul>
                                 )}
                                 {groupsMade.length > 0 && (
-                                    <ul className="space-y-1.5" aria-label="Group chats created">
+                                    <ul className="space-y-1.5" aria-label={t("launch.groupsCreated")}>
                                         {groupsMade.map((g) => (
                                             <li key={g.title} className="flex items-center gap-2 text-xs text-muted-foreground">
                                                 {g.ok ? <IconCircleCheck className="h-3.5 w-3.5 text-emerald-700 dark:text-emerald-300" /> : <IconAlertTriangle className="h-3.5 w-3.5 text-amber-700 dark:text-amber-300" />}
                                                 <span aria-hidden>{g.icon}</span>
                                                 <span className="text-foreground">{g.title}</span>
-                                                <span className="truncate">{g.ok ? `group chat with ${g.members.join(", ")} and you` : "not ready yet; create missing profiles or retry the chat"}</span>
+                                                <span className="truncate">{g.ok ? t("launch.groupWith", { names: g.members.join(", ") }) : t("launch.groupNotReady")}</span>
                                             </li>
                                         ))}
                                     </ul>
                                 )}
-                                {created?.some(result => !result.agentId) && <Button variant="outline" onClick={() => void launch()} disabled={launching}>Retry provisioning</Button>}
-                                {created && groupsMade.some(group => !group.ok) && <Button variant="outline" onClick={() => void createGroups(plan.groups, created)} disabled={groupBusy || launching || created.some(result => !result.agentId)}>{groupBusy ? "Creating team chats…" : "Retry team chats"}</Button>}
+                                {created?.some(result => !result.agentId) && <Button variant="outline" onClick={() => void launch()} disabled={launching}>{tSetup("retryProvisioning")}</Button>}
+                                {created && groupsMade.some(group => !group.ok) && <Button variant="outline" onClick={() => void createGroups(plan.groups, created)} disabled={groupBusy || launching || created.some(result => !result.agentId)}>{groupBusy ? t("launch.creatingChats") : t("launch.retryChats")}</Button>}
                                 {lead && documentIt && (
                                     <div aria-live="polite" className="rounded-2xl border border-cyan-400/25 bg-cyan-400/[0.05] p-5">
                                         <div className="flex items-start gap-3">
@@ -747,13 +759,13 @@ export function SetupWizard({ initialCompanyName, initialBusinessType = "", prof
                                                 {doc?.state === "done" ? <IconCircleCheck className="h-5 w-5 text-emerald-700 dark:text-emerald-300" /> : <IconBook2 className="h-5 w-5 text-cyan-800 dark:text-cyan-200" />}
                                             </span>
                                             <div className="min-w-0">
-                                                <p className="text-sm font-medium text-foreground">{lead.name} is documenting {companyName.trim() || "your company"} in Knowledge &amp; Rules</p>
+                                                <p className="text-sm font-medium text-foreground">{companyName.trim() ? t("launch.documenting", { name: lead.name, company: companyName.trim() }) : t("launch.documentingYours", { name: lead.name })}</p>
                                                 <p className="mt-1 text-xs leading-5 text-muted-foreground">{docLabel}</p>
                                                 {doc && (
                                                     <div className="mt-3 flex flex-wrap gap-3 text-xs">
-                                                        <Link href={`/messages?agent=${lead.agentId}`} className="text-cyan-700 dark:text-cyan-300 hover:underline" onClick={() => void finish("completed")}>Watch in chat</Link>
-                                                        <Link href={doc.taskUrl} className="text-cyan-700 dark:text-cyan-300 hover:underline" onClick={() => void finish("completed")}>Open the task</Link>
-                                                        <Link href="/resources" className="text-cyan-700 dark:text-cyan-300 hover:underline" onClick={() => void finish("completed")}>Knowledge &amp; Rules ({doc.totalNotes})</Link>
+                                                        <Link href={`/messages?agent=${lead.agentId}`} className="text-cyan-700 dark:text-cyan-300 hover:underline" onClick={() => void finish("completed")}>{t("launch.watchInChat")}</Link>
+                                                        <Link href={doc.taskUrl} className="text-cyan-700 dark:text-cyan-300 hover:underline" onClick={() => void finish("completed")}>{t("launch.openTask")}</Link>
+                                                        <Link href="/resources" className="text-cyan-700 dark:text-cyan-300 hover:underline" onClick={() => void finish("completed")}>{t("launch.knowledgeCount", { count: doc.totalNotes })}</Link>
                                                     </div>
                                                 )}
                                             </div>
@@ -761,7 +773,7 @@ export function SetupWizard({ initialCompanyName, initialBusinessType = "", prof
                                     </div>
                                 )}
                                 {online && (
-                                    <p className="text-xs leading-5 text-muted-foreground">Its direct chat is private, so no @mention is needed. For work that should be tracked, create a task and assign it; every morning each agent reviews its open tasks.</p>
+                                    <p className="text-xs leading-5 text-muted-foreground">{t("launch.privateChatHint")}</p>
                                 )}
                             </section>
                         )}
@@ -771,32 +783,32 @@ export function SetupWizard({ initialCompanyName, initialBusinessType = "", prof
                     <footer className="flex items-center justify-between gap-3 border-t border-border px-5 py-4 sm:px-12">
                         <div>
                             {stepIndex > 0 && (step !== "launch" || (!created && !launching)) && (
-                                <Button variant="ghost" onClick={() => { setError(""); setStep(STEPS[stepIndex - 1].id); }}><IconArrowLeft className="h-4 w-4" />Back</Button>
+                                <Button variant="ghost" onClick={() => { setError(""); setStep(STEPS[stepIndex - 1].id); }}><IconArrowLeft className="h-4 w-4" />{t("back")}</Button>
                             )}
                         </div>
                         <div className="flex items-center gap-3">
                             {/* A company that already has a profile goes straight to the model. */}
-                            {step === "welcome" && <Button onClick={() => setStep(profileComplete && !hasAgents ? "model" : "company")}>Get started<IconArrowRight className="h-4 w-4" /></Button>}
+                            {step === "welcome" && <Button onClick={() => setStep(profileComplete && !hasAgents ? "model" : "company")}>{t("getStarted")}<IconArrowRight className="h-4 w-4" /></Button>}
                             {step === "company" && (
                                 <Button onClick={() => void saveCompany()} disabled={!companyValid || savingProfile}>
-                                    {savingProfile && <IconLoader2 className="h-4 w-4 animate-spin" />}{hasAgents ? "Save and finish" : "Continue"}{!savingProfile && !hasAgents && <IconArrowRight className="h-4 w-4" />}
+                                    {savingProfile && <IconLoader2 className="h-4 w-4 animate-spin" />}{hasAgents ? t("saveAndFinish") : t("continue")}{!savingProfile && !hasAgents && <IconArrowRight className="h-4 w-4" />}
                                 </Button>
                             )}
                             {step === "model" && (available === false
-                                ? <Button onClick={() => void goToDashboard()}>Finish setup</Button>
+                                ? <Button onClick={() => void goToDashboard()}>{t("finishSetup")}</Button>
                                 : (
                                     <Button onClick={() => void checkKey()} disabled={!modelReady || keyState.status === "checking" || available === null}>
-                                        {keyState.status === "checking" ? <><IconLoader2 className="h-4 w-4 animate-spin" />Checking key…</> : <>{keyState.status === "unknown" ? "Continue anyway" : "Continue"}<IconArrowRight className="h-4 w-4" /></>}
+                                        {keyState.status === "checking" ? <><IconLoader2 className="h-4 w-4 animate-spin" />{t("checkingKey")}</> : <>{keyState.status === "unknown" ? t("continueAnyway") : t("continue")}<IconArrowRight className="h-4 w-4" /></>}
                                     </Button>
                                 ))}
-                            {step === "team" && <Button onClick={() => void launch()} disabled={!teamValid}>Create {team.length} agent{team.length === 1 ? "" : "s"}<IconRocket className="h-4 w-4" /></Button>}
+                            {step === "team" && <Button onClick={() => void launch()} disabled={!teamValid}>{t("createAgents", { count: team.length })}<IconRocket className="h-4 w-4" /></Button>}
                             {step === "launch" && (
                                 <>
-                                    <Button variant="ghost" onClick={() => void goToDashboard()} disabled={launching}>Go to dashboard</Button>
-                                    <DisabledReason reason={online ? null : `${lead?.name ?? "Your lead"} isn't online yet. This turns on as soon as it connects.`}>
+                                    <Button variant="ghost" onClick={() => void goToDashboard()} disabled={launching}>{t("goToDashboard")}</Button>
+                                    <DisabledReason reason={online ? null : lead ? t("leadOffline", { name: lead.name }) : t("yourLeadOffline")}>
                                         <Button onClick={() => void openDirectChat()} disabled={!online}>
                                             {!online && created?.some((r) => r.success) && <IconLoader2 className="h-4 w-4 animate-spin" />}
-                                            <IconMessage className="h-4 w-4" />Open direct chat{lead ? ` with ${lead.name}` : ""}
+                                            <IconMessage className="h-4 w-4" />{lead ? t("openDirectChatWith", { name: lead.name }) : t("openDirectChat")}
                                         </Button>
                                     </DisabledReason>
                                 </>

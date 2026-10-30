@@ -143,7 +143,7 @@ test("describeTaskEvent turns task_events into plain lines", () => {
     const base = { id: "x", createdAt: "2026-10-23T10:00:00Z", actorId: null };
     assert.deepEqual(
         describeTaskEvent({ ...base, eventType: "task_note", actorType: "agent", actorId: "a1", payloadJson: { note: "Draft ready", kind: "progress" } }, names),
-        { actor: { type: "agent", name: "Atlas" }, tone: "note", text: "Note", note: "Draft ready" },
+        { actor: { type: "agent", name: "Atlas" }, tone: "note", text: "Note", textCopy: { key: "tasks.timeline.events.note" }, note: "Draft ready" },
     );
     assert.equal(describeTaskEvent({ ...base, eventType: "task_note", actorType: "agent", payloadJson: { note: "x", kind: "blocker" } }, names).tone, "problem");
     assert.equal(describeTaskEvent({ ...base, eventType: "task_generated", actorType: "system", payloadJson: { assignee: { type: "agent", id: "a1" } } }, names).text, "Created and assigned to Atlas");

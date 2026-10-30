@@ -1,8 +1,13 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import path from "node:path";
+import { createTranslator } from "use-intl/core";
 import {
-    auditSentenceText, auditTargetHref, changedFields, describeAuditEntry, formatAuditValue, redactAuditPayload, scopeAuditFields,
+    AUDIT_SENTENCE_ACTIONS, auditSentenceText, auditTargetHref, changedFields, describeAuditEntry, formatAuditValue, redactAuditPayload, scopeAuditFields,
+    type AuditPayload, type AuditSentence,
 } from "../../src/lib/audit-format";
+import { translateCopy, type CopyTranslator } from "../../src/lib/coded-copy";
 
 const AGENT_ID = "11111111-1111-4111-8111-111111111111";
 const USER_ID = "22222222-2222-4222-8222-222222222222";
@@ -158,4 +163,77 @@ test("audit builders never throw into the mutation", async () => {
         console.error = originalError;
     }
     assert.ok(errors.length >= 4, "each failure is logged");
+});
+
+// ─── Coded sentences (activity.sentences.*) ─────────────────────────────────
+
+const en = JSON.parse(readFileSync(path.join(__dirname, "..", "..", "messages", "en.json"), "utf8"));
+const tEn = createTranslator({ locale: "en", messages: en, timeZone: "UTC", onError: (error) => { throw error; } });
+const copyT = tEn as unknown as CopyTranslator;
+const MISSING = " missing";
+
+/** The English the Activity page renders from the template and coded copy. */
+function renderCoded(sentence: AuditSentence): string {
+    assert.ok(sentence.sentenceKey, "a known action has a template");
+    const part = (item: Parameters<typeof translateCopy>[1], english: string | null) => {
+        const out = translateCopy(copyT, item, item ? MISSING : english ?? "");
+        assert.notEqual(out, MISSING, `no English message for ${JSON.stringify(item)}`);
+        return out;
+    };
+    const markup = (tEn as unknown as { markup(key: string, values: Record<string, unknown>): string }).markup;
+    return markup(sentence.sentenceKey!, {
+        actor: part(sentence.actorCopy, sentence.actor),
+        label: part(sentence.labelCopy, sentence.label),
+        detail: part(sentence.detailCopy, sentence.detail),
+        who: (chunks: string) => chunks,
+        target: (chunks: string) => chunks,
+    }).replace(/\s+/g, " ").trim();
+}
+
+/** Payloads that reach every detail branch. */
+const DETAIL_PAYLOADS: Record<string, AuditPayload[]> = {
+    "task.state_changed": [{ after: { state: "review" } }, { after: { state: "some_new_state" } }],
+    "task.assigned": [{ after: { assigneeType: "agent", assigneeId: AGENT_ID } }, { after: { assigneeType: "member", assigneeId: USER_ID } }, { after: { assigneeId: null } }],
+    "member.role_changed": [{ after: { role: "admin" } }, { after: { role: "custom" } }],
+    "member.invited": [{ after: { role: "member" } }, { after: { resourceRole: "editor" }, meta: { resourceName: "Acme" } }],
+    "member.access_granted": [{ after: { resourceRole: "viewer" }, meta: { resourceName: "Acme" } }, {}],
+    "member.access_changed": [{ after: { resourceRole: "admin" }, meta: { resourceName: "Acme" } }, {}],
+    "member.access_removed": [{ meta: { resourceName: "Acme" } }],
+    "agent.access_changed": [{ after: { access: "everyone" } }, { after: { access: "people" } }, { after: { access: "owner" } }],
+    "agent.owner_transferred": [{ meta: { toName: "Bo" } }],
+    "view.owner_transferred": [{ meta: { toName: "Bo" } }],
+    "company.settings_changed": [{ meta: { setting: "directChatMode" } }, { meta: { setting: "modules" } }],
+    "agent.permission_changed": [{ after: { actionKey: "create_task", permission: "ask" } }, { after: { actionKey: "not_a_real_action", permission: null } }],
+    "company.permission_changed": [{ after: { actionKey: "create_task", permission: "allowed" } }],
+    "agent.budget_changed": [{ after: { monthlyBudgetCents: 2500 } }, { after: { monthlyBudgetCents: 0 } }],
+    "view.reverted": [{ meta: { fromVersion: 3 } }],
+    "view.visibility_changed": [{ after: { visibility: "private" } }, { after: { visibility: "shared" } }, { after: { visibility: "scope" } }],
+    "knowledge_note.moved": [{ after: { path: "ops/runbooks" } }, {}],
+    "approval.approved": [{ meta: { count: 3 } }],
+};
+
+test("every known action has a template that reads like the English sentence", () => {
+    const names = { [AGENT_ID]: "Scout" };
+    for (const action of AUDIT_SENTENCE_ACTIONS) {
+        const targetType = action === "member.invited" ? "invitation" : action.includes(".") ? action.split(".")[0] : "agent";
+        for (const extra of DETAIL_PAYLOADS[action] ?? [{}]) {
+            for (const actorName of ["Ana", null]) {
+                for (const label of ["Thing", null]) {
+                    const payload: AuditPayload = { ...extra, meta: { ...extra.meta, ...(label ? { label } : {}) } };
+                    const sentence = describeAuditEntry({ action, targetType, targetId: AGENT_ID, payload, actorType: actorName ? "human" : "system", actorName }, names);
+                    assert.equal(sentence.detailCopy === null, sentence.detail === null, `${action}: detail and its copy agree`);
+                    // member.invited reads "invited <label>"; the English parts say "invited an invitation for <label>".
+                    const english = action === "member.invited" ? auditSentenceText(sentence).replace("an invitation for ", "") : auditSentenceText(sentence);
+                    assert.equal(renderCoded(sentence), english, `${action} ${JSON.stringify(payload)}`);
+                }
+            }
+        }
+    }
+});
+
+test("an unknown action has no template: the UI shows the English parts", () => {
+    const sentence = describeAuditEntry({ action: "create_incident", targetType: "task", targetId: AGENT_ID, actorType: "human", actorName: "Ana", payload: {} });
+    assert.equal(sentence.sentenceKey, null);
+    assert.equal(auditSentenceText(sentence), "Ana create incident task (untitled)");
+    assert.deepEqual(sentence.labelCopy, { key: "activity.untitled" });
 });

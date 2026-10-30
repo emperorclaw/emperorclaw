@@ -1,6 +1,7 @@
 'use client';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { IconTarget } from '@tabler/icons-react';
+import { useTranslations } from 'next-intl';
 import { cn } from '@/lib/utils';
 
 type Objective = {
@@ -18,31 +19,18 @@ type Objective = {
     message?: string;
 };
 
-const CADENCE_OPTIONS = [
-    { value: 15, label: 'Every 15 minutes' },
-    { value: 60, label: 'Every hour' },
-    { value: 240, label: 'Every 4 hours' },
-    { value: 1440, label: 'Once a day' },
-];
-
-function cadenceLabel(minutes: number) {
-    return CADENCE_OPTIONS.find((option) => option.value === minutes)?.label ?? `Every ${minutes} min`;
-}
-
-function statusLabel(objective: Objective | null, pending: boolean) {
-    if (pending) return ' · starting';
-    if (!objective) return '';
-    switch (objective.status) {
-        case 'active': return ' · working';
-        case 'paused': return ' · paused';
-        case 'blocked': return ' · blocked';
-        case 'completed': return ' · completed';
-        case 'cancelled': return ' · stopped';
-        default: return '';
-    }
-}
+// Labels: goals.cadence.{value} in messages/*.json.
+const CADENCE_OPTIONS = [15, 60, 240, 1440] as const;
+const OBJECTIVE_STATUSES = new Set(['active', 'paused', 'blocked', 'completed', 'cancelled']);
 
 export function AgentGoalControls({ agentId }: { agentId: string }) {
+    const t = useTranslations('goals');
+    const cadenceLabel = (minutes: number) => (CADENCE_OPTIONS.some((value) => value === minutes) ? t(`cadence.${minutes as 15}`) : t('cadenceEvery', { minutes }));
+    const statusLabel = (current: Objective | null, isPending: boolean) => {
+        if (isPending) return t('status.starting');
+        if (!current || !OBJECTIVE_STATUSES.has(current.status)) return null;
+        return t(`status.${current.status}`);
+    };
     const [objective, setObjective] = useState<Objective | null>(null);
     const [restricted, setRestricted] = useState(false);
     const [pending, setPending] = useState(false);
@@ -100,10 +88,10 @@ export function AgentGoalControls({ agentId }: { agentId: string }) {
                 body: JSON.stringify(body),
             });
             const result = await response.json();
-            if (!response.ok) throw new Error(result.error || 'Could not update objective');
+            if (!response.ok) throw new Error(result.error || t('updateFailed'));
             await load();
         } catch (cause) {
-            setError(cause instanceof Error ? cause.message : 'Could not update objective');
+            setError(cause instanceof Error ? cause.message : t('updateFailed'));
         } finally {
             setBusy(false);
         }
@@ -119,7 +107,7 @@ export function AgentGoalControls({ agentId }: { agentId: string }) {
     return (
         <details ref={detailsRef} className="group">
             <summary
-                title="Give the agent an objective with scheduled check-ins"
+                title={t('summaryTitle')}
                 className={cn(
                     'flex h-8 cursor-pointer list-none items-center gap-1.5 rounded-full border px-2.5 text-xs transition-colors [&::-webkit-details-marker]:hidden',
                     live || pending
@@ -128,38 +116,38 @@ export function AgentGoalControls({ agentId }: { agentId: string }) {
                 )}
             >
                 <IconTarget className="h-3.5 w-3.5" />
-                <span className="sr-only sm:not-sr-only">Objective{statusLabel(objective, pending)}</span>
+                <span className="sr-only sm:not-sr-only">{statusLabel(objective, pending) ? t('objectiveWithStatus', { status: statusLabel(objective, pending) ?? '' }) : t('objective')}</span>
             </summary>
             <div className="absolute inset-x-0 bottom-full z-30 mb-2 text-zinc-200">
             <div className="max-h-[60dvh] space-y-3 overflow-y-auto rounded-xl border border-zinc-800 bg-zinc-950 p-3 shadow-2xl shadow-black/50 sm:max-h-96">
                 {objective && (
                     <div className="space-y-1">
-                        <p className="max-h-28 overflow-y-auto break-words text-sm">{restricted ? (objective.message ?? 'Managed in another private conversation.') : objective.objective}</p>
-                        <p className="text-xs text-zinc-400">{cadenceLabel(objective.cadenceMinutes)} · {objective.followupCount}/{objective.maxFollowups} check-ins</p>
-                        {objective.status === 'blocked' && objective.blockerReason && <p className="text-xs text-rose-300">Blocked: {objective.blockerReason}</p>}
-                        {objective.completionSummary && <p className="text-xs text-emerald-300">Result: {objective.completionSummary}</p>}
+                        <p className="max-h-28 overflow-y-auto break-words text-sm">{restricted ? (objective.message ?? t('managedElsewhere')) : objective.objective}</p>
+                        <p className="text-xs text-zinc-400">{t('checkIns', { cadence: cadenceLabel(objective.cadenceMinutes), done: objective.followupCount, max: objective.maxFollowups })}</p>
+                        {objective.status === 'blocked' && objective.blockerReason && <p className="text-xs text-rose-300">{t('blocked', { reason: objective.blockerReason })}</p>}
+                        {objective.completionSummary && <p className="text-xs text-emerald-300">{t('result', { summary: objective.completionSummary })}</p>}
                     </div>
                 )}
                 {restricted ? null : live ? (
                     <div className="flex flex-wrap gap-2">
-                        {objective.status === 'active' && <button type="button" className={button} disabled={busy} onClick={() => void act({ action: 'pause' })}>Pause</button>}
-                        {objective.status !== 'active' && <button type="button" className={button} disabled={busy} onClick={() => void act({ action: 'resume' })}>Resume</button>}
-                        <button type="button" className={button} disabled={busy} onClick={() => void act({ action: 'stop' })}>Stop</button>
+                        {objective.status === 'active' && <button type="button" className={button} disabled={busy} onClick={() => void act({ action: 'pause' })}>{t('pause')}</button>}
+                        {objective.status !== 'active' && <button type="button" className={button} disabled={busy} onClick={() => void act({ action: 'resume' })}>{t('resume')}</button>}
+                        <button type="button" className={button} disabled={busy} onClick={() => void act({ action: 'stop' })}>{t('stop')}</button>
                     </div>
                 ) : (
                     <div className="space-y-3">
-                        <label className="block text-xs text-zinc-400">What should the agent finish?
-                            <textarea value={text} onChange={(event) => setText(event.target.value)} maxLength={4000} rows={3} onKeyDown={(event) => { if (event.key === 'Enter' && (event.ctrlKey || event.metaKey) && !event.nativeEvent.isComposing) { event.preventDefault(); void startObjective(); } }} className="mt-1 w-full resize-y rounded-lg border border-zinc-700 bg-zinc-900 p-2.5 text-base text-zinc-100 sm:text-sm" placeholder={'Describe the outcome and how to verify it.'} />
+                        <label className="block text-xs text-zinc-400">{t('whatToFinish')}
+                            <textarea value={text} onChange={(event) => setText(event.target.value)} maxLength={4000} rows={3} onKeyDown={(event) => { if (event.key === 'Enter' && (event.ctrlKey || event.metaKey) && !event.nativeEvent.isComposing) { event.preventDefault(); void startObjective(); } }} className="mt-1 w-full resize-y rounded-lg border border-zinc-700 bg-zinc-900 p-2.5 text-base text-zinc-100 sm:text-sm" placeholder={t('placeholder')} />
                         </label>
                         <div className="flex flex-wrap items-center justify-between gap-2">
-                            <label className="flex items-center gap-2 text-xs text-zinc-400">Check-in cadence
-                                <select aria-label="Check-in cadence" value={cadenceMinutes} onChange={(event) => setCadenceMinutes(Number(event.target.value))} className="min-h-9 rounded-lg border border-zinc-700 bg-zinc-900 px-2 text-sm text-zinc-100">
-                                    {CADENCE_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+                            <label className="flex items-center gap-2 text-xs text-zinc-400">{t('cadenceLabel')}
+                                <select aria-label={t('cadenceLabel')} value={cadenceMinutes} onChange={(event) => setCadenceMinutes(Number(event.target.value))} className="min-h-9 rounded-lg border border-zinc-700 bg-zinc-900 px-2 text-sm text-zinc-100">
+                                    {CADENCE_OPTIONS.map((value) => <option key={value} value={value}>{t(`cadence.${value}`)}</option>)}
                                 </select>
                             </label>
-                            <button type="button" onClick={() => void startObjective()} disabled={busy || !text.trim()} className={button}>{busy ? 'Starting…' : 'Start objective'}</button>
+                            <button type="button" onClick={() => void startObjective()} disabled={busy || !text.trim()} className={button}>{busy ? t('starting') : t('start')}</button>
                         </div>
-                        <p className="text-xs leading-relaxed text-zinc-500">Check-ins stop when the objective completes, blocks, is stopped, or uses its budget.</p>
+                        <p className="text-xs leading-relaxed text-zinc-500">{t('stopHint')}</p>
                     </div>
                 )}
                 {error && <p role="alert" className="text-sm text-red-300">{error}</p>}

@@ -7,6 +7,8 @@
 //
 // Pure and client-safe. The database query is in stall-signal-reads.ts.
 
+import { copy, type CodedCopy } from "@/lib/coded-copy";
+
 /** No useful action for this long while running = stalled. One knob for the task page, the live block and the inbox. */
 export const STALL_THRESHOLD_MS = 10 * 60 * 1000;
 
@@ -88,4 +90,18 @@ export function formatIdle(ms: number): string {
 /** "No progress for 14 min" when stalled, else "Last useful action 40s ago". */
 export function stallLabel(signal: Pick<StallSignal, "stalled" | "idleMs">): string {
     return signal.stalled ? `No progress for ${formatIdle(signal.idleMs)}` : `Last useful action ${formatIdle(signal.idleMs)} ago`;
+}
+
+/** formatIdle as coded copy (tasks.live.idle*). */
+export function idleCopy(ms: number): CodedCopy {
+    const total = Number.isFinite(ms) && ms > 0 ? Math.floor(ms / 1000) : 0;
+    if (total < 60) return copy("tasks.live.idleSeconds", { count: total });
+    const minutes = Math.floor(total / 60);
+    if (minutes < 60) return copy("tasks.live.idleMinutes", { count: minutes });
+    return copy("tasks.live.idleHours", { hours: Math.floor(minutes / 60), minutes: String(minutes % 60).padStart(2, "0") });
+}
+
+/** stallLabel as coded copy, for the viewer's language. */
+export function stallLabelCopy(signal: Pick<StallSignal, "stalled" | "idleMs">): CodedCopy {
+    return copy(signal.stalled ? "tasks.live.noProgressFor" : "tasks.live.lastUsefulAction", { idle: idleCopy(signal.idleMs) });
 }

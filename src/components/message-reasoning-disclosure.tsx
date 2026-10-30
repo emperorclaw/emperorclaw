@@ -2,6 +2,7 @@
 
 import { useCallback, useState } from "react";
 import { IconChevronRight } from "@tabler/icons-react";
+import { useTranslations } from "next-intl";
 
 /**
  * Collapsed disclosure for an agent message's persisted reasoning.
@@ -18,10 +19,11 @@ import { IconChevronRight } from "@tabler/icons-react";
  *    before; `min-w-0` plus `break-words` keeps it inside the flex parent.
  */
 export function MessageReasoningDisclosure({ messageId }: { messageId: string }) {
+    const t = useTranslations("reasoning");
     const [open, setOpen] = useState(false);
     const [reasoning, setReasoning] = useState<string | null>(null);
     const [loading, setLoading] = useState(false);
-    const [error, setError] = useState<string | null>(null);
+    const [error, setError] = useState(false);
 
     const toggle = useCallback(async () => {
         if (open) {
@@ -33,14 +35,14 @@ export function MessageReasoningDisclosure({ messageId }: { messageId: string })
         // not hit the API again.
         if (reasoning !== null || loading) return;
         setLoading(true);
-        setError(null);
+        setError(false);
         try {
             const res = await fetch(`/api/chat/reasoning?messageId=${encodeURIComponent(messageId)}`);
-            if (!res.ok) throw new Error("Could not load reasoning");
+            if (!res.ok) throw new Error(`reasoning ${res.status}`);
             const data = await res.json();
             setReasoning(typeof data.reasoning === "string" ? data.reasoning : "");
         } catch {
-            setError("Could not load reasoning");
+            setError(true);
         } finally {
             setLoading(false);
         }
@@ -55,14 +57,14 @@ export function MessageReasoningDisclosure({ messageId }: { messageId: string })
                 className="inline-flex items-center gap-1 text-[10px] font-medium uppercase tracking-wider text-zinc-500 transition-colors hover:text-zinc-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-zinc-600 focus-visible:ring-offset-0"
             >
                 <IconChevronRight className={`h-3 w-3 transition-transform ${open ? "rotate-90" : ""}`} />
-                {open ? "Hide reasoning" : "Show reasoning"}
+                {open ? t("hide") : t("show")}
             </button>
             {open && (
                 <div className="mt-1.5 min-w-0">
-                    {loading && <p className="text-[11px] text-zinc-500">Loading reasoning…</p>}
-                    {!loading && error && <p className="text-[11px] text-amber-400">{error}</p>}
+                    {loading && <p className="text-[11px] text-zinc-500">{t("loading")}</p>}
+                    {!loading && error && <p className="text-[11px] text-amber-400">{t("loadFailed")}</p>}
                     {!loading && !error && reasoning === "" && (
-                        <p className="text-[11px] text-zinc-500">No reasoning was recorded for this message.</p>
+                        <p className="text-[11px] text-zinc-500">{t("none")}</p>
                     )}
                     {!loading && !error && reasoning && (
                         // Its own case, never uppercased: this is the model's own

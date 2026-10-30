@@ -10,6 +10,8 @@
  * value so a newly introduced reason is still visible, never blank.
  */
 
+import { copy, type CodedCopy } from "@/lib/coded-copy";
+
 /** A stored delivery verdict, as `GET /api/messages/[id]/delivery` returns it. */
 export interface DeliveryVerdictCopyInput {
     addressed: boolean;
@@ -65,6 +67,16 @@ export function deliveryVerdictCopy(verdict: DeliveryVerdictCopyInput): Delivery
                 label: `${delivered ? "Delivered" : "Not delivered"} — ${routeReason}`,
             };
     }
+}
+
+const KNOWN_ROUTE_REASONS = new Set(["self", "targeted", "targeted_other", "direct", "mention", "all", "agent_pair", "task_assigned", "not_addressed", "out_of_scope", "loop_paused"]);
+
+/** deliveryVerdictCopy's label as coded copy (delivery.verdicts.*), for the viewer's language. */
+export function deliveryVerdictMessage(verdict: DeliveryVerdictCopyInput): CodedCopy {
+    const { routeReason, agentStreak, maxTurns } = verdict;
+    if (routeReason === "loop_paused") return copy("delivery.verdicts.loop_paused", { streak: agentStreak, max: maxTurns });
+    if (KNOWN_ROUTE_REASONS.has(routeReason)) return copy(`delivery.verdicts.${routeReason}`);
+    return copy(verdict.addressed ? "delivery.verdicts.otherDelivered" : "delivery.verdicts.otherNotDelivered", { reason: routeReason });
 }
 
 /** Shown when a message has no stored verdict row. */

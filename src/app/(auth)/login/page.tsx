@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { IconLoader2, IconArrowRight, IconShield, IconCpu } from "@tabler/icons-react";
 import { AuthBackground } from "@/components/auth-background";
+import { useTranslations } from "next-intl";
 import { CustomLogo } from "@/components/custom-logo";
 import pkg from "@/../package.json" assert { type: "json" };
 
@@ -20,9 +21,13 @@ function FadeUp({ children, delay = 0, className = "" }: { children: React.React
     );
 }
 
+/** The public site's domain: never translated. */
+const SITE_DOMAIN = "emperorclaw.com";
+
 const stagger = { emblem: 0, title: 0.15, subtitle: 0.2, email: 0.25, password: 0.3, button: 0.35, footer: 0.4 };
 
 export default function LoginPage() {
+    const t = useTranslations("auth.login");
     const router = useRouter();
     const [email, setEmail] = useState("");
     const [password, setPassword] = useState("");
@@ -67,10 +72,10 @@ export default function LoginPage() {
         setLoading(false);
         if (res?.error) {
             if (res.error === "EMAIL_NOT_VERIFIED") {
-                setError("Verify your email before logging in. We sent an activation link during signup.");
+                setError(t("emailNotVerified"));
                 return;
             }
-            setError("Invalid email or password");
+            setError(t("invalidCredentials"));
         } else {
             router.push("/");
             router.refresh();
@@ -120,8 +125,8 @@ export default function LoginPage() {
 
                         <div className="relative p-8">
                             <div className="text-center mb-7">
-                                <h1 className="text-[26px] font-light text-white tracking-[-0.02em]">Welcome back</h1>
-                                <p className="text-zinc-300 text-sm mt-2 font-light tracking-wide">Command your AI workforce</p>
+                                <h1 className="text-[26px] font-light text-white tracking-[-0.02em]">{t("title")}</h1>
+                                <p className="text-zinc-300 text-sm mt-2 font-light tracking-wide">{t("subtitle")}</p>
                             </div>
 
                             <form onSubmit={handleSubmit} className="space-y-4">
@@ -134,14 +139,14 @@ export default function LoginPage() {
                                 {/* Email */}
                                 <FadeUp delay={stagger.email}>
                                     <div className="space-y-1.5">
-                                        <label className="text-[11px] font-medium uppercase tracking-[0.15em] text-zinc-300">Email</label>
+                                        <label className="text-[11px] font-medium uppercase tracking-[0.15em] text-zinc-300">{t("email")}</label>
                                         <div className={inputClass("email")}>
                                             <input
                                                 type="email" value={email} required
                                                 onChange={(e) => setEmail(e.target.value)}
                                                 onFocus={() => setFocused("email")} onBlur={() => setFocused(null)}
                                                 className="w-full bg-transparent rounded-xl px-4 py-3 text-sm text-white placeholder:text-zinc-500 focus:outline-none font-light tracking-wide"
-                                                placeholder="name@company.com"
+                                                placeholder={t("emailPlaceholder")}
                                             />
                                         </div>
                                     </div>
@@ -151,8 +156,8 @@ export default function LoginPage() {
                                 <FadeUp delay={stagger.password}>
                                     <div className="space-y-1.5">
                                         <div className="flex items-center justify-between">
-                                            <label className="text-[11px] font-medium uppercase tracking-[0.15em] text-zinc-300">Password</label>
-                                            <Link href="/forgot-password" className="text-[11px] text-cyan-300 hover:text-cyan-200 transition-colors duration-300 tracking-wide">Forgot?</Link>
+                                            <label className="text-[11px] font-medium uppercase tracking-[0.15em] text-zinc-300">{t("password")}</label>
+                                            <Link href="/forgot-password" className="text-[11px] text-cyan-300 hover:text-cyan-200 transition-colors duration-300 tracking-wide">{t("forgot")}</Link>
                                         </div>
                                         <div className={inputClass("password")}>
                                             <input
@@ -181,7 +186,7 @@ export default function LoginPage() {
                                         <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/8 to-transparent -translate-x-full group-hover:translate-x-full transition-transform duration-1000" />
                                         {loading ? <IconLoader2 className="w-5 h-5 animate-spin" /> : (
                                             <>
-                                                <span className="tracking-wide">Access Command Center</span>
+                                                <span className="tracking-wide">{t("submit")}</span>
                                                 <IconArrowRight className="w-4 h-4 transition-transform duration-300 group-hover:translate-x-1" />
                                             </>
                                         )}
@@ -194,19 +199,19 @@ export default function LoginPage() {
                                 <div className="mt-7 pt-6 border-t border-white/[0.05] text-center">
                                     {emailConfigured && (
                                         <p className="text-xs text-zinc-400 mb-3 font-light">
-                                            New workspaces must verify their email first.{" "}
+                                            {t("verifyFirst")}{" "}
                                             <Link href={`/signup/check-email?email=${encodeURIComponent(email.trim().toLowerCase())}`} className="text-cyan-300 hover:text-cyan-200 transition-colors duration-300">
-                                                Resend activation
+                                                {t("resendActivation")}
                                             </Link>
                                         </p>
                                     )}
                                     <div className="flex items-center justify-center gap-6 text-xs">
                                         <Link href="/signup" className="flex items-center gap-1.5 text-zinc-400 hover:text-zinc-200 transition-colors duration-300 group">
-                                            <IconShield className="w-3 h-3 transition-colors duration-300 group-hover:text-cyan-300" />Create account
+                                            <IconShield className="w-3 h-3 transition-colors duration-300 group-hover:text-cyan-300" />{t("createAccount")}
                                         </Link>
                                         <span className="text-zinc-600 select-none">|</span>
                                         <a href="/docs" className="flex items-center gap-1.5 text-zinc-400 hover:text-zinc-200 transition-colors duration-300 group">
-                                            <IconCpu className="w-3 h-3 transition-colors duration-300 group-hover:text-cyan-300" />Documentation
+                                            <IconCpu className="w-3 h-3 transition-colors duration-300 group-hover:text-cyan-300" />{t("documentation")}
                                         </a>
                                     </div>
                                 </div>
@@ -217,7 +222,7 @@ export default function LoginPage() {
 
                 <FadeUp delay={stagger.footer + 0.05} className="flex justify-center mt-6">
                     <div className="flex items-center gap-3 text-[10px] text-zinc-600 tracking-[0.15em] uppercase font-medium">
-                        <span className="w-1 h-1 rounded-full bg-cyan-500/20" />v{pkg.version}<span className="w-1 h-1 rounded-full bg-zinc-700" />emperorclaw.com
+                        <span className="w-1 h-1 rounded-full bg-cyan-500/20" />v{pkg.version}<span className="w-1 h-1 rounded-full bg-zinc-700" />{SITE_DOMAIN}
                     </div>
                 </FadeUp>
             </div>

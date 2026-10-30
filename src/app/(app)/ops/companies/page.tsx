@@ -1,7 +1,8 @@
 import { desc, isNull, sql } from "drizzle-orm";
 import { db } from "@/db";
 import { companies } from "@/db/schema";
-import { OpsSection, OpsTable, formatDateOnly } from "../ui";
+import { getTranslations } from "next-intl/server";
+import { OpsSection, OpsTable, getOpsFormat } from "../ui";
 
 export const dynamic = "force-dynamic";
 
@@ -35,13 +36,15 @@ export default async function OpsCompaniesPage() {
               and runtime_nodes.status = 'active'
         )`,
     }).from(companies).where(isNull(companies.deletedAt)).orderBy(desc(companies.createdAt));
+    const [t, format] = await Promise.all([getTranslations("ops"), getOpsFormat()]);
+    const formatDateOnly = format.dateOnly;
 
     return (
         <OpsSection
-            title="Companies"
-            description="Workspace inventory with owners, members, agents, and active runtimes."
+            title={t("companies.title")}
+            description={t("companies.description")}
         >
-            <OpsTable headers={["Company", "Created", "Created By", "Members", "Agents", "Active Runtimes"]} empty="No companies found.">
+            <OpsTable headers={[t("columns.company"), t("columns.created"), t("columns.createdBy"), t("columns.members"), t("columns.agents"), t("columns.activeRuntimes")]} empty={t("companies.empty")}>
                 {rows.map((company) => (
                     <tr key={company.id}>
                         <td className="px-4 py-3">
@@ -49,7 +52,7 @@ export default async function OpsCompaniesPage() {
                             <div className="text-xs text-zinc-500">{company.id}</div>
                         </td>
                         <td className="px-4 py-3 text-zinc-400">{formatDateOnly(company.createdAt)}</td>
-                        <td className="px-4 py-3 text-zinc-400">{company.creatorEmail || "Unknown"}</td>
+                        <td className="px-4 py-3 text-zinc-400">{company.creatorEmail || t("unknown")}</td>
                         <td className="px-4 py-3 text-zinc-400">{company.memberCount}</td>
                         <td className="px-4 py-3 text-zinc-400">{company.agentCount}</td>
                         <td className="px-4 py-3 text-zinc-400">{company.runtimeCount}</td>

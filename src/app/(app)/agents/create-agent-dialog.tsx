@@ -15,6 +15,8 @@ import { EVERYONE_ACCESS, WhoCanUseField, hireAccessBody, useAccessPeople, type 
 import { HireProgress, HostPicker, useHireHosts, type HostChoice } from "@/components/runtime-hosts/host-picker";
 import { toast } from "sonner";
 import { useTranslations } from "next-intl";
+import { copy } from "@/lib/coded-copy";
+import { useCopy } from "@/lib/i18n/use-copy";
 
 type Step = "role" | "provider" | "name" | "progress";
 
@@ -62,6 +64,7 @@ export function CreateAgentDialog({
     hideTrigger?: boolean;
 }) {
     const t = useTranslations("agents.create");
+    const render = useCopy();
     const tc = useTranslations("common");
     const router = useRouter();
     const [uncontrolledOpen, setUncontrolledOpen] = useState(false);
@@ -265,7 +268,7 @@ export function CreateAgentDialog({
                             <div className="flex items-center gap-3 rounded-xl border border-cyan-500/20 bg-cyan-500/5 px-3 py-2 mb-3">
                                 <span className="text-lg" aria-hidden="true">{selectedRole.emoji}</span>
                                 <div>
-                                    <span className="text-sm font-medium text-cyan-100">{selectedRole.title}</span>
+                                    <span className="text-sm font-medium text-cyan-100">{render(copy(`agents.roles.templates.${selectedRole.id}.title`), selectedRole.title)}</span>
                                     <span className="block text-[11px] text-cyan-100/60">
                                         {selectedRole.runtime === "any" ? t("anyRuntime") : t("bestWith", { runtime: selectedRole.runtime })}
                                     </span>
@@ -312,7 +315,7 @@ export function CreateAgentDialog({
                                             {provider.executionModel === "persistent" ? t("daemon") : t("onDemand")}
                                         </span>
                                     </div>
-                                    <span className="block text-[11px] leading-tight text-zinc-400 mt-0.5">{provider.description}</span>
+                                    <span className="block text-[11px] leading-tight text-zinc-400 mt-0.5">{render(copy(`agents.providers.${provider.id}.description`), provider.description)}</span>
                                 </div>
                             </button>
                         ))}
@@ -452,7 +455,7 @@ export function CreateAgentDialog({
                             <div className="grid gap-1.5 text-[11px]">
                                 <div className="flex justify-between">
                                     <span className="text-zinc-400">{t("summary.role")}</span>
-                                    <span className="text-zinc-300">{selectedRole ? `${selectedRole.emoji} ${selectedRole.title}` : t("summary.custom")}</span>
+                                    <span className="text-zinc-300">{selectedRole ? `${selectedRole.emoji} ${render(copy(`agents.roles.templates.${selectedRole.id}.title`), selectedRole.title)}` : t("summary.custom")}</span>
                                 </div>
                                 <div className="flex justify-between">
                                     <span className="text-zinc-400">{t("summary.provider")}</span>

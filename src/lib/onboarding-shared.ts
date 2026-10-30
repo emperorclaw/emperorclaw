@@ -125,13 +125,30 @@ export function planTeam(choice: TeamChoice): TeamPlan {
     return { agents, groups };
 }
 
-/** Problems that stop the plan from being created, or null. */
-export function teamPlanProblem(plan: TeamPlan): string | null {
-    if (plan.agents.length === 0) return "Pick at least one team or agent.";
-    if (plan.agents.length > MAX_WIZARD_AGENTS) return `Start with at most ${MAX_WIZARD_AGENTS} agents; you can hire more later.`;
-    if (plan.agents.some((a) => !a.name)) return "Every agent needs a name.";
-    if (plan.agents.some((a) => a.name.length > 40)) return "Keep names under 40 characters.";
+export type TeamPlanProblem = "empty" | "tooMany" | "unnamed" | "nameTooLong" | "duplicateName";
+
+/** The problem that stops the plan from being created, or null (the setup assistant shows it from messages/*.json). */
+export function teamPlanProblemKind(plan: TeamPlan): TeamPlanProblem | null {
+    if (plan.agents.length === 0) return "empty";
+    if (plan.agents.length > MAX_WIZARD_AGENTS) return "tooMany";
+    if (plan.agents.some((a) => !a.name)) return "unnamed";
+    if (plan.agents.some((a) => a.name.length > 40)) return "nameTooLong";
     const names = plan.agents.map((a) => a.name.toLowerCase());
-    if (new Set(names).size !== names.length) return "Two agents have the same name.";
+    if (new Set(names).size !== names.length) return "duplicateName";
     return null;
+}
+
+/** English wording of each problem (onboarding.wizard.planProblems in messages/en.json). */
+export const TEAM_PLAN_PROBLEM_TEXT: Record<TeamPlanProblem, string> = {
+    empty: "Pick at least one team or agent.",
+    tooMany: `Start with at most ${MAX_WIZARD_AGENTS} agents; you can hire more later.`,
+    unnamed: "Every agent needs a name.",
+    nameTooLong: "Keep names under 40 characters.",
+    duplicateName: "Two agents have the same name.",
+};
+
+/** Problems that stop the plan from being created, in English, or null. */
+export function teamPlanProblem(plan: TeamPlan): string | null {
+    const kind = teamPlanProblemKind(plan);
+    return kind ? TEAM_PLAN_PROBLEM_TEXT[kind] : null;
 }

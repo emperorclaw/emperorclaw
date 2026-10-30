@@ -3,10 +3,15 @@
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
+import { useTranslations } from 'next-intl';
 import { versions, DOC_SECTIONS, type DocVersion, type DocPage } from '@/content/docs/versions';
 import { DocsMarkdownRenderer } from './docs-markdown-renderer';
 import { IconChevronRight, IconFileText, IconMenu2, IconX, IconArrowLeft } from "@tabler/icons-react";
 import { CustomLogo } from './custom-logo';
+
+/** Product name and docs build: never translated. */
+const DOCS_BUILD = 'Emperor Claw v1.1.2';
+const copyrightLine = () => `© ${new Date().getFullYear()}`;
 
 interface DocsViewerProps {
   version: string;
@@ -14,6 +19,9 @@ interface DocsViewerProps {
 }
 
 export function DocsViewer({ version: initialVersion, slug }: DocsViewerProps) {
+  const t = useTranslations('docs');
+  const notFoundText = t('contentNotFound');
+  const failedText = t('contentFailed');
   const router = useRouter();
   const [currentVersion, setCurrentVersion] = useState(initialVersion);
   const [content, setContent] = useState<string>('');
@@ -52,17 +60,17 @@ export function DocsViewer({ version: initialVersion, slug }: DocsViewerProps) {
           const text = await res.text();
           setContent(text);
         } else {
-          setContent(`# ${currentPage.title}\n\nContent not found.`);
+          setContent(`# ${currentPage.title}\n\n${notFoundText}`);
         }
       } catch {
-        setContent(`# ${currentPage.title}\n\nFailed to load content.`);
+        setContent(`# ${currentPage.title}\n\n${failedText}`);
       } finally {
         setLoading(false);
         setMobileMenuOpen(false);
       }
     };
     loadContent();
-  }, [currentVersion, currentPage.file, currentPage.title, slug]);
+  }, [currentVersion, currentPage.file, currentPage.title, slug, notFoundText, failedText]);
 
   useEffect(() => {
     setCurrentVersion(initialVersion);
@@ -94,7 +102,7 @@ export function DocsViewer({ version: initialVersion, slug }: DocsViewerProps) {
               <span className="font-semibold text-lg tracking-tight hidden sm:block">Emperor Claw</span>
             </Link>
             <div className="h-4 w-px bg-border mx-2 hidden sm:block" />
-            <span className="text-muted-foreground font-medium text-sm">Documentation</span>
+            <span className="text-muted-foreground font-medium text-sm">{t('documentation')}</span>
           </div>
 
           <div className="flex items-center gap-3">
@@ -103,7 +111,7 @@ export function DocsViewer({ version: initialVersion, slug }: DocsViewerProps) {
               className="hidden md:flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground transition-colors px-3 py-1.5 rounded-lg hover:bg-accent border border-transparent hover:border-border"
             >
               <IconArrowLeft className="w-4 h-4" />
-              Back to Dashboard
+              {t('backToDashboard')}
             </Link>
             <button 
               onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
@@ -125,7 +133,7 @@ export function DocsViewer({ version: initialVersion, slug }: DocsViewerProps) {
               <div className="space-y-4">
                 <div>
                   <label className="block text-xs font-semibold text-indigo-400 uppercase tracking-wider mb-2">
-                    Version
+                    {t('version')}
                   </label>
                   <div className="relative group">
                     <select
@@ -149,7 +157,7 @@ export function DocsViewer({ version: initialVersion, slug }: DocsViewerProps) {
                   </div>
                   <input
                     type="text"
-                    placeholder="Search docs..."
+                    placeholder={t('searchPlaceholder')}
                     className="w-full bg-muted/50 border border-border rounded-xl py-2 pl-9 pr-3 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-indigo-500/40 transition-all placeholder:text-muted-foreground"
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
@@ -161,12 +169,12 @@ export function DocsViewer({ version: initialVersion, slug }: DocsViewerProps) {
                 {searchQuery ? (
                   <div>
                     <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-widest mb-4 px-1">
-                      Search Results
+                      {t('searchResults')}
                     </h3>
                     <div className="space-y-1">
                       {filteredPages.map((page: DocPage) => <SidebarLink key={page.slug} page={page} />)}
                       {filteredPages.length === 0 && (
-                        <p className="px-3 py-2 text-xs text-muted-foreground italic">No pages found</p>
+                        <p className="px-3 py-2 text-xs text-muted-foreground italic">{t('noPages')}</p>
                       )}
                     </div>
                   </div>
@@ -190,7 +198,7 @@ export function DocsViewer({ version: initialVersion, slug }: DocsViewerProps) {
 
           <main className="flex-1 min-w-0">
             <div className="mb-8 flex items-center gap-2 text-xs text-muted-foreground font-medium uppercase tracking-wider">
-              <Link href="/docs" className="hover:text-indigo-400 transition-colors">Documentation</Link>
+              <Link href="/docs" className="hover:text-indigo-400 transition-colors">{t('documentation')}</Link>
               <IconChevronRight className="w-3 h-3" />
               <span>{selectedVersion.label}</span>
               <IconChevronRight className="w-3 h-3" />
@@ -203,7 +211,7 @@ export function DocsViewer({ version: initialVersion, slug }: DocsViewerProps) {
               {loading ? (
                 <div className="flex flex-col items-center justify-center py-24">
                   <div className="w-10 h-10 border-2 border-indigo-500/10 border-t-indigo-500 rounded-full animate-spin mb-6"></div>
-                  <p className="text-zinc-400 animate-pulse font-medium tracking-wide">Syncing documentation...</p>
+                  <p className="text-zinc-400 animate-pulse font-medium tracking-wide">{t('syncing')}</p>
                 </div>
               ) : (
                 <div className="relative z-10">
@@ -214,18 +222,15 @@ export function DocsViewer({ version: initialVersion, slug }: DocsViewerProps) {
 
             <footer className="mt-12 pt-8 border-t border-zinc-800/50 flex flex-col md:flex-row justify-between items-center gap-4 text-zinc-500 text-sm">
               <p>
-                Need help? Join the{' '}
-                <a href="https://discord.com/invite/clawd" className="text-indigo-400 hover:text-indigo-300 font-medium transition-colors" target="_blank">
-                  Discord community
-                </a>
+                {t.rich('needHelp', { link: (chunks) => <a href="https://discord.com/invite/clawd" className="text-indigo-400 hover:text-indigo-300 font-medium transition-colors" target="_blank">{chunks}</a> })}
               </p>
               <div className="flex items-center gap-4">
                 <div className="flex items-center gap-2">
                   <span className="w-1.5 h-1.5 rounded-full bg-emerald-500/50 shadow-[0_0_8px_rgba(16,185,129,0.4)]" />
-                  <span>Emperor Claw v1.1.2</span>
+                  <span>{DOCS_BUILD}</span>
                 </div>
                 <div className="h-4 w-px bg-zinc-800" />
-                <span className="text-zinc-500">© {new Date().getFullYear()}</span>
+                <span className="text-zinc-500">{copyrightLine()}</span>
               </div>
             </footer>
           </main>

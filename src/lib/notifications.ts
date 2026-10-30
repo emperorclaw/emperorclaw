@@ -12,6 +12,8 @@ import {
     users,
 } from "@/db/schema";
 import { isEmailConfigured, sendEmail } from "@/lib/email";
+import { emailLocale, serverTranslator } from "@/i18n/server-translator";
+import type { Locale } from "@/i18n/config";
 import { getAppUrl } from "@/lib/env";
 import { mentionedAgentIds } from "@/lib/message-routing";
 import { directThreadLink, isPrivateDirectThread } from "@/lib/direct-chat-mode";
@@ -131,10 +133,12 @@ async function deliverEmails(companyId: string, rows: (typeof notifications.$inf
     if (!isEmailConfigured() || rows.length === 0) return;
     const userIds = rows.map((r) => r.userId);
     const [people, prefs] = await Promise.all([
-        db.select({ id: users.id, email: users.email }).from(users).where(inArray(users.id, userIds)),
+        db.select({ id: users.id, email: users.email, locale: users.locale }).from(users).where(inArray(users.id, userIds)),
         db.select().from(notificationPreferences).where(and(eq(notificationPreferences.companyId, companyId), inArray(notificationPreferences.userId, userIds))),
     ]);
     const emailOf = new Map(people.map((p) => [p.id, p.email]));
+    // The subject and body are the stored notification (English); the frame around them is in the recipient's language.
+    const localeOf = new Map(people.map((p) => [p.id, emailLocale(null, p.locale ?? null)]));
     const kindsOf = new Map(prefs.map((p) => [p.userId, new Set(p.emailKinds)]));
     const base = getAppUrl();
     for (const row of rows) {
@@ -142,19 +146,20 @@ async function deliverEmails(companyId: string, rows: (typeof notifications.$inf
         const to = emailOf.get(row.userId);
         if (!to || !wanted.has(row.kind)) continue;
         const link = row.link ? `${base}${row.link.startsWith("/") ? "" : "/"}${row.link}` : base;
-        const sent = await sendEmail({ to, subject: row.title, html: notificationEmailHtml(row.title, row.body, link) });
+        const sent = await sendEmail({ to, subject: row.title, html: notificationEmailHtml(row.title, row.body, link, localeOf.get(row.userId)) });
         if (sent) await db.update(notifications).set({ emailedAt: new Date() }).where(eq(notifications.id, row.id));
     }
 }
 
-export function notificationEmailHtml(title: string, body: string | null, link: string): string {
+export function notificationEmailHtml(title: string, body: string | null, link: string, locale: Locale = "en"): string {
+    const t = serverTranslator(locale);
     return `
     <div style="font-family: -apple-system, Segoe UI, sans-serif; max-width: 560px; margin: 0 auto; padding: 24px; color: #18181b;">
         <p style="margin: 0 0 4px; font-size: 12px; letter-spacing: .12em; text-transform: uppercase; color: #0891b2;">EmperorClaw</p>
         <h1 style="margin: 0 0 12px; font-size: 18px;">${escapeHtml(title)}</h1>
         ${body ? `<p style="margin: 0 0 20px; font-size: 14px; line-height: 1.5; color: #3f3f46;">${escapeHtml(body)}</p>` : ""}
-        <a href="${escapeHtml(link)}" style="display: inline-block; background: #22d3ee; color: #083344; padding: 10px 16px; border-radius: 8px; font-weight: 600; text-decoration: none;">Open in EmperorClaw</a>
-        <p style="margin: 24px 0 0; font-size: 12px; color: #71717a;">You can change which notifications you get by email in Settings → Notifications.</p>
+        <a href="${escapeHtml(link)}" style="display: inline-block; background: #22d3ee; color: #083344; padding: 10px 16px; border-radius: 8px; font-weight: 600; text-decoration: none;">${escapeHtml(t("email.notification.open"))}</a>
+        <p style="margin: 24px 0 0; font-size: 12px; color: #71717a;">${escapeHtml(t("email.notification.footer"))}</p>
     </div>`;
 }
 

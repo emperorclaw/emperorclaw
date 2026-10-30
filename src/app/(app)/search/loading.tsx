@@ -1,9 +1,11 @@
+import { useTranslations } from "next-intl";
 import { Skeleton, SkeletonHeader, SkeletonPage } from "@/components/ui/skeleton";
 
 /** /search: the query box and a few result groups. */
 export default function Loading() {
+    const t = useTranslations("search");
     return (
-        <SkeletonPage label="Loading search">
+        <SkeletonPage label={t("loading")}>
             <SkeletonHeader action={false} />
             <Skeleton className="h-11 w-full rounded-xl" />
             <div aria-hidden className="space-y-3">

@@ -4,6 +4,7 @@ import { db } from "@/db";
 import { companyMembers, pipelines, pipelineRuns, agents, projects, customers } from "@/db/schema";
 import { eq, desc, and, isNull, inArray } from "drizzle-orm";
 import { redirect } from "next/navigation";
+import { getTranslations } from "next-intl/server";
 import PipelinesClient from "./pipelines-client";
 import { splitProjectTitle } from "@/lib/project-title";
 
@@ -21,7 +22,8 @@ export default async function PipelinesPage() {
         .limit(1);
 
     if (!membership) {
-        return <div className="p-8 text-zinc-400">Company not found.</div>;
+        const t = await getTranslations("common");
+        return <div className="p-8 text-zinc-400">{t("companyNotFound")}</div>;
     }
 
     const companyId = membership.companyId;

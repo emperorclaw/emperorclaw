@@ -5,13 +5,14 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { IconLock } from "@tabler/icons-react";
 import { useTranslations } from "next-intl";
+import { useCopy } from "@/lib/i18n/use-copy";
 import { cn } from "@/lib/utils";
 import { LiveRunSteps } from "@/components/run-timeline";
 import {
     CHAT_POLL_MS,
     formatElapsed,
     isTimedStepKind,
-    lastReasoningLine,
+    lastReasoningCopy, lastReasoningLine,
     mergeLiveRuns,
     type ClientLiveRun,
 } from "@/lib/live-activity";
@@ -159,13 +160,14 @@ export function strongestStall(state: TaskLiveState, nowMs: number): StallSignal
  */
 export const LiveRunBlock = memo(function LiveRunBlock({ run, meta, offsetMs, nowMs }: { run: ClientLiveRun; meta: LiveMeta | undefined; offsetMs: number; nowMs: number }) {
     const t = useTranslations("tasks.live");
+    const render = useCopy();
     const stallLabel = useStallLabel();
     const serverNow = nowMs + offsetMs;
     const started = Date.parse(run.startedAt);
     const elapsed = nowMs && Number.isFinite(started) ? formatElapsed(serverNow - started) : null;
     const timed = isTimedStepKind(run.current.kind);
     const stepElapsed = nowMs && timed ? formatElapsed(serverNow - run.currentStartedAt) : null;
-    const detail = meta?.private ? null : lastReasoningLine(run);
+    const detail = meta?.private ? null : render(lastReasoningCopy(run), lastReasoningLine(run) ?? "") || null;
     const signal = nowMs && meta ? stallSignal({ status: run.status, lastUsefulAt: meta.lastUsefulAt, now: serverNow }) : null;
     const name = meta?.agentName ?? t("agent");
 

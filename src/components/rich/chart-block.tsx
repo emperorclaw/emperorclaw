@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useId, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useTranslations } from "next-intl";
 import { type ChartSpec, formatChartValue, niceTicks } from "@/lib/rich-blocks";
 import { RichBlockCard } from "./rich-block-card";
 
@@ -50,6 +51,7 @@ interface Hover {
 }
 
 function Tooltip({ spec, hover, width, sliceIndex }: { spec: ChartSpec; hover: Hover; width: number; sliceIndex?: number }) {
+    const t = useTranslations("rich");
     const isPie = spec.type === "pie" || spec.type === "donut";
     const rows = isPie
         ? [{ name: spec.labels[hover.index], value: spec.series[0].data[hover.index], color: seriesColor(spec, 0), sliceColor: PALETTE[hover.index % PALETTE.length] }]
@@ -73,7 +75,7 @@ function Tooltip({ spec, hover, width, sliceIndex }: { spec: ChartSpec; hover: H
                 </div>
             ))}
             {isPie && total > 0 && sliceIndex !== undefined && (
-                <div className="mt-0.5 text-[11px] text-zinc-500">{((Math.max(0, rows[0].value) / total) * 100).toFixed(1)}% of total</div>
+                <div className="mt-0.5 text-[11px] text-zinc-500">{t("ofTotal", { percent: ((Math.max(0, rows[0].value) / total) * 100).toFixed(1) })}</div>
             )}
         </div>
     );
@@ -101,6 +103,7 @@ function estimateTextWidth(text: string): number {
 // ─── Cartesian (bar / line / area) ─────────────────────────────────────────
 
 export function CartesianChart({ spec, width }: { spec: ChartSpec; width: number }) {
+    const t = useTranslations("rich");
     const gradientId = useId().replace(/:/g, "");
     const [hover, setHover] = useState<Hover | null>(null);
     const n = spec.labels.length;
@@ -239,7 +242,7 @@ export function CartesianChart({ spec, width }: { spec: ChartSpec; width: number
 
     return (
         <div className="relative">
-            <svg width={width} height={height} className="block overflow-visible" role="img" aria-label={spec.title || "Chart"}>
+            <svg width={width} height={height} className="block overflow-visible" role="img" aria-label={spec.title || t("chart")}>
                 <defs>
                     {spec.series.map((_, si) => (
                         <linearGradient key={si} id={`${gradientId}-${si}`} x1="0" x2="0" y1="0" y2="1">
@@ -289,6 +292,7 @@ export function CartesianChart({ spec, width }: { spec: ChartSpec; width: number
 // ─── Pie / donut ───────────────────────────────────────────────────────────
 
 function PieChart({ spec, width }: { spec: ChartSpec; width: number }) {
+    const t = useTranslations("rich");
     const [hover, setHover] = useState<Hover | null>(null);
     const values = spec.series[0].data.map((v) => Math.max(0, v));
     const total = values.reduce((a, b) => a + b, 0);
@@ -317,7 +321,7 @@ function PieChart({ spec, width }: { spec: ChartSpec; width: number }) {
     return (
         <div className={stacked ? "flex flex-col items-center gap-3" : "flex items-center gap-6"}>
             <div className="relative shrink-0" style={{ width: size, height: size }}>
-                <svg width={size} height={size} role="img" aria-label={spec.title || "Chart"} className="ec-chart-pop">
+                <svg width={size} height={size} role="img" aria-label={spec.title || t("chart")} className="ec-chart-pop">
                     {total === 0 && <circle cx={cx} cy={cy} r={r} fill="none" stroke="var(--border)" strokeWidth={r - inner || r} />}
                     {slices.map((s) => s.sweep > 0 && (
                         <path
@@ -340,7 +344,7 @@ function PieChart({ spec, width }: { spec: ChartSpec; width: number }) {
                                 {formatChartValue(hover ? values[hover.index] : total, spec.prefix, spec.unit, true)}
                             </text>
                             <text x={cx} y={cy + Math.max(14, r * 0.2)} textAnchor="middle" fontSize={11} fill="var(--muted-foreground)">
-                                {hover ? spec.labels[hover.index].slice(0, 18) : "Total"}
+                                {hover ? spec.labels[hover.index].slice(0, 18) : t("total")}
                             </text>
                         </>
                     )}

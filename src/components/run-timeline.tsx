@@ -15,6 +15,8 @@ import {
     IconUsers,
 } from "@tabler/icons-react";
 import Link from "next/link";
+import { useTranslations } from "next-intl";
+import { useCopy } from "@/lib/i18n/use-copy";
 import { cn } from "@/lib/utils";
 import { taskHref } from "@/lib/task-story";
 import { formatRunDuration, formatTokenCount } from "@/lib/run-ledger-copy";
@@ -83,18 +85,20 @@ function RowIcon({ row }: { row: TimelineRow }) {
 }
 
 /** Pure list: no fetching, no timers. */
-export const RunTimelineList = memo(function RunTimelineList({ steps, emptyText = "No steps recorded." }: { steps: readonly TimelineStep[]; emptyText?: string }) {
+export const RunTimelineList = memo(function RunTimelineList({ steps, emptyText }: { steps: readonly TimelineStep[]; emptyText?: string }) {
+    const t = useTranslations("runTimeline");
     const rows = useMemo(() => timelineRows(steps), [steps]);
-    if (rows.length === 0) return <p className="text-[11px] text-zinc-500">{emptyText}</p>;
+    const render = useCopy();
+    if (rows.length === 0) return <p className="text-[11px] text-zinc-500">{emptyText ?? t("noSteps")}</p>;
     return (
-        <ol className="space-y-1" aria-label="Run steps">
+        <ol className="space-y-1" aria-label={t("steps")}>
             {rows.map((row) => (
                 <li key={row.key} className="flex min-w-0 items-start gap-2 text-[11px] leading-snug">
                     <RowIcon row={row} />
                     <span className={cn("min-w-0 flex-1 break-words", row.kind === "notice" ? "text-zinc-500" : row.kind === "reasoning" ? "text-zinc-400" : "text-zinc-300")}>
-                        <span className={cn(row.kind === "tool" && "font-mono font-medium text-zinc-200", row.kind === "notice" && "italic")}>{row.label}</span>
+                        <span className={cn(row.kind === "tool" && "font-mono font-medium text-zinc-200", row.kind === "notice" && "italic")}>{render(row.labelCopy, row.label)}</span>
                         {row.detail && <span className={cn(row.kind === "tool" ? "text-zinc-500" : "")}> · {row.detail}</span>}
-                        {row.status === "error" && row.kind === "tool" && <span className="text-rose-400"> · failed</span>}
+                        {row.status === "error" && row.kind === "tool" && <span className="text-rose-400"> · {t("failed")}</span>}
                     </span>
                     {row.durationMs != null && (
                         <span className="shrink-0 font-mono tabular-nums text-[10px] text-zinc-500">{formatRunDuration(row.durationMs)}</span>
@@ -105,71 +109,74 @@ export const RunTimelineList = memo(function RunTimelineList({ steps, emptyText 
     );
 });
 
-function usageSummary(data: TimelineResponse): string | null {
+type Translate = ReturnType<typeof useTranslations<"runTimeline">>;
+
+function usageSummary(data: TimelineResponse, t: Translate): string | null {
     const { run, usage } = data;
     const input = run.inputTokens ?? usage?.input ?? null;
     const output = run.outputTokens ?? usage?.output ?? null;
     const cacheRead = run.cacheReadTokens ?? usage?.cacheRead ?? null;
     const parts: string[] = [];
-    if (input != null) parts.push(`${formatTokenCount(input)} in`);
-    if (output != null) parts.push(`${formatTokenCount(output)} out`);
+    if (input != null) parts.push(t("usage.in", { tokens: formatTokenCount(input) }));
+    if (output != null) parts.push(t("usage.out", { tokens: formatTokenCount(output) }));
     const hit = cacheHitPercent(input, cacheRead);
-    if (cacheRead != null && cacheRead > 0) parts.push(`${formatTokenCount(cacheRead)} cached${hit != null ? ` (${hit}%)` : ""}`);
+    if (cacheRead != null && cacheRead > 0) parts.push(hit != null ? t("usage.cachedHit", { tokens: formatTokenCount(cacheRead), hit }) : t("usage.cached", { tokens: formatTokenCount(cacheRead) }));
     if (run.costCents != null) parts.push(`$${(run.costCents / 100).toFixed(2)}`);
     else if (usage?.costUsd != null) parts.push(`$${usage.costUsd.toFixed(2)}`);
-    if (usage?.contextPercent != null && run.status === "running") parts.push(`${usage.contextPercent}% context`);
+    if (usage?.contextPercent != null && run.status === "running") parts.push(t("usage.context", { percent: usage.contextPercent }));
     return parts.length > 0 ? parts.join(" · ") : null;
 }
 
-function timingSummary(run: TimelineResponse["run"]): string | null {
+function timingSummary(run: TimelineResponse["run"], t: Translate): string | null {
     const parts: string[] = [];
-    if (run.queueMs != null) parts.push(`queued ${formatRunDuration(run.queueMs)}`);
-    if (run.firstTokenMs != null) parts.push(`first token ${formatRunDuration(run.firstTokenMs)}`);
+    if (run.queueMs != null) parts.push(t("timing.queued", { duration: formatRunDuration(run.queueMs) }));
+    if (run.firstTokenMs != null) parts.push(t("timing.firstToken", { duration: formatRunDuration(run.firstTokenMs) }));
     if (run.model) parts.push(run.model);
-    if (run.exitReason) parts.push(`exit: ${run.exitReason}`);
+    if (run.exitReason) parts.push(t("timing.exit", { reason: run.exitReason }));
     return parts.length > 0 ? parts.join(" · ") : null;
 }
 
 /** Loads one run's timeline on mount and renders it with its usage line. */
 export function RunTimeline({ runId }: { runId: string }) {
+    const t = useTranslations("runTimeline");
     const [data, setData] = useState<TimelineResponse | null>(null);
-    const [error, setError] = useState<string | null>(null);
+    const [error, setError] = useState<"notFound" | "loadFailed" | null>(null);
 
     useEffect(() => {
         let cancelled = false;
         fetch(`/api/runs/${encodeURIComponent(runId)}/events`, { cache: "no-store" })
             .then(async (res) => {
-                if (!res.ok) throw new Error(res.status === 404 ? "Run not found" : "Could not load steps");
+                if (!res.ok) throw new Error(res.status === 404 ? "notFound" : "loadFailed");
                 return (await res.json()) as TimelineResponse;
             })
             .then((json) => { if (!cancelled) setData(json); })
-            .catch((e: unknown) => { if (!cancelled) setError(e instanceof Error ? e.message : "Could not load steps"); });
+            .catch((e: unknown) => { if (!cancelled) setError(e instanceof Error && e.message === "notFound" ? "notFound" : "loadFailed"); });
         return () => { cancelled = true; };
     }, [runId]);
 
-    if (error) return <p className="text-[11px] text-amber-400" role="alert">{error}</p>;
+    if (error) return <p className="text-[11px] text-amber-400" role="alert">{t(error)}</p>;
     if (!data) {
         return (
             <p className="flex items-center gap-1.5 text-[11px] text-zinc-500">
                 <IconLoader2 className="h-3.5 w-3.5 animate-spin motion-reduce:animate-none" aria-hidden="true" />
-                Loading steps…
+                {t("loading")}
             </p>
         );
     }
-    const usage = usageSummary(data);
-    const timing = timingSummary(data.run);
+    const usage = usageSummary(data, t);
+    const timing = timingSummary(data.run, t);
     return (
         <div className="space-y-2">
             <RunTimelineList
                 steps={data.steps}
-                emptyText={data.redacted ? "Steps are private to this chat's participants." : "No steps recorded. Bridge 0.9 and later stream steps."}
+                emptyText={data.redacted ? t("private") : t("noStepsBridge")}
             />
             {(usage || timing) && (
                 <p className="break-words text-[10px] tabular-nums text-zinc-500">
                     {[usage, timing].filter(Boolean).join(" · ")}
                 </p>
             )}
-            {data.run.eventsDropped ? <p className="text-[10px] text-zinc-600">{data.run.eventsDropped} minor steps were not kept.</p> : null}
+            {data.run.eventsDropped ? <p className="text-[10px] text-zinc-600">{t("dropped", { count: data.run.eventsDropped })}</p> : null}
             {data.run.error && <p className="break-words text-[11px] text-rose-300">{data.run.error}</p>}
         </div>
     );
@@ -194,6 +201,7 @@ export interface ReplyRun {
  * props and memo keep chat polls from re-rendering it.
  */
 export const ReplyRunFooter = memo(function ReplyRunFooter({ run, tone = "dark" }: { run: ReplyRun; tone?: "dark" | "light" }) {
+    const t = useTranslations("runTimeline");
     const [open, setOpen] = useState(false);
     const toggle = useCallback(() => setOpen((value) => !value), []);
     const label = runFooterSummary(run);
@@ -217,7 +225,7 @@ export const ReplyRunFooter = memo(function ReplyRunFooter({ run, tone = "dark" 
                     <RunTimeline runId={run.runId} />
                     {run.taskId && (
                         <Link href={taskHref(run.taskId, run.runId)} className="inline-flex items-center gap-1 text-[11px] text-cyan-300 underline-offset-2 hover:text-cyan-200 hover:underline">
-                            Open this run on its task
+                            {t("openOnTask")}
                         </Link>
                     )}
                 </div>
@@ -231,6 +239,7 @@ export const ReplyRunFooter = memo(function ReplyRunFooter({ run, tone = "dark" 
  * itself never changes height on its own.
  */
 export const LiveRunSteps = memo(function LiveRunSteps({ steps, usage }: { steps: readonly TimelineStep[]; usage?: RunLiveUsage | null }) {
+    const t = useTranslations("runTimeline");
     const [open, setOpen] = useState(false);
     const usageLine = liveUsageLine(usage);
     if (steps.length === 0 && !usageLine) return null;
@@ -242,12 +251,12 @@ export const LiveRunSteps = memo(function LiveRunSteps({ steps, usage }: { steps
                 aria-expanded={open}
                 className="inline-flex items-center gap-1 rounded text-[10px] text-zinc-500 transition-colors hover:text-zinc-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400/60"
             >
-                {open ? "Hide steps" : `Steps${steps.length > 0 ? ` (${steps.length})` : ""}`}
+                {open ? t("hideSteps") : steps.length > 0 ? t("stepsCount", { count: steps.length }) : t("stepsToggle")}
                 <IconChevronDown className={cn("h-3 w-3 transition-transform", open && "rotate-180")} aria-hidden="true" />
             </button>
             {open && (
                 <div className="mt-1.5 space-y-1.5 rounded-lg border border-zinc-800/80 bg-zinc-950/60 p-2">
-                    <RunTimelineList steps={steps} emptyText="No steps yet." />
+                    <RunTimelineList steps={steps} emptyText={t("noStepsYet")} />
                     {usageLine && <p className="text-[10px] tabular-nums text-zinc-500">{usageLine}</p>}
                 </div>
             )}

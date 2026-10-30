@@ -8,6 +8,8 @@ import {
     IconLoader2,
 } from "@tabler/icons-react";
 import { cn } from "@/lib/utils";
+import { copy } from "@/lib/coded-copy";
+import { useCopy } from "@/lib/i18n/use-copy";
 import { runStatusCopy, type RunStatusTone } from "@/lib/run-ledger-copy";
 
 /**
@@ -23,12 +25,13 @@ const TONE: Record<RunStatusTone, { chip: string; Icon: typeof IconCircleCheck; 
 };
 
 export function RunStatusChip({ status, className }: { status: string; className?: string }) {
+    const render = useCopy();
     const { label, tone } = runStatusCopy(status);
     const { chip, Icon, spin } = TONE[tone];
     return (
         <span className={cn("inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-semibold", chip, className)}>
             <Icon className={cn("h-3 w-3", spin && "animate-spin motion-reduce:animate-none")} aria-hidden="true" />
-            {label}
+            {render(copy(`runStatus.${status}`), label)}
         </span>
     );
 }

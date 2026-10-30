@@ -4,7 +4,8 @@ import { users, passwordResets } from "@/db/schema";
 import { eq } from "drizzle-orm";
 import crypto from "crypto";
 import { hash } from "argon2";
-import { sendEmail, getPasswordResetEmailHtml } from "@/lib/email";
+import { sendEmail, getPasswordResetEmailHtml, passwordResetSubject } from "@/lib/email";
+import { emailLocale } from "@/i18n/server-translator";
 import { getAppUrl } from "@/lib/env";
 import { consumeRateLimit, getClientIp } from "@/lib/rate-limit";
 import { recordOpsError } from "@/lib/ops-events";
@@ -65,10 +66,12 @@ export async function POST(req: NextRequest) {
         const resetUrl = `${getAppUrl(req)}/reset-password?token=${rawToken}&email=${encodeURIComponent(email)}`;
 
         // Dispatch Email
+        // The recipient's saved language (users.locale), else the language of the browser asking.
+        const locale = emailLocale(req, user.locale ?? null);
         await sendEmail({
             to: email,
-            subject: "Reset your Emperor Claw Password",
-            html: getPasswordResetEmailHtml(email, resetUrl)
+            subject: passwordResetSubject(locale),
+            html: getPasswordResetEmailHtml(email, resetUrl, locale),
         });
 
         return NextResponse.json({ message: "If an account with that email exists, a reset link has been sent." }, { status: 200 });

@@ -7,6 +7,7 @@
 import { deriveAppearance, hashString, type CharacterAppearance } from "@/lib/character/model";
 import type { CharacterExpression } from "@/lib/character/draw";
 import type { FailureView } from "@/lib/failure-cause";
+import type { CodedCopy } from "@/lib/coded-copy";
 
 export { hashString };
 
@@ -81,13 +82,19 @@ export interface AttentionEntry {
     kind: AttentionKind;
     /** Primary actionable copy: the task title, or approval/reply copy. */
     title: string;
+    /** The title as coded copy (src/lib/coded-copy.ts) when the server wrote it; a task's own title has none. */
+    titleCopy?: CodedCopy | null;
     /** Short reason for "incident" items (e.g. "max retries exceeded"). */
     reason?: string | null;
+    reasonCopy?: CodedCopy | null;
     memberKey: string | null;
     memberName: string | null;
     area: string | null;
+    /** `area` as coded copy when it is a fixed label ("Messages"), not a project or role. */
+    areaCopy?: CodedCopy | null;
     at: string;
     actionLabel: string;
+    actionCopy?: CodedCopy | null;
     href: string;
     /** Action targets for the inline actions in "Needs your attention". */
     taskId?: string | null;

@@ -51,12 +51,12 @@ maybe("failure cause: a 402 run reads as out of credits, with the fix only for t
     assert.ok(credits, "the failed run is listed");
     assert.equal(credits!.failure?.cause, "provider_credits");
     assert.equal(credits!.reason, "LLM provider is out of credits");
-    assert.deepEqual(credits!.failure?.fix, { label: "Open provider settings", action: { kind: "link", href: `/agents?agent=${ada.id}` } });
+    assert.deepEqual(credits!.failure?.fix, { label: "Open provider settings", labelCopy: { key: "failures.fixes.openProviderSettings" }, action: { kind: "link", href: `/agents?agent=${ada.id}` } });
 
     const retry = runEntry(owner, beaRun);
     assert.equal(retry?.failure?.cause, "unknown");
     assert.equal(retry?.reason, "Run failed: hermes_failed");
-    assert.deepEqual(retry?.failure?.fix, { label: "Retry", action: { kind: "message_agent", agentId: bea.id, taskId: task.id, mode: "retry" } });
+    assert.deepEqual(retry?.failure?.fix, { label: "Retry", labelCopy: { key: "failures.fixes.retry" }, action: { kind: "message_agent", agentId: bea.id, taskId: task.id, mode: "retry" } });
 
     // A member sees the cause; the provider fix is owner/admin only, Retry is theirs.
     const member = await buildAttention(companyId, access(memberUser.id, "member"));
@@ -75,7 +75,7 @@ maybe("failure cause: a 402 run reads as out of credits, with the fix only for t
     const failedMessage = memberAgain.entries.find((e) => e.id === `message:${message.id}`);
     assert.equal(failedMessage?.failure?.cause, "rate_limited");
     assert.equal(failedMessage?.reason, "Rate limited by the model provider");
-    assert.deepEqual(failedMessage?.failure?.fix, { label: "Retry", action: { kind: "retry_message", messageId: message.id }, notBefore: new Date(Date.parse(failedAt) + 60_000).toISOString() });
+    assert.deepEqual(failedMessage?.failure?.fix, { label: "Retry", labelCopy: { key: "failures.fixes.retry" }, action: { kind: "retry_message", messageId: message.id }, notBefore: new Date(Date.parse(failedAt) + 60_000).toISOString() });
 
     // A viewer sees every cause and no action at all.
     const viewer = await buildAttention(companyId, access(viewerUser.id, "viewer"));
@@ -103,5 +103,5 @@ maybe("failure cause: a failed run's Retry goes to the task's current assignee, 
 
     const owner = await buildAttention(companyId, { userId: ownerId, isOwnerOrAdmin: true, canAct: true, scope: null });
     const entry = owner.entries.find((e) => e.kind === "run_failed" && e.runId === runId);
-    assert.deepEqual(entry?.failure?.fix, { label: "Retry", action: { kind: "message_agent", agentId: ada.id, taskId: task.id, mode: "retry" } });
+    assert.deepEqual(entry?.failure?.fix, { label: "Retry", labelCopy: { key: "failures.fixes.retry" }, action: { kind: "message_agent", agentId: ada.id, taskId: task.id, mode: "retry" } });
 });

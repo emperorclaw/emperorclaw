@@ -2,13 +2,12 @@
 
 import { useMemo, useState } from "react";
 import Link from "next/link";
+import { useFormatter, useTranslations } from "next-intl";
 import { IconArrowDown, IconArrowUp, IconCoin, IconDownload, IconX } from "@tabler/icons-react";
 import { EmptyState } from "@/components/ui/empty-state";
 import { cn } from "@/lib/utils";
 import {
-    COST_TAB_LABELS,
     COST_TABS,
-    RANGE_PRESET_LABELS,
     RANGE_PRESETS,
     estimatedShare,
     formatTokens,
@@ -35,8 +34,9 @@ function rangeParams(range: RangeView): URLSearchParams {
 
 /** Tabs and date range presets (URL state: every view is a shareable link). */
 export function CostsTabs({ active, range }: { active: CostTab; range: RangeView }) {
+    const t = useTranslations("costs");
     return (
-        <nav aria-label="Cost views" className="flex flex-wrap gap-1 border-b border-border">
+        <nav aria-label={t("views")} className="flex flex-wrap gap-1 border-b border-border">
             {COST_TABS.map((tab) => {
                 const params = rangeParams(range);
                 params.set("tab", tab);
@@ -44,7 +44,7 @@ export function CostsTabs({ active, range }: { active: CostTab; range: RangeView
                     <Link key={tab} href={`/costs?${params.toString()}`} aria-current={tab === active ? "page" : undefined}
                         className={cn("-mb-px inline-flex min-h-10 items-center border-b-2 px-3 text-sm transition-colors",
                             tab === active ? "border-primary font-medium text-foreground" : "border-transparent text-muted-foreground hover:text-foreground")}>
-                        {COST_TAB_LABELS[tab]}
+                        {t(`tabs.${tab}`)}
                     </Link>
                 );
             })}
@@ -55,9 +55,6 @@ export function CostsTabs({ active, range }: { active: CostTab; range: RangeView
 type GroupRow = CostGroup & { href: string | null };
 type SortKey = "label" | "runs" | "tokens" | "costCents" | "share";
 
-const COLUMN_LABEL: Record<CostDimension, string> = {
-    customer: "Client", project: "Project", task: "Task", model: "Model", agent: "Agent", day: "Day",
-};
 
 export function CostsClient({
     tab, dimension, range, filter, filterLabels, total, series, groups, exportHref, clearFilterHref, restricted,
@@ -74,6 +71,8 @@ export function CostsClient({
     clearFilterHref: string;
     restricted: boolean;
 }) {
+    const t = useTranslations("costs");
+    const format = useFormatter();
     const [sort, setSort] = useState<{ key: SortKey; desc: boolean }>({ key: "costCents", desc: true });
     const sorted = useMemo(() => {
         const list = [...groups];
@@ -85,7 +84,7 @@ export function CostsClient({
     }, [groups, sort]);
 
     const filters = (Object.keys(filterLabels) as (keyof CostFilter)[]).filter((key) => filter[key] !== undefined);
-    const filterNoun: Record<keyof CostFilter, string> = { customer: "Client", project: "Project", model: "Model", agent: "Agent" };
+
     const unpricedRuns = total.basis.unpriced.runs;
 
     return (
@@ -93,7 +92,7 @@ export function CostsClient({
             <div className="flex flex-wrap items-center justify-between gap-3">
                 <RangePicker tab={tab} range={range} filter={filter} />
                 <a href={exportHref} className="inline-flex min-h-9 items-center gap-1.5 rounded-lg border border-border bg-card px-3 text-sm text-foreground hover:bg-accent">
-                    <IconDownload className="h-4 w-4" aria-hidden />Export CSV
+                    <IconDownload className="h-4 w-4" aria-hidden />{t("exportCsv")}
                 </a>
             </div>
 
@@ -101,26 +100,26 @@ export function CostsClient({
                 <div className="flex flex-wrap items-center gap-2 text-sm">
                     {filters.map((key) => (
                         <span key={key} className="inline-flex items-center gap-1.5 rounded-full border border-border bg-card px-3 py-1">
-                            <span className="text-muted-foreground">{filterNoun[key]}:</span>
+                            <span className="text-muted-foreground">{t("filterLabel", { noun: t(`columns.${key}`) })}</span>
                             <span className="font-medium text-foreground">{filterLabels[key]}</span>
                         </span>
                     ))}
                     {filter.project && !["chat", "unknown-task"].includes(filter.project) && (
-                        <Link href={`/projects?project=${encodeURIComponent(filter.project)}`} className="text-primary hover:underline">Open project board</Link>
+                        <Link href={`/projects?project=${encodeURIComponent(filter.project)}`} className="text-primary hover:underline">{t("openBoard")}</Link>
                     )}
                     <Link href={clearFilterHref} className="inline-flex items-center gap-1 text-muted-foreground hover:text-foreground">
-                        <IconX className="h-3.5 w-3.5" aria-hidden />Clear
+                        <IconX className="h-3.5 w-3.5" aria-hidden />{t("clear")}
                     </Link>
                 </div>
             )}
 
             <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-                <Stat label="Cost" value={formatUsd(total.costCents)}
-                    detail={`${formatUsd(total.basis.reported.costCents)} reported · ${formatUsd(total.basis.estimated.costCents)} estimated`} />
-                <Stat label="Runs" value={total.runs.toLocaleString("en-US")} detail={`${range.days} day${range.days === 1 ? "" : "s"} · ${range.from} to ${range.to} (UTC)`} />
-                <Stat label="Tokens" value={formatTokens(total.tokens)} detail={`${formatTokens(total.inputTokens)} in · ${formatTokens(total.outputTokens)} out`} />
-                <Stat label="Estimated" value={`${Math.round(estimatedShare(total) * 100)}%`}
-                    detail={unpricedRuns > 0 ? `${unpricedRuns.toLocaleString("en-US")} unpriced run${unpricedRuns === 1 ? "" : "s"} (${formatTokens(total.unpricedTokens)} tokens) not counted` : "of cost priced from your table"} />
+                <Stat label={t("stats.cost")} value={formatUsd(total.costCents)}
+                    detail={t("stats.costDetail", { reported: formatUsd(total.basis.reported.costCents), estimated: formatUsd(total.basis.estimated.costCents) })} />
+                <Stat label={t("stats.runs")} value={format.number(total.runs)} detail={t("stats.runsDetail", { days: range.days, from: range.from, to: range.to })} />
+                <Stat label={t("stats.tokens")} value={formatTokens(total.tokens)} detail={t("stats.tokensDetail", { input: formatTokens(total.inputTokens), output: formatTokens(total.outputTokens) })} />
+                <Stat label={t("stats.estimated")} value={`${Math.round(estimatedShare(total) * 100)}%`}
+                    detail={unpricedRuns > 0 ? t("stats.unpriced", { count: unpricedRuns, runs: format.number(unpricedRuns), tokens: formatTokens(total.unpricedTokens) }) : t("stats.priced")} />
             </div>
 
             <DailyChart series={series} />
@@ -130,12 +129,12 @@ export function CostsClient({
                     <table className="w-full text-sm">
                         <thead>
                             <tr className="border-b border-border text-xs uppercase tracking-wider text-muted-foreground">
-                                <SortHeader label={COLUMN_LABEL[dimension]} sortKey="label" sort={sort} onSort={setSort} align="left" />
-                                <SortHeader label="Runs" sortKey="runs" sort={sort} onSort={setSort} />
-                                <SortHeader label="Tokens" sortKey="tokens" sort={sort} onSort={setSort} />
-                                <SortHeader label="Cost" sortKey="costCents" sort={sort} onSort={setSort} />
-                                <SortHeader label="Share" sortKey="share" sort={sort} onSort={setSort} />
-                                <th scope="col" className="px-4 py-3 text-right font-medium">Basis</th>
+                                <SortHeader label={t(`columns.${dimension}`)} sortKey="label" sort={sort} onSort={setSort} align="left" />
+                                <SortHeader label={t("stats.runs")} sortKey="runs" sort={sort} onSort={setSort} />
+                                <SortHeader label={t("stats.tokens")} sortKey="tokens" sort={sort} onSort={setSort} />
+                                <SortHeader label={t("stats.cost")} sortKey="costCents" sort={sort} onSort={setSort} />
+                                <SortHeader label={t("share")} sortKey="share" sort={sort} onSort={setSort} />
+                                <th scope="col" className="px-4 py-3 text-right font-medium">{t("basis")}</th>
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-border">
@@ -147,7 +146,7 @@ export function CostsClient({
                                             : <span className={cn("font-medium", group.special ? "text-muted-foreground" : "text-foreground")}>{group.label}</span>}
                                         {group.detail && <div className="truncate text-xs text-muted-foreground">{group.detail}</div>}
                                     </td>
-                                    <td className="px-4 py-2.5 text-right font-mono text-xs text-muted-foreground">{group.runs.toLocaleString("en-US")}</td>
+                                    <td className="px-4 py-2.5 text-right font-mono text-xs text-muted-foreground">{format.number(group.runs)}</td>
                                     <td className="px-4 py-2.5 text-right font-mono text-xs text-muted-foreground">{formatTokens(group.tokens)}</td>
                                     <td className="px-4 py-2.5 text-right font-mono text-xs text-foreground">{formatUsd(group.costCents)}</td>
                                     <td className="px-4 py-2.5 text-right">
@@ -165,8 +164,8 @@ export function CostsClient({
                         {sorted.length > 0 && (
                             <tfoot>
                                 <tr className="border-t border-border text-xs font-medium text-foreground">
-                                    <td className="px-4 py-2.5">Total</td>
-                                    <td className="px-4 py-2.5 text-right font-mono">{total.runs.toLocaleString("en-US")}</td>
+                                    <td className="px-4 py-2.5">{t("total")}</td>
+                                    <td className="px-4 py-2.5 text-right font-mono">{format.number(total.runs)}</td>
                                     <td className="px-4 py-2.5 text-right font-mono">{formatTokens(total.tokens)}</td>
                                     <td className="px-4 py-2.5 text-right font-mono">{formatUsd(total.costCents)}</td>
                                     <td className="px-4 py-2.5 text-right font-mono text-muted-foreground">{total.costCents > 0 ? "100%" : "—"}</td>
@@ -180,14 +179,13 @@ export function CostsClient({
                     <EmptyState
                         bordered={false}
                         icon={IconCoin}
-                        title="No agent runs in this range"
-                        description={restricted ? "None of the clients and agents you can see ran in this range. Pick a wider range." : "No agent reported a run in this range, so nothing was spent. Pick a wider range."}
+                        title={t("emptyTitle")}
+                        description={restricted ? t("emptyRestricted") : t("emptyDescription")}
                     />
                 )}
             </div>
             <p className="text-xs text-muted-foreground">
-                Reported: the runtime sent the cost. Estimated: priced from the model pricing table (subscription-billed runs included).
-                Unpriced: no cost from the runtime and no price for the model. Runs without a task are counted as {"“"}Chat (no task){"”"}.
+                {t("legend")}
             </p>
         </div>
     );
@@ -204,13 +202,14 @@ function Stat({ label, value, detail }: { label: string; value: string; detail: 
 }
 
 function BasisChips({ totals }: { totals: CostTotals }) {
-    const chips: { label: string; className: string; title: string }[] = [];
-    if (totals.basis.reported.runs > 0) chips.push({ label: "reported", className: "border-border text-muted-foreground", title: `${formatUsd(totals.basis.reported.costCents)} from ${totals.basis.reported.runs} runs` });
-    if (totals.basis.estimated.runs > 0) chips.push({ label: "estimated", className: "border-amber-500/40 text-amber-600 dark:text-amber-300", title: `${formatUsd(totals.basis.estimated.costCents)} from ${totals.basis.estimated.runs} runs` });
-    if (totals.basis.unpriced.runs > 0) chips.push({ label: "unpriced", className: "border-rose-500/40 text-rose-600 dark:text-rose-300", title: `${totals.basis.unpriced.runs} runs, ${formatTokens(totals.unpricedTokens)} tokens with no price` });
+    const t = useTranslations("costs.basisChips");
+    const chips: { key: string; label: string; className: string; title: string }[] = [];
+    if (totals.basis.reported.runs > 0) chips.push({ key: "reported", label: t("reported"), className: "border-border text-muted-foreground", title: t("costFrom", { cost: formatUsd(totals.basis.reported.costCents), runs: totals.basis.reported.runs }) });
+    if (totals.basis.estimated.runs > 0) chips.push({ key: "estimated", label: t("estimated"), className: "border-amber-500/40 text-amber-600 dark:text-amber-300", title: t("costFrom", { cost: formatUsd(totals.basis.estimated.costCents), runs: totals.basis.estimated.runs }) });
+    if (totals.basis.unpriced.runs > 0) chips.push({ key: "unpriced", label: t("unpriced"), className: "border-rose-500/40 text-rose-600 dark:text-rose-300", title: t("unpricedTitle", { runs: totals.basis.unpriced.runs, tokens: formatTokens(totals.unpricedTokens) }) });
     return (
         <span className="inline-flex flex-wrap justify-end gap-1">
-            {chips.map((chip) => <span key={chip.label} title={chip.title} className={cn("rounded-full border px-2 py-0.5 text-[10px]", chip.className)}>{chip.label}</span>)}
+            {chips.map((chip) => <span key={chip.key} title={chip.title} className={cn("rounded-full border px-2 py-0.5 text-[10px]", chip.className)}>{chip.label}</span>)}
         </span>
     );
 }
@@ -231,6 +230,7 @@ function SortHeader({ label, sortKey, sort, onSort, align = "right" }: {
 }
 
 function RangePicker({ tab, range, filter }: { tab: CostTab; range: RangeView; filter: CostFilter }) {
+    const t = useTranslations("costs");
     const [custom, setCustom] = useState(range.preset === "custom");
     const base = (preset: RangePreset) => {
         const params = new URLSearchParams({ tab, range: preset });
@@ -239,16 +239,16 @@ function RangePicker({ tab, range, filter }: { tab: CostTab; range: RangeView; f
     };
     return (
         <div className="flex flex-wrap items-center gap-2">
-            <div className="inline-flex flex-wrap rounded-lg border border-border bg-card p-0.5" role="group" aria-label="Date range">
+            <div className="inline-flex flex-wrap rounded-lg border border-border bg-card p-0.5" role="group" aria-label={t("dateRange")}>
                 {RANGE_PRESETS.filter((preset) => preset !== "custom").map((preset) => (
                     <Link key={preset} href={base(preset)} aria-current={range.preset === preset ? "true" : undefined}
                         className={cn("rounded-md px-2.5 py-1 text-xs", range.preset === preset ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground")}>
-                        {RANGE_PRESET_LABELS[preset]}
+                        {t(`ranges.${preset}`)}
                     </Link>
                 ))}
                 <button type="button" onClick={() => setCustom((open) => !open)} aria-expanded={custom}
                     className={cn("rounded-md px-2.5 py-1 text-xs", range.preset === "custom" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground")}>
-                    {RANGE_PRESET_LABELS.custom}
+                    {t("ranges.custom")}
                 </button>
             </div>
             {custom && (
@@ -256,13 +256,13 @@ function RangePicker({ tab, range, filter }: { tab: CostTab; range: RangeView; f
                     <input type="hidden" name="tab" value={tab} />
                     <input type="hidden" name="range" value="custom" />
                     {Object.entries(filter).map(([key, value]) => value !== undefined && <input key={key} type="hidden" name={key} value={value} />)}
-                    <label className="flex items-center gap-1 text-muted-foreground">From
+                    <label className="flex items-center gap-1 text-muted-foreground">{t("from")}
                         <input type="date" name="from" defaultValue={range.from} required className="rounded-md border border-border bg-card px-2 py-1 text-foreground" />
                     </label>
-                    <label className="flex items-center gap-1 text-muted-foreground">To
+                    <label className="flex items-center gap-1 text-muted-foreground">{t("to")}
                         <input type="date" name="to" defaultValue={range.to} required className="rounded-md border border-border bg-card px-2 py-1 text-foreground" />
                     </label>
-                    <button type="submit" className="rounded-md border border-border bg-card px-2.5 py-1 text-foreground hover:bg-accent">Apply</button>
+                    <button type="submit" className="rounded-md border border-border bg-card px-2.5 py-1 text-foreground hover:bg-accent">{t("apply")}</button>
                 </form>
             )}
         </div>
@@ -271,6 +271,7 @@ function RangePicker({ tab, range, filter }: { tab: CostTab; range: RangeView; f
 
 /** Daily cost bars (inline SVG). Each bar carries its day, cost and runs as a tooltip. */
 function DailyChart({ series }: { series: { day: string; costCents: number; runs: number }[] }) {
+    const t = useTranslations("costs.chart");
     const max = Math.max(0, ...series.map((point) => point.costCents));
     const width = Math.max(series.length, 1) * 10;
     const height = 100;
@@ -278,18 +279,18 @@ function DailyChart({ series }: { series: { day: string; costCents: number; runs
     return (
         <figure className="rounded-2xl border border-border bg-card p-4">
             <figcaption className="mb-2 flex items-baseline justify-between text-xs text-muted-foreground">
-                <span>Daily cost</span>
-                <span className="font-mono">{max > 0 ? `max ${formatUsd(max)}` : "no cost in this range"}</span>
+                <span>{t("title")}</span>
+                <span className="font-mono">{max > 0 ? t("max", { cost: formatUsd(max) }) : t("noCost")}</span>
             </figcaption>
             <svg viewBox={`0 0 ${width} ${height}`} preserveAspectRatio="none" className="h-28 w-full" role="img"
-                aria-label={`Daily cost from ${series[0].day} to ${series[series.length - 1].day}`}>
+                aria-label={t("label", { from: series[0].day, to: series[series.length - 1].day })}>
                 <line x1={0} x2={width} y1={height - 0.5} y2={height - 0.5} stroke="var(--border)" strokeWidth={1} vectorEffect="non-scaling-stroke" />
                 {series.map((point, index) => {
                     const barHeight = max > 0 ? Math.max(point.costCents > 0 ? 1.5 : 0, (point.costCents / max) * (height - 4)) : 0;
                     return (
                         <g key={point.day}>
                             <rect x={index * 10} y={0} width={10} height={height} fill="transparent">
-                                <title>{`${point.day}: ${formatUsd(point.costCents)} · ${point.runs} run${point.runs === 1 ? "" : "s"}`}</title>
+                                <title>{t("bar", { day: point.day, cost: formatUsd(point.costCents), runs: point.runs })}</title>
                             </rect>
                             {barHeight > 0 && (
                                 <rect x={index * 10 + 1.5} y={height - barHeight} width={7} height={barHeight} rx={1} fill="var(--primary)" pointerEvents="none" />

@@ -12,6 +12,7 @@ import {
     IconMinus,
     IconPlus,
 } from "@tabler/icons-react";
+import { useTranslations } from "next-intl";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { captureExportedBlob } from "./download-capture";
@@ -22,6 +23,7 @@ const MAX_WORKBOOK_BYTES = 25 * 1024 * 1024;
 
 export default function XlsxArtifactEditor(props: OfficeEditorProps) {
     const { bytes, fileName, onDirtyChange, onHandleChange } = props;
+    const t = useTranslations("editor");
     const stableBytes = useMemo(() => bytes.slice(0), [bytes]);
     const controller = useXlsxViewerController({
         file: stableBytes,
@@ -59,7 +61,7 @@ export default function XlsxArtifactEditor(props: OfficeEditorProps) {
         return (
             <div className="flex h-full items-center justify-center p-8 text-center">
                 <div className="max-w-md rounded-2xl border border-rose-500/25 bg-rose-500/10 p-6">
-                    <p className="font-medium text-rose-100">This workbook could not be opened.</p>
+                    <p className="font-medium text-rose-100">{t("workbookError")}</p>
                     <p className="mt-2 text-sm text-rose-200/70">{controller.error.message}</p>
                 </div>
             </div>
@@ -69,14 +71,14 @@ export default function XlsxArtifactEditor(props: OfficeEditorProps) {
     return (
         <div className="flex h-full min-h-0 flex-col bg-[#101114] force-dark">
             <div className="flex min-h-12 flex-wrap items-center gap-1.5 border-b border-border bg-[#141417] px-3 py-2">
-                <ToolbarButton label="Undo" disabled={!controller.canUndo} onClick={controller.undo}><IconArrowBackUp /></ToolbarButton>
-                <ToolbarButton label="Redo" disabled={!controller.canRedo} onClick={controller.redo}><IconArrowForwardUp /></ToolbarButton>
+                <ToolbarButton label={t("toolbar.undo")} disabled={!controller.canUndo} onClick={controller.undo}><IconArrowBackUp /></ToolbarButton>
+                <ToolbarButton label={t("toolbar.redo")} disabled={!controller.canRedo} onClick={controller.redo}><IconArrowForwardUp /></ToolbarButton>
                 <div className="mx-1 h-6 w-px bg-border" />
-                <ToolbarButton label="Zoom out" disabled={!controller.canZoomOut} onClick={controller.zoomOut}><IconMinus /></ToolbarButton>
+                <ToolbarButton label={t("toolbar.zoomOut")} disabled={!controller.canZoomOut} onClick={controller.zoomOut}><IconMinus /></ToolbarButton>
                 <span className="min-w-12 text-center text-xs tabular-nums text-muted-foreground">{Math.round(controller.zoomScale)}%</span>
-                <ToolbarButton label="Zoom in" disabled={!controller.canZoomIn} onClick={controller.zoomIn}><IconPlus /></ToolbarButton>
+                <ToolbarButton label={t("toolbar.zoomIn")} disabled={!controller.canZoomIn} onClick={controller.zoomIn}><IconPlus /></ToolbarButton>
                 <div className="mx-1 h-6 w-px bg-border" />
-                <ToolbarButton label="Add worksheet" onClick={() => controller.addSheet()}><IconFilePlus /></ToolbarButton>
+                <ToolbarButton label={t("toolbar.addWorksheet")} onClick={() => controller.addSheet()}><IconFilePlus /></ToolbarButton>
                 <div className="ml-1 flex min-w-[280px] flex-1 items-center gap-2">
                     <span className="w-12 truncate rounded-md border border-border bg-muted/30 px-2 py-1.5 text-center text-xs font-medium text-foreground">
                         {controller.activeCellAddress || "—"}
@@ -101,7 +103,7 @@ export default function XlsxArtifactEditor(props: OfficeEditorProps) {
                     rounded={false}
                     showDefaultToolbar={false}
                     selectionColor="#22d3ee"
-                    loadingState={<EditorLoading label="Opening workbook…" />}
+                    loadingState={<EditorLoading label={t("openingWorkbook")} />}
                 />
             </div>
         </div>
@@ -109,16 +111,17 @@ export default function XlsxArtifactEditor(props: OfficeEditorProps) {
 }
 
 function FormulaInput(props: { initialValue: string; disabled: boolean; onApply: (value: string) => void }) {
+    const t = useTranslations("editor");
     const [value, setValue] = useState(props.initialValue);
     return (
         <Input
-            aria-label="Cell value or formula"
+            aria-label={t("formula.label")}
             value={value}
             onChange={(event) => setValue(event.target.value)}
             onKeyDown={(event) => { if (event.key === "Enter") props.onApply(value); }}
             onBlur={() => props.onApply(value)}
             disabled={props.disabled}
-            placeholder="Select a cell to edit its value or formula"
+            placeholder={t("formula.placeholder")}
             className="h-8 border-border bg-muted/30 font-mono text-xs"
         />
     );

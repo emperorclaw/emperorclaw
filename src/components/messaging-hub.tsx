@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
+import { useFormatter, useTranslations } from "next-intl";
 import {
     IconArrowLeft,
     IconCheck,
@@ -78,28 +79,32 @@ const GROUP_PREFIX = "group:";
 // A secondary direct thread (an agent's Operations thread, or an earlier private one).
 const DIRECT_THREAD_PREFIX = "thread:";
 
-function secondaryThreadLabel(thread: DirectThreadSummary) {
-    return thread.kind === "private" ? `${thread.agentName} · Private` : workLogThreadTitle(thread.agentName);
-}
+
 
 const ACTIVE_CONVERSATION_KEY = "emperor-messages-active-conversation";
 const AGENT_CONVERSATIONS_KEY = "emperor-messages-show-agent-conversations";
 const FOCUS_MODE_KEY = "emperor-messages-focus-mode";
 const TEAM_CONVERSATION = "team";
 
-function formatRelativeMessageTime(value: string | null) {
-    if (!value) return "No messages yet";
-    const timestamp = new Date(value).getTime();
-    if (Number.isNaN(timestamp)) return "No messages yet";
-    const diffMs = Date.now() - timestamp;
-    const diffMinutes = Math.floor(diffMs / 60000);
-    if (diffMinutes < 1) return "Just now";
-    if (diffMinutes < 60) return `${diffMinutes}m ago`;
-    const diffHours = Math.floor(diffMinutes / 60);
-    if (diffHours < 24) return `${diffHours}h ago`;
-    const diffDays = Math.floor(diffHours / 24);
-    if (diffDays < 7) return `${diffDays}d ago`;
-    return new Date(value).toLocaleDateString([], { month: "short", day: "numeric" });
+/** "5m ago", "3d ago" or "Oct 29" for a conversation's last message, in the viewer's language. */
+function useRelativeMessageTime() {
+    const t = useTranslations("messagingHub");
+    const tTime = useTranslations("time");
+    const format = useFormatter();
+    return (value: string | null) => {
+        if (!value) return t("noMessagesYet");
+        const timestamp = new Date(value).getTime();
+        if (Number.isNaN(timestamp)) return t("noMessagesYet");
+        const diffMs = Date.now() - timestamp;
+        const diffMinutes = Math.floor(diffMs / 60000);
+        if (diffMinutes < 1) return t("justNow");
+        if (diffMinutes < 60) return tTime("minutesAgo", { count: diffMinutes });
+        const diffHours = Math.floor(diffMinutes / 60);
+        if (diffHours < 24) return tTime("hoursAgo", { count: diffHours });
+        const diffDays = Math.floor(diffHours / 24);
+        if (diffDays < 7) return tTime("daysAgo", { count: diffDays });
+        return format.dateTime(new Date(value), { month: "short", day: "numeric" });
+    };
 }
 
 export function MessagingHub({
@@ -125,6 +130,9 @@ export function MessagingHub({
     humans?: GroupDialogHuman[];
     currentUserId?: string | null;
 }) {
+    const t = useTranslations("messagingHub");
+    const formatRelativeMessageTime = useRelativeMessageTime();
+    const secondaryThreadLabel = (thread: DirectThreadSummary) => (thread.kind === "private" ? t("privateThread", { name: thread.agentName }) : workLogThreadTitle(thread.agentName));
     const router = useRouter();
     const [selectedAgentId, setSelectedAgentId] = useState<string | null>(null);
     // Set only for a secondary direct thread; null = the agent's main conversation.
@@ -277,19 +285,19 @@ export function MessagingHub({
     };
 
     const conversationTitle = activeGroup?.isAgentPair
-        ? `Agent conversation: ${activeGroup.title}`
-        : activeGroup?.title || (activeSecondaryThread ? secondaryThreadLabel(activeSecondaryThread) : activeAgent?.name) || "Team Channel";
+        ? t("agentConversation", { title: activeGroup.title })
+        : activeGroup?.title || (activeSecondaryThread ? secondaryThreadLabel(activeSecondaryThread) : activeAgent?.name) || t("teamChannel");
     const conversationDescription = activeGroup?.isAgentPair
-        ? activeGroup.description || "Private agent conversation"
+        ? activeGroup.description || t("privateAgentConversation")
         : activeGroup
-            ? activeGroup.description || `${groupAgents.length} agent${groupAgents.length === 1 ? "" : "s"} · @mention a member to get a reply`
+            ? activeGroup.description || t("groupDescription", { count: groupAgents.length })
             : activeSecondaryThread
                 ? activeSecondaryThread.kind === "private"
-                    ? "Your private conversation from when direct chats were private"
-                    : "System updates and work this agent started on its own"
+                    ? t("privateEarlier")
+                    : t("workLogDescription")
             : activeAgent
-                ? activeAgent.role || "Direct agent conversation"
-                : "Everyone can see & reply. @mention an agent to get replies.";
+                ? activeAgent.role || t("directConversation")
+                : t("teamDescription");
     const teamSelected = selectedAgentId === null && selectedGroupId === null;
     const editingGroup = groupDialog?.mode === "edit" ? groups.find((g) => g.id === groupDialog.groupId) ?? null : null;
 
@@ -306,8 +314,8 @@ export function MessagingHub({
                         <IconMessages className="h-4 w-4" />
                     </div>
                     <div>
-                        <h1 className="text-lg font-semibold tracking-tight text-zinc-100">Messages</h1>
-                        <p className="text-[11px] text-zinc-500">Team and direct conversations</p>
+                        <h1 className="text-lg font-semibold tracking-tight text-zinc-100">{t("title")}</h1>
+                        <p className="text-[11px] text-zinc-500">{t("subtitle")}</p>
                     </div>
                 </div>
                 <div className="border-b border-zinc-800/80 p-3 sm:p-4">
@@ -315,10 +323,10 @@ export function MessagingHub({
                         <IconSearch className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-500" />
                         <input
                             type="text"
-                            placeholder="Filter agents..."
+                            placeholder={t("filterPlaceholder")}
                             value={searchQuery}
                             onChange={(e) => setSearchQuery(e.target.value)}
-                            aria-label="Filter conversations"
+                            aria-label={t("filterLabel")}
                             className="h-11 w-full rounded-xl border border-zinc-800 bg-zinc-950/80 py-2 pl-9 pr-4 text-sm text-zinc-200 placeholder:text-zinc-600 focus:outline-none focus:ring-2 focus:ring-cyan-400/70"
                         />
                     </div>
@@ -350,9 +358,9 @@ export function MessagingHub({
                                         "text-sm font-semibold tracking-tight",
                                         teamSelected ? "text-cyan-100" : "text-zinc-300"
                                     )}>
-                                        Team Channel
+                                        {t("teamChannel")}
                                     </span>
-                                    <span className="text-[10px] uppercase font-bold text-zinc-500 tracking-wider">Everyone</span>
+                                    <span className="text-[10px] uppercase font-bold text-zinc-500 tracking-wider">{t("everyone")}</span>
                                 </div>
                                 {teamUnreadCount > 0 && (
                                     <span className="min-w-5 shrink-0 rounded-full bg-cyan-400 px-1.5 py-0.5 text-center text-[10px] font-bold text-cyan-950">
@@ -363,12 +371,12 @@ export function MessagingHub({
                         </button>
 
                         <div className="mt-6 mb-1 flex items-center justify-between px-3 text-[10px] font-bold uppercase tracking-[0.1em] text-zinc-600">
-                            Groups
+                            {t("groups")}
                             <button
                                 type="button"
                                 onClick={() => setGroupDialog({ mode: "create" })}
-                                aria-label="New group"
-                                title="New group"
+                                aria-label={t("newGroup")}
+                                title={t("newGroup")}
                                 className="grid h-6 w-6 place-items-center rounded-md text-zinc-500 transition-colors hover:bg-zinc-800 hover:text-cyan-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400/70"
                             >
                                 <IconPlus className="h-3.5 w-3.5" />
@@ -376,7 +384,7 @@ export function MessagingHub({
                         </div>
                         {groups.some((g) => g.isAgentPair) && <label className="mb-2 flex min-h-11 cursor-pointer items-center gap-2 px-2 text-xs text-zinc-400">
                             <input type="checkbox" checked={showAgentConversations} onChange={(e) => { setShowAgentConversations(e.target.checked); localStorage.setItem(AGENT_CONVERSATIONS_KEY, e.target.checked ? "1" : "0"); }} className="h-4 w-4 accent-cyan-400 focus-visible:outline focus-visible:outline-2 focus-visible:outline-cyan-300" />
-                            Show agent-to-agent conversations
+                            {t("showAgentConversations")}
                         </label>}
                         {filteredGroups.map((group) => {
                             const agentCount = group.members.filter((m) => m.kind === "agent").length;
@@ -404,7 +412,7 @@ export function MessagingHub({
                                             )}
                                         </div>
                                         <span className="block truncate text-[11px] text-zinc-500">
-                                            {group.lastMessageText || `${agentCount} agent${agentCount === 1 ? "" : "s"} · ${formatRelativeMessageTime(group.lastMessageAt)}`}
+                                            {group.lastMessageText || t("groupRow", { count: agentCount, time: formatRelativeMessageTime(group.lastMessageAt) })}
                                         </span>
                                     </div>
                                 </button>
@@ -417,12 +425,12 @@ export function MessagingHub({
                                 className="flex w-full items-center gap-2 rounded-xl border border-dashed border-zinc-800 px-3 py-2.5 text-left text-xs text-zinc-500 transition-colors hover:border-cyan-400/40 hover:text-cyan-200"
                             >
                                 <IconPlus className="h-3.5 w-3.5" />
-                                Create a group for a team, like your devs and tester
+                                {t("createGroupHint")}
                             </button>
                         )}
 
                         <div className="mt-6 px-3 mb-2 flex items-center text-[10px] font-bold uppercase tracking-[0.1em] text-zinc-600">
-                            Direct Messages
+                            {t("directMessages")}
                         </div>
 
                         {filteredThreads.map((thread) => (
@@ -457,7 +465,7 @@ export function MessagingHub({
                                                 {thread.agentName}
                                             </span>
                                             <span className="block text-[10px] font-medium text-zinc-500 truncate">
-                                                {thread.agentRole || "Operator"}
+                                                {thread.agentRole || t("operator")}
                                             </span>
                                         </div>
                                         <div className="flex flex-col items-end gap-1 shrink-0">
@@ -472,7 +480,7 @@ export function MessagingHub({
                                         </div>
                                     </div>
                                     <div className="mt-2 text-xs leading-relaxed text-zinc-500 truncate">
-                                        {thread.lastMessageText || "No direct conversation yet."}
+                                        {thread.lastMessageText || t("noDirectYet")}
                                     </div>
                                 </div>
                             </button>
@@ -480,7 +488,7 @@ export function MessagingHub({
 
                         {visibleSecondaryThreads.length > 0 && (
                             <div className="mt-6 px-3 mb-2 flex items-center text-[10px] font-bold uppercase tracking-[0.1em] text-zinc-600">
-                                Shared agent threads
+                                {t("sharedThreads")}
                             </div>
                         )}
                         {visibleSecondaryThreads.map((thread) => {
@@ -522,16 +530,16 @@ export function MessagingHub({
                                     compact
                                     className="mt-4"
                                     icon={IconSearch}
-                                    title="No agents match that search"
-                                    description={<button type="button" onClick={() => setSearchQuery("")} className="text-primary hover:underline">Clear the search</button>}
+                                    title={t("noMatches")}
+                                    description={<button type="button" onClick={() => setSearchQuery("")} className="text-primary hover:underline">{t("clearSearch")}</button>}
                                 />
                             ) : (
                                 <EmptyState
                                     compact
                                     className="mt-4"
                                     icon={IconMessages}
-                                    title="No agents to chat with yet"
-                                    description="Each agent gets a direct chat here once it is hired. Hire one from Agents."
+                                    title={t("emptyTitle")}
+                                    description={t("emptyDescription")}
                                 />
                             )
                         )}
@@ -549,7 +557,7 @@ export function MessagingHub({
                         <button
                             type="button"
                             onClick={() => setMobileChatOpen(false)}
-                            aria-label="Back to conversations"
+                            aria-label={t("backToConversations")}
                             className="grid h-11 w-11 shrink-0 place-items-center rounded-xl text-zinc-400 transition-colors hover:bg-zinc-800 hover:text-zinc-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400/70 sm:hidden"
                         >
                             <IconArrowLeft className="h-5 w-5" />
@@ -558,8 +566,8 @@ export function MessagingHub({
                             <DropdownMenuTrigger asChild>
                                 <button
                                     type="button"
-                                    aria-label={`Switch conversation. Current: ${conversationTitle}`}
-                                    title="Switch conversation"
+                                    aria-label={t("switchCurrent", { title: conversationTitle })}
+                                    title={t("switchConversation")}
                                     className="group flex min-w-0 items-center gap-2.5 rounded-xl px-1.5 py-1 transition-colors hover:bg-zinc-800/70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400/70 sm:pr-2"
                                 >
                                     {activeGroup ? (
@@ -591,7 +599,7 @@ export function MessagingHub({
                                 className="w-72 rounded-xl border-zinc-800 bg-zinc-950 p-1.5 text-zinc-200 shadow-2xl shadow-black/50"
                             >
                                 <DropdownMenuLabel className="px-2.5 py-2 text-[10px] font-bold uppercase tracking-[0.16em] text-zinc-600">
-                                    Switch conversation
+                                    {t("switchConversation")}
                                 </DropdownMenuLabel>
                                 <DropdownMenuItem
                                     onSelect={openTeamChannel}
@@ -601,8 +609,8 @@ export function MessagingHub({
                                         <IconUsers className="h-4 w-4" />
                                     </div>
                                     <div className="min-w-0 flex-1">
-                                        <div className="truncate text-sm font-medium">Team Channel</div>
-                                        <div className="text-[10px] text-zinc-500">Everyone</div>
+                                        <div className="truncate text-sm font-medium">{t("teamChannel")}</div>
+                                        <div className="text-[10px] text-zinc-500">{t("everyone")}</div>
                                     </div>
                                     {teamUnreadCount > 0 && (
                                         <span className="min-w-5 shrink-0 rounded-full bg-cyan-400 px-1.5 py-0.5 text-center text-[10px] font-bold text-cyan-950">
@@ -615,7 +623,7 @@ export function MessagingHub({
                                     <>
                                         <DropdownMenuSeparator className="my-1.5 bg-zinc-800" />
                                         <DropdownMenuLabel className="px-2.5 py-1.5 text-[10px] font-bold uppercase tracking-[0.16em] text-zinc-600">
-                                            Groups
+                                            {t("groups")}
                                         </DropdownMenuLabel>
                                         {groups.filter((group) => showAgentConversations || !group.isAgentPair).map((group) => (
                                             <DropdownMenuItem
@@ -628,7 +636,7 @@ export function MessagingHub({
                                                 </div>
                                                 <div className="min-w-0 flex-1">
                                                     <div className="truncate text-sm font-medium">{group.title}</div>
-                                                    <div className="text-[10px] text-zinc-500">{group.members.filter((m) => m.kind === "agent").length} agents</div>
+                                                    <div className="text-[10px] text-zinc-500">{t("agentCount", { count: group.members.filter((m) => m.kind === "agent").length })}</div>
                                                 </div>
                                                 {group.unreadCount > 0 && (
                                                     <span className="min-w-5 rounded-full bg-cyan-400 px-1.5 py-0.5 text-center text-[10px] font-bold text-cyan-950">{group.unreadCount}</span>
@@ -640,7 +648,7 @@ export function MessagingHub({
                                 )}
                                 <DropdownMenuSeparator className="my-1.5 bg-zinc-800" />
                                 <DropdownMenuLabel className="px-2.5 py-1.5 text-[10px] font-bold uppercase tracking-[0.16em] text-zinc-600">
-                                    Direct messages
+                                    {t("directMessagesMenu")}
                                 </DropdownMenuLabel>
                                 {directThreads.map((thread) => (
                                     <DropdownMenuItem
@@ -657,7 +665,7 @@ export function MessagingHub({
                                         </div>
                                         <div className="min-w-0 flex-1">
                                             <div className="truncate text-sm font-medium">{thread.agentName}</div>
-                                            <div className="truncate text-[10px] text-zinc-500">{thread.agentRole || "Operator"}</div>
+                                            <div className="truncate text-[10px] text-zinc-500">{thread.agentRole || t("operator")}</div>
                                         </div>
                                         {thread.unreadCount > 0 && (
                                             <span className="min-w-5 rounded-full bg-cyan-400 px-1.5 py-0.5 text-center text-[10px] font-bold text-cyan-950">
@@ -674,8 +682,8 @@ export function MessagingHub({
                         <button
                             type="button"
                             onClick={() => setGroupDialog({ mode: "edit", groupId: activeGroup.id })}
-                            aria-label="Manage group members"
-                            title="Members & settings"
+                            aria-label={t("manageMembers")}
+                            title={t("membersSettings")}
                             className="ml-auto flex h-10 shrink-0 items-center gap-2 rounded-xl border border-zinc-800 px-2 text-zinc-400 transition-colors hover:border-cyan-400/40 hover:bg-cyan-400/10 hover:text-cyan-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400/70"
                         >
                             <span className="hidden -space-x-2 sm:flex">
@@ -697,8 +705,8 @@ export function MessagingHub({
                     <button
                         type="button"
                         onClick={toggleFocusMode}
-                        aria-label={isFocused ? "Show conversations" : "Focus on conversation"}
-                        title={isFocused ? "Show conversations" : "Focus mode"}
+                        aria-label={isFocused ? t("showConversations") : t("focusConversation")}
+                        title={isFocused ? t("showConversations") : t("focusMode")}
                         className="hidden h-10 w-10 shrink-0 place-items-center rounded-xl border border-zinc-800 text-zinc-500 transition-colors hover:border-cyan-400/40 hover:bg-cyan-400/10 hover:text-cyan-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400/70 sm:grid"
                     >
                         {isFocused ? <IconLayoutSidebarLeftExpand className="h-4 w-4" /> : <IconLayoutSidebarLeftCollapse className="h-4 w-4" />}
@@ -716,8 +724,8 @@ export function MessagingHub({
                                     sendable={!activeGroup.isAgentPair}
                                     groupId={activeGroup.id}
                                     placeholder={activeGroup.isAgentPair
-                                        ? "This is a private agent conversation (read-only)"
-                                        : `Message ${activeGroup.title}… (@ a member, or @all)`}
+                                        ? t("readOnlyPlaceholder")
+                                        : t("groupPlaceholder", { title: activeGroup.title })}
                                 />
                             </div>
                         </div>
@@ -739,7 +747,7 @@ export function MessagingHub({
                     </div>
                 ) : (
                     <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
-                        <AgentDirectChat key={`${selectedAgentId}:${selectedDirectThreadId ?? ""}`} agentId={selectedAgentId} agentName={activeAgent?.name || "Agent"} hideHeader={true} directThreadId={selectedDirectThreadId} />
+                        <AgentDirectChat key={`${selectedAgentId}:${selectedDirectThreadId ?? ""}`} agentId={selectedAgentId} agentName={activeAgent?.name || t("agent")} hideHeader={true} directThreadId={selectedDirectThreadId} />
                     </div>
                 )}
             </section>

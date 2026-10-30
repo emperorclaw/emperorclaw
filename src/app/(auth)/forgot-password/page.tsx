@@ -3,9 +3,14 @@
 import { useState } from "react";
 import Link from "next/link";
 import { IconMail, IconArrowLeft, IconCircleCheck } from "@tabler/icons-react";
+import { useTranslations } from "next-intl";
 import { AuthBackground } from "@/components/auth-background";
+import { useApiError } from "@/lib/i18n/use-api-error";
 
 export default function ForgotPasswordPage() {
+    const t = useTranslations("auth.forgot");
+    const tAuth = useTranslations("auth");
+    const apiError = useApiError();
     const [email, setEmail] = useState("");
     const [isLoading, setIsLoading] = useState(false);
     const [isSuccess, setIsSuccess] = useState(false);
@@ -27,10 +32,10 @@ export default function ForgotPasswordPage() {
                 setIsSuccess(true);
             } else {
                 const data = await res.json();
-                setError(data.error || "An error occurred");
+                setError(apiError(data.error, tAuth("genericError")));
             }
         } catch (err) {
-            setError("Network error. Please try again.");
+            setError(tAuth("networkError"));
         } finally {
             setIsLoading(false);
         }
@@ -44,9 +49,9 @@ export default function ForgotPasswordPage() {
                     <div className="w-12 h-12 rounded-xl bg-cyan-500/20 flex items-center justify-center border border-cyan-500/30 mb-4 shadow-[0_0_30px_rgba(6,182,212,0.2)]">
                         <IconMail className="w-6 h-6 text-cyan-400" />
                     </div>
-                    <h2 className="text-3xl font-bold tracking-tight text-white mb-2">Reset Password</h2>
+                    <h2 className="text-3xl font-bold tracking-tight text-white mb-2">{t("title")}</h2>
                     <p className="text-zinc-400 text-center">
-                        Enter your email address and we&apos;ll send you a link to reset your password.
+                        {t("subtitle")}
                     </p>
                 </div>
 
@@ -59,19 +64,19 @@ export default function ForgotPasswordPage() {
                             <div className="w-16 h-16 bg-emerald-500/20 rounded-full flex items-center justify-center border border-emerald-500/30 mb-2 shadow-[0_0_30px_rgba(16,185,129,0.2)]">
                                 <IconCircleCheck className="w-8 h-8 text-emerald-400" />
                             </div>
-                            <h3 className="text-xl font-semibold text-zinc-100">Check your inbox</h3>
+                            <h3 className="text-xl font-semibold text-zinc-100">{t("checkInbox")}</h3>
                             <p className="text-zinc-400 text-sm">
-                                We&apos;ve sent a password reset link to <strong>{email}</strong>.
+                                {t.rich("sentTo", { email, strong: (chunks) => <strong>{chunks}</strong> })}
                             </p>
                             <Link href="/login" className="w-full mt-6 bg-zinc-900 border border-zinc-800 hover:bg-zinc-800 text-white font-semibold py-3 px-4 rounded-xl transition-all duration-200 flex items-center justify-center">
                                 <IconArrowLeft className="w-4 h-4 mr-2" />
-                                Back to Login
+                                {t("backToLogin")}
                             </Link>
                         </div>
                     ) : (
                         <form onSubmit={handleSubmit} className="space-y-6 relative z-10">
                             <div className="space-y-2">
-                                <label className="text-sm font-medium text-zinc-300 ml-1">Account Email</label>
+                                <label className="text-sm font-medium text-zinc-300 ml-1">{t("accountEmail")}</label>
                                 <div className="relative">
                                     <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
                                         <IconMail className="h-5 w-5 text-zinc-500" />
@@ -82,14 +87,14 @@ export default function ForgotPasswordPage() {
                                         value={email}
                                         onChange={(e) => setEmail(e.target.value)}
                                         className="w-full pl-10 pr-4 py-3 bg-zinc-900/50 border border-zinc-800 rounded-xl focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500 text-white placeholder-zinc-500 transition-all outline-none"
-                                        placeholder="you@company.com"
+                                        placeholder={t("emailPlaceholder")}
                                     />
                                 </div>
                             </div>
 
                             {error && (
                                 <div className="p-3 bg-rose-500/10 border border-rose-500/20 rounded-xl text-sm text-rose-400 flex items-center">
-                                    <span className="mr-2 font-semibold">Warning:</span> {error}
+                                    <span className="mr-2 font-semibold">{tAuth("warning")}</span> {error}
                                 </div>
                             )}
 
@@ -98,13 +103,13 @@ export default function ForgotPasswordPage() {
                                 disabled={isLoading}
                                 className="w-full bg-cyan-600 hover:bg-cyan-500 text-white font-semibold py-3 px-4 rounded-xl transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed shadow-[0_0_20px_rgba(6,182,212,0.3)] hover:shadow-[0_0_25px_rgba(6,182,212,0.5)]"
                             >
-                                {isLoading ? "Sending Link..." : "Send Reset Link"}
+                                {isLoading ? t("sending") : t("submit")}
                             </button>
 
                             <div className="text-center pt-2">
                                     <Link href="/login" className="text-sm text-zinc-400 hover:text-cyan-400 transition-colors inline-flex items-center">
                                     <IconArrowLeft className="w-4 h-4 mr-1" />
-                                    Back to login
+                                    {t("backToLogin")}
                                 </Link>
                             </div>
                         </form>

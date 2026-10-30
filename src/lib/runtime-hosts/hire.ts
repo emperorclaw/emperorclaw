@@ -3,6 +3,7 @@
 // API (POST /api/agents) and the host list the hire dialog shows.
 
 import { HOST_LLM_PROVIDERS, PROVISION_MEMORY_MIB, hostSupports, type HostLlmProvider } from "./commands";
+import { copy, type CodedCopy } from "@/lib/coded-copy";
 
 export type HireHostFacts = {
     status: string;
@@ -22,6 +23,8 @@ export type HireReadiness = {
     reason: string | null;
     /** "update": the host must be updated first (its daemon predates 0.22). */
     code: "ok" | "revoked" | "offline" | "update" | "no_provider" | "memory";
+    /** The numbers in a "memory" reason, so the UI can word it in the viewer's language (free, or left after reserved). */
+    reasonValues?: { needMiB: number; freeMiB?: number; leftMiB?: number; reservedMiB?: number };
     gateway: "standalone" | "shared";
     needMiB: number;
     skipBrowser: boolean;
@@ -54,10 +57,36 @@ export function hireReadiness(host: HireHostFacts): HireReadiness {
         const left = Math.max(0, host.memAvailMiB - reserved);
         return {
             ...base, ok: false, code: "memory",
+            reasonValues: reserved > 0 ? { needMiB, leftMiB: left, reservedMiB: reserved } : { needMiB, freeMiB: host.memAvailMiB },
             reason: reserved > 0
                 ? `Not enough free memory (${left} MB left after the ${reserved} MB the setups already queued need; a new agent needs ${needMiB} MB)`
                 : `Not enough free memory (${host.memAvailMiB} MB free, a new agent needs ${needMiB} MB)`,
         };
     }
     return { ...base, ok: true, code: "ok", reason: null };
+}
+
+/**
+ * Why a host cannot take a new agent, as coded copy (runtimeHosts.hireReasons.*)
+ * for the hire dialog in the viewer's language; null when it can (or the reason
+ * is one this build has no message for: the English reason shows instead).
+ */
+export function hireReasonCopy(hire: Pick<HireReadiness, "code" | "reason" | "reasonValues">): CodedCopy | null {
+    if (!hire.reason) return null;
+    switch (hire.code) {
+        case "revoked":
+        case "offline":
+        case "update":
+        case "no_provider":
+            return copy(`runtimeHosts.hireReasons.${hire.code}`);
+        case "memory": {
+            const values = hire.reasonValues;
+            if (!values) return null;
+            return values.reservedMiB
+                ? copy("runtimeHosts.hireReasons.memoryReserved", { left: values.leftMiB ?? 0, reserved: values.reservedMiB, need: values.needMiB })
+                : copy("runtimeHosts.hireReasons.memory", { free: values.freeMiB ?? 0, need: values.needMiB });
+        }
+        default:
+            return null;
+    }
 }

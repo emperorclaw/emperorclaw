@@ -5,9 +5,18 @@ import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { IconAlertTriangle, IconLoader2, IconShieldX, IconMail, IconCircleCheck } from "@tabler/icons-react";
 import { AuthBackground } from "@/components/auth-background";
+import { useTranslations } from "next-intl";
 import { CustomLogo } from "@/components/custom-logo";
+import { useApiError } from "@/lib/i18n/use-api-error";
+
+const INVITE_ROLES = ["admin", "member", "viewer"] as const;
+const INVITE_FAILURES = ["expired", "consumed", "not_found", "email_mismatch"] as const;
+type InviteFailure = (typeof INVITE_FAILURES)[number] | "invalid" | "checkFailed";
 
 function SignupForm() {
+    const t = useTranslations("auth.signup");
+    const tRoles = useTranslations("settings.members.roles");
+    const apiError = useApiError();
     const router = useRouter();
     const searchParams = useSearchParams();
 
@@ -30,6 +39,9 @@ function SignupForm() {
         companyName: string;
     } | null>(null);
     const [inviteChecking, setInviteChecking] = useState(!!inviteParam);
+    // Kept as a code and rendered below, so the fetch effect does not depend on
+    // the translator (PublicIntlProvider swaps messages after mount).
+    const [inviteFailure, setInviteFailure] = useState<InviteFailure | null>(null);
 
     // Registration state
     const [regMode, setRegMode] = useState<"loading" | "bootstrap" | "invite-only" | "open" | "invited">(
@@ -64,20 +76,14 @@ function SignupForm() {
                         setRegMode("invited");
                     } else {
                         setInviteValid(false);
-                        const reasonMessages: Record<string, string> = {
-                            expired: "This invitation has expired. Please contact your administrator for a new one.",
-                            consumed: "This invitation has already been used. Log in instead.",
-                            not_found: "Invalid or expired invitation token.",
-                            email_mismatch: "This invitation is for a different email address.",
-                        };
-                        setError(reasonMessages[data.reason] || "Invalid invitation.");
+                        setInviteFailure(INVITE_FAILURES.find((r) => r === data.reason) ?? "invalid");
                         setRegMode("invite-only");
                     }
                 })
                 .catch(() => {
                     setInviteChecking(false);
                     setInviteValid(false);
-                    setError("Could not validate the invitation. Please try again.");
+                    setInviteFailure("checkFailed");
                     setRegMode("invite-only");
                 });
         } else {
@@ -105,20 +111,20 @@ function SignupForm() {
         // In bootstrap mode, companyName is required
         if (regMode === "bootstrap") {
             if (!normalizedCompanyName || normalizedCompanyName.length < 2) {
-                return "Enter a company name with at least 2 characters.";
+                return t("validation.companyName");
             }
             if (!acceptBetaDisclaimer) {
-                return "You must acknowledge the beta data disclaimer.";
+                return t("validation.disclaimer");
             }
         }
         if (!normalizedEmail) {
-            return "Enter your work email.";
+            return t("validation.email");
         }
         if (password.length < 8) {
-            return "Password must be at least 8 characters.";
+            return t("validation.passwordLength");
         }
         if (!passwordsMatch) {
-            return "Passwords do not match.";
+            return t("validation.passwordMismatch");
         }
         return "";
     };
@@ -159,7 +165,7 @@ function SignupForm() {
 
             if (!res.ok) {
                 const data = await res.json();
-                throw new Error(data.error || "Failed to register");
+                throw new Error(apiError(data.error, t("registerFailed")));
             }
 
             const data = await res.json();
@@ -175,7 +181,7 @@ function SignupForm() {
             }
             router.refresh();
         } catch (err: unknown) {
-            setError(err instanceof Error ? err.message : "Registration failed");
+            setError(err instanceof Error ? err.message : t("registrationFailed"));
         } finally {
             setLoading(false);
         }
@@ -188,13 +194,17 @@ function SignupForm() {
                 <AuthBackground />
                 <div className="relative z-10 w-full max-w-xl px-6 py-10 text-center">
                     <IconLoader2 className="w-8 h-8 animate-spin text-indigo-400 mx-auto" />
-                    <p className="text-zinc-400 mt-4">Loading...</p>
+                    <p className="text-zinc-400 mt-4">{t("loading")}</p>
                 </div>
             </div>
         );
     }
 
     // ── Invite-only blocked state ────────────────────────────────────────
+    const inviteFailureText = inviteFailure === null ? ""
+        : inviteFailure === "invalid" ? t("inviteInvalid")
+            : inviteFailure === "checkFailed" ? t("inviteCheckFailed")
+                : t(`inviteFailures.${inviteFailure}`);
     if (regMode === "invite-only" && !inviteValid) {
         return (
             <div className="min-h-screen flex flex-col justify-center items-center relative overflow-hidden">
@@ -207,15 +217,15 @@ function SignupForm() {
                     </div>
                     <div className="bg-zinc-900/60 backdrop-blur-2xl border border-zinc-800/80 p-8 rounded-3xl shadow-[0_8px_40px_rgba(0,0,0,0.4)] text-center">
                         <IconShieldX className="w-12 h-12 text-amber-400 mx-auto mb-4" />
-                        <h1 className="text-2xl font-semibold text-zinc-100 tracking-tight mb-3">Invite-Only Instance</h1>
+                        <h1 className="text-2xl font-semibold text-zinc-100 tracking-tight mb-3">{t("inviteOnlyTitle")}</h1>
                         <p className="text-zinc-400 text-sm mb-6">
-                            {error || "This instance is invite-only. Contact your administrator for an invitation."}
+                            {error || inviteFailureText || t("inviteOnlyBody")}
                         </p>
                         <Link
                             href="/login"
                             className="inline-flex items-center justify-center bg-indigo-600 hover:bg-indigo-500 text-white font-medium py-3 px-6 rounded-lg transition-colors"
                         >
-                            Go to Login
+                            {t("goToLogin")}
                         </Link>
                     </div>
                 </div>
@@ -225,17 +235,18 @@ function SignupForm() {
 
     // ── Determine heading and fields based on state ──────────────────────
     const heading = regMode === "bootstrap"
-        ? "Set up your instance"
+        ? t("headingBootstrap")
         : regMode === "invited"
-            ? "Accept your invitation"
-            : "Create an account";
+            ? t("headingInvited")
+            : t("headingOpen");
 
-    const activateSuffix = emailConfigured ? " and verify your email to activate it" : "";
+    const inviteRole = INVITE_ROLES.find((role) => role === inviteInfo?.role);
+    const roleLabel = inviteRole ? tRoles(inviteRole) : inviteInfo?.role ?? "";
     const subtitle = regMode === "bootstrap"
-        ? `Set up your Emperor Claw workspace${activateSuffix}.`
+        ? t("subtitleBootstrap", { verify: emailConfigured ? "yes" : "no" })
         : regMode === "invited" && inviteInfo
-            ? `You've been invited to join ${inviteInfo.companyName} as ${inviteInfo.role}.`
-            : `Create your Emperor Claw account${activateSuffix}.`;
+            ? t("subtitleInvited", { company: inviteInfo.companyName, role: roleLabel })
+            : t("subtitleOpen", { verify: emailConfigured ? "yes" : "no" });
 
     const showCompanyName = regMode === "bootstrap";
     const showBetaDisclaimer = regMode === "bootstrap";
@@ -264,10 +275,10 @@ function SignupForm() {
                                 <IconCircleCheck className="mt-0.5 h-5 w-5 shrink-0 text-indigo-400" />
                                 <div>
                                     <p className="font-medium text-indigo-200">
-                                        Invited to join {inviteInfo?.companyName}
+                                        {t("invitedTo", { company: inviteInfo?.companyName ?? "" })}
                                     </p>
                                     <p className="text-zinc-400 mt-1">
-                                        Role: <span className="text-zinc-300 font-medium capitalize">{inviteInfo?.role}</span>
+                                        {t("roleLabel")} <span className="text-zinc-300 font-medium">{roleLabel}</span>
                                     </p>
                                 </div>
                             </div>
@@ -283,7 +294,7 @@ function SignupForm() {
 
                         {showCompanyName && (
                             <div className="space-y-1">
-                                <label htmlFor="signup-company" className="text-sm font-medium text-zinc-400">Company Name</label>
+                                <label htmlFor="signup-company" className="text-sm font-medium text-zinc-400">{t("companyName")}</label>
                                 <input
                                     id="signup-company"
                                     type="text"
@@ -294,13 +305,13 @@ function SignupForm() {
                                     maxLength={120}
                                     autoComplete="organization"
                                     className="w-full bg-zinc-950/50 border border-zinc-800 rounded-lg p-3 text-sm text-zinc-200 focus:outline-none focus:ring-2 focus:ring-indigo-500/50 focus:border-indigo-500/50 transition-all"
-                                    placeholder="Acme Corp"
+                                    placeholder={t("companyPlaceholder")}
                                 />
                             </div>
                         )}
 
                         <div className="space-y-1">
-                            <label htmlFor="signup-email" className="text-sm font-medium text-zinc-400">Work Email</label>
+                            <label htmlFor="signup-email" className="text-sm font-medium text-zinc-400">{t("workEmail")}</label>
                             <input
                                 id="signup-email"
                                 type="email"
@@ -312,12 +323,12 @@ function SignupForm() {
                                 inputMode="email"
                                 readOnly={!!showInviteBanner}
                                 className={`w-full bg-zinc-950/50 border border-zinc-800 rounded-lg p-3 text-sm text-zinc-200 focus:outline-none focus:ring-2 focus:ring-indigo-500/50 focus:border-indigo-500/50 transition-all ${showInviteBanner ? "opacity-60 cursor-not-allowed" : ""}`}
-                                placeholder="name@acme.com"
+                                placeholder={t("emailPlaceholder")}
                             />
                         </div>
 
                         <div className="space-y-1">
-                            <label htmlFor="signup-password" className="text-sm font-medium text-zinc-400">Password</label>
+                            <label htmlFor="signup-password" className="text-sm font-medium text-zinc-400">{t("password")}</label>
                             <input
                                 id="signup-password"
                                 type="password"
@@ -330,11 +341,11 @@ function SignupForm() {
                                 className="w-full bg-zinc-950/50 border border-zinc-800 rounded-lg p-3 text-sm text-zinc-200 focus:outline-none focus:ring-2 focus:ring-indigo-500/50 focus:border-indigo-500/50 transition-all"
                                 placeholder="........"
                             />
-                            <p className="text-xs text-zinc-500">Use at least 8 characters.</p>
+                            <p className="text-xs text-zinc-500">{t("passwordHint")}</p>
                         </div>
 
                         <div className="space-y-1">
-                            <label htmlFor="signup-confirm-password" className="text-sm font-medium text-zinc-400">Confirm Password</label>
+                            <label htmlFor="signup-confirm-password" className="text-sm font-medium text-zinc-400">{t("confirmPassword")}</label>
                             <input
                                 id="signup-confirm-password"
                                 type="password"
@@ -348,7 +359,7 @@ function SignupForm() {
                                 placeholder="........"
                             />
                             {confirmPassword && !passwordsMatch && (
-                                <p className="text-xs text-amber-400">Passwords do not match yet.</p>
+                                <p className="text-xs text-amber-400">{t("passwordsDiffer")}</p>
                             )}
                         </div>
 
@@ -358,16 +369,15 @@ function SignupForm() {
                                     <div className="flex items-start gap-3">
                                         <IconShieldX className="mt-0.5 h-5 w-5 shrink-0 text-amber-300" />
                                         <div className="space-y-2">
-                                            <p className="font-medium text-amber-200">Beta notice</p>
+                                            <p className="font-medium text-amber-200">{t("betaTitle")}</p>
                                             <p className="text-zinc-300/90">
-                                                Emperor Claw is beta software provided as-is. We do not guarantee safety, retention, recovery, availability, or suitability of stored data or agent output.
-                                                You are responsible for how the system is used and for the data you place here.
+                                                {t("betaBody")}
                                             </p>
                                             <p className="text-zinc-400">
-                                                Do not store critical secrets, regulated data, production-only credentials, or other information you cannot afford to expose, lose, or recreate.
+                                                {t("betaSecrets")}
                                             </p>
                                             <p className="text-zinc-500">
-                                                By creating a workspace, you confirm you are authorized to use this email address for the company you enter below.
+                                                {t("betaAuthorized")}
                                             </p>
                                         </div>
                                     </div>
@@ -382,7 +392,7 @@ function SignupForm() {
                                         required
                                     />
                                     <span>
-                                        I understand this product is in beta, is provided without warranty, and that I am responsible for the data and operations I run inside this workspace.
+                                        {t("betaAccept")}
                                     </span>
                                 </label>
                             </>
@@ -392,10 +402,8 @@ function SignupForm() {
                             <div className="flex items-start gap-2">
                                 <IconAlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-zinc-500" />
                                 <p>
-                                    {emailConfigured
-                                        ? "We will send a verification link to this email before the workspace can be used."
-                                        : "No email server is configured, so your account is activated immediately — you can log in right after signing up."}
-                                    {showCompanyName && " Create only one workspace per company unless you intentionally want separate isolated datasets and agent state."}
+                                    {emailConfigured ? t("verificationNotice") : t("noEmailServer")}
+                                    {showCompanyName && ` ${t("oneWorkspace")}`}
                                 </p>
                             </div>
                         </div>
@@ -410,14 +418,14 @@ function SignupForm() {
                             disabled={loading || Boolean(validateClientInput())}
                             className="w-full bg-indigo-600 hover:bg-indigo-500 text-white font-medium py-3 rounded-lg flex items-center justify-center transition-colors disabled:opacity-50 mt-6"
                         >
-                            {loading ? <IconLoader2 className="w-5 h-5 animate-spin" /> : regMode === "bootstrap" ? "Create Workspace" : regMode === "invited" ? "Accept Invitation" : "Create Account"}
+                            {loading ? <IconLoader2 className="w-5 h-5 animate-spin" /> : regMode === "bootstrap" ? t("submitBootstrap") : regMode === "invited" ? t("submitInvited") : t("submitOpen")}
                         </button>
                     </form>
 
                     <div className="mt-6 text-center text-sm text-zinc-500">
-                        Already have an account?{" "}
+                        {t("haveAccount")}{" "}
                         <Link href="/login" className="text-indigo-400 hover:text-indigo-300 font-medium transition-colors">
-                            Log in
+                            {t("logIn")}
                         </Link>
                     </div>
                 </div>
@@ -426,17 +434,22 @@ function SignupForm() {
     );
 }
 
+function SignupLoading() {
+    const t = useTranslations("auth.signup");
+    return (
+        <div className="min-h-screen flex flex-col justify-center items-center relative overflow-hidden">
+            <AuthBackground />
+            <div className="relative z-10 w-full max-w-xl px-6 py-10 text-center">
+                <IconLoader2 className="w-8 h-8 animate-spin text-indigo-400 mx-auto" />
+                <p className="text-zinc-400 mt-4">{t("loading")}</p>
+            </div>
+        </div>
+    );
+}
+
 export default function SignupPage() {
     return (
-        <Suspense fallback={
-            <div className="min-h-screen flex flex-col justify-center items-center relative overflow-hidden">
-                <AuthBackground />
-                <div className="relative z-10 w-full max-w-xl px-6 py-10 text-center">
-                    <IconLoader2 className="w-8 h-8 animate-spin text-indigo-400 mx-auto" />
-                    <p className="text-zinc-400 mt-4">Loading...</p>
-                </div>
-            </div>
-        }>
+        <Suspense fallback={<SignupLoading />}>
             <SignupForm />
         </Suspense>
     );

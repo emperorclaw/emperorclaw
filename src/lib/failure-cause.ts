@@ -19,6 +19,7 @@
  * ledger use, because a provider error can quote a key, a bearer token or a
  * signed URL back.
  */
+import { copy, type CodedCopy } from "@/lib/coded-copy";
 import { clipForRedaction, redactSensitive } from "@/lib/redact-sensitive";
 
 export type FailureCause =
@@ -51,7 +52,10 @@ export type FixAction =
     | { kind: "restart_runtime"; agentId: string };
 
 export interface FailureFix {
+    /** English label (agents and tests read it); the UI renders labelCopy. */
     label: string;
+    /** The label as a message key (failures.fixes.*) for the viewer's language. */
+    labelCopy: CodedCopy;
     action: FixAction;
     /** Rate limits: the fix is offered but held until this instant (ISO). */
     notBefore?: string | null;
@@ -59,8 +63,10 @@ export interface FailureFix {
 
 export interface FailureView {
     cause: FailureCause;
-    /** The one plain cause line. */
+    /** The one plain cause line (English). */
     headline: string;
+    /** The cause line as a message key (failures.headlines.*) for the viewer's language. */
+    headlineCopy: CodedCopy;
     /** The short raw error, only when the cause is unknown (otherwise the headline says it all). */
     detail: string | null;
     /** Null for viewers, and when nothing the viewer may do would help. */
@@ -161,6 +167,35 @@ export function failureHeadline(cause: FailureCause, options: { idleMs?: number 
     return cause === "stalled" ? stalledHeadline(options.idleMs) : HEADLINE[cause];
 }
 
+/** failureHeadline as coded copy: same cases, same numbers. */
+export function failureHeadlineCopy(cause: FailureCause, options: { idleMs?: number | null } = {}): CodedCopy {
+    if (cause !== "stalled") return copy(`failures.headlines.${cause}`);
+    const idleMs = options.idleMs;
+    if (idleMs == null || !Number.isFinite(idleMs) || idleMs <= 0) return copy("failures.headlines.stalledTimedOut");
+    const minutes = Math.max(1, Math.round(idleMs / 60_000));
+    if (minutes < 120) return copy("failures.headlines.stalledMinutes", { count: minutes });
+    return copy("failures.headlines.stalledHours", { count: Math.round(minutes / 60) });
+}
+
+/** Which fix a button offers; failures.fixes.<id> holds its label. */
+export type FixLabelId = "openProviderSettings" | "updateKey" | "raiseBudget" | "openAgentScope" | "chooseModel" | "checkProviderSettings" | "reconnectRuntime" | "retry" | "nudge";
+
+export const FIX_LABEL: Record<FixLabelId, string> = {
+    openProviderSettings: "Open provider settings",
+    updateKey: "Update key",
+    raiseBudget: "Raise budget",
+    openAgentScope: "Open agent scope",
+    chooseModel: "Choose a model",
+    checkProviderSettings: "Check provider settings",
+    reconnectRuntime: "Reconnect runtime",
+    retry: "Retry",
+    nudge: "Nudge",
+};
+
+function fixOf(id: FixLabelId, action: FixAction): FailureFix {
+    return { label: FIX_LABEL[id], labelCopy: copy(`failures.fixes.${id}`), action };
+}
+
 /** Which fixes need an owner or admin: provider keys and money and data scope. */
 export const ADMIN_ONLY_CAUSES: ReadonlySet<FailureCause> = new Set(["provider_credits", "provider_auth", "budget", "scope_denied"]);
 
@@ -189,10 +224,10 @@ function taskDirectiveAgent(ctx: FixContext): string | null {
 }
 
 /** "Retry": the message again when the viewer sent it, else a retry directive on the task, else nothing. */
-function retryFix(ctx: FixContext, label = "Retry"): FailureFix | null {
-    if (ctx.retryMessageId) return { label, action: { kind: "retry_message", messageId: ctx.retryMessageId } };
+function retryFix(ctx: FixContext): FailureFix | null {
+    if (ctx.retryMessageId) return fixOf("retry", { kind: "retry_message", messageId: ctx.retryMessageId });
     const target = taskDirectiveAgent(ctx);
-    if (target && ctx.taskId) return { label, action: { kind: "message_agent", agentId: target, taskId: ctx.taskId, mode: "retry" } };
+    if (target && ctx.taskId) return fixOf("retry", { kind: "message_agent", agentId: target, taskId: ctx.taskId, mode: "retry" });
     return null;
 }
 
@@ -209,24 +244,24 @@ export function failureFix(cause: FailureCause, ctx: FixContext): FailureFix | n
     const agentId = ctx.agentId ?? null;
     switch (cause) {
         case "provider_credits":
-            return agentId ? { label: "Open provider settings", action: { kind: "link", href: agentHref(agentId) } } : null;
+            return agentId ? fixOf("openProviderSettings", { kind: "link", href: agentHref(agentId) }) : null;
         case "provider_auth":
-            return { label: "Update key", action: { kind: "link", href: PROVIDER_KEY_DOC_HREF } };
+            return fixOf("updateKey", { kind: "link", href: PROVIDER_KEY_DOC_HREF });
         case "budget":
-            return { label: "Raise budget", action: { kind: "link", href: "/budgets" } };
+            return fixOf("raiseBudget", { kind: "link", href: "/budgets" });
         case "scope_denied":
-            return agentId ? { label: "Open agent scope", action: { kind: "link", href: agentHref(agentId, "scope") } } : null;
+            return agentId ? fixOf("openAgentScope", { kind: "link", href: agentHref(agentId, "scope") }) : null;
         case "model_unavailable":
-            return agentId ? { label: "Choose a model", action: { kind: "link", href: agentHref(agentId) } } : null;
+            return agentId ? fixOf("chooseModel", { kind: "link", href: agentHref(agentId) }) : null;
         case "provider_unreachable":
             // Admins can fix the endpoint or provider; anyone can try again once it is back.
-            if (ctx.audience === "admin" && agentId) return { label: "Check provider settings", action: { kind: "link", href: agentHref(agentId) } };
+            if (ctx.audience === "admin" && agentId) return fixOf("checkProviderSettings", { kind: "link", href: agentHref(agentId) });
             return retryFix(ctx);
         case "runtime_offline":
             if (!agentId) return null;
             return ctx.canRestartRuntime
-                ? { label: "Reconnect runtime", action: { kind: "restart_runtime", agentId } }
-                : { label: "Reconnect runtime", action: { kind: "link", href: agentHref(agentId) } };
+                ? fixOf("reconnectRuntime", { kind: "restart_runtime", agentId })
+                : fixOf("reconnectRuntime", { kind: "link", href: agentHref(agentId) });
         case "rate_limited": {
             const fix = retryFix(ctx);
             if (!fix) return null;
@@ -235,7 +270,7 @@ export function failureFix(cause: FailureCause, ctx: FixContext): FailureFix | n
         }
         case "stalled": {
             const target = taskDirectiveAgent(ctx);
-            if (target && ctx.taskId) return { label: "Nudge", action: { kind: "message_agent", agentId: target, taskId: ctx.taskId, mode: "nudge" } };
+            if (target && ctx.taskId) return fixOf("nudge", { kind: "message_agent", agentId: target, taskId: ctx.taskId, mode: "nudge" });
             return retryFix(ctx);
         }
         case "unknown":
@@ -250,6 +285,7 @@ export function describeFailure(signal: FailureSignal & { idleMs?: number | null
     return {
         cause,
         headline: failureHeadline(cause, { idleMs: signal.idleMs }),
+        headlineCopy: failureHeadlineCopy(cause, { idleMs: signal.idleMs }),
         detail: cause === "unknown" ? shortFailureText(raw) : null,
         fix: failureFix(cause, ctx),
     };

@@ -21,6 +21,7 @@ import {
     IconTablePlus,
     IconUnderline,
 } from "@tabler/icons-react";
+import { useTranslations } from "next-intl";
 import { Button } from "@/components/ui/button";
 import { captureExportedBlob } from "./download-capture";
 import type { OfficeEditorProps } from "./types";
@@ -30,6 +31,7 @@ const ZOOM_LEVELS = [60, 75, 90, 100, 110, 125, 150, 175, 200];
 
 export default function DocxArtifactEditor(props: OfficeEditorProps) {
     const { bytes, fileName, onDirtyChange, onHandleChange } = props;
+    const t = useTranslations("editor");
     const editor = useDocxEditor({ initialDocumentTheme: "light", initialFileName: fileName });
     const stableFile = useMemo(() => new File([bytes.slice(0)], fileName, { type: DOCX_MIME }), [bytes, fileName]);
     const baselineModelRef = useRef(editor.model);
@@ -86,43 +88,43 @@ export default function DocxArtifactEditor(props: OfficeEditorProps) {
     return (
         <div className="flex h-full min-h-0 flex-col bg-[#1e1e22] force-dark">
             <div className="flex min-h-12 flex-wrap items-center gap-1 border-b border-border bg-[#141417] px-3 py-2">
-                <ToolbarButton label="Undo" disabled={!editor.canUndo} onClick={editor.undo}><IconArrowBackUp /></ToolbarButton>
-                <ToolbarButton label="Redo" disabled={!editor.canRedo} onClick={editor.redo}><IconArrowForwardUp /></ToolbarButton>
+                <ToolbarButton label={t("toolbar.undo")} disabled={!editor.canUndo} onClick={editor.undo}><IconArrowBackUp /></ToolbarButton>
+                <ToolbarButton label={t("toolbar.redo")} disabled={!editor.canRedo} onClick={editor.redo}><IconArrowForwardUp /></ToolbarButton>
                 <Divider />
-                <select aria-label="Paragraph style" className="h-8 rounded-md border border-border bg-muted/30 px-2 text-xs text-foreground" value={editor.selectedParagraphStyleId || "Normal"} onChange={(event) => editor.setParagraphStyle(event.target.value)}>
-                    <option value="Normal">Body</option>
-                    <option value="Heading1">Heading 1</option>
-                    <option value="Heading2">Heading 2</option>
-                    <option value="Heading3">Heading 3</option>
+                <select aria-label={t("toolbar.paragraphStyle")} className="h-8 rounded-md border border-border bg-muted/30 px-2 text-xs text-foreground" value={editor.selectedParagraphStyleId || "Normal"} onChange={(event) => editor.setParagraphStyle(event.target.value)}>
+                    <option value="Normal">{t("styles.body")}</option>
+                    <option value="Heading1">{t("styles.heading1")}</option>
+                    <option value="Heading2">{t("styles.heading2")}</option>
+                    <option value="Heading3">{t("styles.heading3")}</option>
                 </select>
-                <select aria-label="Font family" className="h-8 w-32 rounded-md border border-border bg-muted/30 px-2 text-xs text-foreground" value={editor.selectedRunStyle?.fontFamily || "Calibri"} onChange={(event) => editor.setFontFamily(event.target.value)}>
+                <select aria-label={t("toolbar.fontFamily")} className="h-8 w-32 rounded-md border border-border bg-muted/30 px-2 text-xs text-foreground" value={editor.selectedRunStyle?.fontFamily || "Calibri"} onChange={(event) => editor.setFontFamily(event.target.value)}>
                     {['Calibri', 'Arial', 'Times New Roman', 'Georgia', 'Courier New'].map((font) => <option key={font} value={font}>{font}</option>)}
                 </select>
-                <select aria-label="Font size" className="h-8 w-16 rounded-md border border-border bg-muted/30 px-2 text-xs text-foreground" value={String(editor.selectedRunStyle?.fontSizePt || 11)} onChange={(event) => editor.setFontSize(Number(event.target.value))}>
+                <select aria-label={t("toolbar.fontSize")} className="h-8 w-16 rounded-md border border-border bg-muted/30 px-2 text-xs text-foreground" value={String(editor.selectedRunStyle?.fontSizePt || 11)} onChange={(event) => editor.setFontSize(Number(event.target.value))}>
                     {[8, 9, 10, 11, 12, 14, 16, 18, 20, 24, 28, 32, 36, 48].map((size) => <option key={size} value={size}>{size}</option>)}
                 </select>
-                <ToolbarButton label="Bold" onClick={editor.toggleBold}><IconBold /></ToolbarButton>
-                <ToolbarButton label="Italic" onClick={editor.toggleItalic}><IconItalic /></ToolbarButton>
-                <ToolbarButton label="Underline" onClick={editor.toggleUnderline}><IconUnderline /></ToolbarButton>
-                <label className="relative flex size-8 cursor-pointer items-center justify-center rounded-md text-muted-foreground hover:bg-accent" title="Text color">
+                <ToolbarButton label={t("toolbar.bold")} onClick={editor.toggleBold}><IconBold /></ToolbarButton>
+                <ToolbarButton label={t("toolbar.italic")} onClick={editor.toggleItalic}><IconItalic /></ToolbarButton>
+                <ToolbarButton label={t("toolbar.underline")} onClick={editor.toggleUnderline}><IconUnderline /></ToolbarButton>
+                <label className="relative flex size-8 cursor-pointer items-center justify-center rounded-md text-muted-foreground hover:bg-accent" title={t("toolbar.textColor")}>
                     <span className="h-4 w-4 rounded-full border border-border" style={{ backgroundColor: editor.selectedRunStyle?.color || '#f4f4f5' }} />
-                    <input type="color" aria-label="Text color" className="absolute inset-0 opacity-0" value={editor.selectedRunStyle?.color || '#f4f4f5'} onChange={(event) => editor.setTextColor(event.target.value)} />
+                    <input type="color" aria-label={t("toolbar.textColor")} className="absolute inset-0 opacity-0" value={editor.selectedRunStyle?.color || '#f4f4f5'} onChange={(event) => editor.setTextColor(event.target.value)} />
                 </label>
-                <ToolbarButton label="Highlight" onClick={() => editor.setHighlight(editor.selectedRunStyle?.highlight ? undefined : "yellow")}><IconHighlight /></ToolbarButton>
+                <ToolbarButton label={t("toolbar.highlight")} onClick={() => editor.setHighlight(editor.selectedRunStyle?.highlight ? undefined : "yellow")}><IconHighlight /></ToolbarButton>
                 <Divider />
-                <ToolbarButton label="Align left" onClick={() => editor.setAlignment("left")}><IconAlignLeft /></ToolbarButton>
-                <ToolbarButton label="Align center" onClick={() => editor.setAlignment("center")}><IconAlignCenter /></ToolbarButton>
-                <ToolbarButton label="Align right" onClick={() => editor.setAlignment("right")}><IconAlignRight /></ToolbarButton>
-                <ToolbarButton label="Justify" onClick={() => editor.setAlignment("justify")}><IconAlignJustified /></ToolbarButton>
-                <ToolbarButton label="Bulleted list" onClick={() => editor.toggleList("unordered")}><IconList /></ToolbarButton>
-                <ToolbarButton label="Numbered list" onClick={() => editor.toggleList("ordered")}><IconListNumbers /></ToolbarButton>
+                <ToolbarButton label={t("toolbar.alignLeft")} onClick={() => editor.setAlignment("left")}><IconAlignLeft /></ToolbarButton>
+                <ToolbarButton label={t("toolbar.alignCenter")} onClick={() => editor.setAlignment("center")}><IconAlignCenter /></ToolbarButton>
+                <ToolbarButton label={t("toolbar.alignRight")} onClick={() => editor.setAlignment("right")}><IconAlignRight /></ToolbarButton>
+                <ToolbarButton label={t("toolbar.justify")} onClick={() => editor.setAlignment("justify")}><IconAlignJustified /></ToolbarButton>
+                <ToolbarButton label={t("toolbar.bulletedList")} onClick={() => editor.toggleList("unordered")}><IconList /></ToolbarButton>
+                <ToolbarButton label={t("toolbar.numberedList")} onClick={() => editor.toggleList("ordered")}><IconListNumbers /></ToolbarButton>
                 <Divider />
-                <ToolbarButton label="Insert table" onClick={editor.insertTable}><IconTablePlus /></ToolbarButton>
-                <ToolbarButton label="Insert image" onClick={() => imageInputRef.current?.click()}><IconPhotoPlus /></ToolbarButton>
+                <ToolbarButton label={t("toolbar.insertTable")} onClick={editor.insertTable}><IconTablePlus /></ToolbarButton>
+                <ToolbarButton label={t("toolbar.insertImage")} onClick={() => imageInputRef.current?.click()}><IconPhotoPlus /></ToolbarButton>
                 <div className="ml-auto flex items-center gap-1">
-                    <ToolbarButton label="Zoom out" disabled={zoom === ZOOM_LEVELS[0]} onClick={() => adjustZoom(-1)}><IconMinus /></ToolbarButton>
+                    <ToolbarButton label={t("toolbar.zoomOut")} disabled={zoom === ZOOM_LEVELS[0]} onClick={() => adjustZoom(-1)}><IconMinus /></ToolbarButton>
                     <span className="w-12 text-center text-xs tabular-nums text-zinc-400">{zoom}%</span>
-                    <ToolbarButton label="Zoom in" disabled={zoom === ZOOM_LEVELS.at(-1)} onClick={() => adjustZoom(1)}><IconPlus /></ToolbarButton>
+                    <ToolbarButton label={t("toolbar.zoomIn")} disabled={zoom === ZOOM_LEVELS.at(-1)} onClick={() => adjustZoom(1)}><IconPlus /></ToolbarButton>
                 </div>
             </div>
             <div className="min-h-0 flex-1 overflow-auto px-5 py-6" style={{ background: "radial-gradient(circle at 50% 0%, #35363d, #24252a 55%)" }}>
@@ -133,7 +135,7 @@ export default function DocxArtifactEditor(props: OfficeEditorProps) {
                         pageBackgroundColor="#ffffff"
                         pageGapBackgroundColor="transparent"
                         pageVirtualization={{ zoomScale: zoom / 100, overscan: 2 }}
-                        loadingState={<div className="py-20 text-center text-sm text-zinc-400">Opening document…</div>}
+                        loadingState={<div className="py-20 text-center text-sm text-zinc-400">{t("openingDocument")}</div>}
                     />
                 </div>
             </div>

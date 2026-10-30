@@ -16,14 +16,20 @@ import { useRouter, useSearchParams } from "next/navigation";
 import dynamic from "next/dynamic";
 import { IconArrowDown, IconChevronDown, IconChevronRight, IconFile, IconFilePlus, IconFileZip, IconFileCode, IconPhoto, IconFileTypeJs, IconFileSpreadsheet, IconFileText, IconFolder, IconFolderOpen, IconFolderPlus, IconLoader2, IconArrowsMaximize, IconDots, IconPencil, IconPlus, IconQuestionMark, IconRefresh, IconDeviceFloppy, IconSearch, IconSettings, IconTrash, IconUpload } from "@tabler/icons-react";
 import { toast } from "sonner";
+import { useFormatter, useTranslations } from "next-intl";
+
+function PreviewLoading({ kind }: { kind: "spreadsheet" | "document" }) {
+    const t = useTranslations("artifacts.preview");
+    return <div className="text-xs text-zinc-500 p-4">{kind === "spreadsheet" ? t("loadingSpreadsheet") : t("loadingDocument")}</div>;
+}
 
 const XlsxViewer = dynamic(
     () => import("@extend-ai/react-xlsx").then((mod) => mod.XlsxViewer),
-    { ssr: false, loading: () => <div className="text-xs text-zinc-500 p-4">Loading spreadsheet preview...</div> }
+    { ssr: false, loading: () => <PreviewLoading kind="spreadsheet" /> }
 );
 const ReactDocxViewer = dynamic(
     () => import("@extend-ai/react-docx").then((mod) => mod.ReactDocxViewer),
-    { ssr: false, loading: () => <div className="text-xs text-zinc-500 p-4">Loading document preview...</div> }
+    { ssr: false, loading: () => <PreviewLoading kind="document" /> }
 );
 import { PageHeader } from "@/components/page-header";
 import { MarkdownRenderer } from "@/components/markdown-renderer";
@@ -247,21 +253,20 @@ const DEFAULT_FOLDER_DRAFT: FolderDraft = {
     metadataJson: "{}",
 };
 
+// Each type's label and description: artifacts.fileTypes.{value} in messages/*.json.
 const CREATABLE_FILE_TYPES: Array<{
     value: CreatableFileType;
-    label: string;
-    description: string;
     extension: string;
     contentType: string;
     initialContent: string | null;
     editor: "office" | "csv" | "text";
 }> = [
-    { value: "xlsx", label: "Excel workbook", description: "Start with a blank worksheet in the spreadsheet editor.", extension: ".xlsx", contentType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", initialContent: null, editor: "office" },
-    { value: "docx", label: "Word document", description: "Start with a blank page in the document editor.", extension: ".docx", contentType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document", initialContent: null, editor: "office" },
-    { value: "csv", label: "CSV spreadsheet", description: "Edit cells in a grid or as raw CSV.", extension: ".csv", contentType: "text/csv;charset=utf-8", initialContent: "", editor: "csv" },
-    { value: "markdown", label: "Markdown", description: "Write formatted notes and documents.", extension: ".md", contentType: "text/markdown;charset=utf-8", initialContent: "", editor: "text" },
-    { value: "text", label: "Plain text", description: "Create a simple text document.", extension: ".txt", contentType: "text/plain;charset=utf-8", initialContent: "", editor: "text" },
-    { value: "json", label: "JSON", description: "Create structured data with validation.", extension: ".json", contentType: "application/json;charset=utf-8", initialContent: "{}\n", editor: "text" },
+    { value: "xlsx", extension: ".xlsx", contentType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", initialContent: null, editor: "office" },
+    { value: "docx", extension: ".docx", contentType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document", initialContent: null, editor: "office" },
+    { value: "csv", extension: ".csv", contentType: "text/csv;charset=utf-8", initialContent: "", editor: "csv" },
+    { value: "markdown", extension: ".md", contentType: "text/markdown;charset=utf-8", initialContent: "", editor: "text" },
+    { value: "text", extension: ".txt", contentType: "text/plain;charset=utf-8", initialContent: "", editor: "text" },
+    { value: "json", extension: ".json", contentType: "application/json;charset=utf-8", initialContent: "{}\n", editor: "text" },
 ];
 
 type Props = {
@@ -270,7 +275,17 @@ type Props = {
     customers: CustomerOption[];
 };
 
+/** The hash algorithm's name: never translated. */
+const HASH_LABEL = "SHA256";
+/** The default name a new file of this type gets (a file name, so never translated). */
+const untitledFileName = (type: CreatableFileType) => `untitled${getCreatableFileType(type).extension}`;
+
+/** File kinds the filters and forms offer (stored values; the labels are artifacts.kinds.*). */
+const ARTIFACT_KINDS = ["report", "invoice", "statement", "document", "export"] as const;
+
 export default function ArtifactsManager({ projects, tasks, customers }: Props) {
+    const t = useTranslations("artifacts");
+    const formatDate = useRelativeDate();
     const linkedArtifactId = useSearchParams().get("artifact");
     const router = useRouter();
     const [currentFolderId, setCurrentFolderId] = useState(ROOT_ID);
@@ -361,7 +376,7 @@ export default function ArtifactsManager({ projects, tasks, customers }: Props) 
     const selectedFolder = selectedEntry?.type === "folder"
         ? findFolderById(folderCache, selectedEntry.id)
         : null;
-    const knownFolders = buildKnownFolders(folderCache);
+    const knownFolders = buildKnownFolders(folderCache, t("root"));
     const availableTasks = tasks.filter((task) => task.projectId === uploadProjectId);
     const hasFolderChanges = Boolean(
         selectedFolder &&
@@ -415,7 +430,7 @@ export default function ArtifactsManager({ projects, tasks, customers }: Props) 
                 cache: "no-store",
             });
             if (!response.ok) {
-                throw new Error(await readError(response, "Unable to fetch folder contents"));
+                throw new Error(await readError(response, t("errors.fetchFolder")));
             }
             const payload = await response.json() as FolderContentsResponse;
             const cacheKey = folderId === ROOT_ID ? ROOT_ID : payload.folder.id;
@@ -479,7 +494,7 @@ export default function ArtifactsManager({ projects, tasks, customers }: Props) 
             cache: "no-store",
         });
         if (!response.ok) {
-            throw new Error(await readError(response, "Unable to fetch file details"));
+            throw new Error(await readError(response, t("errors.fetchFile")));
         }
         const payload = await response.json() as { artifact: ArtifactDetail };
         setArtifactDetail(payload.artifact);
@@ -500,12 +515,12 @@ export default function ArtifactsManager({ projects, tasks, customers }: Props) 
                 cache: "no-store",
             });
             if (!response.ok) {
-                throw new Error(await readError(response, "Unable to search storage"));
+                throw new Error(await readError(response, t("errors.search")));
             }
             const payload = await response.json() as { artifacts: ArtifactSummary[] };
             setGlobalArtifacts(payload.artifacts);
         } catch (error) {
-            toast.error(error instanceof Error ? error.message : "Unable to search storage");
+            toast.error(error instanceof Error ? error.message : t("errors.search"));
         } finally {
             setIsSearchLoading(false);
         }
@@ -563,7 +578,7 @@ export default function ArtifactsManager({ projects, tasks, customers }: Props) 
             setArtifactDetail(null);
             setPreview({
                 state: "error",
-                message: error instanceof Error ? error.message : "Unable to fetch file details",
+                message: error instanceof Error ? error.message : t("errors.fetchFile"),
             });
         });
     }, [selectedEntry?.type, selectedEntry?.id]);
@@ -743,13 +758,13 @@ export default function ArtifactsManager({ projects, tasks, customers }: Props) 
 
                 setPreview({
                     state: "unsupported",
-                    message: `${activeArtifact.contentType} preview is not available yet.`,
+                    message: t("preview.unavailable", { type: activeArtifact.contentType }),
                 });
             } catch (error) {
                 if (previewRequestRef.current === requestId) {
                     setPreview({
                         state: "error",
-                        message: error instanceof Error ? error.message : "Unable to load preview",
+                        message: error instanceof Error ? error.message : t("errors.preview"),
                     });
                 }
             }
@@ -763,7 +778,7 @@ export default function ArtifactsManager({ projects, tasks, customers }: Props) 
 
     async function handleCreateFolder() {
         if (!folderDraft.name.trim()) {
-            toast.error("Folder name is required");
+            toast.error(t("folderNameRequired"));
             return;
         }
 
@@ -781,16 +796,16 @@ export default function ArtifactsManager({ projects, tasks, customers }: Props) 
                 }),
             });
             if (!response.ok) {
-                throw new Error(await readError(response, "Unable to create folder"));
+                throw new Error(await readError(response, t("errors.createFolder")));
             }
             const payload = await response.json() as { folder: FolderSummary };
             setIsCreateFolderOpen(false);
             setSelectedEntry({ type: "folder", id: payload.folder.id });
             setCurrentFolderId(payload.folder.id);
             await reloadWorkspace(payload.folder.id);
-            toast.success("Folder created");
+            toast.success(t("toasts.folderCreated"));
         } catch (error) {
-            toast.error(error instanceof Error ? error.message : "Unable to create folder");
+            toast.error(error instanceof Error ? error.message : t("errors.createFolder"));
         } finally {
             setIsSavingFolder(false);
         }
@@ -815,12 +830,12 @@ export default function ArtifactsManager({ projects, tasks, customers }: Props) 
                 }),
             });
             if (!response.ok) {
-                throw new Error(await readError(response, "Unable to save folder"));
+                throw new Error(await readError(response, t("errors.saveFolder")));
             }
             await reloadWorkspace(selectedFolder.id);
-            toast.success("Folder updated");
+            toast.success(t("toasts.folderUpdated"));
         } catch (error) {
-            toast.error(error instanceof Error ? error.message : "Unable to save folder");
+            toast.error(error instanceof Error ? error.message : t("errors.saveFolder"));
         } finally {
             setIsSavingFolder(false);
         }
@@ -830,8 +845,8 @@ export default function ArtifactsManager({ projects, tasks, customers }: Props) 
         setDeleteConfirm({
             type: "folder",
             id: folderId,
-            title: "Delete folder?",
-            description: "This archives the folder, removes its tracked files from Storage and agent context, and sends its Google Drive mirror to Trash when Drive sync is enabled.",
+            title: t("confirm.deleteFolderTitle"),
+            description: t("confirm.deleteFolderDescription"),
         });
     }
 
@@ -841,19 +856,19 @@ export default function ArtifactsManager({ projects, tasks, customers }: Props) 
                 method: "DELETE",
             });
             if (!response.ok) {
-                throw new Error(await readError(response, "Unable to delete folder"));
+                throw new Error(await readError(response, t("errors.deleteFolder")));
             }
             setSelectedEntry({ type: "folder", id: currentFolderId });
             await reloadWorkspace(currentFolderId);
-            toast.success("Folder deleted");
+            toast.success(t("toasts.folderDeleted"));
         } catch (error) {
-            toast.error(error instanceof Error ? error.message : "Unable to delete folder");
+            toast.error(error instanceof Error ? error.message : t("errors.deleteFolder"));
         }
     }
 
     async function handleUpload() {
         if (!uploadFile) {
-            toast.error("Choose a file to upload");
+            toast.error(t("chooseFile"));
             return;
         }
 
@@ -884,7 +899,7 @@ export default function ArtifactsManager({ projects, tasks, customers }: Props) 
                 body: formData,
             });
             if (!response.ok) {
-                throw new Error(await readError(response, "Unable to upload file"));
+                throw new Error(await readError(response, t("errors.upload")));
             }
             const payload = await response.json() as { artifact: ArtifactSummary };
             setIsUploadOpen(false);
@@ -903,9 +918,9 @@ export default function ArtifactsManager({ projects, tasks, customers }: Props) 
             );
             setSelectedEntry({ type: "artifact", id: payload.artifact.id });
             await reloadWorkspace(currentFolderId);
-            toast.success("File uploaded");
+            toast.success(t("toasts.uploaded"));
         } catch (error) {
-            toast.error(error instanceof Error ? error.message : "Unable to upload file");
+            toast.error(error instanceof Error ? error.message : t("errors.upload"));
         } finally {
             setIsUploading(false);
         }
@@ -936,7 +951,7 @@ export default function ArtifactsManager({ projects, tasks, customers }: Props) 
                 }),
             });
             if (!response.ok) {
-                throw new Error(await readError(response, "Unable to save file properties"));
+                throw new Error(await readError(response, t("errors.saveProperties")));
             }
             await fetchArtifactDetail(artifactDetail.id);
             if (isSearchMode) {
@@ -944,9 +959,9 @@ export default function ArtifactsManager({ projects, tasks, customers }: Props) 
             } else {
                 await reloadWorkspace(currentFolderId);
             }
-            toast.success("File properties updated");
+            toast.success(t("toasts.propertiesUpdated"));
         } catch (error) {
-            toast.error(error instanceof Error ? error.message : "Unable to save file properties");
+            toast.error(error instanceof Error ? error.message : t("errors.saveProperties"));
         } finally {
             setIsSavingArtifact(false);
         }
@@ -968,16 +983,16 @@ export default function ArtifactsManager({ projects, tasks, customers }: Props) 
                 }),
             });
             if (!response.ok) {
-                throw new Error(await readError(response, "Unable to move file"));
+                throw new Error(await readError(response, t("errors.move")));
             }
             await fetchArtifactDetail(artifactDetail.id);
             await reloadWorkspace(currentFolderId);
             if (isSearchMode) {
                 await fetchSearchResults();
             }
-            toast.success("File location updated");
+            toast.success(t("toasts.locationUpdated"));
         } catch (error) {
-            toast.error(error instanceof Error ? error.message : "Unable to move file");
+            toast.error(error instanceof Error ? error.message : t("errors.move"));
         } finally {
             setIsSavingLocation(false);
         }
@@ -1004,17 +1019,17 @@ export default function ArtifactsManager({ projects, tasks, customers }: Props) 
                 body: formData,
             });
             if (!response.ok) {
-                throw new Error(await readError(response, "Unable to replace file"));
+                throw new Error(await readError(response, t("errors.replace")));
             }
             await fetchArtifactDetail(artifactDetail.id);
             await reloadWorkspace(currentFolderId);
             if (isSearchMode) {
                 await fetchSearchResults();
             }
-            toast.success("File content replaced");
+            toast.success(t("toasts.replaced"));
             return true;
         } catch (error) {
-            toast.error(error instanceof Error ? error.message : "Unable to replace file");
+            toast.error(error instanceof Error ? error.message : t("errors.replace"));
             return false;
         } finally {
             setIsSavingArtifact(false);
@@ -1073,9 +1088,9 @@ export default function ArtifactsManager({ projects, tasks, customers }: Props) 
             const normalizedRows = normalizeCsvRows(parseCsvDocument(csvRawDraft));
             setCsvEditorRows(normalizedRows);
             setCsvRawError(null);
-            toast.success("CSV grid refreshed");
+            toast.success(t("toasts.csvRefreshed"));
         } catch (error) {
-            const message = error instanceof Error ? error.message : "Unable to parse CSV";
+            const message = error instanceof Error ? error.message : t("errors.parseCsv");
             setCsvRawError(message);
             toast.error(message);
         }
@@ -1109,7 +1124,7 @@ export default function ArtifactsManager({ projects, tasks, customers }: Props) 
             try {
                 nextText = JSON.stringify(JSON.parse(textEditorDraft), null, 2);
             } catch (error) {
-                const message = error instanceof Error ? error.message : "JSON is not valid";
+                const message = error instanceof Error ? error.message : t("errors.invalidJson");
                 setTextEditorError(message);
                 return;
             }
@@ -1135,8 +1150,8 @@ export default function ArtifactsManager({ projects, tasks, customers }: Props) 
         setDeleteConfirm({
             type: "file",
             id: artifactId,
-            title: "Delete file?",
-            description: "This archives the file from Storage. Agents will no longer receive it as evidence, and its Google Drive mirror will be sent to Trash when Drive sync is enabled.",
+            title: t("confirm.deleteFileTitle"),
+            description: t("confirm.deleteFileDescription"),
         });
     }
 
@@ -1146,16 +1161,16 @@ export default function ArtifactsManager({ projects, tasks, customers }: Props) 
                 method: "DELETE",
             });
             if (!response.ok) {
-                throw new Error(await readError(response, "Unable to delete file"));
+                throw new Error(await readError(response, t("errors.deleteFile")));
             }
             setSelectedEntry({ type: "folder", id: currentFolderId });
             await reloadWorkspace(currentFolderId);
             if (isSearchMode) {
                 await fetchSearchResults();
             }
-            toast.success("File deleted");
+            toast.success(t("toasts.fileDeleted"));
         } catch (error) {
-            toast.error(error instanceof Error ? error.message : "Unable to delete file");
+            toast.error(error instanceof Error ? error.message : t("errors.deleteFile"));
         }
     }
 
@@ -1164,8 +1179,8 @@ export default function ArtifactsManager({ projects, tasks, customers }: Props) 
             type: "external",
             id: entry.logicalPath,
             entryType: entry.entryType,
-            title: `Remove untracked ${entry.entryType}?`,
-            description: "This removes the untracked item from local Storage and sends the mirrored Google Drive copy to Trash. Tracked files are protected.",
+            title: t("confirm.removeUntrackedTitle", { type: entry.entryType }),
+            description: t("confirm.removeUntrackedDescription"),
         });
     }
 
@@ -1177,12 +1192,12 @@ export default function ArtifactsManager({ projects, tasks, customers }: Props) 
                 body: JSON.stringify({ logicalPath, entryType }),
             });
             if (!response.ok) {
-                throw new Error(await readError(response, "Unable to remove untracked item"));
+                throw new Error(await readError(response, t("errors.removeUntracked")));
             }
             await reloadWorkspace(currentFolderId);
-            toast.success("Untracked item queued for removal from Drive");
+            toast.success(t("toasts.untrackedRemoved"));
         } catch (error) {
-            toast.error(error instanceof Error ? error.message : "Unable to remove untracked item");
+            toast.error(error instanceof Error ? error.message : t("errors.removeUntracked"));
         }
     }
 
@@ -1257,8 +1272,8 @@ export default function ArtifactsManager({ projects, tasks, customers }: Props) 
         const isRootFolder = folder.id === ROOT_ID;
         return (
             <>
-                {!isRootFolder && <ContextMenuItem onClick={() => openFolder(folder.id)}>Open</ContextMenuItem>}
-                <ContextMenuItem onClick={() => beginCreateFileAt(folder)}>New File Here</ContextMenuItem>
+                {!isRootFolder && <ContextMenuItem onClick={() => openFolder(folder.id)}>{t("menu.open")}</ContextMenuItem>}
+                <ContextMenuItem onClick={() => beginCreateFileAt(folder)}>{t("menu.newFileHere")}</ContextMenuItem>
                 <ContextMenuItem onClick={() => {
                     setSelectedEntry({ type: "folder", id: folder.id });
                     beginCreateFolderAt({
@@ -1267,7 +1282,7 @@ export default function ArtifactsManager({ projects, tasks, customers }: Props) 
                         customerId: folder.customerId ?? null,
                     });
                 }}>
-                    New Folder Here
+                    {t("menu.newFolderHere")}
                 </ContextMenuItem>
                 {!isRootFolder && (
                     <>
@@ -1275,10 +1290,10 @@ export default function ArtifactsManager({ projects, tasks, customers }: Props) 
                             setSelectedEntry({ type: "folder", id: folder.id });
                             setInspectorTab("properties");
                         }}>
-                            Edit Properties
+                            {t("menu.editProperties")}
                         </ContextMenuItem>
                         <ContextMenuItem variant="destructive" onClick={() => requestDeleteFolder(folder.id)}>
-                            Delete Folder
+                            {t("menu.deleteFolder")}
                         </ContextMenuItem>
                     </>
                 )}
@@ -1291,25 +1306,25 @@ export default function ArtifactsManager({ projects, tasks, customers }: Props) 
             <>
                 {canEditOfficeArtifact(artifact) && (
                     <ContextMenuItem onClick={() => openArtifactEditor(artifact.id)}>
-                        Edit in Emperor
+                        {t("menu.editInEmperor")}
                     </ContextMenuItem>
                 )}
                 <ContextMenuItem onClick={() => {
                     setSelectedEntry({ type: "artifact", id: artifact.id });
                     setInspectorTab("preview");
                 }}>
-                    Preview
+                    {t("menu.preview")}
                 </ContextMenuItem>
-                <ContextMenuItem onClick={() => handleDownloadArtifact(artifact.id)}>Download</ContextMenuItem>
-                <ContextMenuItem onClick={() => beginRenameArtifact(artifact)}>Rename</ContextMenuItem>
+                <ContextMenuItem onClick={() => handleDownloadArtifact(artifact.id)}>{t("menu.download")}</ContextMenuItem>
+                <ContextMenuItem onClick={() => beginRenameArtifact(artifact)}>{t("menu.rename")}</ContextMenuItem>
                 <ContextMenuItem onClick={() => {
                     setSelectedEntry({ type: "artifact", id: artifact.id });
                     setInspectorTab("properties");
                 }}>
-                    Edit Properties
+                    {t("menu.editProperties")}
                 </ContextMenuItem>
                 <ContextMenuItem variant="destructive" onClick={() => requestDeleteArtifact(artifact.id)}>
-                    Delete File
+                    {t("menu.deleteFile")}
                 </ContextMenuItem>
             </>
         );
@@ -1368,7 +1383,7 @@ export default function ArtifactsManager({ projects, tasks, customers }: Props) 
         const baseName = renameFileDraft.baseName.trim();
         const nextName = `${baseName}${renameFileDraft.extension}`;
         if (!baseName || !isValidStorageFileName(nextName)) {
-            toast.error("Enter a file name without folders or path characters");
+            toast.error(t("invalidFileName"));
             return;
         }
 
@@ -1382,13 +1397,13 @@ export default function ArtifactsManager({ projects, tasks, customers }: Props) 
                     name: nextName,
                 }),
             });
-            if (!response.ok) throw new Error(await readError(response, "Unable to rename file"));
+            if (!response.ok) throw new Error(await readError(response, t("errors.rename")));
             setRenameFileDraft(null);
             await reloadWorkspace(currentFolderId);
             if (isSearchMode) await fetchSearchResults();
-            toast.success(`Renamed to ${nextName}`);
+            toast.success(t("toasts.renamed", { name: nextName }));
         } catch (error) {
-            toast.error(error instanceof Error ? error.message : "Unable to rename file");
+            toast.error(error instanceof Error ? error.message : t("errors.rename"));
         } finally {
             setIsRenamingFile(false);
         }
@@ -1398,7 +1413,7 @@ export default function ArtifactsManager({ projects, tasks, customers }: Props) 
         const fileType = getCreatableFileType(newFileDraft.type);
         const fileName = ensureFileExtension(newFileDraft.name, fileType.extension);
         if (!isValidStorageFileName(fileName)) {
-            toast.error("Enter a file name without folders or path characters");
+            toast.error(t("invalidFileName"));
             return;
         }
 
@@ -1419,12 +1434,12 @@ export default function ArtifactsManager({ projects, tasks, customers }: Props) 
 
             const response = await fetch("/api/ui/artifacts/upload", { method: "POST", body: formData });
             if (!response.ok) {
-                throw new Error(await readError(response, "Unable to create file"));
+                throw new Error(await readError(response, t("errors.createFile")));
             }
             const payload = await response.json() as { artifact: ArtifactSummary };
             setIsNewFileOpen(false);
             if (fileType.editor === "office") {
-                toast.success(`${fileName} created`);
+                toast.success(t("toasts.created", { name: fileName }));
                 router.push(`/artifacts/${payload.artifact.id}/edit`);
                 return;
             }
@@ -1434,9 +1449,9 @@ export default function ArtifactsManager({ projects, tasks, customers }: Props) 
             setInspectorTab("preview");
             setIsPreviewDialogOpen(true);
             await reloadWorkspace(newFileFolderId);
-            toast.success(`${fileName} created`);
+            toast.success(t("toasts.created", { name: fileName }));
         } catch (error) {
-            toast.error(error instanceof Error ? error.message : "Unable to create file");
+            toast.error(error instanceof Error ? error.message : t("errors.createFile"));
         } finally {
             setIsCreatingFile(false);
         }
@@ -1461,7 +1476,7 @@ export default function ArtifactsManager({ projects, tasks, customers }: Props) 
 
     function beginTrackExternal(entry: DiscoveredStorageEntry) {
         if (entry.entryType !== "file") {
-            toast.info("Create this folder in Emperor before tracking files inside it.");
+            toast.info(t("createFolderFirst"));
             return;
         }
         setExternalToTrack(entry);
@@ -1478,7 +1493,7 @@ export default function ArtifactsManager({ projects, tasks, customers }: Props) 
     async function handleTrackExternal() {
         if (!externalToTrack) return;
         if (!uploadProjectId && !uploadCustomerId) {
-            toast.error("Select a customer or project before tracking this file.");
+            toast.error(t("selectScopeFirst"));
             return;
         }
         setIsUploading(true);
@@ -1502,12 +1517,12 @@ export default function ArtifactsManager({ projects, tasks, customers }: Props) 
                 }),
             });
             const payload = await response.json();
-            if (!response.ok) throw new Error(payload.error || "Unable to track file");
+            if (!response.ok) throw new Error(payload.error || t("errors.track"));
             setExternalToTrack(null);
             await reloadWorkspace(currentFolderId);
-            toast.success("File is now tracked by Emperor");
+            toast.success(t("toasts.tracked"));
         } catch (error) {
-            toast.error(error instanceof Error ? error.message : "Unable to track file");
+            toast.error(error instanceof Error ? error.message : t("errors.track"));
         } finally {
             setIsUploading(false);
         }
@@ -1522,33 +1537,33 @@ export default function ArtifactsManager({ projects, tasks, customers }: Props) 
     }
 
     const breadcrumbItems = currentContents
-        ? [{ id: ROOT_ID, name: "Root", path: "" }, ...currentContents.ancestors, currentContents.folder.id === ROOT_ID ? null : currentContents.folder].filter(Boolean) as Array<Pick<FolderSummary, "id" | "name" | "path">>
-        : [{ id: ROOT_ID, name: "Root", path: "" }];
+        ? [{ id: ROOT_ID, name: t("root"), path: "" }, ...currentContents.ancestors, currentContents.folder.id === ROOT_ID ? null : currentContents.folder].filter(Boolean) as Array<Pick<FolderSummary, "id" | "name" | "path">>
+        : [{ id: ROOT_ID, name: t("root"), path: "" }];
 
     return (
         <div className="mx-auto flex h-full max-w-[1800px] flex-col gap-6">
             <div className="space-y-2">
                 <PageHeader
-                    eyebrow="Storage"
-                    title="Storage"
-                    description="Folder-first files, deliverables, proofs, and working documents. Keep customer and project structure clear so agents can find the right file without knowing the backing storage provider."
+                    eyebrow={t("eyebrow")}
+                    title={t("eyebrow")}
+                    description={t("description")}
                     actions={
                         <>
                             <Button variant="outline" onClick={() => void reloadWorkspace()} className="border-zinc-800 bg-zinc-950 text-zinc-200 hover:bg-zinc-900">
                                 <IconRefresh className="size-4" />
-                                Refresh
+                                {t("refresh")}
                             </Button>
                             <Button variant="outline" onClick={beginCreateFolder} className="cursor-pointer border-zinc-800 bg-zinc-950 text-zinc-200 hover:bg-zinc-900">
                                 <IconFolderPlus className="size-4" />
-                                New Folder
+                                {t("newFolder")}
                             </Button>
                             <Button variant="outline" onClick={beginCreateFile} className="cursor-pointer border-zinc-800 bg-zinc-950 text-zinc-200 hover:bg-zinc-900">
                                 <IconFilePlus className="size-4" />
-                                New File
+                                {t("newFile")}
                             </Button>
                             <Button onClick={beginUpload} className="cursor-pointer bg-zinc-100 text-zinc-950 hover:bg-zinc-200">
                                 <IconUpload className="size-4" />
-                                Upload
+                                {t("upload")}
                             </Button>
                         </>
                     }
@@ -1559,7 +1574,7 @@ export default function ArtifactsManager({ projects, tasks, customers }: Props) 
                         <Input
                             value={searchValue}
                             onChange={(event) => setSearchValue(event.target.value)}
-                            placeholder="Search files, names, or paths"
+                            placeholder={t("searchPlaceholder")}
                             className="border-zinc-800 bg-zinc-900 pl-9 text-zinc-100"
                         />
                     </div>
@@ -1580,7 +1595,7 @@ export default function ArtifactsManager({ projects, tasks, customers }: Props) 
                             }}
                             className="h-9 w-full rounded-md border border-zinc-800 bg-zinc-900 px-3 text-sm text-zinc-200 sm:w-auto"
                         >
-                            <option value="">All customers</option>
+                            <option value="">{t("allCustomers")}</option>
                             {customers.map((customer) => (
                                 <option key={customer.id} value={customer.id}>{customer.name}</option>
                             ))}
@@ -1600,7 +1615,7 @@ export default function ArtifactsManager({ projects, tasks, customers }: Props) 
                             }}
                             className="h-9 w-full rounded-md border border-zinc-800 bg-zinc-900 px-3 text-sm text-zinc-200 sm:w-auto"
                         >
-                            <option value="">All projects</option>
+                            <option value="">{t("allProjects")}</option>
                             {projects.map((project) => (
                                 <option key={project.id} value={project.id}>{project.name}</option>
                             ))}
@@ -1611,13 +1626,13 @@ export default function ArtifactsManager({ projects, tasks, customers }: Props) 
                                 onClick={clearFilters}
                                 className="border-zinc-800 bg-zinc-900 text-zinc-200 hover:bg-zinc-800"
                             >
-                                Clear
+                                {t("clear")}
                             </Button>
                         )}
                     </div>
                     <details className="rounded-xl border border-zinc-800/80 bg-zinc-950/70 px-3 py-2">
                         <summary className="cursor-pointer text-xs font-semibold uppercase tracking-[0.18em] text-zinc-500">
-                            Advanced filters
+                            {t("advancedFilters")}
                         </summary>
                         <div className="mt-3 flex flex-wrap gap-3 border-t border-zinc-800/80 pt-3">
                             <select
@@ -1625,7 +1640,7 @@ export default function ArtifactsManager({ projects, tasks, customers }: Props) 
                                 onChange={(event) => setTaskFilter(event.target.value)}
                                 className="h-9 rounded-md border border-zinc-800 bg-zinc-900 px-3 text-sm text-zinc-200"
                             >
-                                <option value="">All tasks</option>
+                                <option value="">{t("allTasks")}</option>
                                 {tasks.filter((task) => !projectFilter || task.projectId === projectFilter).map((task) => (
                                     <option key={task.id} value={task.id}>{task.type}</option>
                                 ))}
@@ -1635,12 +1650,8 @@ export default function ArtifactsManager({ projects, tasks, customers }: Props) 
                                 onChange={(event) => setKindFilter(event.target.value)}
                                 className="h-9 rounded-md border border-zinc-800 bg-zinc-900 px-3 text-sm text-zinc-200"
                             >
-                                <option value="">All file types</option>
-                                <option value="report">report</option>
-                                <option value="invoice">invoice</option>
-                                <option value="statement">statement</option>
-                                <option value="document">document</option>
-                                <option value="export">export</option>
+                                <option value="">{t("allFileTypes")}</option>
+                                {ARTIFACT_KINDS.map((kind) => <option key={kind} value={kind}>{t(`kinds.${kind}`)}</option>)}
                             </select>
                         </div>
                     </details>
@@ -1650,21 +1661,21 @@ export default function ArtifactsManager({ projects, tasks, customers }: Props) 
             <div className="grid min-h-0 flex-1 grid-cols-[minmax(0,1fr)] gap-4 lg:grid-cols-[280px_minmax(0,1fr)]">
                 <Card className="min-h-0 border-zinc-800/80 bg-zinc-950/70 py-0">
                     <CardHeader className="border-b border-zinc-800/80 py-4">
-                        <CardTitle className="text-sm font-semibold uppercase tracking-[0.18em] text-zinc-400">Folders</CardTitle>
+                        <CardTitle className="text-sm font-semibold uppercase tracking-[0.18em] text-zinc-400">{t("folders")}</CardTitle>
                     </CardHeader>
                     <CardContent className="min-h-0 px-0">
                         {/* Phones stack the tree above the files: cap it so the files stay in reach. */}
                         <ScrollArea className="h-64 lg:h-[calc(100vh-18rem)]">
                             <div className="space-y-1 px-3 py-3">
                                 <TreeFolderRow
-                                    folder={{ id: ROOT_ID, name: "Root", path: "", projectId: null, customerId: null }}
+                                    folder={{ id: ROOT_ID, name: t("root"), path: "", projectId: null, customerId: null }}
                                     depth={0}
                                     isExpanded={expandedFolders[ROOT_ID] ?? true}
                                     isSelected={selectedEntry?.type === "folder" && selectedEntry.id === ROOT_ID}
                                     onToggle={() => toggleFolder(ROOT_ID)}
                                     onOpen={() => openFolder(ROOT_ID)}
                                     onContextMenu={() => setSelectedEntry({ type: "folder", id: ROOT_ID })}
-                                    contextMenuContent={renderFolderMenu({ id: ROOT_ID, name: "Root", path: "", projectId: null, customerId: null })}
+                                    contextMenuContent={renderFolderMenu({ id: ROOT_ID, name: t("root"), path: "", projectId: null, customerId: null })}
                                 />
                                 {(folderCache[ROOT_ID]?.folders ?? []).map((folder) => (
                                     <FolderTreeBranch
@@ -1704,19 +1715,19 @@ export default function ArtifactsManager({ projects, tasks, customers }: Props) 
                                     ))}
                                 </div>
                                 <CardTitle className="text-xl text-zinc-100">
-                                    {isSearchMode ? "Search results" : currentContents?.folder.name || "Root"}
+                                    {isSearchMode ? t("searchResults") : currentContents?.folder.name || t("root")}
                                 </CardTitle>
                             </div>
                             <div className="flex items-center gap-2">
                                 <Badge variant="outline" className="border-zinc-700 text-zinc-300">
-                                    {visibleFolders.length} folders
+                                    {t("badges.folders", { count: visibleFolders.length })}
                                 </Badge>
                                 <Badge variant="outline" className="border-zinc-700 text-zinc-300">
-                                    {visibleArtifacts.length} tracked
+                                    {t("badges.tracked", { count: visibleArtifacts.length })}
                                 </Badge>
                                 {visibleDiscoveredEntries.length > 0 && (
                                     <Badge variant="outline" className="border-amber-500/40 text-amber-200">
-                                        {visibleDiscoveredEntries.length} needs metadata
+                                        {t("badges.needsMetadata", { count: visibleDiscoveredEntries.length })}
                                     </Badge>
                                 )}
                             </div>
@@ -1724,10 +1735,10 @@ export default function ArtifactsManager({ projects, tasks, customers }: Props) 
                     </CardHeader>
                     <CardContent className="min-h-0 px-0">
                         <div className={cn(BROWSER_GRID, "border-b border-zinc-800/80 px-4 py-3 text-xs font-semibold uppercase tracking-[0.18em] text-zinc-500")}>
-                            <span>Name</span>
-                            <span className="hidden md:block">Context</span>
-                            <span className="hidden md:block">Size</span>
-                            <span className="hidden md:block">Updated</span>
+                            <span>{t("columns.name")}</span>
+                            <span className="hidden md:block">{t("columns.context")}</span>
+                            <span className="hidden md:block">{t("columns.size")}</span>
+                            <span className="hidden md:block">{t("columns.updated")}</span>
                             <span />
                         </div>
                         <ScrollArea className="h-[calc(100vh-18rem)]">
@@ -1737,10 +1748,10 @@ export default function ArtifactsManager({ projects, tasks, customers }: Props) 
                                         key={folder.id}
                                         icon={<IconFolder className="size-4 text-amber-300" />}
                                         title={folder.name}
-                                        subtitle={folder.path || "Root"}
-                                        context={folder.projectId ? projects.find((project) => project.id === folder.projectId)?.name || "Scoped folder" : "Folder"}
-                                        sizeLabel="Folder"
-                                        dateLabel={formatRelativeDate(folder.createdAt)}
+                                        subtitle={folder.path || t("root")}
+                                        context={folder.projectId ? projects.find((project) => project.id === folder.projectId)?.name || t("scopedFolder") : t("folder")}
+                                        sizeLabel={t("folder")}
+                                        dateLabel={formatDate(folder.createdAt)}
                                         selected={selectedEntry?.type === "folder" && selectedEntry.id === folder.id}
                                         onClick={() => setSelectedEntry({ type: "folder", id: folder.id })}
                                         onDoubleClick={() => openFolder(folder.id)}
@@ -1755,17 +1766,17 @@ export default function ArtifactsManager({ projects, tasks, customers }: Props) 
                                                     </Button>
                                                 </DropdownMenuTrigger>
                                                 <DropdownMenuContent align="end" className="w-48 border-zinc-800 bg-zinc-950 text-zinc-100">
-                                                    <DropdownMenuItem onClick={() => openFolder(folder.id)}>Open</DropdownMenuItem>
+                                                    <DropdownMenuItem onClick={() => openFolder(folder.id)}>{t("menu.open")}</DropdownMenuItem>
                                                     <DropdownMenuItem onClick={() => {
                                                         setSelectedEntry({ type: "folder", id: folder.id });
                                                         beginCreateFileAt(folder);
-                                                    }}>New File Here</DropdownMenuItem>
+                                                    }}>{t("menu.newFileHere")}</DropdownMenuItem>
                                                     <DropdownMenuItem onClick={() => {
                                                         setSelectedEntry({ type: "folder", id: folder.id });
                                                         beginCreateFolderAt(folder);
-                                                    }}>New Folder Here</DropdownMenuItem>
-                                                    <DropdownMenuItem onClick={() => { setSelectedEntry({ type: "folder", id: folder.id }); setInspectorTab("properties"); setIsInspectorOpen(true); }}>Edit Properties</DropdownMenuItem>
-                                                    <DropdownMenuItem variant="destructive" onClick={() => requestDeleteFolder(folder.id)}>Delete Folder</DropdownMenuItem>
+                                                    }}>{t("menu.newFolderHere")}</DropdownMenuItem>
+                                                    <DropdownMenuItem onClick={() => { setSelectedEntry({ type: "folder", id: folder.id }); setInspectorTab("properties"); setIsInspectorOpen(true); }}>{t("menu.editProperties")}</DropdownMenuItem>
+                                                    <DropdownMenuItem variant="destructive" onClick={() => requestDeleteFolder(folder.id)}>{t("menu.deleteFolder")}</DropdownMenuItem>
                                                 </DropdownMenuContent>
                                             </DropdownMenu>
                                         )}
@@ -1779,7 +1790,7 @@ export default function ArtifactsManager({ projects, tasks, customers }: Props) 
                                         subtitle={artifact.path || artifact.originalFilename || artifact.kind}
                                         context={buildArtifactContextLabel(artifact)}
                                         sizeLabel={formatBytes(artifact.sizeBytes)}
-                                        dateLabel={formatRelativeDate(artifact.updatedAt || artifact.createdAt)}
+                                        dateLabel={formatDate(artifact.updatedAt || artifact.createdAt)}
                                         selected={selectedEntry?.type === "artifact" && selectedEntry.id === artifact.id}
                                         onClick={() => setSelectedEntry({ type: "artifact", id: artifact.id })}
                                         onDoubleClick={() => { setSelectedEntry({ type: "artifact", id: artifact.id }); setInspectorTab("preview"); setIsInspectorOpen(true); }}
@@ -1794,12 +1805,12 @@ export default function ArtifactsManager({ projects, tasks, customers }: Props) 
                                                     </Button>
                                                 </DropdownMenuTrigger>
                                                 <DropdownMenuContent align="end" className="w-48 border-zinc-800 bg-zinc-950 text-zinc-100">
-                                                    {canEditOfficeArtifact(artifact) && <DropdownMenuItem onClick={() => openArtifactEditor(artifact.id)}>Edit in Emperor</DropdownMenuItem>}
-                                                    <DropdownMenuItem onClick={() => { setSelectedEntry({ type: "artifact", id: artifact.id }); setInspectorTab("preview"); setIsInspectorOpen(true); }}>Preview</DropdownMenuItem>
-                                                    <DropdownMenuItem onClick={() => handleDownloadArtifact(artifact.id)}>Download</DropdownMenuItem>
-                                                    <DropdownMenuItem onClick={() => beginRenameArtifact(artifact)}>Rename</DropdownMenuItem>
-                                                    <DropdownMenuItem onClick={() => { setSelectedEntry({ type: "artifact", id: artifact.id }); setInspectorTab("properties"); setIsInspectorOpen(true); }}>Edit Properties</DropdownMenuItem>
-                                                    <DropdownMenuItem variant="destructive" onClick={() => requestDeleteArtifact(artifact.id)}>Delete File</DropdownMenuItem>
+                                                    {canEditOfficeArtifact(artifact) && <DropdownMenuItem onClick={() => openArtifactEditor(artifact.id)}>{t("menu.editInEmperor")}</DropdownMenuItem>}
+                                                    <DropdownMenuItem onClick={() => { setSelectedEntry({ type: "artifact", id: artifact.id }); setInspectorTab("preview"); setIsInspectorOpen(true); }}>{t("menu.preview")}</DropdownMenuItem>
+                                                    <DropdownMenuItem onClick={() => handleDownloadArtifact(artifact.id)}>{t("menu.download")}</DropdownMenuItem>
+                                                    <DropdownMenuItem onClick={() => beginRenameArtifact(artifact)}>{t("menu.rename")}</DropdownMenuItem>
+                                                    <DropdownMenuItem onClick={() => { setSelectedEntry({ type: "artifact", id: artifact.id }); setInspectorTab("properties"); setIsInspectorOpen(true); }}>{t("menu.editProperties")}</DropdownMenuItem>
+                                                    <DropdownMenuItem variant="destructive" onClick={() => requestDeleteArtifact(artifact.id)}>{t("menu.deleteFile")}</DropdownMenuItem>
                                                 </DropdownMenuContent>
                                             </DropdownMenu>
                                         )}
@@ -1813,29 +1824,29 @@ export default function ArtifactsManager({ projects, tasks, customers }: Props) 
                                             : <span className="flex size-5 items-center justify-center rounded-full border border-amber-400/50 bg-amber-400/10"><IconQuestionMark className="size-3 text-amber-200" /></span>}
                                         title={entry.name}
                                         subtitle={entry.logicalPath}
-                                        context={entry.entryType === "folder" ? "External folder" : "Missing metadata"}
-                                        sizeLabel={entry.sizeBytes === null ? "Folder" : formatBytes(entry.sizeBytes)}
-                                        dateLabel={formatRelativeDate(entry.modifiedAt)}
+                                        context={entry.entryType === "folder" ? t("externalFolder") : t("missingMetadata")}
+                                        sizeLabel={entry.sizeBytes === null ? t("folder") : formatBytes(entry.sizeBytes)}
+                                        dateLabel={formatDate(entry.modifiedAt)}
                                         selected={false}
                                         onClick={() => beginTrackExternal(entry)}
                                         onDoubleClick={() => beginTrackExternal(entry)}
                                         onInspect={() => beginTrackExternal(entry)}
                                         contextMenuContent={(
                                             <>
-                                                {entry.entryType === "file" && <ContextMenuItem onClick={() => beginTrackExternal(entry)}>Add metadata</ContextMenuItem>}
-                                                <ContextMenuItem variant="destructive" onClick={() => requestDeleteExternal(entry)}>Remove from storage and Drive</ContextMenuItem>
+                                                {entry.entryType === "file" && <ContextMenuItem onClick={() => beginTrackExternal(entry)}>{t("menu.addMetadata")}</ContextMenuItem>}
+                                                <ContextMenuItem variant="destructive" onClick={() => requestDeleteExternal(entry)}>{t("menu.removeExternal")}</ContextMenuItem>
                                             </>
                                         )}
                                         actions={(
                                             <DropdownMenu>
                                                 <DropdownMenuTrigger asChild>
-                                                    <Button variant="ghost" size="icon-sm" aria-label={`Actions for ${entry.name}`} className="text-amber-100 hover:bg-amber-500/10 hover:text-amber-50">
+                                                    <Button variant="ghost" size="icon-sm" aria-label={t("actionsFor", { name: entry.name })} className="text-amber-100 hover:bg-amber-500/10 hover:text-amber-50">
                                                         <IconDots className="size-4" />
                                                     </Button>
                                                 </DropdownMenuTrigger>
                                                 <DropdownMenuContent align="end" className="w-56 border-zinc-800 bg-zinc-950 text-zinc-100">
-                                                    {entry.entryType === "file" && <DropdownMenuItem onClick={() => beginTrackExternal(entry)}><IconPlus className="size-4" />Add metadata</DropdownMenuItem>}
-                                                    <DropdownMenuItem variant="destructive" onClick={() => requestDeleteExternal(entry)}><IconTrash className="size-4" />Remove from storage and Drive</DropdownMenuItem>
+                                                    {entry.entryType === "file" && <DropdownMenuItem onClick={() => beginTrackExternal(entry)}><IconPlus className="size-4" />{t("menu.addMetadata")}</DropdownMenuItem>}
+                                                    <DropdownMenuItem variant="destructive" onClick={() => requestDeleteExternal(entry)}><IconTrash className="size-4" />{t("menu.removeExternal")}</DropdownMenuItem>
                                                 </DropdownMenuContent>
                                             </DropdownMenu>
                                         )}
@@ -1844,26 +1855,26 @@ export default function ArtifactsManager({ projects, tasks, customers }: Props) 
                                 {loadingFolderId === currentFolderId && !isSearchMode && (
                                     <div className="flex items-center gap-2 px-4 py-6 text-sm text-zinc-400">
                                         <IconLoader2 className="size-4 animate-spin" />
-                                        Loading folder contents...
+                                        {t("loadingFolder")}
                                     </div>
                                 )}
                                 {isSearchLoading && isSearchMode && (
                                     <div className="flex items-center gap-2 px-4 py-6 text-sm text-zinc-400">
                                         <IconLoader2 className="size-4 animate-spin" />
-                                        Searching storage...
+                                        {t("searching")}
                                     </div>
                                 )}
                                 {!loadingFolderId && !isSearchLoading && visibleFolders.length === 0 && visibleArtifacts.length === 0 && visibleDiscoveredEntries.length === 0 && (
                                     <EmptyState
                                         className="mx-2 mt-2"
                                         icon={isSearchMode ? IconSearch : IconFolderOpen}
-                                        title={isSearchMode ? "No files match these filters" : currentFolderId === ROOT_ID ? "No files yet" : "This folder is empty"}
+                                        title={isSearchMode ? t("empty.searchTitle") : currentFolderId === ROOT_ID ? t("empty.rootTitle") : t("empty.folderTitle")}
                                         description={isSearchMode
-                                            ? "Nothing in storage matches the search or the project, task, client and type filters."
+                                            ? t("empty.searchDescription")
                                             : currentFolderId === ROOT_ID
-                                                ? "Files your agents save and files you upload land here. Upload one, or create a folder to organize them."
-                                                : "Upload a file here, or move files into this folder."}
-                                        action={hasActiveFilters ? <Button type="button" variant="outline" size="sm" onClick={clearFilters}>Clear filters</Button> : undefined}
+                                                ? t("empty.rootDescription")
+                                                : t("empty.folderDescription")}
+                                        action={hasActiveFilters ? <Button type="button" variant="outline" size="sm" onClick={clearFilters}>{t("clearFilters")}</Button> : undefined}
                                     />
                                 )}
                             </div>
@@ -2002,7 +2013,7 @@ export default function ArtifactsManager({ projects, tasks, customers }: Props) 
                 <DialogContent className="max-h-[92vh] w-[95vw] overflow-hidden border-zinc-800 bg-zinc-950 p-0 text-zinc-100 sm:max-w-4xl lg:max-w-6xl xl:max-w-[1200px]">
                     <div className="flex h-[85vh] min-h-[500px] flex-col">
                         <DialogHeader className="flex flex-row items-center justify-between border-b border-zinc-800 px-6 py-4 pr-14">
-                            <DialogTitle className="text-sm font-semibold uppercase tracking-[0.18em] text-zinc-400">Inspector</DialogTitle>
+                            <DialogTitle className="text-sm font-semibold uppercase tracking-[0.18em] text-zinc-400">{t("inspector")}</DialogTitle>
                             {selectedEntry?.type === "artifact" && (
                                 <Button variant="ghost" size="icon-sm" onClick={() => setInspectorTab(inspectorTab === "preview" ? "properties" : "preview")} className="text-zinc-400 hover:text-zinc-100 mt-0!">
                                     <IconSettings className="size-4" />
@@ -2067,17 +2078,17 @@ export default function ArtifactsManager({ projects, tasks, customers }: Props) 
             }}>
                 <DialogContent className="border-zinc-800 bg-zinc-950 text-zinc-100 sm:max-w-md">
                     <DialogHeader>
-                        <DialogTitle>{deleteConfirm?.title || "Delete item?"}</DialogTitle>
+                        <DialogTitle>{deleteConfirm?.title || t("confirm.deleteItem")}</DialogTitle>
                         <DialogDescription className="text-zinc-400">
-                            {deleteConfirm?.description || "This action archives the selected Storage item."}
+                            {deleteConfirm?.description || t("confirm.deleteItemDescription")}
                         </DialogDescription>
                     </DialogHeader>
                     <DialogFooter>
                         <Button variant="outline" onClick={() => setDeleteConfirm(null)} disabled={isDeleting} className="border-zinc-800 bg-zinc-950 text-zinc-200 hover:bg-zinc-900">
-                            Cancel
+                            {t("cancel")}
                         </Button>
                         <Button onClick={() => void handleConfirmDelete()} disabled={isDeleting} className="bg-rose-500 text-white hover:bg-rose-400">
-                            {isDeleting ? "Deleting..." : "Delete"}
+                            {isDeleting ? t("deleting") : t("delete")}
                         </Button>
                     </DialogFooter>
                 </DialogContent>
@@ -2262,6 +2273,7 @@ function FolderInspector(props: {
     onSave: () => void;
     onDelete: () => void;
 }) {
+    const t = useTranslations("artifacts");
     if (props.folder.id === ROOT_ID) {
         return (
             <div className="space-y-4">
@@ -2270,12 +2282,12 @@ function FolderInspector(props: {
                         <IconFolder className="size-6 text-amber-300" />
                     </div>
                     <div>
-                        <h2 className="text-lg font-semibold text-zinc-100">Root</h2>
-                        <p className="text-sm text-zinc-400">Top-level folder container</p>
+                        <h2 className="text-lg font-semibold text-zinc-100">{t("root")}</h2>
+                        <p className="text-sm text-zinc-400">{t("folderInspector.rootSubtitle")}</p>
                     </div>
                 </div>
                 <div className="rounded-2xl border border-zinc-800 bg-zinc-950/80 p-4 text-sm text-zinc-400">
-                    Root is the top-level container for all storage folders.
+                    {t("folderInspector.rootBody")}
                 </div>
             </div>
         );
@@ -2289,18 +2301,18 @@ function FolderInspector(props: {
                 </div>
                 <div>
                     <h2 className="text-lg font-semibold text-zinc-100">{props.folder.name}</h2>
-                    <p className="text-sm text-zinc-400">{props.folder.path || "Root folder"}</p>
+                    <p className="text-sm text-zinc-400">{props.folder.path || t("folderInspector.rootFolder")}</p>
                 </div>
             </div>
             <div className="space-y-4">
-                <Field label="Folder name">
+                <Field label={t("fields.folderName")}>
                     <Input
                         value={props.draft.name}
                         onChange={(event) => props.onDraftChange((current) => ({ ...current, name: event.target.value }))}
                         className="border-zinc-800 bg-zinc-900 text-zinc-100"
                     />
                 </Field>
-                <Field label="Parent folder">
+                <Field label={t("fields.parentFolder")}>
                     <select
                         value={props.draft.parentFolderId}
                         onChange={(event) => props.onDraftChange((current) => ({ ...current, parentFolderId: event.target.value }))}
@@ -2311,35 +2323,35 @@ function FolderInspector(props: {
                         ))}
                     </select>
                 </Field>
-                <Field label="Project">
+                <Field label={t("fields.project")}>
                     <select
                         value={props.draft.projectId}
                         onChange={(event) => props.onDraftChange((current) => ({ ...current, projectId: event.target.value }))}
                         className="h-9 w-full rounded-md border border-zinc-800 bg-zinc-900 px-3 text-sm text-zinc-200"
                     >
-                        <option value="">None</option>
+                        <option value="">{t("fields.none")}</option>
                         {props.projects.map((project) => (
                             <option key={project.id} value={project.id}>{project.name}</option>
                         ))}
                     </select>
                 </Field>
-                <Field label="Customer">
+                <Field label={t("fields.customer")}>
                     <select
                         value={props.draft.customerId}
                         onChange={(event) => props.onDraftChange((current) => ({ ...current, customerId: event.target.value }))}
                         className="h-9 w-full rounded-md border border-zinc-800 bg-zinc-900 px-3 text-sm text-zinc-200"
                     >
-                        <option value="">None</option>
+                        <option value="">{t("fields.none")}</option>
                         {props.customers.map((customer) => (
                             <option key={customer.id} value={customer.id}>{customer.name}</option>
                         ))}
                     </select>
                 </Field>
                 <details className="rounded-2xl border border-zinc-800 bg-zinc-950/80">
-                    <summary className="cursor-pointer px-4 py-3 text-sm font-medium text-zinc-300">Advanced folder metadata</summary>
+                    <summary className="cursor-pointer px-4 py-3 text-sm font-medium text-zinc-300">{t("folderMetadata.title")}</summary>
                     <div className="border-t border-zinc-800 px-4 py-4">
-                        <p className="mb-3 text-xs leading-5 text-zinc-500">Optional structured metadata for integrations. Most folders only need name, customer, project, and parent folder.</p>
-                        <Field label="Metadata JSON">
+                        <p className="mb-3 text-xs leading-5 text-zinc-500">{t("folderMetadata.inspectorHint")}</p>
+                        <Field label={t("fields.metadataJson")}>
                             <Textarea
                                 value={props.draft.metadataJson}
                                 onChange={(event) => props.onDraftChange((current) => ({ ...current, metadataJson: event.target.value }))}
@@ -2351,11 +2363,11 @@ function FolderInspector(props: {
                 <div className="flex flex-wrap gap-2">
                     <Button onClick={props.onSave} disabled={props.isSaving || !props.hasChanges}>
                         {props.isSaving && <IconLoader2 className="size-4 animate-spin" />}
-                        Save Folder
+                        {t("folderInspector.save")}
                     </Button>
                     <Button variant="outline" className="border-rose-500/30 bg-rose-500/10 text-rose-200 hover:bg-rose-500/20" onClick={props.onDelete}>
                         <IconTrash className="size-4" />
-                        Delete
+                        {t("delete")}
                     </Button>
                 </div>
             </div>
@@ -2388,11 +2400,14 @@ function ArtifactInspector(props: {
     onDelete: () => void;
     onOpenLargePreview: () => void;
 }) {
+    const t = useTranslations("artifacts");
+    const taxonomy = useArtifactTaxonomy();
+    const formatDate = useRelativeDate();
     return (
         <Tabs value={props.inspectorTab} onValueChange={props.onInspectorTabChange}>
             <TabsList variant="line" className="mb-4 border-b border-zinc-800 pb-1">
-                <TabsTrigger value="preview">Preview</TabsTrigger>
-                <TabsTrigger value="properties">Properties</TabsTrigger>
+                <TabsTrigger value="preview">{t("tabs.preview")}</TabsTrigger>
+                <TabsTrigger value="properties">{t("tabs.properties")}</TabsTrigger>
             </TabsList>
             <TabsContent value="preview">
                 <div className="space-y-4">
@@ -2405,10 +2420,10 @@ function ArtifactInspector(props: {
                             <p className="truncate text-sm text-zinc-400">{props.artifact.path || props.artifact.originalFilename || props.artifact.kind}</p>
                             <div className="mt-2 flex flex-wrap gap-2">
                                 <Badge variant="outline" className="border-zinc-700 text-zinc-300">{props.artifact.kind}</Badge>
-                                <Badge variant="outline" className="border-zinc-700 text-zinc-300">{getArtifactClassLabel(props.artifact.artifactClass)}</Badge>
-                                <Badge variant="outline" className="border-zinc-700 text-zinc-300">{getArtifactImportanceLabel(props.artifact.importance)}</Badge>
+                                <Badge variant="outline" className="border-zinc-700 text-zinc-300">{taxonomy.classLabel(props.artifact.artifactClass)}</Badge>
+                                <Badge variant="outline" className="border-zinc-700 text-zinc-300">{taxonomy.importanceLabel(props.artifact.importance)}</Badge>
                                 <Badge variant="outline" className="border-zinc-700 text-zinc-300">{props.artifact.contentType}</Badge>
-                                {props.artifact.isCanonical && <Badge className="bg-emerald-500/15 text-emerald-200 hover:bg-emerald-500/15">canonical</Badge>}
+                                {props.artifact.isCanonical && <Badge className="bg-emerald-500/15 text-emerald-200 hover:bg-emerald-500/15">{t("canonicalBadge")}</Badge>}
                             </div>
                         </div>
                     </div>
@@ -2419,27 +2434,27 @@ function ArtifactInspector(props: {
                         {props.onEdit && (
                             <Button className="bg-cyan-300 text-zinc-950 hover:bg-cyan-200" onClick={props.onEdit}>
                                 <IconPencil className="size-4" />
-                                Edit in Emperor
+                                {t("menu.editInEmperor")}
                             </Button>
                         )}
                         <Button variant="outline" className="border-zinc-800 bg-zinc-900 text-zinc-200 hover:bg-zinc-800" onClick={props.onDownload}>
                             <IconArrowDown className="size-4" />
-                            Download
+                            {t("menu.download")}
                         </Button>
                         <Button variant="outline" className="border-zinc-800 bg-zinc-900 text-zinc-200 hover:bg-zinc-800" onClick={props.onOpenLargePreview}>
                             <IconArrowsMaximize className="size-4" />
-                            {props.preview.state === "csv" ? "Open CSV Workspace" : "Open Large View"}
+                            {props.preview.state === "csv" ? t("inspectorView.openCsv") : t("inspectorView.openLarge")}
                         </Button>
                         <Button variant="outline" className="border-zinc-800 bg-zinc-900 text-zinc-200 hover:bg-zinc-800" onClick={props.onReplace}>
                             <IconPencil className="size-4" />
-                            Replace Content
+                            {t("inspectorView.replace")}
                         </Button>
                     </div>
                 </div>
             </TabsContent>
             <TabsContent value="properties">
                 <div className="space-y-4">
-                    <Field label="Title">
+                    <Field label={t("fields.title")}>
                         <Input
                             value={props.draft.title}
                             onChange={(event) => props.onDraftChange((current) => ({ ...current, title: event.target.value }))}
@@ -2447,24 +2462,24 @@ function ArtifactInspector(props: {
                         />
                     </Field>
                     <div className="grid gap-4 sm:grid-cols-2">
-                        <Field label="Kind">
+                        <Field label={t("fields.kind")}>
                             <Input
                                 value={props.draft.kind}
                                 onChange={(event) => props.onDraftChange((current) => ({ ...current, kind: event.target.value }))}
                                 className="border-zinc-800 bg-zinc-900 text-zinc-100"
                             />
                         </Field>
-                        <Field label="Visibility">
+                        <Field label={t("fields.visibility")}>
                             <select
                                 value={props.draft.visibility}
                                 onChange={(event) => props.onDraftChange((current) => ({ ...current, visibility: event.target.value }))}
                                 className="h-9 w-full rounded-md border border-zinc-800 bg-zinc-900 px-3 text-sm text-zinc-200"
                             >
-                                <option value="private">private</option>
-                                <option value="company">company</option>
+                                <option value="private">{t("visibility.private")}</option>
+                                <option value="company">{t("visibility.company")}</option>
                             </select>
                         </Field>
-                        <Field label="Project">
+                        <Field label={t("fields.project")}>
                             <select
                                 value={props.draft.projectId}
                                 onChange={(event) => {
@@ -2480,33 +2495,33 @@ function ArtifactInspector(props: {
                                 }}
                                 className="h-9 w-full rounded-md border border-zinc-800 bg-zinc-900 px-3 text-sm text-zinc-200"
                             >
-                                <option value="">None</option>
+                                <option value="">{t("fields.none")}</option>
                                 {props.projects.map((project) => (
                                     <option key={project.id} value={project.id}>{project.name}</option>
                                 ))}
                             </select>
                         </Field>
-                        <Field label="Task">
+                        <Field label={t("fields.task")}>
                             <select
                                 value={props.draft.taskId}
                                 onChange={(event) => props.onDraftChange((current) => ({ ...current, taskId: event.target.value }))}
                                 className="h-9 w-full rounded-md border border-zinc-800 bg-zinc-900 px-3 text-sm text-zinc-200"
                                 disabled={!props.draft.projectId}
                             >
-                                <option value="">None</option>
+                                <option value="">{t("fields.none")}</option>
                                 {props.tasks.filter((task) => task.projectId === props.draft.projectId).map((task) => (
                                     <option key={task.id} value={task.id}>{task.type}</option>
                                 ))}
                             </select>
                         </Field>
-                        <Field label="Customer">
+                        <Field label={t("fields.customer")}>
                             <select
                                 value={props.draft.customerId}
                                 onChange={(event) => props.onDraftChange((current) => ({ ...current, customerId: event.target.value }))}
                                 className="h-9 w-full rounded-md border border-zinc-800 bg-zinc-900 px-3 text-sm text-zinc-200"
                                 disabled={Boolean(props.draft.projectId)}
                             >
-                                <option value="">None</option>
+                                <option value="">{t("fields.none")}</option>
                                 {props.customers.map((customer) => (
                                     <option key={customer.id} value={customer.id}>{customer.name}</option>
                                 ))}
@@ -2515,36 +2530,36 @@ function ArtifactInspector(props: {
                     </div>
                     <details className="rounded-2xl border border-zinc-800 bg-zinc-950/80">
                         <summary className="cursor-pointer list-none px-4 py-3 text-sm font-medium text-zinc-300">
-                            Classification & advanced
+                            {t("classification.title")}
                         </summary>
                         <div className="space-y-4 border-t border-zinc-800 px-4 py-4">
                             <p className="text-xs text-zinc-500">
-                                These fields are mostly filing hints for the system. Most users only need title, scope, location, and canonical state.
+                                {t("classification.hint")}
                             </p>
                             <div className="grid gap-4 sm:grid-cols-2">
-                                <Field label="File role">
+                                <Field label={t("fields.fileRole")}>
                                     <select
                                         value={props.draft.artifactClass}
                                         onChange={(event) => props.onDraftChange((current) => ({ ...current, artifactClass: event.target.value }))}
                                         className="h-9 w-full rounded-md border border-zinc-800 bg-zinc-900 px-3 text-sm text-zinc-200"
                                     >
                                         {ARTIFACT_CLASS_OPTIONS.map((option) => (
-                                            <option key={option.value} value={option.value}>{option.label}</option>
+                                            <option key={option.value} value={option.value}>{taxonomy.classLabel(option.value)}</option>
                                         ))}
                                     </select>
                                 </Field>
-                                <Field label="Lifecycle">
+                                <Field label={t("fields.lifecycle")}>
                                     <select
                                         value={props.draft.importance}
                                         onChange={(event) => props.onDraftChange((current) => ({ ...current, importance: event.target.value }))}
                                         className="h-9 w-full rounded-md border border-zinc-800 bg-zinc-900 px-3 text-sm text-zinc-200"
                                     >
                                         {ARTIFACT_IMPORTANCE_OPTIONS.map((option) => (
-                                            <option key={option.value} value={option.value}>{option.label}</option>
+                                            <option key={option.value} value={option.value}>{taxonomy.importanceLabel(option.value)}</option>
                                         ))}
                                     </select>
                                 </Field>
-                                <Field label="Retention policy">
+                                <Field label={t("fields.retentionPolicy")}>
                                     <Input
                                         value={props.draft.retentionPolicy}
                                         onChange={(event) => props.onDraftChange((current) => ({ ...current, retentionPolicy: event.target.value }))}
@@ -2552,7 +2567,7 @@ function ArtifactInspector(props: {
                                     />
                                 </Field>
                             </div>
-                            <Field label="Metadata JSON">
+                            <Field label={t("fields.metadataJson")}>
                                 <Textarea
                                     value={props.draft.metadataJson}
                                     onChange={(event) => props.onDraftChange((current) => ({ ...current, metadataJson: event.target.value }))}
@@ -2568,16 +2583,16 @@ function ArtifactInspector(props: {
                             onChange={(event) => props.onDraftChange((current) => ({ ...current, isCanonical: event.target.checked }))}
                             className="size-4 rounded border-zinc-700 bg-zinc-900"
                         />
-                        Mark as canonical
+                        {t("inspectorView.markCanonical")}
                     </label>
-                    <Field label="Filename">
+                    <Field label={t("fields.filename")}>
                         <Input
                             value={props.locationDraft.name}
                             onChange={(event) => props.onLocationDraftChange((current) => ({ ...current, name: event.target.value }))}
                             className="border-zinc-800 bg-zinc-900 text-zinc-100"
                         />
                     </Field>
-                    <Field label="Folder">
+                    <Field label={t("fields.folder")}>
                         <select
                             value={props.locationDraft.folderId}
                             onChange={(event) => props.onLocationDraftChange((current) => ({ ...current, folderId: event.target.value }))}
@@ -2589,26 +2604,26 @@ function ArtifactInspector(props: {
                         </select>
                     </Field>
                     <div className="grid gap-3 text-xs text-zinc-400 sm:grid-cols-2">
-                        <InfoPill label="Path" value={props.artifact.path || "-"} />
-                        <InfoPill label="SHA256" value={props.artifact.sha256 || "-"} mono />
-                        <InfoPill label="Size" value={formatBytes(props.artifact.sizeBytes)} />
-                        <InfoPill label="Updated" value={formatRelativeDate(props.artifact.updatedAt || props.artifact.createdAt)} />
+                        <InfoPill label={t("info.path")} value={props.artifact.path || "-"} />
+                        <InfoPill label={HASH_LABEL} value={props.artifact.sha256 || "-"} mono />
+                        <InfoPill label={t("info.size")} value={formatBytes(props.artifact.sizeBytes)} />
+                        <InfoPill label={t("info.updated")} value={formatDate(props.artifact.updatedAt || props.artifact.createdAt)} />
                     </div>
                     <div className="flex flex-wrap gap-2">
                         <Button onClick={props.onSaveProperties} disabled={props.isSavingArtifact || !props.hasPropertyChanges}>
                             {props.isSavingArtifact && <IconLoader2 className="size-4 animate-spin" />}
-                            Save Properties
+                            {t("inspectorView.saveProperties")}
                         </Button>
                         <Button variant="outline" className="border-zinc-800 bg-zinc-900 text-zinc-200 hover:bg-zinc-800" onClick={props.onSaveLocation} disabled={props.isSavingLocation || !props.hasLocationChanges}>
                             {props.isSavingLocation && <IconLoader2 className="size-4 animate-spin" />}
-                            Save Location
+                            {t("inspectorView.saveLocation")}
                         </Button>
                         <Button variant="outline" className="border-zinc-800 bg-zinc-900 text-zinc-200 hover:bg-zinc-800" onClick={props.onReplace}>
-                            Replace Content
+                            {t("inspectorView.replace")}
                         </Button>
                         <Button variant="outline" className="border-rose-500/30 bg-rose-500/10 text-rose-200 hover:bg-rose-500/20" onClick={props.onDelete}>
                             <IconTrash className="size-4" />
-                            Delete
+                            {t("delete")}
                         </Button>
                     </div>
                 </div>
@@ -2627,52 +2642,53 @@ function FolderDialog(props: {
     onDraftChange: Dispatch<SetStateAction<FolderDraft>>;
     onSubmit: () => void;
 }) {
+    const t = useTranslations("artifacts");
     return (
         <Dialog open={props.open} onOpenChange={props.onOpenChange}>
             <DialogContent className="border-zinc-800 bg-zinc-950 text-zinc-100">
                 <DialogHeader>
-                    <DialogTitle>Create folder</DialogTitle>
+                    <DialogTitle>{t("folderDialog.title")}</DialogTitle>
                     <DialogDescription className="text-zinc-400">
-                        Create a new folder inside the current location.
+                        {t("folderDialog.description")}
                     </DialogDescription>
                 </DialogHeader>
                 <div className="space-y-4">
-                    <Field label="Folder name">
+                    <Field label={t("fields.folderName")}>
                         <Input
                             value={props.draft.name}
                             onChange={(event) => props.onDraftChange((current) => ({ ...current, name: event.target.value }))}
                             className="border-zinc-800 bg-zinc-900 text-zinc-100"
                         />
                     </Field>
-                    <Field label="Project">
+                    <Field label={t("fields.project")}>
                         <select
                             value={props.draft.projectId}
                             onChange={(event) => props.onDraftChange((current) => ({ ...current, projectId: event.target.value }))}
                             className="h-9 w-full rounded-md border border-zinc-800 bg-zinc-900 px-3 text-sm text-zinc-200"
                         >
-                            <option value="">None</option>
+                            <option value="">{t("fields.none")}</option>
                             {props.projects.map((project) => (
                                 <option key={project.id} value={project.id}>{project.name}</option>
                             ))}
                         </select>
                     </Field>
-                    <Field label="Customer">
+                    <Field label={t("fields.customer")}>
                         <select
                             value={props.draft.customerId}
                             onChange={(event) => props.onDraftChange((current) => ({ ...current, customerId: event.target.value }))}
                             className="h-9 w-full rounded-md border border-zinc-800 bg-zinc-900 px-3 text-sm text-zinc-200"
                         >
-                            <option value="">None</option>
+                            <option value="">{t("fields.none")}</option>
                             {props.customers.map((customer) => (
                                 <option key={customer.id} value={customer.id}>{customer.name}</option>
                             ))}
                         </select>
                     </Field>
                     <details className="rounded-2xl border border-zinc-800 bg-zinc-950/80">
-                        <summary className="cursor-pointer px-4 py-3 text-sm font-medium text-zinc-300">Advanced folder metadata</summary>
+                        <summary className="cursor-pointer px-4 py-3 text-sm font-medium text-zinc-300">{t("folderMetadata.title")}</summary>
                         <div className="border-t border-zinc-800 px-4 py-4">
-                            <p className="mb-3 text-xs leading-5 text-zinc-500">Optional structured metadata for integrations. Leave this alone unless you know why the folder needs it.</p>
-                            <Field label="Metadata JSON">
+                            <p className="mb-3 text-xs leading-5 text-zinc-500">{t("folderMetadata.dialogHint")}</p>
+                            <Field label={t("fields.metadataJson")}>
                                 <Textarea
                                     value={props.draft.metadataJson}
                                     onChange={(event) => props.onDraftChange((current) => ({ ...current, metadataJson: event.target.value }))}
@@ -2684,11 +2700,11 @@ function FolderDialog(props: {
                 </div>
                 <DialogFooter>
                     <Button variant="outline" className="border-zinc-800 bg-zinc-900 text-zinc-200 hover:bg-zinc-800" onClick={() => props.onOpenChange(false)}>
-                        Cancel
+                        {t("cancel")}
                     </Button>
                     <Button onClick={props.onSubmit} disabled={props.isSaving}>
                         {props.isSaving && <IconLoader2 className="size-4 animate-spin" />}
-                        Create
+                        {t("create")}
                     </Button>
                 </DialogFooter>
             </DialogContent>
@@ -2706,6 +2722,7 @@ function NewFileDialog(props: {
     onDraftChange: Dispatch<SetStateAction<NewFileDraft>>;
     onSubmit: () => void;
 }) {
+    const t = useTranslations("artifacts");
     return (
         <Dialog open={props.open} onOpenChange={props.onOpenChange}>
             <DialogContent className="border-zinc-800 bg-zinc-950 text-zinc-100 sm:max-w-xl">
@@ -2713,14 +2730,14 @@ function NewFileDialog(props: {
                     <div className="mb-2 flex size-10 items-center justify-center rounded-full border border-cyan-500/30 bg-cyan-500/10">
                         <IconFilePlus className="size-5 text-cyan-200" />
                     </div>
-                    <DialogTitle>Create a file</DialogTitle>
+                    <DialogTitle>{t("newFileDialog.title")}</DialogTitle>
                     <DialogDescription className="text-zinc-400">
-                        Create it in the current folder and start editing immediately. No Office service is required.
+                        {t("newFileDialog.description")}
                     </DialogDescription>
                 </DialogHeader>
                 <div className="space-y-5">
                     <div className="space-y-2">
-                        <div className="text-sm font-medium text-zinc-300">File type</div>
+                        <div className="text-sm font-medium text-zinc-300">{t("newFileDialog.fileType")}</div>
                         <div className="grid gap-2 sm:grid-cols-2">
                             {CREATABLE_FILE_TYPES.map((option) => {
                                 const selected = props.draft.type === option.value;
@@ -2742,18 +2759,18 @@ function NewFileDialog(props: {
                                         )}
                                     >
                                         <div className="flex items-center justify-between gap-3">
-                                            <div className="text-sm font-medium text-zinc-100">{option.label}</div>
+                                            <div className="text-sm font-medium text-zinc-100">{t(`fileTypes.${option.value}.label`)}</div>
                                             <span className="rounded-md border border-zinc-700 bg-zinc-950 px-1.5 py-0.5 font-mono text-[10px] uppercase text-zinc-400">
                                                 {option.extension.slice(1)}
                                             </span>
                                         </div>
-                                        <div className="mt-1 text-xs leading-5 text-zinc-500">{option.description}</div>
+                                        <div className="mt-1 text-xs leading-5 text-zinc-500">{t(`fileTypes.${option.value}.description`)}</div>
                                     </button>
                                 );
                             })}
                         </div>
                     </div>
-                    <Field label="Filename">
+                    <Field label={t("fields.filename")}>
                         <Input
                             autoFocus
                             value={props.draft.name}
@@ -2761,24 +2778,24 @@ function NewFileDialog(props: {
                             onKeyDown={(event) => {
                                 if (event.key === "Enter" && props.draft.name.trim() && !props.isCreating) props.onSubmit();
                             }}
-                            placeholder={`untitled${getCreatableFileType(props.draft.type).extension}`}
+                            placeholder={untitledFileName(props.draft.type)}
                             className="border-zinc-800 bg-zinc-900 text-zinc-100"
                         />
-                        <span className="text-xs text-zinc-500">The correct extension is added automatically.</span>
+                        <span className="text-xs text-zinc-500">{t("newFileDialog.extensionHint")}</span>
                     </Field>
                     <div className="grid gap-4 sm:grid-cols-2">
-                        <Field label="Customer">
+                        <Field label={t("fields.customer")}>
                             <select
                                 value={props.draft.customerId}
                                 onChange={(event) => props.onDraftChange((current) => ({ ...current, customerId: event.target.value }))}
                                 disabled={Boolean(props.draft.projectId)}
                                 className="h-9 w-full rounded-md border border-zinc-800 bg-zinc-900 px-3 text-sm text-zinc-200 disabled:cursor-not-allowed disabled:opacity-50"
                             >
-                                <option value="">Company (no customer)</option>
+                                <option value="">{t("fields.companyNoCustomer")}</option>
                                 {props.customers.map((customer) => <option key={customer.id} value={customer.id}>{customer.name}</option>)}
                             </select>
                         </Field>
-                        <Field label="Project">
+                        <Field label={t("fields.project")}>
                             <select
                                 value={props.draft.projectId}
                                 onChange={(event) => {
@@ -2791,7 +2808,7 @@ function NewFileDialog(props: {
                                 }}
                                 className="h-9 w-full rounded-md border border-zinc-800 bg-zinc-900 px-3 text-sm text-zinc-200"
                             >
-                                <option value="">None</option>
+                                <option value="">{t("fields.none")}</option>
                                 {props.projects.map((project) => <option key={project.id} value={project.id}>{project.name}</option>)}
                             </select>
                         </Field>
@@ -2799,11 +2816,11 @@ function NewFileDialog(props: {
                 </div>
                 <DialogFooter>
                     <Button variant="outline" onClick={() => props.onOpenChange(false)} disabled={props.isCreating} className="border-zinc-800 bg-zinc-900 text-zinc-200 hover:bg-zinc-800">
-                        Cancel
+                        {t("cancel")}
                     </Button>
                     <Button className="cursor-pointer disabled:cursor-not-allowed" onClick={props.onSubmit} disabled={props.isCreating || !props.draft.name.trim()}>
                         {props.isCreating ? <IconLoader2 className="size-4 animate-spin" /> : <IconFilePlus className="size-4" />}
-                        Create and edit
+                        {t("newFileDialog.submit")}
                     </Button>
                 </DialogFooter>
             </DialogContent>
@@ -2818,6 +2835,7 @@ function RenameFileDialog(props: {
     onOpenChange: (open: boolean) => void;
     onSubmit: () => void;
 }) {
+    const t = useTranslations("artifacts");
     return (
         <Dialog open={Boolean(props.draft)} onOpenChange={props.onOpenChange}>
             <DialogContent className="border-zinc-800 bg-zinc-950 text-zinc-100 sm:max-w-md">
@@ -2825,12 +2843,12 @@ function RenameFileDialog(props: {
                     <div className="mb-2 flex size-10 items-center justify-center rounded-full border border-cyan-500/30 bg-cyan-500/10">
                         <IconPencil className="size-5 text-cyan-200" />
                     </div>
-                    <DialogTitle>Rename file</DialogTitle>
+                    <DialogTitle>{t("renameDialog.title")}</DialogTitle>
                     <DialogDescription className="text-zinc-400">
-                        Change the file name without moving it or changing its format.
+                        {t("renameDialog.description")}
                     </DialogDescription>
                 </DialogHeader>
-                <Field label="File name">
+                <Field label={t("fields.fileName")}>
                     <div className="flex min-h-11 items-center rounded-md border border-zinc-800 bg-zinc-900 focus-within:ring-2 focus-within:ring-cyan-400/70">
                         <Input
                             autoFocus
@@ -2849,16 +2867,16 @@ function RenameFileDialog(props: {
                         )}
                     </div>
                     <span id="rename-file-extension-hint" className="text-xs text-zinc-500">
-                        The extension stays fixed so the file continues opening in the correct editor.
+                        {t("renameDialog.extensionHint")}
                     </span>
                 </Field>
                 <DialogFooter>
                     <Button variant="outline" onClick={() => props.onOpenChange(false)} disabled={props.isRenaming} className="border-zinc-800 bg-zinc-900 text-zinc-200 hover:bg-zinc-800">
-                        Cancel
+                        {t("cancel")}
                     </Button>
                     <Button onClick={props.onSubmit} disabled={props.isRenaming || !props.draft?.baseName.trim()}>
                         {props.isRenaming ? <IconLoader2 className="size-4 animate-spin" /> : <IconPencil className="size-4" />}
-                        Rename
+                        {t("menu.rename")}
                     </Button>
                 </DialogFooter>
             </DialogContent>
@@ -2892,39 +2910,41 @@ function UploadDialog(props: {
     onMetadataJsonChange: (value: string) => void;
     onSubmit: () => void;
 }) {
+    const t = useTranslations("artifacts");
+    const taxonomy = useArtifactTaxonomy();
     return (
         <Dialog open={props.open} onOpenChange={props.onOpenChange}>
             <DialogContent className="border-zinc-800 bg-zinc-950 text-zinc-100">
                 <DialogHeader>
-                    <DialogTitle>Upload file</DialogTitle>
+                    <DialogTitle>{t("uploadDialog.title")}</DialogTitle>
                     <DialogDescription className="text-zinc-400">
-                        Upload a file into the current folder. Customer and project are optional — leave both empty for company-level storage.
+                        {t("uploadDialog.description")}
                     </DialogDescription>
                 </DialogHeader>
                 <div className="space-y-4">
-                    <Field label="File">
+                    <Field label={t("fields.file")}>
                         <Input type="file" onChange={props.onFileChange} className="border-zinc-800 bg-zinc-900 text-zinc-100" />
                     </Field>
-                    <Field label="Title">
+                    <Field label={t("fields.title")}>
                         <Input value={props.uploadTitle} onChange={(event) => props.onTitleChange(event.target.value)} className="border-zinc-800 bg-zinc-900 text-zinc-100" />
                     </Field>
                     <div className="grid gap-4 sm:grid-cols-2">
-                        <Field label="Customer">
+                        <Field label={t("fields.customer")}>
                             <select
                                 value={props.uploadCustomerId}
                                 onChange={(event) => props.onCustomerChange(event.target.value)}
                                 className="h-9 w-full rounded-md border border-zinc-800 bg-zinc-900 px-3 text-sm text-zinc-200"
                                 disabled={Boolean(props.uploadProjectId)}
                             >
-                                <option value="">Company (no customer)</option>
+                                <option value="">{t("fields.companyNoCustomer")}</option>
                                 {props.customers.map((customer) => (
                                     <option key={customer.id} value={customer.id}>{customer.name}</option>
                                 ))}
                             </select>
                         </Field>
-                        <Field label="Project">
+                        <Field label={t("fields.project")}>
                             <select value={props.uploadProjectId} onChange={(event) => props.onProjectChange(event.target.value)} className="h-9 w-full rounded-md border border-zinc-800 bg-zinc-900 px-3 text-sm text-zinc-200">
-                                <option value="">None</option>
+                                <option value="">{t("fields.none")}</option>
                                 {props.projects.map((project) => (
                                     <option key={project.id} value={project.id}>{project.name}</option>
                                 ))}
@@ -2933,32 +2953,32 @@ function UploadDialog(props: {
                     </div>
                     <details className="rounded-xl border border-zinc-800 bg-zinc-950/70">
                         <summary className="cursor-pointer list-none px-4 py-3 text-sm font-medium text-zinc-300">
-                            Advanced
+                            {t("uploadDialog.advanced")}
                         </summary>
                         <div className="space-y-4 border-t border-zinc-800 px-4 py-4">
                             <p className="text-xs text-zinc-500">
-                                Defaults are usually right. Most uploads only need a title and the right project or customer scope.
+                                {t("uploadDialog.advancedHint")}
                             </p>
                             <div className="grid gap-4 sm:grid-cols-2">
-                                <Field label="Kind">
+                                <Field label={t("fields.kind")}>
                                     <Input value={props.uploadKind} onChange={(event) => props.onKindChange(event.target.value)} className="border-zinc-800 bg-zinc-900 text-zinc-100" />
                                 </Field>
-                                <Field label="File role">
+                                <Field label={t("fields.fileRole")}>
                                     <select value={props.uploadArtifactClass} onChange={(event) => props.onArtifactClassChange(event.target.value)} className="h-9 w-full rounded-md border border-zinc-800 bg-zinc-900 px-3 text-sm text-zinc-200">
                                         {ARTIFACT_CLASS_OPTIONS.map((option) => (
-                                            <option key={option.value} value={option.value}>{option.label}</option>
+                                            <option key={option.value} value={option.value}>{taxonomy.classLabel(option.value)}</option>
                                         ))}
                                     </select>
                                 </Field>
-                                <Field label="Lifecycle">
+                                <Field label={t("fields.lifecycle")}>
                                     <select value={props.uploadImportance} onChange={(event) => props.onImportanceChange(event.target.value)} className="h-9 w-full rounded-md border border-zinc-800 bg-zinc-900 px-3 text-sm text-zinc-200">
                                         {ARTIFACT_IMPORTANCE_OPTIONS.map((option) => (
-                                            <option key={option.value} value={option.value}>{option.label}</option>
+                                            <option key={option.value} value={option.value}>{taxonomy.importanceLabel(option.value)}</option>
                                         ))}
                                     </select>
                                 </Field>
                             </div>
-                            <Field label="Metadata JSON">
+                            <Field label={t("fields.metadataJson")}>
                                 <Textarea value={props.uploadMetadataJson} onChange={(event) => props.onMetadataJsonChange(event.target.value)} className="min-h-28 border-zinc-800 bg-zinc-900 font-mono text-xs text-zinc-100" />
                             </Field>
                         </div>
@@ -2966,11 +2986,11 @@ function UploadDialog(props: {
                 </div>
                 <DialogFooter>
                     <Button variant="outline" className="border-zinc-800 bg-zinc-900 text-zinc-200 hover:bg-zinc-800" onClick={() => props.onOpenChange(false)}>
-                        Cancel
+                        {t("cancel")}
                     </Button>
                     <Button onClick={props.onSubmit} disabled={props.isUploading}>
                         {props.isUploading && <IconLoader2 className="size-4 animate-spin" />}
-                        Upload
+                        {t("upload")}
                     </Button>
                 </DialogFooter>
             </DialogContent>
@@ -3000,6 +3020,8 @@ function TrackExternalDialog(props: {
     onMetadataJsonChange: (value: string) => void;
     onSubmit: () => void;
 }) {
+    const t = useTranslations("artifacts");
+    const taxonomy = useArtifactTaxonomy();
     return (
         <Dialog open={Boolean(props.entry)} onOpenChange={props.onOpenChange}>
             <DialogContent className="border-zinc-800 bg-zinc-950 text-zinc-100 sm:max-w-lg">
@@ -3007,9 +3029,9 @@ function TrackExternalDialog(props: {
                     <div className="mb-2 flex size-10 items-center justify-center rounded-full border border-amber-500/40 bg-amber-500/10">
                         <IconQuestionMark className="size-5 text-amber-200" />
                     </div>
-                    <DialogTitle>Add metadata to track this file</DialogTitle>
+                    <DialogTitle>{t("trackDialog.title")}</DialogTitle>
                     <DialogDescription className="text-zinc-400">
-                        This file exists in synchronized storage but is not visible to agents or artifact APIs yet.
+                        {t("trackDialog.description")}
                     </DialogDescription>
                 </DialogHeader>
                 <div className="rounded-xl border border-zinc-800 bg-zinc-900/60 px-3 py-2">
@@ -3017,57 +3039,57 @@ function TrackExternalDialog(props: {
                     <div className="truncate text-xs text-zinc-500">{props.entry?.logicalPath}</div>
                 </div>
                 <div className="space-y-4">
-                    <Field label="Title">
+                    <Field label={t("fields.title")}>
                         <Input value={props.title} onChange={(event) => props.onTitleChange(event.target.value)} className="border-zinc-800 bg-zinc-900 text-zinc-100" />
                     </Field>
                     <div className="grid gap-4 sm:grid-cols-2">
-                        <Field label="Customer">
+                        <Field label={t("fields.customer")}>
                             <select
                                 value={props.customerId}
                                 onChange={(event) => props.onCustomerChange(event.target.value)}
                                 disabled={Boolean(props.projectId)}
                                 className="h-11 w-full rounded-md border border-zinc-800 bg-zinc-900 px-3 text-sm text-zinc-200 disabled:cursor-not-allowed disabled:opacity-50"
                             >
-                                <option value="">Select customer</option>
+                                <option value="">{t("fields.selectCustomer")}</option>
                                 {props.customers.map((customer) => <option key={customer.id} value={customer.id}>{customer.name}</option>)}
                             </select>
                         </Field>
-                        <Field label="Project">
+                        <Field label={t("fields.project")}>
                             <select value={props.projectId} onChange={(event) => props.onProjectChange(event.target.value)} className="h-11 w-full rounded-md border border-zinc-800 bg-zinc-900 px-3 text-sm text-zinc-200">
-                                <option value="">None</option>
+                                <option value="">{t("fields.none")}</option>
                                 {props.projects.map((project) => <option key={project.id} value={project.id}>{project.name}</option>)}
                             </select>
                         </Field>
                     </div>
                     <details className="rounded-xl border border-zinc-800 bg-zinc-950/70">
-                        <summary className="cursor-pointer list-none px-4 py-3 text-sm font-medium text-zinc-300">Classification & advanced</summary>
+                        <summary className="cursor-pointer list-none px-4 py-3 text-sm font-medium text-zinc-300">{t("classification.title")}</summary>
                         <div className="space-y-4 border-t border-zinc-800 px-4 py-4">
-                            <Field label="Kind">
+                            <Field label={t("fields.kind")}>
                                 <Input value={props.kind} onChange={(event) => props.onKindChange(event.target.value)} className="border-zinc-800 bg-zinc-900 text-zinc-100" />
                             </Field>
                             <div className="grid gap-4 sm:grid-cols-2">
-                                <Field label="File role">
+                                <Field label={t("fields.fileRole")}>
                                     <select value={props.artifactClass} onChange={(event) => props.onArtifactClassChange(event.target.value)} className="h-11 w-full rounded-md border border-zinc-800 bg-zinc-900 px-3 text-sm text-zinc-200">
-                                        {ARTIFACT_CLASS_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+                                        {ARTIFACT_CLASS_OPTIONS.map((option) => <option key={option.value} value={option.value}>{taxonomy.classLabel(option.value)}</option>)}
                                     </select>
                                 </Field>
-                                <Field label="Lifecycle">
+                                <Field label={t("fields.lifecycle")}>
                                     <select value={props.importance} onChange={(event) => props.onImportanceChange(event.target.value)} className="h-11 w-full rounded-md border border-zinc-800 bg-zinc-900 px-3 text-sm text-zinc-200">
-                                        {ARTIFACT_IMPORTANCE_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+                                        {ARTIFACT_IMPORTANCE_OPTIONS.map((option) => <option key={option.value} value={option.value}>{taxonomy.importanceLabel(option.value)}</option>)}
                                     </select>
                                 </Field>
                             </div>
-                            <Field label="Metadata JSON">
+                            <Field label={t("fields.metadataJson")}>
                                 <Textarea value={props.metadataJson} onChange={(event) => props.onMetadataJsonChange(event.target.value)} className="min-h-24 border-zinc-800 bg-zinc-900 font-mono text-xs text-zinc-100" />
                             </Field>
                         </div>
                     </details>
                 </div>
                 <DialogFooter>
-                    <Button variant="outline" onClick={() => props.onOpenChange(false)} disabled={props.isSaving} className="border-zinc-800 bg-zinc-900 text-zinc-200 hover:bg-zinc-800">Cancel</Button>
+                    <Button variant="outline" onClick={() => props.onOpenChange(false)} disabled={props.isSaving} className="border-zinc-800 bg-zinc-900 text-zinc-200 hover:bg-zinc-800">{t("cancel")}</Button>
                     <Button onClick={props.onSubmit} disabled={props.isSaving || (!props.projectId && !props.customerId)}>
                         {props.isSaving && <IconLoader2 className="size-4 animate-spin" />}
-                        Track file
+                        {t("trackDialog.submit")}
                     </Button>
                 </DialogFooter>
             </DialogContent>
@@ -3103,9 +3125,10 @@ function PreviewDialog(props: {
     onResetTextDraft: () => void;
     onSaveTextDraft: () => void;
 }) {
+    const t = useTranslations("artifacts");
     const isCsvPreview = props.preview.state === "csv";
     const isTextPreview = props.preview.state === "markdown" || props.preview.state === "json" || props.preview.state === "text";
-    const title = props.artifact ? deriveDisplayName(props.artifact) : "File preview";
+    const title = props.artifact ? deriveDisplayName(props.artifact) : t("previewDialog.fallbackTitle");
 
     return (
         <Dialog open={props.open} onOpenChange={props.onOpenChange}>
@@ -3115,10 +3138,10 @@ function PreviewDialog(props: {
                         <DialogTitle>{title}</DialogTitle>
                         <DialogDescription className="text-zinc-400">
                             {isCsvPreview
-                                ? "Review the file in a larger workspace and edit CSV content without leaving the storage panel."
+                                ? t("previewDialog.csvDescription")
                                 : isTextPreview
-                                    ? "Preview and edit this lightweight file directly in Storage."
-                                    : "Expanded preview for comfortable reading and verification."}
+                                    ? t("previewDialog.textDescription")
+                                    : t("previewDialog.description")}
                         </DialogDescription>
                     </DialogHeader>
 
@@ -3126,9 +3149,9 @@ function PreviewDialog(props: {
                         {isCsvPreview ? (
                             <Tabs value={props.activeTab} onValueChange={props.onTabChange} className="flex h-full min-h-0 flex-col">
                                 <TabsList variant="line" className="mb-4 border-b border-zinc-800 pb-1">
-                                    <TabsTrigger value="preview">Preview</TabsTrigger>
-                                    <TabsTrigger value="table">Grid Editor</TabsTrigger>
-                                    <TabsTrigger value="raw">Raw CSV</TabsTrigger>
+                                    <TabsTrigger value="preview">{t("tabs.preview")}</TabsTrigger>
+                                    <TabsTrigger value="table">{t("tabs.grid")}</TabsTrigger>
+                                    <TabsTrigger value="raw">{t("tabs.raw")}</TabsTrigger>
                                 </TabsList>
                                 <TabsContent value="preview" className="min-h-0 flex-1">
                                     <div className="h-full overflow-auto rounded-2xl border border-zinc-800 bg-zinc-950/80 p-4">
@@ -3149,14 +3172,14 @@ function PreviewDialog(props: {
                                     <div className="flex h-full min-h-0 flex-col gap-4">
                                         <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-zinc-500">
                                             <span>
-                                                Edit the raw CSV directly when you need exact control over formatting or pasted data.
+                                                {t("previewDialog.rawHint")}
                                             </span>
                                             <Button
                                                 variant="outline"
                                                 className="border-zinc-800 bg-zinc-900 text-zinc-200 hover:bg-zinc-800"
                                                 onClick={props.onApplyRawCsvToGrid}
                                             >
-                                                Refresh Grid
+                                                {t("previewDialog.refreshGrid")}
                                             </Button>
                                         </div>
                                         <Textarea
@@ -3175,8 +3198,8 @@ function PreviewDialog(props: {
                         ) : isTextPreview ? (
                             <Tabs value={props.activeTab} onValueChange={props.onTabChange} className="flex h-full min-h-0 flex-col">
                                 <TabsList variant="line" className="mb-4 border-b border-zinc-800 pb-1">
-                                    <TabsTrigger value="preview">Preview</TabsTrigger>
-                                    <TabsTrigger value="edit">Editor</TabsTrigger>
+                                    <TabsTrigger value="preview">{t("tabs.preview")}</TabsTrigger>
+                                    <TabsTrigger value="edit">{t("tabs.editor")}</TabsTrigger>
                                 </TabsList>
                                 <TabsContent value="preview" className="min-h-0 flex-1">
                                     <div className="h-full overflow-auto rounded-2xl border border-zinc-800 bg-zinc-950/80 p-4">
@@ -3189,7 +3212,7 @@ function PreviewDialog(props: {
                                             value={props.textDraft}
                                             onChange={(event) => props.onTextDraftChange(event.target.value)}
                                             spellCheck={props.preview.state !== "json"}
-                                            aria-label="File contents"
+                                            aria-label={t("previewDialog.fileContents")}
                                             className="min-h-[50vh] flex-1 resize-none border-zinc-800 bg-zinc-900 font-mono text-sm leading-6 text-zinc-100"
                                         />
                                         {props.textError && (
@@ -3210,8 +3233,8 @@ function PreviewDialog(props: {
                     <DialogFooter className="border-t border-zinc-800 px-6 py-4 sm:justify-between">
                         <div className="text-xs text-zinc-500">
                             {isCsvPreview || isTextPreview
-                                ? "Saving updates the file content while keeping its metadata and storage record."
-                                : "Downloads and replacements still happen through the file actions."}
+                                ? t("previewDialog.savingHint")
+                                : t("previewDialog.actionsHint")}
                         </div>
                         <div className="flex flex-col-reverse gap-2 sm:flex-row sm:items-center">
                             {isCsvPreview && (
@@ -3223,11 +3246,11 @@ function PreviewDialog(props: {
                                         disabled={props.isSavingCsv || !props.isCsvDirty}
                                     >
                                         <IconRefresh className="size-4" />
-                                        Reset
+                                        {t("previewDialog.reset")}
                                     </Button>
                                     <Button onClick={props.onSaveCsvDraft} disabled={props.isSavingCsv || !props.isCsvDirty}>
                                         {props.isSavingCsv ? <IconLoader2 className="size-4 animate-spin" /> : <IconDeviceFloppy className="size-4" />}
-                                        Save CSV
+                                        {t("previewDialog.saveCsv")}
                                     </Button>
                                 </>
                             )}
@@ -3240,11 +3263,11 @@ function PreviewDialog(props: {
                                         disabled={props.isSavingCsv || !props.isTextDirty}
                                     >
                                         <IconRefresh className="size-4" />
-                                        Reset
+                                        {t("previewDialog.reset")}
                                     </Button>
                                     <Button onClick={props.onSaveTextDraft} disabled={props.isSavingCsv || !props.isTextDirty}>
                                         {props.isSavingCsv ? <IconLoader2 className="size-4 animate-spin" /> : <IconDeviceFloppy className="size-4" />}
-                                        Save file
+                                        {t("previewDialog.saveFile")}
                                     </Button>
                                 </>
                             )}
@@ -3253,7 +3276,7 @@ function PreviewDialog(props: {
                                 className="border-zinc-800 bg-zinc-900 text-zinc-200 hover:bg-zinc-800"
                                 onClick={() => props.onOpenChange(false)}
                             >
-                                Close
+                                {t("previewDialog.close")}
                             </Button>
                         </div>
                     </DialogFooter>
@@ -3271,22 +3294,23 @@ function CsvGridEditor(props: {
     onAddColumn: () => void;
     onDeleteColumn: (columnIndex: number) => void;
 }) {
+    const t = useTranslations("artifacts");
     const columnCount = getCsvColumnCount(props.rows);
 
     return (
         <div className="flex h-full min-h-0 flex-col gap-4">
             <div className="flex flex-wrap items-center justify-between gap-3">
                 <div className="text-xs text-zinc-500">
-                    Grid editing is best for quick corrections, column cleanup, and row-level fixes.
+                    {t("csv.hint")}
                 </div>
                 <div className="flex flex-wrap gap-2">
                     <Button variant="outline" className="border-zinc-800 bg-zinc-900 text-zinc-200 hover:bg-zinc-800" onClick={props.onAddColumn}>
                         <IconPlus className="size-4" />
-                        Add Column
+                        {t("csv.addColumn")}
                     </Button>
                     <Button variant="outline" className="border-zinc-800 bg-zinc-900 text-zinc-200 hover:bg-zinc-800" onClick={props.onAddRow}>
                         <IconPlus className="size-4" />
-                        Add Row
+                        {t("csv.addRow")}
                     </Button>
                 </div>
             </div>
@@ -3295,13 +3319,13 @@ function CsvGridEditor(props: {
                     <thead className="sticky top-0 z-10 bg-zinc-950/95 backdrop-blur">
                         <tr>
                             <th className="w-28 border-b border-r border-zinc-800 px-3 py-3 text-left text-xs font-medium uppercase tracking-[0.18em] text-zinc-500">
-                                Row
+                                {t("csv.row")}
                             </th>
                             {Array.from({ length: columnCount }, (_, columnIndex) => (
                                 <th key={`column-${columnIndex}`} className="min-w-52 border-b border-zinc-800 px-3 py-3 text-left">
                                     <div className="flex items-center justify-between gap-3">
                                         <span className="text-xs font-medium uppercase tracking-[0.18em] text-zinc-500">
-                                            Column {columnIndex + 1}
+                                            {t("csv.columnN", { n: columnIndex + 1 })}
                                         </span>
                                         <Button
                                             variant="ghost"
@@ -3322,7 +3346,7 @@ function CsvGridEditor(props: {
                                 <td className="border-r border-zinc-800 px-3 py-2 align-top">
                                     <div className="flex items-center justify-between gap-2">
                                         <div className="text-xs text-zinc-500">
-                                            {rowIndex === 0 ? "Header" : `Row ${rowIndex + 1}`}
+                                            {rowIndex === 0 ? t("csv.header") : t("csv.rowN", { n: rowIndex + 1 })}
                                         </div>
                                         <Button
                                             variant="ghost"
@@ -3353,10 +3377,11 @@ function CsvGridEditor(props: {
 }
 
 function PreviewPanel({ preview }: { preview: PreviewState }) {
+    const t = useTranslations("artifacts");
     if (preview.state === "idle" || preview.state === "loading") {
         return (
             <div className="flex min-h-80 items-center justify-center text-sm text-zinc-400">
-                {preview.state === "loading" ? <><IconLoader2 className="mr-2 size-4 animate-spin" />Loading preview...</> : "Select a file to preview it."}
+                {preview.state === "loading" ? <><IconLoader2 className="mr-2 size-4 animate-spin" />{t("preview.loading")}</> : t("preview.selectFile")}
             </div>
         );
     }
@@ -3367,7 +3392,7 @@ function PreviewPanel({ preview }: { preview: PreviewState }) {
         return (
             <div className="flex min-h-60 flex-col items-center justify-center gap-3 rounded-xl border border-dashed border-zinc-800 bg-zinc-950/80 p-6 text-center">
                 <p className="text-sm text-zinc-400">{preview.message}</p>
-                <p className="text-xs text-zinc-500">Download the file to view it with your default application.</p>
+                <p className="text-xs text-zinc-500">{t("preview.downloadHint")}</p>
             </div>
         );
     }
@@ -3400,20 +3425,20 @@ function PreviewPanel({ preview }: { preview: PreviewState }) {
         );
     }
     if (preview.state === "image") {
-        return <img src={preview.url} alt="File preview" className="max-h-[32rem] w-full rounded-xl object-contain" />;
+        return <img src={preview.url} alt={t("preview.imageAlt")} className="max-h-[32rem] w-full rounded-xl object-contain" />;
     }
     if (preview.state === "pdf") {
-        return <iframe src={preview.url} title="PDF preview" className="h-[32rem] w-full rounded-xl border border-zinc-800 bg-white" />;
+        return <iframe src={preview.url} title={t("preview.pdfTitle")} className="h-[32rem] w-full rounded-xl border border-zinc-800 bg-white" />;
     }
     if (preview.state === "xlsx-preview") {
         return (
             <div className="space-y-3">
                 <div className="flex items-center justify-between px-1">
-                    <span className="text-xs text-zinc-400 font-medium">Spreadsheet Preview (Read-Only)</span>
+                    <span className="text-xs text-zinc-400 font-medium">{t("preview.spreadsheetReadOnly")}</span>
                     <Button asChild size="sm" variant="ghost" className="h-7 text-xs">
                         <a href={`/artifacts/${preview.id}/edit`}>
                             <IconPencil className="mr-1.5 size-3.5" />
-                            Open Editor
+                            {t("preview.openEditor")}
                         </a>
                     </Button>
                 </div>
@@ -3434,11 +3459,11 @@ function PreviewPanel({ preview }: { preview: PreviewState }) {
         return (
             <div className="space-y-3">
                 <div className="flex items-center justify-between px-1">
-                    <span className="text-xs text-zinc-400 font-medium">Document Preview (Read-Only)</span>
+                    <span className="text-xs text-zinc-400 font-medium">{t("preview.documentReadOnly")}</span>
                     <Button asChild size="sm" variant="ghost" className="h-7 text-xs">
                         <a href={`/artifacts/${preview.id}/edit`}>
                             <IconPencil className="mr-1.5 size-3.5" />
-                            Open Editor
+                            {t("preview.openEditor")}
                         </a>
                     </Button>
                 </div>
@@ -3460,7 +3485,7 @@ function PreviewPanel({ preview }: { preview: PreviewState }) {
                 <div>
                     <h3 className="text-sm font-medium text-zinc-200">{preview.name}</h3>
                     <p className="mt-1 text-xs text-zinc-500">
-                        {isExcel ? "Spreadsheet File" : "Word Document"}
+                        {isExcel ? t("preview.spreadsheetFile") : t("preview.wordDocument")}
                     </p>
                 </div>
                 <div className="flex gap-2">
@@ -3468,14 +3493,14 @@ function PreviewPanel({ preview }: { preview: PreviewState }) {
                         <Button asChild size="sm">
                             <a href={`/artifacts/${preview.id}/edit`}>
                                 <IconPencil className="mr-2 size-4" />
-                                Edit Document
+                                {t("preview.editDocument")}
                             </a>
                         </Button>
                     )}
                     <Button asChild variant="outline" size="sm">
                         <a href={preview.url} download={preview.name}>
                             <IconArrowDown className="mr-2 size-4" />
-                            Download
+                            {t("menu.download")}
                         </a>
                     </Button>
                 </div>
@@ -3504,12 +3529,13 @@ function InfoPill(props: { label: string; value: string; mono?: boolean }) {
 }
 
 function EmptyInspector() {
+    const t = useTranslations("artifacts");
     return (
         <div className="flex min-h-80 flex-col items-center justify-center rounded-2xl border border-dashed border-zinc-800 bg-zinc-950/80 px-6 text-center">
             <IconSettings className="mb-4 size-8 text-zinc-600" />
-            <h3 className="text-lg font-medium text-zinc-100">Select a file or folder</h3>
+            <h3 className="text-lg font-medium text-zinc-100">{t("emptyInspector.title")}</h3>
             <p className="mt-2 text-sm text-zinc-400">
-                Preview file contents, edit metadata, rename items, and manage folder structure from this inspector.
+                {t("emptyInspector.description")}
             </p>
         </div>
     );
@@ -3542,9 +3568,9 @@ function canEditOfficeArtifact(artifact: Pick<ArtifactSummary, "originalFilename
     return name.endsWith(".xlsx") || name.endsWith(".docx");
 }
 
-function buildKnownFolders(cache: Record<string, FolderContentsResponse>) {
+function buildKnownFolders(cache: Record<string, FolderContentsResponse>, rootLabel: string) {
     const folders = new Map<string, { id: string; pathLabel: string }>();
-    folders.set(ROOT_ID, { id: ROOT_ID, pathLabel: "Root" });
+    folders.set(ROOT_ID, { id: ROOT_ID, pathLabel: rootLabel });
     for (const payload of Object.values(cache)) {
         if (payload.folder.id !== ROOT_ID) {
             folders.set(payload.folder.id, { id: payload.folder.id, pathLabel: payload.folder.path || payload.folder.name });
@@ -3817,15 +3843,29 @@ function formatBytes(value: number) {
     return `${amount.toFixed(index === 0 ? 0 : 1)} ${units[index]}`;
 }
 
-function formatRelativeDate(value?: string) {
-    if (!value) return "-";
-    const date = new Date(value);
-    if (Number.isNaN(date.getTime())) return "-";
-    return new Intl.DateTimeFormat(undefined, {
-        month: "short",
-        day: "numeric",
-        year: "numeric",
-    }).format(date);
+/** "Oct 29, 2026" in the viewer's language; "-" when missing or invalid. */
+function useRelativeDate() {
+    const format = useFormatter();
+    return (value?: string) => {
+        if (!value) return "-";
+        const date = new Date(value);
+        if (Number.isNaN(date.getTime())) return "-";
+        return format.dateTime(date, { month: "short", day: "numeric", year: "numeric" });
+    };
+}
+
+const ARTIFACT_CLASSES = new Set<string>(ARTIFACT_CLASS_OPTIONS.map((option) => option.value));
+const ARTIFACT_IMPORTANCES = new Set<string>(ARTIFACT_IMPORTANCE_OPTIONS.map((option) => option.value));
+
+/** File role and lifecycle labels (artifacts.classes / artifacts.importance); unknown values keep the English helper's wording. */
+function useArtifactTaxonomy() {
+    const t = useTranslations("artifacts");
+    return {
+        classLabel: (value?: string | null) => (value && ARTIFACT_CLASSES.has(value) ? t(`classes.${value as "proof"}.label`) : value ? getArtifactClassLabel(value) : t("unclassified")),
+        importanceLabel: (value?: string | null) => (value && ARTIFACT_IMPORTANCES.has(value) ? t(`importance.${value as "record"}.label`) : value ? getArtifactImportanceLabel(value) : t("importance.operational.label")),
+        classDescription: (value: string) => t(`classes.${value as "proof"}.description`),
+        importanceDescription: (value: string) => t(`importance.${value as "record"}.description`),
+    };
 }
 
 function resetUploadState(

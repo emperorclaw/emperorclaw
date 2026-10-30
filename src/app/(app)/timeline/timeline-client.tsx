@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useFormatter, useTranslations } from "next-intl";
 import {
     IconCalendar,
     IconChartLine,
@@ -15,7 +16,7 @@ import {
 import { PageHeader } from "@/components/page-header";
 import { SearchableSelect } from "@/components/ui/searchable-select";
 import { EmptyState } from "@/components/ui/empty-state";
-import { formatCost, RUN_OUTCOME_LABEL, type RunOutcome } from "@/lib/task-story";
+import { formatCost, type RunOutcome } from "@/lib/task-story";
 import { formatRunDuration, formatTokenCount } from "@/lib/run-ledger-copy";
 import { useLivePoll, type LivePollRun } from "@/lib/use-realtime";
 import { cn } from "@/lib/utils";
@@ -23,7 +24,6 @@ import { useIsDarkTheme } from "@/lib/use-is-dark-theme";
 import {
     autoFitTodayRange,
     clusterSpans,
-    EDGE_KIND_LABEL,
     formatHours,
     groupTimelineByProject,
     joinAgentNames,
@@ -103,10 +103,7 @@ const SOURCE_PILL: Record<TimelineSource, { fill: string; stroke: string }> = {
     delegated: { fill: "#3b82f6", stroke: "#60a5fa" },
     automation: { fill: "#f59e0b", stroke: "#fbbf24" },
 };
-const SOURCE_LABEL: Record<TimelineSource, string> = {
-    delegated: "Delegated",
-    automation: "Automation",
-};
+
 
 /** SVG colours per theme: attributes can't follow the CSS variables. */
 const CHART_COLOURS = {
@@ -138,6 +135,17 @@ const CHART_COLOURS = {
     },
 };
 
+/** The running-bar shimmer (CSS, not copy). */
+const SHIMMER_CSS = `
+                @media (prefers-reduced-motion: no-preference) {
+                    @keyframes tl-shimmer {
+                        0%, 100% { fill-opacity: 0.55; }
+                        50% { fill-opacity: 0.95; }
+                    }
+                    .tl-running { animation: tl-shimmer 2.6s ease-in-out infinite; }
+                }
+            `;
+
 function useChartColours() {
     return CHART_COLOURS[useIsDarkTheme() ? "dark" : "light"];
 }
@@ -154,12 +162,13 @@ function formatPercent(rate: number | null | undefined): string {
     return `${Math.round(rate * 100)}%`;
 }
 
-function formatRange(ms: number): string {
-    return new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric" }).format(new Date(ms));
-}
-
-function formatClock(ms: number): string {
-    return new Intl.DateTimeFormat("en-US", { hour: "numeric", minute: "2-digit", hour12: false }).format(new Date(ms));
+/** Range bounds ("Oct 29") and clock times ("14:05"), in the viewer's language. */
+function useTimelineFormat() {
+    const format = useFormatter();
+    return useMemo(() => ({
+        range: (ms: number) => format.dateTime(new Date(ms), { month: "short", day: "numeric" }),
+        clock: (ms: number) => format.dateTime(new Date(ms), { hour: "numeric", minute: "2-digit", hour12: false }),
+    }), [format]);
 }
 
 // ─── Range presets ──────────────────────────────────────────────────────────
@@ -217,6 +226,10 @@ export function TimelineClient({ initial, initialFilter, agents, projects, custo
     const [focus, setFocus] = useState<Focus | null>(null);
     const [hoverActor, setHoverActor] = useState<string | null>(null);
     const [selected, setSelected] = useState<TimelineSpan | null>(null);
+    const t = useTranslations("timeline");
+    const tOutcomes = useTranslations("tasks.timeline.outcomes");
+    const formatTime = useTimelineFormat();
+    const loadFailed = t("loadFailed");
 
     const query = useMemo(() => {
         // Zoom and minimap drags produce fractional milliseconds; the API takes whole ones.
@@ -233,7 +246,7 @@ export function TimelineClient({ initial, initialFilter, agents, projects, custo
             const res = await fetch(`/api/timeline?${query}`, { cache: "no-store" });
             if (!res.ok) {
                 const body = await res.json().catch(() => ({})) as { error?: string };
-                throw new Error(body.error || "Could not load the timeline");
+                throw new Error(body.error || loadFailed);
             }
             const next = await res.json() as WorkTimeline;
             if (!run.active) return;
@@ -241,12 +254,12 @@ export function TimelineClient({ initial, initialFilter, agents, projects, custo
             setError(null);
         } catch (err) {
             if (run.active && !(err instanceof DOMException && err.name === "AbortError")) {
-                setError(err instanceof Error ? err.message : "Could not load the timeline");
+                setError(err instanceof Error ? err.message : loadFailed);
             }
         } finally {
             if (run.active) setLoading(false);
         }
-    }, [query]);
+    }, [query, loadFailed]);
 
     const startOfToday = useMemo(() => new Date(new Date().getFullYear(), new Date().getMonth(), new Date().getDate()).getTime(), []);
     const includesToday = range.toMs >= startOfToday;
@@ -348,82 +361,80 @@ export function TimelineClient({ initial, initialFilter, agents, projects, custo
     return (
         <div className="mx-auto w-full max-w-[1400px] space-y-5 pb-20">
             <PageHeader
-                eyebrow="Timeline"
-                title="Who worked on what"
-                description={rowsMode === "agents"
-                    ? "One row per agent: when it was busy, on what, and which agent handed work to which. People's actions show as markers on the agent they reached."
-                    : "One row per project: which agents worked on it and when. Chat with no task is the last, greyed row."}
+                eyebrow={t("eyebrow")}
+                title={t("title")}
+                description={rowsMode === "agents" ? t("descriptionAgents") : t("descriptionProjects")}
             />
 
             {/* KPI row */}
             <dl className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
-                <Total label="Runs" value={String(data.totals.runs)} />
-                <Total label="Agents active" value={String(agentsActive)} />
-                <Total label="Run time" value={formatBusy(data.totals.busyMs)} />
-                <Total label="Tokens" value={formatTokenCount(data.totals.tokens)} />
-                <Total label="Cost" value={formatCost(data.totals.costCents) ?? "$0.00"} />
-                <Total label="Success rate" value={formatPercent(data.totals.successRate)} />
+                <Total label={t("totals.runs")} value={String(data.totals.runs)} />
+                <Total label={t("totals.agentsActive")} value={String(agentsActive)} />
+                <Total label={t("totals.runTime")} value={formatBusy(data.totals.busyMs)} />
+                <Total label={t("totals.tokens")} value={formatTokenCount(data.totals.tokens)} />
+                <Total label={t("totals.cost")} value={formatCost(data.totals.costCents) ?? "$0.00"} />
+                <Total label={t("totals.successRate")} value={formatPercent(data.totals.successRate)} />
             </dl>
 
             {/* One toolbar: range + colour-by + filters left, zoom right */}
             <div className="flex flex-wrap items-center gap-2">
-                <div role="toolbar" aria-label="Time range" className="flex items-center gap-1 rounded-xl border border-zinc-800 bg-zinc-950/40 p-1">
+                <div role="toolbar" aria-label={t("timeRange")} className="flex items-center gap-1 rounded-xl border border-zinc-800 bg-zinc-950/40 p-1">
                     {(["today", "7d", "30d"] as Preset[]).map((preset) => (
                         <button key={preset} type="button" aria-pressed={range.preset === preset} onClick={() => setPreset(preset)}
                             className={cn("rounded-lg px-3 py-1.5 text-xs font-medium transition-colors",
                                 range.preset === preset ? "bg-zinc-800 text-zinc-100" : "text-zinc-400 hover:text-zinc-200")}>
-                            {preset === "today" ? "Today" : preset === "7d" ? "7 days" : "30 days"}
+                            {preset === "today" ? t("presets.today") : preset === "7d" ? t("presets.7d") : t("presets.30d")}
                         </button>
                     ))}
                 </div>
                 <div className="flex items-center gap-1.5 rounded-xl border border-zinc-800 bg-zinc-950/40 p-1.5">
                     <IconCalendar className="h-4 w-4 text-zinc-500" />
-                    <input type="date" value={customFrom} onChange={(e) => setCustomFrom(e.target.value)} aria-label="From date" className="bg-transparent text-xs text-zinc-200 outline-none" />
+                    <input type="date" value={customFrom} onChange={(e) => setCustomFrom(e.target.value)} aria-label={t("fromDate")} className="bg-transparent text-xs text-zinc-200 outline-none" />
                     <span className="text-zinc-600">–</span>
-                    <input type="date" value={customTo} onChange={(e) => setCustomTo(e.target.value)} aria-label="To date" className="bg-transparent text-xs text-zinc-200 outline-none" />
-                    <button type="button" onClick={applyCustom} disabled={!customFrom} className="rounded-lg bg-zinc-800 px-2.5 py-1 text-xs font-medium text-zinc-100 disabled:opacity-50">Apply</button>
+                    <input type="date" value={customTo} onChange={(e) => setCustomTo(e.target.value)} aria-label={t("toDate")} className="bg-transparent text-xs text-zinc-200 outline-none" />
+                    <button type="button" onClick={applyCustom} disabled={!customFrom} className="rounded-lg bg-zinc-800 px-2.5 py-1 text-xs font-medium text-zinc-100 disabled:opacity-50">{t("apply")}</button>
                 </div>
-                <span className="hidden text-xs text-zinc-500 xl:inline">{formatRange(range.fromMs)} – {formatRange(range.toMs)}</span>
+                <span className="hidden text-xs text-zinc-500 xl:inline">{formatTime.range(range.fromMs)} – {formatTime.range(range.toMs)}</span>
 
-                <div role="toolbar" aria-label="Rows" className="flex items-center gap-0.5 rounded-xl border border-zinc-800 bg-zinc-950/40 p-1">
-                    <span className="px-1.5 text-[11px] font-medium uppercase tracking-wide text-zinc-600">Rows</span>
+                <div role="toolbar" aria-label={t("rows")} className="flex items-center gap-0.5 rounded-xl border border-zinc-800 bg-zinc-950/40 p-1">
+                    <span className="px-1.5 text-[11px] font-medium uppercase tracking-wide text-zinc-600">{t("rows")}</span>
                     {(["agents", "projects"] as RowsMode[]).map((mode) => (
                         <button key={mode} type="button" aria-pressed={rowsMode === mode} onClick={() => { setRowsMode(mode); clear(); }}
                             className={cn("rounded-lg px-2.5 py-1.5 text-xs font-medium transition-colors",
                                 rowsMode === mode ? "bg-zinc-800 text-zinc-100" : "text-zinc-400 hover:text-zinc-200")}>
-                            {mode === "agents" ? "Agents" : "Projects"}
+                            {mode === "agents" ? t("rowsAgents") : t("rowsProjects")}
                         </button>
                     ))}
                 </div>
-                {rowsMode === "agents" && <div role="toolbar" aria-label="Colour by" className="flex items-center gap-0.5 rounded-xl border border-zinc-800 bg-zinc-950/40 p-1">
+                {rowsMode === "agents" && <div role="toolbar" aria-label={t("colourBy")} className="flex items-center gap-0.5 rounded-xl border border-zinc-800 bg-zinc-950/40 p-1">
                     {(["outcome", "source", "project"] as ColourBy[]).map((mode) => (
                         <button key={mode} type="button" aria-pressed={colourBy === mode} onClick={() => setColourBy(mode)}
                             className={cn("rounded-lg px-2.5 py-1.5 text-xs font-medium capitalize transition-colors",
                                 colourBy === mode ? "bg-zinc-800 text-zinc-100" : "text-zinc-400 hover:text-zinc-200")}>
-                            {mode === "outcome" ? "Outcome" : mode}
+                            {t(`colourModes.${mode}`)}
                         </button>
                     ))}
                 </div>}
                 <button type="button" aria-pressed={showEvents} onClick={() => setShowEvents((v) => !v)}
                     className={cn("rounded-xl border px-3 py-2 text-xs font-medium transition-colors",
                         showEvents ? "border-cyan-500/50 bg-cyan-500/10 text-cyan-200" : "border-zinc-800 bg-zinc-950/40 text-zinc-400 hover:text-zinc-200")}>
-                    Show events
+                    {t("showEvents")}
                 </button>
 
                 <div className="ml-auto flex items-center gap-1.5">
                     <div className="hidden flex-wrap items-center gap-1.5 lg:flex">
                         <SearchableSelect value={filters.agentId} onChange={(v) => setFilters((f) => ({ ...f, agentId: v }))}
-                            options={[{ value: "", label: "All agents" }, ...agents]} placeholder="All agents" className="min-w-[150px]" />
+                            options={[{ value: "", label: t("allAgents") }, ...agents]} placeholder={t("allAgents")} className="min-w-[150px]" />
                         <SearchableSelect value={filters.projectId} onChange={(v) => setFilters((f) => ({ ...f, projectId: v }))}
-                            options={[{ value: "", label: "All projects" }, ...projects]} placeholder="All projects" className="min-w-[150px]" />
+                            options={[{ value: "", label: t("allProjects") }, ...projects]} placeholder={t("allProjects")} className="min-w-[150px]" />
                         <SearchableSelect value={filters.customerId} onChange={(v) => setFilters((f) => ({ ...f, customerId: v }))}
-                            options={[{ value: "", label: "All customers" }, ...customers]} placeholder="All customers" className="min-w-[150px]" />
-                        {hasFilter && <button type="button" onClick={clearFilters} className="rounded-lg px-2 py-1.5 text-xs text-zinc-400 hover:text-zinc-200">Clear</button>}
+                            options={[{ value: "", label: t("allCustomers") }, ...customers]} placeholder={t("allCustomers")} className="min-w-[150px]" />
+                        {hasFilter && <button type="button" onClick={clearFilters} className="rounded-lg px-2 py-1.5 text-xs text-zinc-400 hover:text-zinc-200">{t("clear")}</button>}
                     </div>
                     <div className="flex items-center gap-0.5 rounded-xl border border-zinc-800 bg-zinc-950/40 p-1">
-                        <button type="button" onClick={() => setZoom((z) => Math.max(0, z - 1))} disabled={zoom === 0} aria-label="Zoom out" className="rounded-lg p-1.5 text-zinc-400 hover:bg-zinc-800 hover:text-zinc-200 disabled:opacity-40"><IconMinus className="h-4 w-4" /></button>
-                        <button type="button" onClick={() => setZoom(DEFAULT_ZOOM)} aria-label="Reset zoom" className="rounded-lg px-2 py-1.5 text-[11px] font-medium text-zinc-400 hover:text-zinc-200">Reset</button>
-                        <button type="button" onClick={() => setZoom((z) => Math.min(ZOOM_LEVELS.length - 1, z + 1))} disabled={zoom === ZOOM_LEVELS.length - 1} aria-label="Zoom in" className="rounded-lg p-1.5 text-zinc-400 hover:bg-zinc-800 hover:text-zinc-200 disabled:opacity-40"><IconPlus className="h-4 w-4" /></button>
+                        <button type="button" onClick={() => setZoom((z) => Math.max(0, z - 1))} disabled={zoom === 0} aria-label={t("zoomOut")} className="rounded-lg p-1.5 text-zinc-400 hover:bg-zinc-800 hover:text-zinc-200 disabled:opacity-40"><IconMinus className="h-4 w-4" /></button>
+                        <button type="button" onClick={() => setZoom(DEFAULT_ZOOM)} aria-label={t("resetZoom")} className="rounded-lg px-2 py-1.5 text-[11px] font-medium text-zinc-400 hover:text-zinc-200">{t("reset")}</button>
+                        <button type="button" onClick={() => setZoom((z) => Math.min(ZOOM_LEVELS.length - 1, z + 1))} disabled={zoom === ZOOM_LEVELS.length - 1} aria-label={t("zoomIn")} className="rounded-lg p-1.5 text-zinc-400 hover:bg-zinc-800 hover:text-zinc-200 disabled:opacity-40"><IconPlus className="h-4 w-4" /></button>
                     </div>
                 </div>
             </div>
@@ -433,7 +444,7 @@ export function TimelineClient({ initial, initialFilter, agents, projects, custo
             )}
             {data.capped && (
                 <p className="rounded-xl border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-sm text-amber-200">
-                    This window has more activity than the chart can draw. Narrow the range or use the filters.
+                    {t("capped")}
                 </p>
             )}
 
@@ -468,7 +479,7 @@ export function TimelineClient({ initial, initialFilter, agents, projects, custo
 
             {/* Legend follows the colour mode */}
             <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-xs text-zinc-500">
-                <span className="font-semibold uppercase tracking-wide text-zinc-600">Legend</span>
+                <span className="font-semibold uppercase tracking-wide text-zinc-600">{t("legend")}</span>
                 {rowsMode === "projects" && legendActors.map((a) => (
                     <span key={a.id} className="inline-flex items-center gap-1.5">
                         <span className="h-2.5 w-2.5 rounded-sm" style={{ backgroundColor: a.colour }} />
@@ -478,24 +489,24 @@ export function TimelineClient({ initial, initialFilter, agents, projects, custo
                 {rowsMode === "projects" && (
                     <span className="inline-flex items-center gap-1.5">
                         <span className="h-2.5 w-2.5 rounded-sm" style={{ backgroundColor: CHAT_PILL.fill }} />
-                        Chat (no task)
+                        {t("chatNoTask")}
                     </span>
                 )}
                 {rowsMode === "agents" && colourBy === "outcome" && (["done", "needs_you", "failed", "stopped", "running"] as RunOutcome[]).map((o) => (
                     <span key={o} className="inline-flex items-center gap-1.5">
                         <span className="h-2.5 w-2.5 rounded-sm" style={{ backgroundColor: OUTCOME_PILL[o] }} />
-                        {RUN_OUTCOME_LABEL[o]}
+                        {tOutcomes(o)}
                     </span>
                 ))}
                 {rowsMode === "agents" && colourBy === "source" && (["delegated", "automation"] as TimelineSource[]).map((s) => (
                     <span key={s} className="inline-flex items-center gap-1.5">
                         <span className="h-2.5 w-2.5 rounded-sm" style={{ backgroundColor: SOURCE_PILL[s].fill }} />
-                        {SOURCE_LABEL[s]}
+                        {t(`sources.${s}`)}
                     </span>
                 ))}
-                {rowsMode === "agents" && colourBy === "project" && <span>Each colour is a project; chat runs are grey.</span>}
-                {rowsMode === "agents" && <span className="inline-flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-sm opacity-40" style={{ backgroundColor: CHAT_PILL.fill }} />Faded bars are chat (no task)</span>}
-                <span className="ml-auto hidden items-center gap-1.5 lg:inline-flex"><kbd className="rounded border border-zinc-700 px-1 font-mono text-[10px]">Enter</kbd> opens a run · <kbd className="rounded border border-zinc-700 px-1 font-mono text-[10px]">Esc</kbd> clears</span>
+                {rowsMode === "agents" && colourBy === "project" && <span>{t("legendProjects")}</span>}
+                {rowsMode === "agents" && <span className="inline-flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-sm opacity-40" style={{ backgroundColor: CHAT_PILL.fill }} />{t("legendFaded")}</span>}
+                <span className="ml-auto hidden items-center gap-1.5 lg:inline-flex"><kbd className="rounded border border-zinc-700 px-1 font-mono text-[10px]">Enter</kbd> {t("opensRun")} · <kbd className="rounded border border-zinc-700 px-1 font-mono text-[10px]">Esc</kbd> {t("clears")}</span>
             </div>
 
             <TimeSpentPanel summary={timeSpent} />
@@ -551,6 +562,7 @@ function GanttChart({ data, fromMs, toMs, zoom, rowsMode, projectRows, actorById
     setTooltip: (t: { x: number; y: number; node: React.ReactNode } | null) => void;
 }) {
     const colours = useChartColours();
+    const t = useTranslations("timeline");
     const rootRef = useRef<HTMLDivElement>(null);
     const scrollRef = useRef<HTMLDivElement>(null);
     const [containerWidth, setContainerWidth] = useState(0);
@@ -606,7 +618,7 @@ function GanttChart({ data, fromMs, toMs, zoom, rowsMode, projectRows, actorById
                 id: r.id,
                 kind: r.kind,
                 label: r.name,
-                sub: [r.customerName, `${r.runCount} ${r.runCount === 1 ? "run" : "runs"}`, formatHours(r.busyMs)].filter(Boolean).join(" · "),
+                sub: [r.customerName, t("runCount", { count: r.runCount }), formatHours(r.busyMs)].filter(Boolean).join(" · "),
                 spans: r.spans,
                 events: r.events,
                 actorIds: r.actorIds,
@@ -616,12 +628,12 @@ function GanttChart({ data, fromMs, toMs, zoom, rowsMode, projectRows, actorById
             id: a.id,
             kind: "agent" as const,
             label: a.name,
-            sub: `${a.runCount} runs · ${Math.round((a.busyMs / Math.max(1, windowMs)) * 100)}% busy`,
+            sub: t("agentSub", { runs: a.runCount, busy: Math.round((a.busyMs / Math.max(1, windowMs)) * 100) }),
             spans: spansByActor.get(a.id) ?? [],
             events: eventsByActor.get(a.id) ?? [],
             actor: a,
         }));
-    }, [rowsMode, projectRows, active, idle, idleOpen, spansByActor, eventsByActor, windowMs]);
+    }, [rowsMode, projectRows, active, idle, idleOpen, spansByActor, eventsByActor, windowMs, t]);
     const rowIndex = useMemo(() => new Map(rows.map((r, i) => [r.id, i])), [rows]);
 
     const itemsByRow = useMemo(() => {
@@ -660,21 +672,13 @@ function GanttChart({ data, fromMs, toMs, zoom, rowsMode, projectRows, actorById
 
     return (
         <div ref={rootRef} className="overflow-hidden rounded-2xl border border-zinc-800/80 bg-zinc-950/40">
-            <style>{`
-                @media (prefers-reduced-motion: no-preference) {
-                    @keyframes tl-shimmer {
-                        0%, 100% { fill-opacity: 0.55; }
-                        50% { fill-opacity: 0.95; }
-                    }
-                    .tl-running { animation: tl-shimmer 2.6s ease-in-out infinite; }
-                }
-            `}</style>
+            <style>{SHIMMER_CSS}</style>
             {data.actors.length === 0 || (rowsMode === "projects" && rows.length === 0) ? (
                 <EmptyState
                     bordered={false}
                     icon={IconChartLine}
-                    title="No work in this time range"
-                    description="No agent or person ran, chatted or moved a task here. Pick a wider range, or clear the filters."
+                    title={t("emptyTitle")}
+                    description={t("emptyDescription")}
                 />
             ) : (
                 <>
@@ -746,7 +750,7 @@ function GanttChart({ data, fromMs, toMs, zoom, rowsMode, projectRows, actorById
                                         style={{ width: totalWidth }}
                                     >
                                         <IconChevronDown className={cn("h-4 w-4 transition-transform", idleOpen && "rotate-180")} />
-                                        {idleOpen ? "Hide idle agents" : `+${idle.length} idle ${idle.length === 1 ? "agent" : "agents"}`}
+                                        {idleOpen ? t("hideIdle") : t("showIdle", { count: idle.length })}
                                     </button>
                                 </div>
                             )}
@@ -761,7 +765,7 @@ function GanttChart({ data, fromMs, toMs, zoom, rowsMode, projectRows, actorById
                                         <g>
                                             <line x1={nowX} x2={nowX} y1={0} y2={contentHeight} stroke="rgba(34,211,238,0.55)" strokeDasharray="3 3" strokeWidth={1} />
                                             <rect x={nowX - 16} y={0} width={32} height={14} rx={7} fill="rgba(34,211,238,0.9)" />
-                                            <text x={nowX} y={10} textAnchor="middle" fontSize={9} fill="#04252b" fontWeight={600}>now</text>
+                                            <text x={nowX} y={10} textAnchor="middle" fontSize={9} fill="#04252b" fontWeight={600}>{t("now")}</text>
                                         </g>
                                     )}
                                     {visibleEdges.map((edge) => (
@@ -863,6 +867,8 @@ function RowContent({ actorById, items, events, xFor, pillMode, focus, spanById,
     setTooltip: (t: { x: number; y: number; node: React.ReactNode } | null) => void;
 }) {
     const colours = useChartColours();
+    const t = useTranslations("timeline");
+    const tOutcomes = useTranslations("tasks.timeline.outcomes");
     const y = (ROW_H - BAR_H) / 2;
     const showTooltip = (e: { currentTarget: Element }, node: React.ReactNode) => {
         const rect = e.currentTarget.getBoundingClientRect();
@@ -879,8 +885,8 @@ function RowContent({ actorById, items, events, xFor, pillMode, focus, spanById,
                     const dimmed = focus && !clusterMatchesFocus(c, spanById, focus) ? "opacity-20" : look.allChat ? CHAT_MUTED : "opacity-70 hover:opacity-100";
                     const cx = x + width / 2;
                     const mostly = pillMode === "agent"
-                        ? (look.span ? actorById.get(look.span.actorId)?.name ?? "Agent" : "Chat")
-                        : RUN_OUTCOME_LABEL[dominantOutcome(c)];
+                        ? (look.span ? actorById.get(look.span.actorId)?.name ?? t("agent") : t("chat"))
+                        : tOutcomes(dominantOutcome(c));
                     return (
                         <g key={`c:${c.spanIds[0]}`}
                             role="button"
@@ -888,9 +894,9 @@ function RowContent({ actorById, items, events, xFor, pillMode, focus, spanById,
                             className={cn("cursor-zoom-in transition-opacity", dimmed)}
                             onClick={(e) => { e.stopPropagation(); onZoomCluster(c); }}
                             onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); e.stopPropagation(); onZoomCluster(c); } }}
-                            onMouseEnter={(e) => showTooltip(e, <span className="text-xs text-zinc-200">{c.count} runs · mostly {mostly}</span>)}
+                            onMouseEnter={(e) => showTooltip(e, <span className="text-xs text-zinc-200">{t("clusterTooltip", { count: c.count, mostly })}</span>)}
                             onMouseLeave={() => setTooltip(null)}
-                            aria-label={`${c.count} runs, zoom to expand`}
+                            aria-label={t("clusterLabel", { count: c.count })}
                         >
                             <HitRect x={x} width={width} />
                             <rect x={x} y={y} width={width} height={BAR_H} rx={Math.min(BAR_H / 2, width / 2)} fill={look.style.fill} stroke={look.style.stroke} strokeWidth={1} />
@@ -902,7 +908,7 @@ function RowContent({ actorById, items, events, xFor, pillMode, focus, spanById,
                 const x = xFor(span.start);
                 const width = Math.max(4, xFor(span.end) - xFor(span.start));
                 const style = pillStyle(span, pillMode, actorById);
-                const actorName = actorById.get(span.actorId)?.name ?? "Agent";
+                const actorName = actorById.get(span.actorId)?.name ?? t("agent");
                 // Chat runs recede (Agents view, and the greyed chat row) so task work stands out.
                 const dimmed = !matchesFocus(span, focus)
                     ? "opacity-20"
@@ -917,7 +923,8 @@ function RowContent({ actorById, items, events, xFor, pillMode, focus, spanById,
                         />
                     </>
                 );
-                const label = `${span.kind === "chat" ? `Chat${span.threadLabel ? ` (${span.threadLabel})` : ""}` : (span.taskTitle ?? "Task")}: ${RUN_OUTCOME_LABEL[span.outcome]}`;
+                const what = span.kind === "chat" ? (span.threadLabel ? t("chatIn", { thread: span.threadLabel }) : t("chat")) : (span.taskTitle ?? t("task"));
+                const label = t("spanLabel", { what, outcome: tOutcomes(span.outcome) });
                 const handlers = {
                     onClick: (e: React.MouseEvent) => { e.preventDefault(); e.stopPropagation(); onOpenSpan(span); },
                     onKeyDown: (e: React.KeyboardEvent) => { if (e.key === "Enter") { e.preventDefault(); e.stopPropagation(); onOpenSpan(span); } },
@@ -981,6 +988,18 @@ function dominantOutcome(cluster: TimelineCluster): RunOutcome {
     return best;
 }
 
+/** A marker's label in the viewer's language (lib/work-timeline.ts eventLabel, translated). */
+function useEventLabel() {
+    const t = useTranslations("timeline.events");
+    return (event: TimelineEvent): string => {
+        const name = event.byName?.trim();
+        if (!name) return t(`kinds.${event.kind}`);
+        if (event.kind !== "approval_decided") return t(`by.${event.kind}`, { name });
+        const decision = event.decision === "approved" || event.decision === "rejected" || event.decision === "dismissed" ? event.decision : "other";
+        return t(`decidedBy.${decision}`, { name });
+    };
+}
+
 function EventTick({ event, cx, taskTitle, onEnter, onLeave }: {
     event: TimelineEvent;
     cx: number;
@@ -989,10 +1008,11 @@ function EventTick({ event, cx, taskTitle, onEnter, onLeave }: {
     onLeave: () => void;
 }) {
     const colours = useChartColours();
+    const label = useEventLabel()(event);
     // A person's action is drawn a little taller so it reads apart from the agent's own markers.
     const top = event.byName ? ROW_H - 12 : ROW_H - 9;
     return (
-        <g onMouseEnter={onEnter} onMouseLeave={onLeave} onClick={(e) => e.stopPropagation()} aria-label={taskTitle ? `${event.label}: ${taskTitle}` : event.label}>
+        <g onMouseEnter={onEnter} onMouseLeave={onLeave} onClick={(e) => e.stopPropagation()} aria-label={taskTitle ? `${label}: ${taskTitle}` : label}>
             <rect x={cx - HIT_MIN_W / 2} y={ROW_H - 14} width={HIT_MIN_W} height={13} fill="transparent" pointerEvents="all" />
             <line x1={cx} x2={cx} y1={top} y2={ROW_H - 3} stroke={colours.event[event.kind]} strokeWidth={1.5} />
         </g>
@@ -1000,16 +1020,19 @@ function EventTick({ event, cx, taskTitle, onEnter, onLeave }: {
 }
 
 function EventTooltip({ event, taskTitle }: { event: TimelineEvent; taskTitle: string | null }) {
+    const formatTime = useTimelineFormat();
+    const label = useEventLabel()(event);
     return (
         <div className="space-y-0.5">
-            <div className="text-sm font-medium text-zinc-100">{event.label}</div>
+            <div className="text-sm font-medium text-zinc-100">{label}</div>
             {taskTitle && <div className="text-xs text-zinc-400">{taskTitle}</div>}
-            <div className="text-xs text-zinc-500">{formatClock(event.at)}</div>
+            <div className="text-xs text-zinc-500">{formatTime.clock(event.at)}</div>
         </div>
     );
 }
 
 function EdgePath({ edge, rowIndex, xFor }: { edge: TimelineEdge; rowIndex: Map<string, number>; xFor: (ms: number) => number }) {
+    const t = useTranslations("timeline.edges");
     const from = rowIndex.get(edge.from);
     const to = rowIndex.get(edge.to);
     if (from == null || to == null) return null;
@@ -1023,7 +1046,7 @@ function EdgePath({ edge, rowIndex, xFor }: { edge: TimelineEdge; rowIndex: Map<
         <g>
             <path d={d} fill="none" stroke="rgba(148,163,184,0.9)" strokeWidth={1.25} strokeOpacity={0.7} />
             <path d={`M ${x - 3.5} ${y2 + (dy >= 0 ? -5 : 5)} L ${x} ${y2} L ${x + 3.5} ${y2 + (dy >= 0 ? -5 : 5)}`} fill="none" stroke="rgba(148,163,184,0.9)" strokeWidth={1.25} />
-            <title>{EDGE_KIND_LABEL[edge.kind]}</title>
+            <title>{t(edge.kind)}</title>
         </g>
     );
 }
@@ -1113,23 +1136,26 @@ function Minimap({ data, fromMs, toMs, plotWidth, chartWidth, scrollLeft, viewpo
 // ─── Tooltip + phone list + detail panel ────────────────────────────────────
 
 function SpanTooltip({ span, actorName }: { span: TimelineSpan; actorName: string }) {
+    const t = useTranslations("timeline");
+    const tOutcomes = useTranslations("tasks.timeline.outcomes");
+    const formatTime = useTimelineFormat();
     const parts = [formatRunDuration(span.durationMs)];
-    if (span.toolCalls != null) parts.push(`${span.toolCalls} ${span.toolCalls === 1 ? "tool" : "tools"}`);
-    if (span.tokens > 0) parts.push(`${formatTokenCount(span.tokens)} tokens`);
+    if (span.toolCalls != null) parts.push(t("toolCount", { count: span.toolCalls }));
+    if (span.tokens > 0) parts.push(t("tokenCount", { tokens: formatTokenCount(span.tokens) }));
     const cost = formatCost(span.costCents);
     if (cost) parts.push(cost);
     return (
         <div className="space-y-0.5">
             <div className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wide text-zinc-500">
-                {span.kind === "chat" && <><span>Chat</span><span>·</span></>}
-                <span>{RUN_OUTCOME_LABEL[span.outcome]}</span>
+                {span.kind === "chat" && <><span>{t("chat")}</span><span>·</span></>}
+                <span>{tOutcomes(span.outcome)}</span>
                 <span>·</span>
                 <span>{actorName}</span>
             </div>
-            <div className="text-sm font-medium text-zinc-100">{span.taskTitle ?? (span.threadLabel ?? "Chat")}</div>
+            <div className="text-sm font-medium text-zinc-100">{span.taskTitle ?? (span.threadLabel ?? t("chat"))}</div>
             {span.projectName && <div className="text-xs text-zinc-400">{[span.projectName, span.customerName].filter(Boolean).join(" · ")}</div>}
             <div className="text-xs text-zinc-400">
-                {formatClock(span.startedAtMs)} – {span.endedAtMs ? formatClock(span.endedAtMs) : "now"}
+                {formatTime.clock(span.startedAtMs)} – {span.endedAtMs ? formatTime.clock(span.endedAtMs) : t("now")}
             </div>
             <div className="text-xs tabular-nums text-zinc-500">{parts.filter(Boolean).join(" · ")}</div>
         </div>
@@ -1137,32 +1163,35 @@ function SpanTooltip({ span, actorName }: { span: TimelineSpan; actorName: strin
 }
 
 function DetailPanel({ span, actor, onClose }: { span: TimelineSpan; actor: TimelineActor | undefined; onClose: () => void }) {
-    const openLabel = span.kind === "chat" ? "Open chat" : "Open task";
+    const t = useTranslations("timeline");
+    const tOutcomes = useTranslations("tasks.timeline.outcomes");
+    const formatTime = useTimelineFormat();
+    const openLabel = span.kind === "chat" ? t("detail.openChat") : t("detail.openTask");
     return (
         <aside className="fixed inset-x-0 bottom-0 z-50 max-h-[85vh] overflow-y-auto rounded-t-2xl border-t border-zinc-800 bg-zinc-950 shadow-2xl md:inset-x-auto md:inset-y-0 md:right-0 md:max-h-none md:w-[360px] md:rounded-none md:border-l md:border-t-0">
             <div className="flex items-start justify-between gap-3 border-b border-zinc-800/80 px-5 py-4">
                 <div className="min-w-0">
-                    <p className="text-[11px] font-semibold uppercase tracking-wide text-zinc-500">{span.kind === "chat" ? "Chat run" : "Task run"}</p>
-                    <h2 className="mt-1 break-words text-sm font-semibold leading-snug text-zinc-100">{span.taskTitle ?? span.threadLabel ?? "Chat"}</h2>
+                    <p className="text-[11px] font-semibold uppercase tracking-wide text-zinc-500">{span.kind === "chat" ? t("detail.chatRun") : t("detail.taskRun")}</p>
+                    <h2 className="mt-1 break-words text-sm font-semibold leading-snug text-zinc-100">{span.taskTitle ?? span.threadLabel ?? t("chat")}</h2>
                 </div>
-                <button type="button" onClick={onClose} aria-label="Close" className="rounded-lg p-1.5 text-zinc-400 hover:bg-zinc-800 hover:text-zinc-200"><IconX className="h-4 w-4" /></button>
+                <button type="button" onClick={onClose} aria-label={t("detail.close")} className="rounded-lg p-1.5 text-zinc-400 hover:bg-zinc-800 hover:text-zinc-200"><IconX className="h-4 w-4" /></button>
             </div>
             <div className="space-y-3 px-5 py-4 text-sm">
-                <Field label="Agent">{actor ? actor.name : "—"}</Field>
-                <Field label="Kind">{span.kind === "chat" ? "Chat (no task)" : "Task"}</Field>
-                <Field label="Project">{span.projectName ?? "—"}</Field>
-                {span.customerName && <Field label="Customer">{span.customerName}</Field>}
-                <Field label="Outcome">
+                <Field label={t("detail.agent")}>{actor ? actor.name : "—"}</Field>
+                <Field label={t("detail.kind")}>{span.kind === "chat" ? t("chatNoTask") : t("task")}</Field>
+                <Field label={t("detail.project")}>{span.projectName ?? "—"}</Field>
+                {span.customerName && <Field label={t("detail.customer")}>{span.customerName}</Field>}
+                <Field label={t("detail.outcome")}>
                     <span className="inline-flex items-center gap-1.5">
                         <span className="h-2.5 w-2.5 rounded-sm" style={{ backgroundColor: OUTCOME_PILL[span.outcome] }} />
-                        {RUN_OUTCOME_LABEL[span.outcome]}
+                        {tOutcomes(span.outcome)}
                     </span>
                 </Field>
-                <Field label="Time">{formatClock(span.startedAtMs)} – {span.endedAtMs ? formatClock(span.endedAtMs) : "now"}</Field>
-                <Field label="Duration">{formatRunDuration(span.durationMs)}</Field>
-                <Field label="Tools">{span.toolCalls ?? "—"}</Field>
-                <Field label="Tokens">{span.tokens > 0 ? formatTokenCount(span.tokens) : "—"}</Field>
-                <Field label="Cost">{formatCost(span.costCents) ?? "—"}</Field>
+                <Field label={t("detail.time")}>{formatTime.clock(span.startedAtMs)} – {span.endedAtMs ? formatTime.clock(span.endedAtMs) : t("now")}</Field>
+                <Field label={t("detail.duration")}>{formatRunDuration(span.durationMs)}</Field>
+                <Field label={t("detail.tools")}>{span.toolCalls ?? "—"}</Field>
+                <Field label={t("totals.tokens")}>{span.tokens > 0 ? formatTokenCount(span.tokens) : "—"}</Field>
+                <Field label={t("totals.cost")}>{formatCost(span.costCents) ?? "—"}</Field>
             </div>
             {span.href && (
                 <div className="border-t border-zinc-800/80 px-5 py-4">
@@ -1192,12 +1221,15 @@ function PhoneList({ data, rowsMode, projectRows, actorById, pillMode, onOpen }:
     pillMode: PillMode;
     onOpen: (span: TimelineSpan) => void;
 }) {
+    const t = useTranslations("timeline");
+    const tOutcomes = useTranslations("tasks.timeline.outcomes");
+    const formatTime = useTimelineFormat();
     const sections = useMemo(() => {
         if (rowsMode === "projects") {
             return projectRows.map((r) => ({
                 id: r.id,
                 title: r.name,
-                sub: `${r.runCount} ${r.runCount === 1 ? "run" : "runs"}`,
+                sub: t("runCount", { count: r.runCount }),
                 lead: <ProjectMark row={{ id: r.id, kind: r.kind, label: r.name, sub: "", spans: r.spans, events: r.events, actorIds: r.actorIds }} actorById={actorById} />,
                 muted: r.kind === "chat",
                 spans: r.spans,
@@ -1212,14 +1244,14 @@ function PhoneList({ data, rowsMode, projectRows, actorById, pillMode, onOpen }:
         return data.actors.map((actor) => ({
             id: actor.id,
             title: actor.name,
-            sub: `${actor.runCount} runs`,
+            sub: t("runCount", { count: actor.runCount }),
             lead: <ActorAvatar actor={actor} />,
             muted: false,
             spans: byActor.get(actor.id) ?? [],
         }));
-    }, [rowsMode, projectRows, actorById, data.spans, data.actors]);
+    }, [rowsMode, projectRows, actorById, data.spans, data.actors, t]);
     if (data.actors.length === 0 || sections.every((s) => s.spans.length === 0)) {
-        return <EmptyState icon={IconChartLine} title="No work in this time range" description="No agent or person ran, chatted or moved a task here. Pick a wider range, or clear the filters." />;
+        return <EmptyState icon={IconChartLine} title={t("emptyTitle")} description={t("emptyDescription")} />;
     }
     return (
         <div className="space-y-5">
@@ -1243,10 +1275,10 @@ function PhoneList({ data, rowsMode, projectRows, actorById, pillMode, onOpen }:
                                             className={cn("flex w-full items-center gap-3 rounded-xl border border-zinc-800/80 bg-zinc-950/40 px-3 py-2 text-left transition-colors hover:border-zinc-700", chat && "opacity-60")}>
                                             <span className="h-4 w-1.5 shrink-0 rounded-full" style={{ backgroundColor: style.hollow ? style.stroke : style.fill, outline: style.hollow ? `1px solid ${style.stroke}` : undefined }} />
                                             <span className="min-w-0 flex-1">
-                                                <span className={cn("block truncate text-sm", chat ? "text-zinc-400" : "text-zinc-100")}>{chat ? `Chat${span.threadLabel ? ` · ${span.threadLabel}` : ""}` : (span.taskTitle ?? "Task")}</span>
+                                                <span className={cn("block truncate text-sm", chat ? "text-zinc-400" : "text-zinc-100")}>{chat ? (span.threadLabel ? `${t("chat")} · ${span.threadLabel}` : t("chat")) : (span.taskTitle ?? t("task"))}</span>
                                                 <span className="block truncate text-xs text-zinc-500">
-                                                    {rowsMode === "projects" ? `${actorById.get(span.actorId)?.name ?? "Agent"} · ` : ""}
-                                                    {formatClock(span.startedAtMs)} – {span.endedAtMs ? formatClock(span.endedAtMs) : "now"} · {RUN_OUTCOME_LABEL[span.outcome]}
+                                                    {rowsMode === "projects" ? `${actorById.get(span.actorId)?.name ?? t("agent")} · ` : ""}
+                                                    {formatTime.clock(span.startedAtMs)} – {span.endedAtMs ? formatTime.clock(span.endedAtMs) : t("now")} · {tOutcomes(span.outcome)}
                                                 </span>
                                             </span>
                                             <IconChevronRight className="h-4 w-4 shrink-0 text-zinc-600" />
@@ -1271,21 +1303,23 @@ function timeSpentMeta(item: { busyMs: number; costCents: number; agentNames: st
 }
 
 function TimeSpentPanel({ summary }: { summary: TimeSpent }) {
+    const t = useTranslations("timeline.timeSpent");
+    const tTimeline = useTranslations("timeline");
     const hasWork = summary.tasks.length > 0 || summary.chat.runs > 0;
     return (
         <section aria-labelledby="time-spent-title" className="rounded-2xl border border-zinc-800/80 bg-zinc-950/40">
             <header className="flex flex-wrap items-baseline justify-between gap-2 border-b border-zinc-800/80 px-5 py-3">
-                <h2 id="time-spent-title" className="text-sm font-semibold text-zinc-100">Where the time went</h2>
-                <span className="text-xs text-zinc-500">Busy hours in this range, summed per run · {formatHours(summary.busyMs)} total</span>
+                <h2 id="time-spent-title" className="text-sm font-semibold text-zinc-100">{t("title")}</h2>
+                <span className="text-xs text-zinc-500">{t("subtitle", { total: formatHours(summary.busyMs) })}</span>
             </header>
             {!hasWork ? (
-                <p className="px-5 py-6 text-sm text-zinc-500">No runs in this range.</p>
+                <p className="px-5 py-6 text-sm text-zinc-500">{t("noRuns")}</p>
             ) : (
                 <div className="grid gap-6 px-5 py-4 lg:grid-cols-2">
                     <div className="min-w-0">
-                        <h3 className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-zinc-500">Top tasks</h3>
+                        <h3 className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-zinc-500">{t("topTasks")}</h3>
                         {summary.tasks.length === 0 ? (
-                            <p className="text-sm text-zinc-500">No task work in this range.</p>
+                            <p className="text-sm text-zinc-500">{t("noTaskWork")}</p>
                         ) : (
                             <ol className="space-y-1.5">
                                 {summary.tasks.map((task) => (
@@ -1298,14 +1332,14 @@ function TimeSpentPanel({ summary }: { summary: TimeSpent }) {
                         )}
                     </div>
                     <div className="min-w-0">
-                        <h3 className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-zinc-500">Projects</h3>
+                        <h3 className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-zinc-500">{t("projects")}</h3>
                         <ul className="space-y-1">
                             {summary.projects.map((project) => <TimeSpentProjectRow key={project.projectId} project={project} />)}
                             {summary.chat.runs > 0 && (
                                 <li className="flex min-w-0 items-baseline gap-2 py-1 pl-6 text-sm text-zinc-500">
-                                    <span className="truncate">Chat (no task)</span>
+                                    <span className="truncate">{tTimeline("chatNoTask")}</span>
                                     <span className="shrink-0 text-xs tabular-nums">
-                                        · {[formatHours(summary.chat.busyMs), summary.chat.costCents > 0 ? formatCost(summary.chat.costCents) : null, `${summary.chat.runs} ${summary.chat.runs === 1 ? "run" : "runs"}`].filter(Boolean).join(" · ")}
+                                        · {[formatHours(summary.chat.busyMs), summary.chat.costCents > 0 ? formatCost(summary.chat.costCents) : null, tTimeline("runCount", { count: summary.chat.runs })].filter(Boolean).join(" · ")}
                                     </span>
                                 </li>
                             )}

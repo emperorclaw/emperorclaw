@@ -18,6 +18,7 @@ import {
 import ELK from "elkjs/lib/elk.bundled.js";
 import { IconRobot, IconCircleCheck, IconClock, IconCopy, IconDatabase, IconFileText, IconStack2, IconArrowsMaximize, IconArrowsMinimize, IconPlayerPlay, IconRepeat, IconSearch, IconSparkles, IconTrash, IconArrowsSplit } from "@tabler/icons-react";
 import { toast } from "sonner";
+import { useFormatter, useTranslations } from "next-intl";
 import { PageHeader } from "@/components/page-header";
 
 type PipelineStep = {
@@ -161,6 +162,31 @@ function runEvidence(run: RunRow) {
   };
 }
 
+type Translate = ReturnType<typeof useTranslations<"pipelines">>;
+
+const PIPELINE_STATUSES = new Set(["active", "draft", "paused", "retired"]);
+const RUN_STATUSES = new Set(["succeeded", "failed", "partial", "running"]);
+const statusLabel = (t: Translate, status: string) => (PIPELINE_STATUSES.has(status) ? t(`statuses.${status as "active"}`) : status);
+const runStatusLabel = (t: Translate, status: string) => (RUN_STATUSES.has(status) ? t(`runStatuses.${status as "running"}`) : status);
+
+/** The trigger, for the screen (the copy-ready markdown keeps English: triggerText). */
+function triggerLabel(t: Translate, pipeline: PipelineRow) {
+  if (pipeline.trigger === "cron") return pipeline.triggerConfig?.cron ? t("trigger.scheduleAt", { cron: String(pipeline.triggerConfig.cron) }) : t("trigger.schedule");
+  if (pipeline.trigger === "event") return t("trigger.event");
+  if (pipeline.trigger === "manual") return t("trigger.manual");
+  return pipeline.trigger || t("trigger.agent");
+}
+
+/** Where the pipeline runs, for the screen (the copy-ready markdown keeps English: scopeLabel). */
+function scopeText(t: Translate, pipeline: PipelineRow, agentsMap: Record<string, string>, projectsMap: Record<string, string>, customersMap: Record<string, string>) {
+  const parts = [
+    pipeline.customerId ? customersMap[pipeline.customerId] || t("scope.customer") : null,
+    pipeline.projectId ? projectsMap[pipeline.projectId] || t("scope.project") : null,
+    pipeline.ownerAgentId ? agentsMap[pipeline.ownerAgentId] || t("scope.agent") : null,
+  ].filter(Boolean);
+  return parts.length > 0 ? parts.join(" / ") : t("scope.company");
+}
+
 function triggerText(pipeline: PipelineRow) {
   if (pipeline.trigger === "cron") return pipeline.triggerConfig?.cron ? `Schedule: ${String(pipeline.triggerConfig.cron)}` : "Schedule";
   if (pipeline.trigger === "event") return "Event trigger";
@@ -217,7 +243,7 @@ function AnimatedFlowEdge({ id, sourceX, sourceY, sourcePosition, targetX, targe
 
 const edgeTypes = { flowEdge: AnimatedFlowEdge };
 
-function buildPipelineGraph(pipeline: PipelineRow, runs: RunRow[]): { nodes: Node<PipelineNodeData>[]; edges: Edge[] } {
+function buildPipelineGraph(pipeline: PipelineRow, runs: RunRow[], t: Translate): { nodes: Node<PipelineNodeData>[]; edges: Edge[] } {
   const steps = parseSteps(pipeline.stepsJson);
   const latestRun = runs.find((run) => run.pipelineId === pipeline.id);
   const contextTags = stringArray(pipeline.contextTagFilters).map((tag) => `#${tag}`).join(", ");
@@ -227,22 +253,22 @@ function buildPipelineGraph(pipeline: PipelineRow, runs: RunRow[]): { nodes: Nod
       id: "trigger",
       type: "pipelineDoc",
       position: { x: 0, y: 0 },
-      data: { label: triggerText(pipeline), eyebrow: "Trigger", body: "", tone: "trigger" },
+      data: { label: triggerLabel(t, pipeline), eyebrow: t("graph.trigger"), body: "", tone: "trigger" },
     },
     {
       id: "context",
       type: "pipelineDoc",
       position: { x: 0, y: 140 },
       data: {
-        label: "Context Pack",
-        eyebrow: "RAG contract",
-        body: pipeline.contextQuery || contextTags || (contextSources > 0 ? `${contextSources} pinned source${contextSources === 1 ? "" : "s"}` : ""),
+        label: t("graph.contextPack"),
+        eyebrow: t("graph.ragContract"),
+        body: pipeline.contextQuery || contextTags || (contextSources > 0 ? t("graph.pinnedSources", { count: contextSources }) : ""),
         tone: "context",
       },
     },
   ];
 
-  const stepNodes = steps.length > 0 ? steps : [{ id: "empty", name: "No steps registered", description: "" }];
+  const stepNodes = steps.length > 0 ? steps : [{ id: "empty", name: t("graph.noSteps"), description: "" }];
 
   stepNodes.forEach((step, index) => {
     nodes.push({
@@ -250,8 +276,8 @@ function buildPipelineGraph(pipeline: PipelineRow, runs: RunRow[]): { nodes: Nod
       type: "pipelineDoc",
       position: { x: 320 + index * 300, y: index % 2 === 0 ? 40 : 210 },
       data: {
-        label: step.name || step.title || `Step ${index + 1}`,
-        eyebrow: step.type || `Step ${index + 1}`,
+        label: step.name || step.title || t("stepN", { n: index + 1 }),
+        eyebrow: step.type || t("stepN", { n: index + 1 }),
         body: step.description || step.prompt || "",
         tone: "step",
       },
@@ -263,15 +289,15 @@ function buildPipelineGraph(pipeline: PipelineRow, runs: RunRow[]): { nodes: Nod
       id: "output",
       type: "pipelineDoc",
       position: { x: 680 + stepNodes.length * 260, y: 40 },
-      data: { label: "Output contract", eyebrow: "Deliverable", body: pipeline.docMarkdown || pipeline.purpose || "", tone: "output" },
+      data: { label: t("graph.output"), eyebrow: t("graph.deliverable"), body: pipeline.docMarkdown || pipeline.purpose || "", tone: "output" },
     },
     {
       id: "evidence",
       type: "pipelineDoc",
       position: { x: 680 + stepNodes.length * 260, y: 220 },
       data: {
-        label: latestRun ? `${latestRun.status} run evidence` : "Run evidence",
-        eyebrow: "Audit trail",
+        label: latestRun ? t("graph.runEvidenceOf", { status: runStatusLabel(t, latestRun.status) }) : t("graph.runEvidence"),
+        eyebrow: t("graph.auditTrail"),
         body: latestRun?.summary || "",
         tone: "evidence",
       },
@@ -337,14 +363,15 @@ function useElkLayout(initialNodes: Node<PipelineNodeData>[], initialEdges: Edge
 }
 
 function PipelineFlowMap({ pipeline, runs, agentsMap }: { pipeline: PipelineRow; runs: RunRow[]; agentsMap: Record<string, string> }) {
-  const graph = useMemo(() => buildPipelineGraph(pipeline, runs), [pipeline, runs]);
+  const t = useTranslations("pipelines");
+  const graph = useMemo(() => buildPipelineGraph(pipeline, runs, t), [pipeline, runs, t]);
   const { nodes, edges } = useElkLayout(graph.nodes, graph.edges);
   const [expanded, setExpanded] = useState(false);
 
   const steps = parseSteps(pipeline.stepsJson);
   const latestRun = runs.find((run) => run.pipelineId === pipeline.id);
   const contextCount = stringArray(pipeline.contextResourceIds).length + stringArray(pipeline.contextTagFilters).length;
-  const ownerName = pipeline.ownerAgentId ? agentsMap[pipeline.ownerAgentId] || "Agent" : "Any agent";
+  const ownerName = pipeline.ownerAgentId ? agentsMap[pipeline.ownerAgentId] || t("scope.agent") : t("anyAgent");
 
   useEffect(() => {
     if (!expanded) return;
@@ -373,7 +400,7 @@ function PipelineFlowMap({ pipeline, runs, agentsMap }: { pipeline: PipelineRow;
         className="absolute right-3 top-3 z-10 inline-flex items-center gap-2 rounded-full border border-zinc-700 bg-zinc-950/90 px-3 py-1.5 text-xs font-medium text-zinc-300 backdrop-blur transition-colors hover:border-cyan-400/40 hover:text-cyan-100"
       >
         {expanded ? <IconArrowsMinimize className="h-3.5 w-3.5" /> : <IconArrowsMaximize className="h-3.5 w-3.5" />}
-        {expanded ? "Collapse" : "Expand"}
+        {expanded ? t("collapse") : t("expand")}
       </button>
       <div className="min-h-0 flex-1">
         <ReactFlow
@@ -396,11 +423,11 @@ function PipelineFlowMap({ pipeline, runs, agentsMap }: { pipeline: PipelineRow;
         </ReactFlow>
       </div>
       <div className="flex shrink-0 flex-wrap items-center gap-x-4 gap-y-1 border-t border-border bg-card px-4 py-2 text-xs text-muted-foreground">
-        <span className="inline-flex items-center gap-1.5"><span className={`h-1.5 w-1.5 rounded-full ${STATUS_DOT_STYLES[pipeline.status] || "bg-zinc-600"}`} />{pipeline.status}</span>
-        <span>{steps.length || 0} step{steps.length === 1 ? "" : "s"}</span>
-        <span>Owner: {ownerName}</span>
-        <span>{contextCount} context source{contextCount === 1 ? "" : "s"}</span>
-        <span>{latestRun ? `Last run: ${latestRun.status}` : "No runs yet"}</span>
+        <span className="inline-flex items-center gap-1.5"><span className={`h-1.5 w-1.5 rounded-full ${STATUS_DOT_STYLES[pipeline.status] || "bg-zinc-600"}`} />{statusLabel(t, pipeline.status)}</span>
+        <span>{t("stepCount", { count: steps.length || 0 })}</span>
+        <span>{t("owner", { name: ownerName })}</span>
+        <span>{t("contextSources", { count: contextCount })}</span>
+        <span>{latestRun ? t("lastRun", { status: runStatusLabel(t, latestRun.status) }) : t("noRunsYet")}</span>
       </div>
       </div>
     </>
@@ -435,12 +462,12 @@ function buildPipelineMarkdown(pipeline: PipelineRow, runs: RunRow[], agentsMap:
   ].join("\n");
 }
 
-async function copyPipelineMarkdown(markdown: string) {
+async function copyPipelineMarkdown(markdown: string, t: Translate) {
   try {
     await navigator.clipboard.writeText(markdown);
-    toast.success("Pipeline documentation copied");
+    toast.success(t("copied"));
   } catch {
-    toast.error("Could not copy documentation");
+    toast.error(t("copyFailed"));
   }
 }
 
@@ -454,18 +481,21 @@ function Metric({ label, value, icon: Icon }: { label: string; value: string | n
 }
 
 function EmptyPipelineState() {
+  const t = useTranslations("pipelines");
   return (
     <div className="rounded-3xl border border-dashed border-zinc-700 bg-zinc-950/50 p-10 text-center">
       <IconArrowsSplit className="mx-auto h-10 w-10 text-zinc-500" />
-      <h2 className="mt-4 text-xl font-semibold text-zinc-100">No pipelines registered yet</h2>
+      <h2 className="mt-4 text-xl font-semibold text-zinc-100">{t("emptyTitle")}</h2>
       <p className="mx-auto mt-2 max-w-xl text-sm text-zinc-400">
-        Pipelines are documentation contracts registered by agents through MCP. Emperor stores the map, context rules, and run evidence; the agent still performs the work in its own runtime.
+        {t("emptyDescription")}
       </p>
     </div>
   );
 }
 
 export default function PipelinesClient({ initialPipelines, initialRuns, agentsMap, projectsMap, customersMap }: PipelineClientProps) {
+  const t = useTranslations("pipelines");
+  const format = useFormatter();
   const [pipelines, setPipelines] = useState(initialPipelines);
   const [selectedId, setSelectedId] = useState(initialPipelines[0]?.id || "");
   const [query, setQuery] = useState("");
@@ -494,13 +524,13 @@ export default function PipelinesClient({ initialPipelines, initialRuns, agentsM
     setConfirmingDelete(null);
     const res = await fetch(`/api/pipelines/${pipeline.id}`, { method: "DELETE" });
     if (!res.ok) {
-      toast.error("Could not delete pipeline");
+      toast.error(t("deleteFailed"));
       return;
     }
     setPipelines((current) => current.filter((item) => item.id !== pipeline.id));
     setSelectedId((current) => (current === pipeline.id ? "" : current));
-    toast.success("Pipeline deleted");
-  }, [confirmingDelete]);
+    toast.success(t("deleted"));
+  }, [confirmingDelete, t]);
 
   const activeCount = pipelines.filter((pipeline) => pipeline.status === "active").length;
   const runCount = pipelines.reduce((sum, pipeline) => sum + (pipeline.runCount || 0), 0);
@@ -509,14 +539,14 @@ export default function PipelinesClient({ initialPipelines, initialRuns, agentsM
   return (
     <div className="mx-auto flex max-w-[1800px] flex-col gap-6 animate-in fade-in duration-500">
         <PageHeader
-          eyebrow="Automations"
-          title="Pipelines"
-          description="A simple workspace to understand what agents do: visual map, Context Pack, run evidence, and copy-ready docs. Emperor documents and audits; agents execute in their own runtime."
+          eyebrow={t("eyebrow")}
+          title={t("title")}
+          description={t("description")}
           actions={
             <div className="grid grid-cols-3 gap-2 sm:gap-3 w-full sm:w-auto">
-              <Metric label="Active" value={activeCount} icon={IconPlayerPlay} />
-              <Metric label="Runs" value={runCount} icon={IconRepeat} />
-              <Metric label="Documented" value={documentedCount} icon={IconFileText} />
+              <Metric label={t("metrics.active")} value={activeCount} icon={IconPlayerPlay} />
+              <Metric label={t("metrics.runs")} value={runCount} icon={IconRepeat} />
+              <Metric label={t("metrics.documented")} value={documentedCount} icon={IconFileText} />
             </div>
           }
         />
@@ -525,17 +555,17 @@ export default function PipelinesClient({ initialPipelines, initialRuns, agentsM
           <div className="grid gap-4 sm:gap-6 grid-cols-1 lg:grid-cols-[300px_minmax(0,1fr)] xl:grid-cols-[320px_minmax(0,1fr)_380px]">
             <aside className="rounded-[1.25rem] sm:rounded-[1.75rem] border border-zinc-800 bg-zinc-950/80 p-3 sm:p-4">
               <div className="flex items-center justify-between">
-                <h2 className="text-sm font-semibold text-zinc-100">Pipeline Explorer</h2>
+                <h2 className="text-sm font-semibold text-zinc-100">{t("explorer")}</h2>
                 <span className="rounded-full border border-zinc-800 px-2 py-0.5 text-xs text-zinc-500">{filteredPipelines.length}</span>
               </div>
               <label className="mt-4 flex items-center gap-2 rounded-2xl border border-zinc-800 bg-zinc-900/60 px-3 py-2 text-sm text-zinc-400">
                 <IconSearch className="h-4 w-4" />
-                <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search pipelines" className="w-full bg-transparent text-zinc-100 outline-none placeholder:text-zinc-600" />
+                <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder={t("searchPlaceholder")} className="w-full bg-transparent text-zinc-100 outline-none placeholder:text-zinc-600" />
               </label>
               <div className="mt-3 flex gap-2 overflow-x-auto pb-1">
                 {["all", "active", "draft", "paused", "retired"].map((item) => (
                   <button key={item} type="button" onClick={() => setStatus(item)} className={`cursor-pointer rounded-full border px-3 py-1 text-xs font-medium transition-colors ${status === item ? "border-cyan-400/50 bg-cyan-400/10 text-cyan-200" : "border-zinc-800 text-zinc-500 hover:border-zinc-700 hover:text-zinc-300"}`}>
-                    {item}
+                    {item === "all" ? t("all") : statusLabel(t, item)}
                   </button>
                 ))}
               </div>
@@ -545,13 +575,13 @@ export default function PipelinesClient({ initialPipelines, initialRuns, agentsM
                     <div className="flex items-start justify-between gap-3">
                       <div>
                         <div className="font-medium text-zinc-100">{pipeline.name}</div>
-                        <div className="mt-1 line-clamp-2 text-xs leading-5 text-zinc-500">{pipeline.purpose || "No purpose documented yet."}</div>
+                        <div className="mt-1 line-clamp-2 text-xs leading-5 text-zinc-500">{pipeline.purpose || t("noPurpose")}</div>
                       </div>
-                      <span className={`shrink-0 rounded-full border px-2 py-0.5 text-[10px] font-bold uppercase ${STATUS_STYLES[pipeline.status] || STATUS_STYLES.draft}`}>{pipeline.status}</span>
+                      <span className={`shrink-0 rounded-full border px-2 py-0.5 text-[10px] font-bold uppercase ${STATUS_STYLES[pipeline.status] || STATUS_STYLES.draft}`}>{statusLabel(t, pipeline.status)}</span>
                     </div>
                     <div className="mt-3 flex flex-wrap gap-2 text-[11px] text-zinc-500">
-                      <span className="inline-flex items-center gap-1"><IconRobot className="h-3 w-3" />{pipeline.ownerAgentId ? agentsMap[pipeline.ownerAgentId] || "Agent" : "Any agent"}</span>
-                      <span className="inline-flex items-center gap-1"><IconClock className="h-3 w-3" />{pipeline.lastRunAt ? new Date(pipeline.lastRunAt).toLocaleDateString() : "No runs"}</span>
+                      <span className="inline-flex items-center gap-1"><IconRobot className="h-3 w-3" />{pipeline.ownerAgentId ? agentsMap[pipeline.ownerAgentId] || t("scope.agent") : t("anyAgent")}</span>
+                      <span className="inline-flex items-center gap-1"><IconClock className="h-3 w-3" />{pipeline.lastRunAt ? format.dateTime(new Date(pipeline.lastRunAt), { dateStyle: "short" }) : t("noRuns")}</span>
                     </div>
                   </button>
                 ))}
@@ -563,16 +593,16 @@ export default function PipelinesClient({ initialPipelines, initialRuns, agentsM
                 <>
                   <div className="flex flex-col gap-3 rounded-[1.25rem] sm:rounded-[1.75rem] border border-zinc-800 bg-zinc-950/80 p-4 sm:p-5 lg:flex-row lg:items-center lg:justify-between">
                     <div>
-                      <div className="text-xs font-bold uppercase tracking-[0.22em] text-zinc-500">Visual Map</div>
+                      <div className="text-xs font-bold uppercase tracking-[0.22em] text-zinc-500">{t("visualMap")}</div>
                       <h2 className="mt-1 text-2xl font-semibold text-zinc-50">{selectedPipeline.name}</h2>
-                      <p className="mt-1 text-sm text-zinc-400">{scopeLabel(selectedPipeline, agentsMap, projectsMap, customersMap)}</p>
+                      <p className="mt-1 text-sm text-zinc-400">{scopeText(t, selectedPipeline, agentsMap, projectsMap, customersMap)}</p>
                     </div>
                     <div className="flex flex-wrap gap-2">
-                      <button type="button" onClick={() => copyPipelineMarkdown(selectedMarkdown)} className="inline-flex cursor-pointer items-center gap-2 rounded-full border border-cyan-400/35 bg-cyan-400/10 px-4 py-2 text-sm font-medium text-cyan-100 transition-colors hover:bg-cyan-400/15">
-                        <IconCopy className="h-4 w-4" /> Copy docs
+                      <button type="button" onClick={() => copyPipelineMarkdown(selectedMarkdown, t)} className="inline-flex cursor-pointer items-center gap-2 rounded-full border border-cyan-400/35 bg-cyan-400/10 px-4 py-2 text-sm font-medium text-cyan-100 transition-colors hover:bg-cyan-400/15">
+                        <IconCopy className="h-4 w-4" /> {t("copyDocs")}
                       </button>
                       <button type="button" onClick={() => deletePipeline(selectedPipeline)} className="inline-flex cursor-pointer items-center gap-2 rounded-full border border-red-500/25 bg-red-500/10 px-4 py-2 text-sm font-medium text-red-200 transition-colors hover:bg-red-500/15">
-                        <IconTrash className="h-4 w-4" /> {confirmingDelete === selectedPipeline?.id ? "Click again to confirm" : "Delete"}
+                        <IconTrash className="h-4 w-4" /> {confirmingDelete === selectedPipeline?.id ? t("confirmDelete") : t("delete")}
                       </button>
                     </div>
                   </div>
@@ -585,30 +615,30 @@ export default function PipelinesClient({ initialPipelines, initialRuns, agentsM
               {selectedPipeline && (
                 <div className="space-y-6">
                   <section>
-                    <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-[0.22em] text-violet-300"><IconFileText className="h-4 w-4" />Documentation</div>
-                    <h2 className="mt-2 text-xl font-semibold text-zinc-50">Human-readable contract</h2>
+                    <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-[0.22em] text-violet-300"><IconFileText className="h-4 w-4" />{t("documentation")}</div>
+                    <h2 className="mt-2 text-xl font-semibold text-zinc-50">{t("contract")}</h2>
                   </section>
 
                   <section className="rounded-2xl border border-violet-500/20 bg-violet-500/[0.06] p-4">
-                    <h3 className="flex items-center gap-2 text-sm font-semibold text-violet-100"><IconDatabase className="h-4 w-4" />Context Pack</h3>
+                    <h3 className="flex items-center gap-2 text-sm font-semibold text-violet-100"><IconDatabase className="h-4 w-4" />{t("graph.contextPack")}</h3>
                     <dl className="mt-3 space-y-2 text-sm text-zinc-400">
-                      <div><dt className="text-xs uppercase tracking-wider text-zinc-500">Query</dt><dd>{selectedPipeline.contextQuery || "Not set"}</dd></div>
-                      <div><dt className="text-xs uppercase tracking-wider text-zinc-500">Pinned sources</dt><dd>{stringArray(selectedPipeline.contextResourceIds).length || "None"}</dd></div>
-                      <div><dt className="text-xs uppercase tracking-wider text-zinc-500">Tags</dt><dd>{stringArray(selectedPipeline.contextTagFilters).map((tag) => `#${tag}`).join(", ") || "None"}</dd></div>
-                      <div><dt className="text-xs uppercase tracking-wider text-zinc-500">Budget</dt><dd>{selectedPipeline.contextMaxChars || 8000} chars</dd></div>
+                      <div><dt className="text-xs uppercase tracking-wider text-zinc-500">{t("context.query")}</dt><dd>{selectedPipeline.contextQuery || t("context.notSet")}</dd></div>
+                      <div><dt className="text-xs uppercase tracking-wider text-zinc-500">{t("context.pinned")}</dt><dd>{stringArray(selectedPipeline.contextResourceIds).length || t("context.none")}</dd></div>
+                      <div><dt className="text-xs uppercase tracking-wider text-zinc-500">{t("context.tags")}</dt><dd>{stringArray(selectedPipeline.contextTagFilters).map((tag) => `#${tag}`).join(", ") || t("context.none")}</dd></div>
+                      <div><dt className="text-xs uppercase tracking-wider text-zinc-500">{t("context.budget")}</dt><dd>{t("context.chars", { count: selectedPipeline.contextMaxChars || 8000 })}</dd></div>
                     </dl>
                   </section>
 
                   <section className="space-y-3">
-                    <h3 className="flex items-center gap-2 text-sm font-semibold text-zinc-100"><IconStack2 className="h-4 w-4" />Workflow steps</h3>
+                    <h3 className="flex items-center gap-2 text-sm font-semibold text-zinc-100"><IconStack2 className="h-4 w-4" />{t("workflowSteps")}</h3>
                     {parseSteps(selectedPipeline.stepsJson).length === 0 ? (
-                      <div className="rounded-2xl border border-dashed border-zinc-700 p-4 text-sm text-zinc-500">No steps registered. Ask the agent to register steps, decisions, outputs, and evidence through the pipeline MCP endpoint.</div>
+                      <div className="rounded-2xl border border-dashed border-zinc-700 p-4 text-sm text-zinc-500">{t("noStepsHint")}</div>
                     ) : (
                       <ol className="space-y-2">
                         {parseSteps(selectedPipeline.stepsJson).map((step, index) => (
                           <li key={`${step.id || step.name || index}`} className="rounded-2xl border border-zinc-800 bg-zinc-900/30 p-3">
-                            <div className="flex items-center gap-2 text-sm font-medium text-zinc-100"><span className="grid h-6 w-6 place-items-center rounded-full bg-zinc-800 text-xs text-zinc-400">{index + 1}</span>{step.name || step.title || `Step ${index + 1}`}</div>
-                            <p className="mt-2 text-xs leading-5 text-zinc-500">{step.description || step.prompt || "No description registered."}</p>
+                            <div className="flex items-center gap-2 text-sm font-medium text-zinc-100"><span className="grid h-6 w-6 place-items-center rounded-full bg-zinc-800 text-xs text-zinc-400">{index + 1}</span>{step.name || step.title || t("stepN", { n: index + 1 })}</div>
+                            <p className="mt-2 text-xs leading-5 text-zinc-500">{step.description || step.prompt || t("noStepDescription")}</p>
                           </li>
                         ))}
                       </ol>
@@ -616,21 +646,21 @@ export default function PipelinesClient({ initialPipelines, initialRuns, agentsM
                   </section>
 
                   <section className="space-y-3">
-                    <h3 className="flex items-center gap-2 text-sm font-semibold text-zinc-100"><IconCircleCheck className="h-4 w-4" />Recent runs</h3>
-                    {selectedRuns.length === 0 ? <p className="text-sm text-zinc-500">No runs reported yet.</p> : (
+                    <h3 className="flex items-center gap-2 text-sm font-semibold text-zinc-100"><IconCircleCheck className="h-4 w-4" />{t("recentRuns")}</h3>
+                    {selectedRuns.length === 0 ? <p className="text-sm text-zinc-500">{t("noRunsReported")}</p> : (
                       <ul className="space-y-2">
                         {selectedRuns.slice(0, 6).map((run) => {
                           const evidence = runEvidence(run);
                           return (
                             <li key={run.id} className="rounded-2xl border border-zinc-800 bg-zinc-900/30 p-3 text-sm">
                               <div className="flex items-center justify-between gap-3">
-                                <span className={`font-medium ${RUN_STATUS_STYLES[run.status] || "text-zinc-300"}`}>{run.status}</span>
-                                <span className="text-xs text-zinc-500">{new Date(run.startedAt).toLocaleString()}</span>
+                                <span className={`font-medium ${RUN_STATUS_STYLES[run.status] || "text-zinc-300"}`}>{runStatusLabel(t, run.status)}</span>
+                                <span className="text-xs text-zinc-500">{format.dateTime(new Date(run.startedAt), { dateStyle: "short", timeStyle: "medium" })}</span>
                               </div>
                               {run.summary && <p className="mt-2 text-xs leading-5 text-zinc-400">{run.summary}</p>}
                               <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-[11px] text-zinc-500">
-                                <span>Sources used: {evidence.contextSourceIds.length}</span>
-                                <span>Evidence produced: {evidence.taskIds.length} tasks / {evidence.artifactIds.length} artifacts</span>
+                                <span>{t("sourcesUsed", { count: evidence.contextSourceIds.length })}</span>
+                                <span>{t("evidenceProduced", { tasks: evidence.taskIds.length, artifacts: evidence.artifactIds.length })}</span>
                               </div>
                             </li>
                           );
@@ -640,7 +670,7 @@ export default function PipelinesClient({ initialPipelines, initialRuns, agentsM
                   </section>
 
                   <section className="rounded-2xl border border-zinc-800 bg-zinc-900/30 p-4">
-                    <h3 className="flex items-center gap-2 text-sm font-semibold text-zinc-100"><IconSparkles className="h-4 w-4" />Copy-ready markdown</h3>
+                    <h3 className="flex items-center gap-2 text-sm font-semibold text-zinc-100"><IconSparkles className="h-4 w-4" />{t("copyReady")}</h3>
                     <pre className="mt-3 max-h-72 overflow-auto whitespace-pre-wrap rounded-xl bg-zinc-950/60 p-3 text-xs leading-5 text-zinc-400">{selectedMarkdown}</pre>
                   </section>
                 </div>

@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useId, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from "react";
+import { useTranslations } from "next-intl";
 import {
     IconBook, IconBuildingStore, IconFileText, IconFolder, IconListCheck, IconLoader2, IconMessage, IconRobot, IconSearch, IconX,
 } from "@tabler/icons-react";
@@ -10,10 +11,10 @@ import { PageHeader } from "@/components/page-header";
 import { EmptyState } from "@/components/ui/empty-state";
 import { isPlainKey, isTypingTarget } from "@/lib/keyboard-shortcuts";
 import {
-    SEARCH_MIN_QUERY_LENGTH, SEARCH_PAGE_LIMIT, SEARCH_TYPE_LABELS, SEARCH_TYPES, snippetParts,
+    SEARCH_MIN_QUERY_LENGTH, SEARCH_PAGE_LIMIT, SEARCH_TYPES, snippetParts,
     type SearchResponse, type SearchResult, type SearchType,
 } from "@/lib/search-query";
-import { timeAgo } from "@/lib/team-scene";
+import { useTimeAgo } from "@/lib/i18n/format";
 import { cn } from "@/lib/utils";
 
 const TYPE_ICON: Record<SearchType, typeof IconSearch> = {
@@ -57,6 +58,9 @@ export function Snippet({ text, highlights, className }: { text: string; highlig
 }
 
 export function SearchClient({ initialQuery, initialType, initial }: { initialQuery: string; initialType: SearchType | null; initial: SearchResponse | null }) {
+    const t = useTranslations("search");
+    const tTypes = useTranslations("shell.palette.types");
+    const timeAgo = useTimeAgo();
     const router = useRouter();
     const inputRef = useRef<HTMLInputElement>(null);
     const listId = useId();
@@ -126,7 +130,7 @@ export function SearchClient({ initialQuery, initialType, initial }: { initialQu
     const groups = useMemo(() => {
         const results = state?.results ?? [];
         return SEARCH_TYPES
-            .map((t) => ({ type: t, items: results.filter((r) => r.type === t) }))
+            .map((searchType) => ({ type: searchType, items: results.filter((r) => r.type === searchType) }))
             .filter((g) => g.items.length > 0);
     }, [state]);
     const ordered = useMemo(() => groups.flatMap((g) => g.items), [groups]);
@@ -171,17 +175,17 @@ export function SearchClient({ initialQuery, initialType, initial }: { initialQu
 
     const count = state?.results.length ?? 0;
     const status = !searchable
-        ? trimmed ? `Type at least ${SEARCH_MIN_QUERY_LENGTH} characters.` : null
-        : loading && !state ? "Searching…"
-            : failed ? "Search failed. Try again in a moment."
-                : state ? `${count}${state.nextCursor ? "+" : ""} result${count === 1 ? "" : "s"}` : null;
+        ? trimmed ? t("minLength", { count: SEARCH_MIN_QUERY_LENGTH }) : null
+        : loading && !state ? t("searching")
+            : failed ? t("failed")
+                : state ? t("resultCount", { count, more: state.nextCursor ? "yes" : "no" }) : null;
 
     return (
         <div className="mx-auto max-w-[1100px] space-y-5 pb-20 animate-in fade-in duration-500">
             <PageHeader
-                eyebrow="Search"
-                title="Search everything"
-                description="Tasks and their notes, messages, Knowledge & Rules, files, projects, customers and agents you can open."
+                eyebrow={t("eyebrow")}
+                title={t("title")}
+                description={t("description")}
             />
 
             <div className="space-y-3">
@@ -195,33 +199,33 @@ export function SearchClient({ initialQuery, initialType, initial }: { initialQu
                         aria-controls={listId}
                         aria-autocomplete="list"
                         aria-activedescendant={active >= 0 ? optionId(active) : undefined}
-                        aria-label="Search"
+                        aria-label={t("eyebrow")}
                         autoFocus
                         value={query}
                         onChange={(e) => setQuery(e.target.value)}
                         onKeyDown={onInputKey}
-                        placeholder="Search tasks, messages, knowledge, files…"
+                        placeholder={t("placeholder")}
                         maxLength={200}
                         className="h-12 min-w-0 flex-1 bg-transparent text-base text-foreground outline-none placeholder:text-muted-foreground [&::-webkit-search-cancel-button]:hidden"
                     />
                     {query && (
-                        <button type="button" aria-label="Clear search" onClick={() => { setQuery(""); inputRef.current?.focus(); }}
+                        <button type="button" aria-label={t("clear")} onClick={() => { setQuery(""); inputRef.current?.focus(); }}
                             className="grid h-9 w-9 shrink-0 place-items-center rounded-lg text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400">
                             <IconX className="h-4 w-4" />
                         </button>
                     )}
                 </div>
 
-                <div role="toolbar" aria-label="Filter by type" className="flex flex-wrap gap-1.5">
-                    {([null, ...SEARCH_TYPES] as (SearchType | null)[]).map((t) => {
-                        const selected = type === t;
-                        const Icon = t ? TYPE_ICON[t] : IconSearch;
+                <div role="toolbar" aria-label={t("filterByType")} className="flex flex-wrap gap-1.5">
+                    {([null, ...SEARCH_TYPES] as (SearchType | null)[]).map((option) => {
+                        const selected = type === option;
+                        const Icon = option ? TYPE_ICON[option] : IconSearch;
                         return (
-                            <button key={t ?? "all"} type="button" aria-pressed={selected} onClick={() => { setType(t); setActive(-1); }}
+                            <button key={option ?? "all"} type="button" aria-pressed={selected} onClick={() => { setType(option); setActive(-1); }}
                                 className={cn("inline-flex min-h-9 items-center gap-1.5 rounded-full border px-3 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400",
                                     selected ? "border-primary/40 bg-primary/10 text-foreground" : "border-border text-muted-foreground hover:bg-muted hover:text-foreground")}>
                                 <Icon className={cn("h-4 w-4", selected ? "text-primary" : "text-muted-foreground")} />
-                                {t ? SEARCH_TYPE_LABELS[t] : "All"}
+                                {option ? tTypes(option) : t("all")}
                             </button>
                         );
                     })}
@@ -230,22 +234,22 @@ export function SearchClient({ initialQuery, initialType, initial }: { initialQu
             </div>
 
             {!searchable ? (
-                <EmptyState icon={IconSearch} title="Find anything" description="Search tasks, projects, customers, notes, files, agents and messages by a few words. The last word matches as you type, and accents don't matter (cafe finds café)." />
+                <EmptyState icon={IconSearch} title={t("emptyTitle")} description={t("emptyDescription")} />
             ) : state && ordered.length === 0 && !loading ? (
                 <EmptyState
                     icon={IconSearch}
-                    title={`Nothing matches “${trimmed}”`}
-                    description={type ? `No ${SEARCH_TYPE_LABELS[type].toLowerCase()} you can see contain these words. Search all types, or use fewer words.` : "Nothing you can see contains these words. Try fewer or different words."}
-                    action={type ? <button type="button" onClick={() => { setType(null); setActive(-1); }} className="inline-flex min-h-9 items-center rounded-lg border border-border px-3 text-sm text-foreground hover:bg-muted">Search all types</button> : undefined}
+                    title={t("noMatches", { query: trimmed })}
+                    description={type ? t("noMatchesOfType", { type: tTypes(type).toLowerCase() }) : t("noMatchesHint")}
+                    action={type ? <button type="button" onClick={() => { setType(null); setActive(-1); }} className="inline-flex min-h-9 items-center rounded-lg border border-border px-3 text-sm text-foreground hover:bg-muted">{t("searchAllTypes")}</button> : undefined}
                 />
             ) : (
-                <div id={listId} role="listbox" aria-label="Search results" className={cn("space-y-6 transition-opacity", loading && "opacity-60")}>
+                <div id={listId} role="listbox" aria-label={t("results")} className={cn("space-y-6 transition-opacity", loading && "opacity-60")}>
                     {groups.map((group) => {
                         const Icon = TYPE_ICON[group.type];
                         return (
                             <section key={group.type} role="group" aria-labelledby={`${listId}-${group.type}`}>
                                 <header className="mb-2.5 flex items-baseline gap-2 px-1">
-                                    <h2 id={`${listId}-${group.type}`} className="text-sm font-semibold text-foreground">{SEARCH_TYPE_LABELS[group.type]}</h2>
+                                    <h2 id={`${listId}-${group.type}`} className="text-sm font-semibold text-foreground">{tTypes(group.type)}</h2>
                                     <span className="text-xs tabular-nums text-muted-foreground">{group.items.length}</span>
                                 </header>
                                 <ul className="space-y-2">
@@ -282,7 +286,7 @@ export function SearchClient({ initialQuery, initialType, initial }: { initialQu
                         <div className="flex justify-center">
                             <button type="button" onClick={() => void loadMore()} disabled={loadingMore}
                                 className="inline-flex min-h-10 items-center gap-2 rounded-xl border border-border px-4 text-sm font-medium text-foreground hover:bg-muted disabled:opacity-60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400">
-                                {loadingMore && <IconLoader2 className="h-4 w-4 animate-spin" />}Show more results
+                                {loadingMore && <IconLoader2 className="h-4 w-4 animate-spin" />}{t("showMore")}
                             </button>
                         </div>
                     )}
@@ -291,9 +295,9 @@ export function SearchClient({ initialQuery, initialType, initial }: { initialQu
 
             {ordered.length > 0 && (
                 <p className="hidden items-center gap-4 px-1 text-xs text-muted-foreground md:flex">
-                    <Hint keys={["↑", "↓"]}>move</Hint>
-                    <Hint keys={["Enter"]}>open</Hint>
-                    <Hint keys={["/"]}>search</Hint>
+                    <Hint keys={["↑", "↓"]}>{t("hints.move")}</Hint>
+                    <Hint keys={["Enter"]}>{t("hints.open")}</Hint>
+                    <Hint keys={["/"]}>{t("hints.search")}</Hint>
                 </p>
             )}
         </div>

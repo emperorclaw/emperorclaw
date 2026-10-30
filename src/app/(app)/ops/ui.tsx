@@ -1,5 +1,6 @@
 import { Children } from "react";
 import Link from "next/link";
+import { getFormatter, getTranslations } from "next-intl/server";
 
 export function OpsCard({
     title,
@@ -52,7 +53,7 @@ export function OpsSection({
     );
 }
 
-export function OpsTable({
+export async function OpsTable({
     headers,
     children,
     empty,
@@ -62,6 +63,7 @@ export function OpsTable({
     empty?: string;
 }) {
     const rowCount = Children.count(children);
+    const t = await getTranslations("ops");
 
     return (
         <div className="overflow-x-auto">
@@ -79,7 +81,7 @@ export function OpsTable({
                     {rowCount > 0 ? children : (
                         <tr>
                             <td className="px-4 py-6 text-zinc-500" colSpan={headers.length}>
-                                {empty || "No data."}
+                                {empty || t("noData")}
                             </td>
                         </tr>
                     )}
@@ -89,12 +91,14 @@ export function OpsTable({
     );
 }
 
-export function formatDateTime(value: Date | string | null | undefined) {
-    if (!value) return "Never";
-    return new Date(value).toLocaleString();
-}
+type DateValue = Date | string | null | undefined;
 
-export function formatDateOnly(value: Date | string | null | undefined) {
-    if (!value) return "Never";
-    return new Date(value).toLocaleDateString();
+/** Date, number and "Never" formatting for the ops pages, in the viewer's language and time zone. */
+export async function getOpsFormat() {
+    const [t, format] = await Promise.all([getTranslations("ops"), getFormatter()]);
+    return {
+        dateTime: (value: DateValue) => (value ? format.dateTime(new Date(value), { dateStyle: "short", timeStyle: "medium" }) : t("never")),
+        dateOnly: (value: DateValue) => (value ? format.dateTime(new Date(value), { dateStyle: "short" }) : t("never")),
+        number: (value: number) => format.number(value),
+    };
 }

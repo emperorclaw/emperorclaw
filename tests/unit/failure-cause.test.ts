@@ -128,26 +128,26 @@ test("fixes: provider keys, budgets and scope are owner/admin only", () => {
         assert.equal(failureFix(cause, { ...ctx, audience: "member" }), null, cause);
         assert.ok(failureFix(cause, { ...ctx, audience: "admin" }), cause);
     }
-    assert.deepEqual(failureFix("provider_credits", { ...ctx, audience: "admin" }), { label: "Open provider settings", action: { kind: "link", href: "/agents?agent=a1" } });
-    assert.deepEqual(failureFix("provider_auth", { ...ctx, audience: "admin" }), { label: "Update key", action: { kind: "link", href: PROVIDER_KEY_DOC_HREF } });
-    assert.deepEqual(failureFix("budget", { ...ctx, audience: "admin" }), { label: "Raise budget", action: { kind: "link", href: "/budgets" } });
-    assert.deepEqual(failureFix("scope_denied", { ...ctx, audience: "admin" }), { label: "Open agent scope", action: { kind: "link", href: "/agents?agent=a1&tab=scope" } });
+    assert.deepEqual(failureFix("provider_credits", { ...ctx, audience: "admin" }), { label: "Open provider settings", labelCopy: { key: "failures.fixes.openProviderSettings" }, action: { kind: "link", href: "/agents?agent=a1" } });
+    assert.deepEqual(failureFix("provider_auth", { ...ctx, audience: "admin" }), { label: "Update key", labelCopy: { key: "failures.fixes.updateKey" }, action: { kind: "link", href: PROVIDER_KEY_DOC_HREF } });
+    assert.deepEqual(failureFix("budget", { ...ctx, audience: "admin" }), { label: "Raise budget", labelCopy: { key: "failures.fixes.raiseBudget" }, action: { kind: "link", href: "/budgets" } });
+    assert.deepEqual(failureFix("scope_denied", { ...ctx, audience: "admin" }), { label: "Open agent scope", labelCopy: { key: "failures.fixes.openAgentScope" }, action: { kind: "link", href: "/agents?agent=a1&tab=scope" } });
 });
 
 test("fixes: what members can act on", () => {
-    assert.deepEqual(failureFix("model_unavailable", { audience: "member", agentId: "a1" }), { label: "Choose a model", action: { kind: "link", href: "/agents?agent=a1" } });
-    assert.deepEqual(failureFix("runtime_offline", { audience: "member", agentId: "a1", canRestartRuntime: true }), { label: "Reconnect runtime", action: { kind: "restart_runtime", agentId: "a1" } });
-    assert.deepEqual(failureFix("runtime_offline", { audience: "member", agentId: "a1" }), { label: "Reconnect runtime", action: { kind: "link", href: "/agents?agent=a1" } });
-    assert.deepEqual(failureFix("stalled", { audience: "member", agentId: "a1", taskId: "t1" }), { label: "Nudge", action: { kind: "message_agent", agentId: "a1", taskId: "t1", mode: "nudge" } });
+    assert.deepEqual(failureFix("model_unavailable", { audience: "member", agentId: "a1" }), { label: "Choose a model", labelCopy: { key: "failures.fixes.chooseModel" }, action: { kind: "link", href: "/agents?agent=a1" } });
+    assert.deepEqual(failureFix("runtime_offline", { audience: "member", agentId: "a1", canRestartRuntime: true }), { label: "Reconnect runtime", labelCopy: { key: "failures.fixes.reconnectRuntime" }, action: { kind: "restart_runtime", agentId: "a1" } });
+    assert.deepEqual(failureFix("runtime_offline", { audience: "member", agentId: "a1" }), { label: "Reconnect runtime", labelCopy: { key: "failures.fixes.reconnectRuntime" }, action: { kind: "link", href: "/agents?agent=a1" } });
+    assert.deepEqual(failureFix("stalled", { audience: "member", agentId: "a1", taskId: "t1" }), { label: "Nudge", labelCopy: { key: "failures.fixes.nudge" }, action: { kind: "message_agent", agentId: "a1", taskId: "t1", mode: "nudge" } });
     // Retry: the viewer's own message first, else a retry directive on the task, else nothing to press.
-    assert.deepEqual(failureFix("unknown", { audience: "member", agentId: "a1", taskId: "t1", retryMessageId: "m1" }), { label: "Retry", action: { kind: "retry_message", messageId: "m1" } });
-    assert.deepEqual(failureFix("unknown", { audience: "member", agentId: "a1", taskId: "t1" }), { label: "Retry", action: { kind: "message_agent", agentId: "a1", taskId: "t1", mode: "retry" } });
+    assert.deepEqual(failureFix("unknown", { audience: "member", agentId: "a1", taskId: "t1", retryMessageId: "m1" }), { label: "Retry", labelCopy: { key: "failures.fixes.retry" }, action: { kind: "retry_message", messageId: "m1" } });
+    assert.deepEqual(failureFix("unknown", { audience: "member", agentId: "a1", taskId: "t1" }), { label: "Retry", labelCopy: { key: "failures.fixes.retry" }, action: { kind: "message_agent", agentId: "a1", taskId: "t1", mode: "retry" } });
     assert.equal(failureFix("unknown", { audience: "member", agentId: "a1" }), null);
 });
 
 test("fixes: an unreachable provider is a settings link for admins and Retry for members", () => {
-    assert.deepEqual(failureFix("provider_unreachable", { audience: "admin", agentId: "a1", retryMessageId: "m1" }), { label: "Check provider settings", action: { kind: "link", href: "/agents?agent=a1" } });
-    assert.deepEqual(failureFix("provider_unreachable", { audience: "member", agentId: "a1", retryMessageId: "m1" }), { label: "Retry", action: { kind: "retry_message", messageId: "m1" } });
+    assert.deepEqual(failureFix("provider_unreachable", { audience: "admin", agentId: "a1", retryMessageId: "m1" }), { label: "Check provider settings", labelCopy: { key: "failures.fixes.checkProviderSettings" }, action: { kind: "link", href: "/agents?agent=a1" } });
+    assert.deepEqual(failureFix("provider_unreachable", { audience: "member", agentId: "a1", retryMessageId: "m1" }), { label: "Retry", labelCopy: { key: "failures.fixes.retry" }, action: { kind: "retry_message", messageId: "m1" } });
     const view = describeFailure({ texts: ["provider_unreachable"], runStatus: "failed" }, { audience: "member", agentId: "a1" });
     assert.equal(view.headline, "Can't reach the model provider");
     assert.equal(view.detail, null);
@@ -172,12 +172,12 @@ test("nudge and retry directives name the task", () => {
 
 test("fixes: Nudge and task Retry go to the task's current assignee, else the run's agent", () => {
     const ctx = { audience: "member" as const, agentId: "runner", taskId: "t1" };
-    assert.deepEqual(failureFix("stalled", { ...ctx, taskAssigneeId: "current" }), { label: "Nudge", action: { kind: "message_agent", agentId: "current", taskId: "t1", mode: "nudge" } });
-    assert.deepEqual(failureFix("unknown", { ...ctx, taskAssigneeId: "current" }), { label: "Retry", action: { kind: "message_agent", agentId: "current", taskId: "t1", mode: "retry" } });
+    assert.deepEqual(failureFix("stalled", { ...ctx, taskAssigneeId: "current" }), { label: "Nudge", labelCopy: { key: "failures.fixes.nudge" }, action: { kind: "message_agent", agentId: "current", taskId: "t1", mode: "nudge" } });
+    assert.deepEqual(failureFix("unknown", { ...ctx, taskAssigneeId: "current" }), { label: "Retry", labelCopy: { key: "failures.fixes.retry" }, action: { kind: "message_agent", agentId: "current", taskId: "t1", mode: "retry" } });
     // Unassigned: the agent that ran it is the only one left to ask.
-    assert.deepEqual(failureFix("stalled", { ...ctx, taskAssigneeId: null }), { label: "Nudge", action: { kind: "message_agent", agentId: "runner", taskId: "t1", mode: "nudge" } });
+    assert.deepEqual(failureFix("stalled", { ...ctx, taskAssigneeId: null }), { label: "Nudge", labelCopy: { key: "failures.fixes.nudge" }, action: { kind: "message_agent", agentId: "runner", taskId: "t1", mode: "nudge" } });
     // Fixes about the agent itself still point at the agent that failed.
-    assert.deepEqual(failureFix("model_unavailable", { ...ctx, taskAssigneeId: "current" }), { label: "Choose a model", action: { kind: "link", href: "/agents?agent=runner" } });
+    assert.deepEqual(failureFix("model_unavailable", { ...ctx, taskAssigneeId: "current" }), { label: "Choose a model", labelCopy: { key: "failures.fixes.chooseModel" }, action: { kind: "link", href: "/agents?agent=runner" } });
 });
 
 // Real-looking provider and runtime errors that quote credentials back.

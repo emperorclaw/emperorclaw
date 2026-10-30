@@ -4,6 +4,7 @@ import { eq, and, isNull, inArray } from "drizzle-orm";
 import { getCompanyId, getValidatedServerSession } from "@/lib/auth";
 import { getMemberScopeForSession, getScopedCustomerIds } from "@/lib/member-scope";
 import { redirect } from "next/navigation";
+import { getTranslations } from "next-intl/server";
 import CustomersClient from "./customers-client";
 
 export const dynamic = "force-dynamic";
@@ -25,6 +26,7 @@ export default async function CustomersPage() {
     const allIncidents = await db.select().from(incidents).where(and(eq(incidents.companyId, companyId), isNull(incidents.deletedAt)));
     const allApprovals = await db.select().from(approvals).where(eq(approvals.companyId, companyId));
     const allPipelines = await db.select().from(pipelines).where(and(eq(pipelines.companyId, companyId), isNull(pipelines.deletedAt)));
+    const t = await getTranslations("customers");
 
     const customerSummaries = allCustomers.map((customer) => {
         const customerProjects = allProjects.filter((project) => project.customerId === customer.id);
@@ -48,7 +50,7 @@ export default async function CustomersPage() {
         const taskLink = (task: { id: string; projectId: string }) => `/projects?project=${task.projectId}&task=${task.id}`;
         // What "needs attention" means, item by item, each with where to fix it.
         const attention = [
-            ...pendingApprovals.map((approval) => ({ kind: "approval", label: approval.rationale || "Approval requested", href: "/approvals" })),
+            ...pendingApprovals.map((approval) => ({ kind: "approval", label: approval.rationale || t("approvalRequested"), href: "/approvals" })),
             ...blockedTasks.map((task) => ({ kind: "blocked", label: titleOf(task), href: taskLink(task) })),
             ...customerIncidents.map((incident) => ({ kind: "incident", label: incident.summary, href: "/projects?attention=1" })),
             ...reviewTasks.map((task) => ({ kind: "review", label: titleOf(task), href: taskLink(task) })),

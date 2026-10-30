@@ -101,6 +101,8 @@ export interface TimelineEvent {
     byName: string | null;
     /** Tooltip text, e.g. "Note", "Assigned by Priya", "Approved by Priya". */
     label: string;
+    /** The approval decision behind an approval_decided marker, so the UI can word the label in the viewer's language. */
+    decision?: string | null;
 }
 
 export type TimelineEdgeKind = "created" | "assigned" | "reassigned" | "triggered_run";
@@ -646,7 +648,7 @@ export function buildWorkTimeline(input: BuildTimelineInput): WorkTimeline {
         .slice(-TIMELINE_EVENT_CAP)
         .map((event) => {
             const byName = event.byName?.trim() || null;
-            return { id: event.id, actorId: event.actorId, taskId: event.taskId, kind: event.kind, at: event.atMs, byName, label: eventLabel(event.kind, byName, event.decision) };
+            return { id: event.id, actorId: event.actorId, taskId: event.taskId, kind: event.kind, at: event.atMs, byName, label: eventLabel(event.kind, byName, event.decision), decision: event.decision ?? null };
         });
 
     // Edges: only between visible agents, capped (newest kept).

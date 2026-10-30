@@ -6,7 +6,8 @@ const path = require("node:path");
 const root = path.resolve(__dirname, "..");
 
 test("Storage creates Office and lightweight files without an external service", () => {
-    const manager = fs.readFileSync(path.join(root, "src/app/(app)/artifacts/artifacts-manager.tsx"), "utf8");
+    // The page's copy lives in messages/en.json (i18n).
+    const manager = `${fs.readFileSync(path.join(root, "src/app/(app)/artifacts/artifacts-manager.tsx"), "utf8")}\n${fs.readFileSync(path.join(root, "messages/en.json"), "utf8")}`;
     const uploadRoute = fs.readFileSync(path.join(root, "src/app/api/ui/artifacts/upload/route.ts"), "utf8");
     assert.match(manager, /CREATABLE_FILE_TYPES/);
     assert.match(manager, /Excel workbook/);

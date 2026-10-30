@@ -7,9 +7,11 @@ const root = resolve(__dirname, "..");
 
 /**
  * Agents never see translated text. Everything an agent, a runtime or bridge,
- * an MCP/OAuth client, a webhook or an email recipient reads is English and
- * must not depend on the UI's translation layer (next-intl, messages/*.json,
- * the request config, the UI formatters).
+ * an MCP/OAuth client or a webhook reads is English and must not depend on the
+ * UI's translation layer (next-intl, messages/*.json, the request config, the
+ * UI formatters). Emails are read by people: since i18n phase 3b
+ * src/lib/email.ts renders them in the recipient's language through
+ * src/i18n/server-translator.ts, so it is no longer listed here.
  */
 const AGENT_FACING = [
     // MCP and agent instructions
@@ -35,9 +37,8 @@ const AGENT_FACING = [
     "src/lib/hermes-provisioning.ts",
     "src/lib/hermes-hiring-profile.ts",
     "src/lib/hire-hermes-agent.ts",
-    // Webhooks and emails
+    // Webhooks and email tokens
     "src/app/api/webhook",
-    "src/lib/email.ts",
     "src/lib/email-verification.ts",
 ];
 

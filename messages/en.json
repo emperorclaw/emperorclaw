@@ -26,7 +26,8 @@
     "copy": "Copy",
     "copied": "Copied",
     "back": "Back",
-    "creating": "Creating…"
+    "creating": "Creating…",
+    "companyNotFound": "Company not found."
   },
   "errors": {
     "title": "Something went wrong",
@@ -724,7 +725,50 @@
       "markReadFailed": "Couldn't mark it read"
     },
     "theAgent": "The agent",
-    "theAgentLower": "the agent"
+    "theAgentLower": "the agent",
+    "entries": {
+      "titles": {
+        "agentBlocked": "{name} is blocked",
+        "agentNoConnection": "{name} has no recent connection with work waiting",
+        "agentOfflineWithWork": "{name} is offline with work in progress",
+        "allowOnce": "Allow once: {action}",
+        "approve": "Approve {what}",
+        "approveAction": "Approve {action}: {what}",
+        "messageFailed": "Message failed: “{text}”",
+        "awaitingResponse": "Awaiting agent response: “{text}”",
+        "paused": "Agents were going back and forth without progress",
+        "runFailed": "{name}'s last run failed",
+        "runTimedOut": "{name}'s last run timed out",
+        "runLost": "{name}'s last run was lost",
+        "stalledAgent": "{name} is running with no progress"
+      },
+      "reasons": {
+        "causeWithDetail": "{cause}: {detail}",
+        "exceededRetries": "task exceeded retries",
+        "stateBlocked": "Blocked",
+        "stateGaveUp": "Gave up after retries",
+        "stateFailed": "Failed",
+        "stateWithCause": "{state}: {cause}",
+        "requestedFrom": "{state}. Requested from {source}",
+        "requestedFromVia": "{state}. Requested from {by} via {source}"
+      },
+      "actions": {
+        "openTask": "Open task",
+        "inspectConnection": "Inspect connection",
+        "reviewWork": "Review work",
+        "reviewRequest": "Review request",
+        "inspectDelivery": "Inspect delivery",
+        "openChat": "Open chat",
+        "resume": "Resume",
+        "openRuns": "Open runs",
+        "openAgent": "Open agent",
+        "openConversation": "Open conversation"
+      },
+      "areas": {
+        "messages": "Messages",
+        "teamChat": "Team chat"
+      }
+    }
   },
   "settings": {
     "sections": {
@@ -1486,6 +1530,14 @@
       "emptyTitle": "No hosts connected yet",
       "emptyBody": "Connect the PC or Raspberry Pi where your agents run. It takes one command.",
       "revokedRecently": "Revoked in the last 30 days ({count})"
+    },
+    "hireReasons": {
+      "revoked": "This host was revoked",
+      "offline": "Offline",
+      "update": "Update this host to hire here",
+      "no_provider": "No model provider key on this host (add one to ~/.hermes/.env)",
+      "memory": "Not enough free memory ({free} MB free, a new agent needs {need} MB)",
+      "memoryReserved": "Not enough free memory ({left} MB left after the {reserved} MB the setups already queued need; a new agent needs {need} MB)"
     }
   },
   "access": {
@@ -2186,7 +2238,30 @@
       "replyIn": "Reply in {thread}",
       "empty": "Nothing has happened on this task yet.",
       "emptyHint": "Runs, notes, approvals and files show up here as the work moves.",
-      "quoted": "“{text}”"
+      "quoted": "“{text}”",
+      "today": "Today",
+      "yesterday": "Yesterday",
+      "events": {
+        "handoff": "Handoff",
+        "handoffFromTo": "Handoff from {from} to {to}",
+        "blockerNoted": "Blocker noted",
+        "note": "Note",
+        "created": "Created",
+        "createdAndAssigned": "Created and assigned to {who}",
+        "claimedBy": "Claimed by {who}",
+        "assignedTo": "Assigned to {who}",
+        "reassignedTo": "Reassigned to {who}",
+        "unassigned": "Unassigned",
+        "updatedState": "Updated · {state}",
+        "detailsUpdated": "Details updated",
+        "leaseExpired": "Lease expired, queued for retry",
+        "deadLettered": "Moved to dead letter after too many retries",
+        "stallEscalated": "Stall escalated to a person",
+        "stallNudged": "Nudged after no progress",
+        "movedTo": "Moved to {state}",
+        "anAgent": "an agent",
+        "aPerson": "a person"
+      }
     }
   },
   "agents": {
@@ -2219,7 +2294,45 @@
     "roles": {
       "leadYourTeam": "Lead your team",
       "custom": "Custom Role",
-      "customHint": "Blank slate"
+      "customHint": "Blank slate",
+      "templates": {
+        "boss": {
+          "title": "Boss (Team Lead)",
+          "description": "Runs the team: turns goals into projects and tasks, assigns each task to the right agent or person, and verifies it closes. Coordinates specialists and keeps work moving."
+        },
+        "seo": {
+          "title": "SEO Specialist",
+          "description": "Keyword research, rank tracking, content audits, backlink analysis, and search visibility reporting. Works with Ahrefs, GSC, and content tools."
+        },
+        "developer": {
+          "title": "Technical Developer",
+          "description": "Full-stack implementation, code review, debugging, testing, and deployment. Works with Git, CI/CD, and any language stack."
+        },
+        "qa": {
+          "title": "QA & Testing Agent",
+          "description": "Automated testing, bug verification, regression suites, test plan execution, and quality reporting. Works with any test framework."
+        },
+        "growth": {
+          "title": "Growth & Lead Gen",
+          "description": "Lead research, outreach preparation, CRM enrichment, campaign analysis, and growth reporting. Works with LinkedIn, email, and CRM tools."
+        },
+        "content": {
+          "title": "Content & Copywriter",
+          "description": "Blog posts, social media, email campaigns, landing page copy, and content strategy. SEO-aware writing with brand voice consistency."
+        },
+        "accountant": {
+          "title": "Accountant & Bookkeeper",
+          "description": "Invoice processing, expense classification, reconciliation, financial reporting, and tax preparation support. Works with accounting software and spreadsheets."
+        },
+        "support": {
+          "title": "Customer Support",
+          "description": "Ticket triage, customer communication, FAQ maintenance, issue escalation, and satisfaction tracking. Works with helpdesk and communication tools."
+        },
+        "analyst": {
+          "title": "Data Analyst",
+          "description": "Data extraction, analysis, visualization, reporting, and dashboard maintenance. Works with SQL, spreadsheets, and BI tools."
+        }
+      }
     },
     "delete": {
       "failed": "Agent deletion failed.",
@@ -2740,7 +2853,14 @@
       "hireOnHost": "Hire and set up on {host}",
       "createAndStart": "Create & start {count, plural, one {agent} other {# agents}}",
       "retryProvisioning": "Retry provisioning",
-      "viewAgents": "View agents"
+      "viewAgents": "View agents",
+      "availability": {
+        "sign_in": "Sign in to create a worker.",
+        "not_admin": "Ask a workspace owner or administrator to hire local agents.",
+        "no_docker": "This installation needs Docker with its socket mounted for automatic Hermes setup.",
+        "docker_unresponsive": "Docker is not responding. Restart Docker and retry.",
+        "docker_access": "The app cannot access Docker. Rerun the installer to repair socket permissions, then retry."
+      }
     },
     "detail": {
       "customEndpoint": "Custom endpoint",
@@ -2860,6 +2980,2544 @@
       "saveEnv": "Save this as <code>{path}</code>. Generate an API token in <strong>Settings → Access Tokens</strong>, replace the placeholders, and start the bridge.",
       "checklist": "Post-Connect Checklist",
       "checkDashboard": "Check Emperor dashboard — {name} should appear as <strong>online</strong>"
+    },
+    "providers": {
+      "openclaw": {
+        "description": "Native plugin. Creates workspace, bridge, and bootstrap files automatically. Doctor/repair commands included."
+      },
+      "hermes": {
+        "description": "Warm Hermes gateway plus Emperor bridge per agent, installed with one command. Best for a workstation, VPS, or Raspberry Pi."
+      },
+      "mcp": {
+        "description": "Any MCP-compatible runtime. You handle the agent logic; Emperor provides the API, tasks, and context."
+      },
+      "claude": {
+        "description": "Claude Code CLI as an on-demand agent. Emperor spawns claude with workspace context per task. Coming soon."
+      },
+      "codex": {
+        "description": "OpenAI Codex CLI as an on-demand agent. Coming soon."
+      },
+      "bash": {
+        "description": "Any shell script or CLI tool as an agent. Cron-compatible. Coming soon."
+      }
+    }
+  },
+  "activity": {
+    "targets": {
+      "everything": "Everything",
+      "agent": "Agents",
+      "task": "Tasks",
+      "approval": "Approvals",
+      "project": "Projects",
+      "customer": "Customers",
+      "knowledge_note": "Knowledge notes",
+      "member": "People",
+      "invitation": "Invitations",
+      "company": "Company settings",
+      "organization": "Org chart",
+      "pricing": "Model pricing"
+    },
+    "today": "Today",
+    "yesterday": "Yesterday",
+    "changes": "Changes",
+    "whatChanged": "What changed",
+    "taskCount": "{count} tasks",
+    "itemCount": "{count} items",
+    "byAgent": "agent",
+    "byAutomation": "automation",
+    "loadFailed": "Could not load activity",
+    "loadOlderFailed": "Could not load older activity",
+    "actors": {
+      "anyone": "Anyone",
+      "allPeople": "All people",
+      "allAgents": "All agents",
+      "automation": "Automation",
+      "person": "Person",
+      "agent": "Agent"
+    },
+    "eyebrow": "Org",
+    "title": "Activity",
+    "description": "Who changed what: agent settings, budgets and scope, task moves and assignees, approvals, people, projects, customers and knowledge notes. Only titles, names, states and numbers are kept, never message text or secrets.",
+    "filterLabel": "Filter activity",
+    "who": "Who",
+    "findActor": "Find a person or agent",
+    "what": "What",
+    "from": "From",
+    "to": "To",
+    "clear": "Clear",
+    "noMatchesTitle": "No activity matches these filters",
+    "emptyTitle": "No activity yet",
+    "noMatchesDescription": "Nothing was recorded for this person, agent or date range. Try a wider range.",
+    "emptyDescription": "Changes to agents, tasks, approvals, people and settings show up here as they happen.",
+    "clearFilters": "Clear filters",
+    "loadingMore": "Loading…",
+    "loadOlder": "Load older activity",
+    "loading": "Loading activity",
+    "sentences": {
+      "agent": {
+        "created": "<who>{actor}</who> created <target>agent {label}</target> {detail}",
+        "updated": "<who>{actor}</who> updated <target>agent {label}</target> {detail}",
+        "paused": "<who>{actor}</who> paused <target>agent {label}</target> {detail}",
+        "resumed": "<who>{actor}</who> resumed <target>agent {label}</target> {detail}",
+        "deleted": "<who>{actor}</who> deleted <target>agent {label}</target> {detail}",
+        "scope_changed": "<who>{actor}</who> changed the data scope of <target>agent {label}</target> {detail}",
+        "budget_changed": "<who>{actor}</who> changed the budget of <target>agent {label}</target> {detail}",
+        "permission_changed": "<who>{actor}</who> changed an action permission of <target>agent {label}</target> {detail}",
+        "access_changed": "<who>{actor}</who> changed who can use <target>agent {label}</target> {detail}",
+        "owner_transferred": "<who>{actor}</who> transferred <target>agent {label}</target> {detail}",
+        "runtime_host_changed": "<who>{actor}</who> changed the host of <target>agent {label}</target> {detail}"
+      },
+      "company": {
+        "permission_changed": "<who>{actor}</who> changed a company action permission {detail}",
+        "settings_changed": "<who>{actor}</who> changed company settings {detail}",
+        "host_pairing_created": "<who>{actor}</who> created a code to connect a host {detail}",
+        "direct_chat_mode_changed": "<who>{actor}</who> changed company settings {detail}"
+      },
+      "task": {
+        "state_changed": "<who>{actor}</who> moved <target>task {label}</target> {detail}",
+        "assigned": "<who>{actor}</who> reassigned <target>task {label}</target> {detail}",
+        "archived": "<who>{actor}</who> archived <target>task {label}</target> {detail}",
+        "unarchived": "<who>{actor}</who> restored <target>task {label}</target> {detail}"
+      },
+      "approval": {
+        "approved": "<who>{actor}</who> approved <target>approval {label}</target> {detail}",
+        "rejected": "<who>{actor}</who> rejected <target>approval {label}</target> {detail}",
+        "dismissed": "<who>{actor}</who> dismissed <target>approval {label}</target> {detail}"
+      },
+      "member": {
+        "role_changed": "<who>{actor}</who> changed the role of <target>{label}</target> {detail}",
+        "scope_changed": "<who>{actor}</who> changed the access of <target>{label}</target> {detail}",
+        "removed": "<who>{actor}</who> removed <target>{label}</target> {detail}",
+        "invited": "<who>{actor}</who> invited <target>{label}</target> {detail}",
+        "access_granted": "<who>{actor}</who> gave <target>{label}</target> {detail}",
+        "access_changed": "<who>{actor}</who> changed the access of <target>{label}</target> {detail}",
+        "access_removed": "<who>{actor}</who> removed the access of <target>{label}</target> {detail}"
+      },
+      "invitation": {
+        "revoked": "<who>{actor}</who> revoked <target>an invitation for {label}</target> {detail}"
+      },
+      "organization": {
+        "updated": "<who>{actor}</who> edited the org chart {detail}"
+      },
+      "project": {
+        "created": "<who>{actor}</who> created <target>project {label}</target> {detail}",
+        "updated": "<who>{actor}</who> updated <target>project {label}</target> {detail}",
+        "archived": "<who>{actor}</who> archived <target>project {label}</target> {detail}"
+      },
+      "customer": {
+        "created": "<who>{actor}</who> added <target>customer {label}</target> {detail}",
+        "updated": "<who>{actor}</who> updated <target>customer {label}</target> {detail}",
+        "deleted": "<who>{actor}</who> deleted <target>customer {label}</target> {detail}"
+      },
+      "knowledge_note": {
+        "created": "<who>{actor}</who> created <target>note {label}</target> {detail}",
+        "moved": "<who>{actor}</who> moved <target>note {label}</target> {detail}",
+        "deleted": "<who>{actor}</who> deleted <target>note {label}</target> {detail}"
+      },
+      "pricing": {
+        "created": "<who>{actor}</who> added <target>pricing for {label}</target> {detail}",
+        "updated": "<who>{actor}</who> changed <target>pricing for {label}</target> {detail}"
+      },
+      "view": {
+        "created": "<who>{actor}</who> created <target>view {label}</target> {detail}",
+        "updated": "<who>{actor}</who> updated <target>view {label}</target> {detail}",
+        "archived": "<who>{actor}</who> archived <target>view {label}</target> {detail}",
+        "restored": "<who>{actor}</who> restored <target>view {label}</target> {detail}",
+        "reverted": "<who>{actor}</who> reverted <target>view {label}</target> {detail}",
+        "visibility_changed": "<who>{actor}</who> changed who can see <target>view {label}</target> {detail}",
+        "owner_transferred": "<who>{actor}</who> transferred <target>view {label}</target> {detail}",
+        "deleted": "<who>{actor}</who> deleted <target>view {label}</target> {detail}",
+        "read_unbound_token": "<who>{actor}</who> opened with a company-wide token <target>view {label}</target> {detail}"
+      },
+      "runtime_host": {
+        "paired": "<who>{actor}</who> paired <target>host {label}</target> {detail}",
+        "renamed": "<who>{actor}</who> renamed <target>host {label}</target> {detail}",
+        "revoked": "<who>{actor}</who> revoked <target>host {label}</target> {detail}",
+        "connected": "<who>{actor}</who> connected <target>host {label}</target> {detail}",
+        "disconnected": "<who>{actor}</who> lost the connection to <target>host {label}</target> {detail}",
+        "job_queued": "<who>{actor}</who> sent a command to <target>host {label}</target> {detail}",
+        "job_finished": "<who>{actor}</who> finished a command on <target>host {label}</target> {detail}",
+        "job_dismissed": "<who>{actor}</who> dismissed a failed removal on <target>host {label}</target> {detail}",
+        "removal_canceled": "<who>{actor}</who> canceled the removal of an agent's profile from <target>host {label}</target> {detail}",
+        "removal_abandoned": "<who>{actor}</who> left an agent's profile on <target>host {label}</target> {detail}"
+      },
+      "register_agent": "<who>{actor}</who> created <target>agent {label}</target> {detail}",
+      "delete_agent": "<who>{actor}</who> deleted <target>agent {label}</target> {detail}",
+      "hire_hermes_agent": "<who>{actor}</who> hired <target>agent {label}</target> {detail}"
+    },
+    "unnamedActors": {
+      "agent": "An agent",
+      "human": "Someone",
+      "system": "System"
+    },
+    "untitled": "(untitled)",
+    "details": {
+      "toState": "to {state}",
+      "toName": "to {name}",
+      "toNobody": "to nobody",
+      "toRole": "to {role}",
+      "asRole": "as {role}",
+      "invitedTo": "to {resource} as {role}",
+      "accessTo": "access to {resource}",
+      "accessToAs": "access to {resource} ({role})",
+      "onResource": "on {resource}",
+      "onResourceTo": "on {resource} to {role}",
+      "agentAccess": {
+        "everyone": "(everyone)",
+        "people": "(specific people)",
+        "owner": "(only its owner)"
+      },
+      "setting": "({setting})",
+      "permission": "({action}: {permission})",
+      "budgetMonthly": "to {amount} a month",
+      "budgetNoLimit": "to no limit",
+      "toVersion": "to version {version}",
+      "viewVisibility": {
+        "private": "(only its owner)",
+        "shared": "(shared people)",
+        "scope": "(everyone in scope)"
+      },
+      "toPath": "to {path}",
+      "toTopLevel": "to the top level",
+      "taskCount": "({count} tasks)"
+    },
+    "words": {
+      "aPerson": "a person",
+      "anAgent": "an agent",
+      "someResource": "a client or project",
+      "roles": {
+        "owner": "owner",
+        "admin": "admin",
+        "member": "member",
+        "viewer": "viewer"
+      },
+      "settings": {
+        "directChatMode": "direct chat mode",
+        "contextNotes": "company context",
+        "agentRoutine": "daily agent routine",
+        "instance": "instance settings",
+        "modules": "modules"
+      },
+      "permissions": {
+        "off": "off",
+        "ask": "ask first",
+        "allowed": "allowed",
+        "default": "default"
+      }
+    }
+  },
+  "approvals": {
+    "actions": {
+      "task_done": "Close the task",
+      "send_email": "Send an email",
+      "spend": "Spend money",
+      "publish": "Publish",
+      "delete": "Delete"
+    },
+    "noDetails": "No details given.",
+    "theAgent": "the agent",
+    "theAgentCapital": "The agent",
+    "anAgent": "An agent",
+    "asksTo": "asks to",
+    "once": "{action}, once",
+    "covers": "Covers {count} tasks",
+    "owner": "Owner: {name}",
+    "noOwner": "No owner",
+    "askFirstHint": "This agent asks first before this action. Approving lets this exact call run once, within 24 hours.",
+    "noReason": "No reason given.",
+    "noRequestYet": "This task requires approval before it can be closed; no request has been made yet.",
+    "taskDescription": "Task description",
+    "staleLabel": "Confirm approving a stale request",
+    "staleQuestion": "This request is {days} days old. Approve and let {name} act now?",
+    "approveAnyway": "Approve anyway",
+    "dismissInstead": "Dismiss instead",
+    "cancel": "Cancel",
+    "rejectPlaceholder": "What should change? (sent to the agent)",
+    "notePlaceholder": "Note for the agent (optional)",
+    "noteLabel": "Note for the agent",
+    "sendBack": "Send back",
+    "reject": "Reject",
+    "dismissTitle": "Obsolete — the agent won't do it",
+    "dismissLabel": "Dismiss (obsolete — the agent won't do it)",
+    "dismiss": "Dismiss",
+    "approve": "Approve",
+    "status": {
+      "approved": "Approved",
+      "dismissed": "Dismissed",
+      "expired": "Expired",
+      "rejected": "Rejected"
+    },
+    "resolvedTitle": "{name}: {action}",
+    "resolvedBy": "{label} by {name}",
+    "createFailed": "Couldn't create the approval",
+    "idMissing": "Approval id missing",
+    "decideFailed": "Couldn't record the decision",
+    "alreadyResolved": "Already {status} — your decision was not applied.",
+    "approvedToast": "Approved. {name} has been told.",
+    "dismissedToast": "Dismissed. {name} has been told not to do it.",
+    "sentBackToast": "Sent back to {name} with your note.",
+    "somethingWrong": "Something went wrong",
+    "eyebrow": "Approvals",
+    "title": "Decision Queue",
+    "description": "Agents ask before they spend, send anything outside the company, publish, delete, or close work that needs sign-off. Your decision and note go straight back to the agent.",
+    "searchPlaceholder": "Search approvals…",
+    "searchLabel": "Search approvals",
+    "waitingOnYou": "Waiting on you",
+    "noMatches": "No approvals match that search",
+    "clearSearch": "Clear the search",
+    "emptyTitle": "Nothing is waiting on you",
+    "emptyDescription": "No agent has asked to spend, send, publish, delete or close work that needs sign-off. New requests show up here and in the Inbox.",
+    "recentlyDecided": "Recently decided",
+    "noDecidedMatches": "No decided approvals match that search.",
+    "noDecisions": "No decisions yet. Approvals you decide show up here."
+  },
+  "artifacts": {
+    "preview": {
+      "loadingSpreadsheet": "Loading spreadsheet preview...",
+      "loadingDocument": "Loading document preview...",
+      "unavailable": "{type} preview is not available yet.",
+      "loading": "Loading preview...",
+      "selectFile": "Select a file to preview it.",
+      "downloadHint": "Download the file to view it with your default application.",
+      "imageAlt": "File preview",
+      "pdfTitle": "PDF preview",
+      "spreadsheetReadOnly": "Spreadsheet Preview (Read-Only)",
+      "openEditor": "Open Editor",
+      "documentReadOnly": "Document Preview (Read-Only)",
+      "spreadsheetFile": "Spreadsheet File",
+      "wordDocument": "Word Document",
+      "editDocument": "Edit Document"
+    },
+    "confirm": {
+      "removeUntrackedTitle": "{type, select, folder {Remove untracked folder?} other {Remove untracked file?}}",
+      "deleteFolderTitle": "Delete folder?",
+      "deleteFolderDescription": "This archives the folder, removes its tracked files from Storage and agent context, and sends its Google Drive mirror to Trash when Drive sync is enabled.",
+      "deleteFileTitle": "Delete file?",
+      "deleteFileDescription": "This archives the file from Storage. Agents will no longer receive it as evidence, and its Google Drive mirror will be sent to Trash when Drive sync is enabled.",
+      "removeUntrackedDescription": "This removes the untracked item from local Storage and sends the mirrored Google Drive copy to Trash. Tracked files are protected.",
+      "deleteItem": "Delete item?",
+      "deleteItemDescription": "This action archives the selected Storage item."
+    },
+    "toasts": {
+      "renamed": "Renamed to {name}",
+      "created": "{name} created",
+      "folderCreated": "Folder created",
+      "folderUpdated": "Folder updated",
+      "folderDeleted": "Folder deleted",
+      "uploaded": "File uploaded",
+      "propertiesUpdated": "File properties updated",
+      "locationUpdated": "File location updated",
+      "replaced": "File content replaced",
+      "fileDeleted": "File deleted",
+      "untrackedRemoved": "Untracked item queued for removal from Drive",
+      "tracked": "File is now tracked by Emperor",
+      "csvRefreshed": "CSV grid refreshed"
+    },
+    "badges": {
+      "folders": "{count} folders",
+      "tracked": "{count} tracked",
+      "needsMetadata": "{count} needs metadata"
+    },
+    "kinds": {
+      "report": "report",
+      "invoice": "invoice",
+      "statement": "statement",
+      "document": "document",
+      "export": "export"
+    },
+    "actionsFor": "Actions for {name}",
+    "visibility": {
+      "private": "private",
+      "company": "company"
+    },
+    "inspectorView": {
+      "openCsv": "Open CSV Workspace",
+      "openLarge": "Open Large View",
+      "replace": "Replace Content",
+      "markCanonical": "Mark as canonical",
+      "saveProperties": "Save Properties",
+      "saveLocation": "Save Location"
+    },
+    "unclassified": "Unclassified",
+    "classes": {
+      "working_file": {
+        "label": "Working file",
+        "description": "General working material, drafts, and in-progress outputs."
+      },
+      "deliverable": {
+        "label": "Deliverable",
+        "description": "A finished output intended for review, handoff, or delivery."
+      },
+      "source_document": {
+        "label": "Source document",
+        "description": "Reference input material that informed the work."
+      },
+      "proof": {
+        "label": "Proof",
+        "description": "Evidence, screenshots, receipts, logs, or verification material."
+      },
+      "template": {
+        "label": "Template",
+        "description": "Reusable starting point or boilerplate asset."
+      },
+      "export_bundle": {
+        "label": "Export bundle",
+        "description": "Packaged export or archive assembled for transfer."
+      }
+    },
+    "importance": {
+      "operational": {
+        "label": "Operational",
+        "description": "Useful working context for current execution."
+      },
+      "record": {
+        "label": "Record",
+        "description": "Worth retaining as part of the durable project record."
+      },
+      "canonical": {
+        "label": "Canonical",
+        "description": "The authoritative artifact people should trust first."
+      },
+      "temporary": {
+        "label": "Temporary",
+        "description": "Short-lived material that may not matter later."
+      }
+    },
+    "fileTypes": {
+      "xlsx": {
+        "label": "Excel workbook",
+        "description": "Start with a blank worksheet in the spreadsheet editor."
+      },
+      "docx": {
+        "label": "Word document",
+        "description": "Start with a blank page in the document editor."
+      },
+      "csv": {
+        "label": "CSV spreadsheet",
+        "description": "Edit cells in a grid or as raw CSV."
+      },
+      "markdown": {
+        "label": "Markdown",
+        "description": "Write formatted notes and documents."
+      },
+      "text": {
+        "label": "Plain text",
+        "description": "Create a simple text document."
+      },
+      "json": {
+        "label": "JSON",
+        "description": "Create structured data with validation."
+      }
+    },
+    "csv": {
+      "columnN": "Column {n}",
+      "header": "Header",
+      "rowN": "Row {n}",
+      "hint": "Grid editing is best for quick corrections, column cleanup, and row-level fixes.",
+      "addColumn": "Add Column",
+      "addRow": "Add Row",
+      "row": "Row"
+    },
+    "errors": {
+      "fetchFolder": "Unable to fetch folder contents",
+      "fetchFile": "Unable to fetch file details",
+      "search": "Unable to search storage",
+      "preview": "Unable to load preview",
+      "createFolder": "Unable to create folder",
+      "saveFolder": "Unable to save folder",
+      "deleteFolder": "Unable to delete folder",
+      "upload": "Unable to upload file",
+      "saveProperties": "Unable to save file properties",
+      "move": "Unable to move file",
+      "replace": "Unable to replace file",
+      "deleteFile": "Unable to delete file",
+      "removeUntracked": "Unable to remove untracked item",
+      "rename": "Unable to rename file",
+      "createFile": "Unable to create file",
+      "track": "Unable to track file",
+      "parseCsv": "Unable to parse CSV",
+      "invalidJson": "JSON is not valid"
+    },
+    "folderNameRequired": "Folder name is required",
+    "chooseFile": "Choose a file to upload",
+    "invalidFileName": "Enter a file name without folders or path characters",
+    "createFolderFirst": "Create this folder in Emperor before tracking files inside it.",
+    "selectScopeFirst": "Select a customer or project before tracking this file.",
+    "root": "Root",
+    "menu": {
+      "open": "Open",
+      "newFileHere": "New File Here",
+      "newFolderHere": "New Folder Here",
+      "editProperties": "Edit Properties",
+      "deleteFolder": "Delete Folder",
+      "editInEmperor": "Edit in Emperor",
+      "preview": "Preview",
+      "download": "Download",
+      "rename": "Rename",
+      "deleteFile": "Delete File",
+      "addMetadata": "Add metadata",
+      "removeExternal": "Remove from storage and Drive"
+    },
+    "eyebrow": "Storage",
+    "description": "Folder-first files, deliverables, proofs, and working documents. Keep customer and project structure clear so agents can find the right file without knowing the backing storage provider.",
+    "refresh": "Refresh",
+    "newFolder": "New Folder",
+    "newFile": "New File",
+    "upload": "Upload",
+    "searchPlaceholder": "Search files, names, or paths",
+    "allCustomers": "All customers",
+    "allProjects": "All projects",
+    "clear": "Clear",
+    "advancedFilters": "Advanced filters",
+    "allTasks": "All tasks",
+    "allFileTypes": "All file types",
+    "folders": "Folders",
+    "searchResults": "Search results",
+    "columns": {
+      "name": "Name",
+      "context": "Context",
+      "size": "Size",
+      "updated": "Updated"
+    },
+    "scopedFolder": "Scoped folder",
+    "folder": "Folder",
+    "externalFolder": "External folder",
+    "missingMetadata": "Missing metadata",
+    "loadingFolder": "Loading folder contents...",
+    "searching": "Searching storage...",
+    "empty": {
+      "searchTitle": "No files match these filters",
+      "rootTitle": "No files yet",
+      "folderTitle": "This folder is empty",
+      "searchDescription": "Nothing in storage matches the search or the project, task, client and type filters.",
+      "rootDescription": "Files your agents save and files you upload land here. Upload one, or create a folder to organize them.",
+      "folderDescription": "Upload a file here, or move files into this folder."
+    },
+    "clearFilters": "Clear filters",
+    "inspector": "Inspector",
+    "cancel": "Cancel",
+    "deleting": "Deleting...",
+    "delete": "Delete",
+    "folderInspector": {
+      "rootSubtitle": "Top-level folder container",
+      "rootBody": "Root is the top-level container for all storage folders.",
+      "rootFolder": "Root folder",
+      "save": "Save Folder"
+    },
+    "fields": {
+      "folderName": "Folder name",
+      "parentFolder": "Parent folder",
+      "project": "Project",
+      "customer": "Customer",
+      "none": "None",
+      "metadataJson": "Metadata JSON",
+      "title": "Title",
+      "kind": "Kind",
+      "visibility": "Visibility",
+      "task": "Task",
+      "fileRole": "File role",
+      "lifecycle": "Lifecycle",
+      "retentionPolicy": "Retention policy",
+      "filename": "Filename",
+      "folder": "Folder",
+      "companyNoCustomer": "Company (no customer)",
+      "fileName": "File name",
+      "file": "File",
+      "selectCustomer": "Select customer"
+    },
+    "folderMetadata": {
+      "title": "Advanced folder metadata",
+      "inspectorHint": "Optional structured metadata for integrations. Most folders only need name, customer, project, and parent folder.",
+      "dialogHint": "Optional structured metadata for integrations. Leave this alone unless you know why the folder needs it."
+    },
+    "tabs": {
+      "preview": "Preview",
+      "properties": "Properties",
+      "grid": "Grid Editor",
+      "raw": "Raw CSV",
+      "editor": "Editor"
+    },
+    "canonicalBadge": "canonical",
+    "classification": {
+      "title": "Classification & advanced",
+      "hint": "These fields are mostly filing hints for the system. Most users only need title, scope, location, and canonical state."
+    },
+    "info": {
+      "path": "Path",
+      "size": "Size",
+      "updated": "Updated"
+    },
+    "folderDialog": {
+      "title": "Create folder",
+      "description": "Create a new folder inside the current location."
+    },
+    "create": "Create",
+    "newFileDialog": {
+      "title": "Create a file",
+      "description": "Create it in the current folder and start editing immediately. No Office service is required.",
+      "fileType": "File type",
+      "extensionHint": "The correct extension is added automatically.",
+      "submit": "Create and edit"
+    },
+    "renameDialog": {
+      "title": "Rename file",
+      "description": "Change the file name without moving it or changing its format.",
+      "extensionHint": "The extension stays fixed so the file continues opening in the correct editor."
+    },
+    "uploadDialog": {
+      "title": "Upload file",
+      "description": "Upload a file into the current folder. Customer and project are optional — leave both empty for company-level storage.",
+      "advanced": "Advanced",
+      "advancedHint": "Defaults are usually right. Most uploads only need a title and the right project or customer scope."
+    },
+    "trackDialog": {
+      "title": "Add metadata to track this file",
+      "description": "This file exists in synchronized storage but is not visible to agents or artifact APIs yet.",
+      "submit": "Track file"
+    },
+    "previewDialog": {
+      "fallbackTitle": "File preview",
+      "csvDescription": "Review the file in a larger workspace and edit CSV content without leaving the storage panel.",
+      "textDescription": "Preview and edit this lightweight file directly in Storage.",
+      "description": "Expanded preview for comfortable reading and verification.",
+      "rawHint": "Edit the raw CSV directly when you need exact control over formatting or pasted data.",
+      "refreshGrid": "Refresh Grid",
+      "fileContents": "File contents",
+      "savingHint": "Saving updates the file content while keeping its metadata and storage record.",
+      "actionsHint": "Downloads and replacements still happen through the file actions.",
+      "reset": "Reset",
+      "saveCsv": "Save CSV",
+      "saveFile": "Save file",
+      "close": "Close"
+    },
+    "emptyInspector": {
+      "title": "Select a file or folder",
+      "description": "Preview file contents, edit metadata, rename items, and manage folder structure from this inspector."
+    }
+  },
+  "auth": {
+    "genericError": "An error occurred",
+    "networkError": "Network error. Please try again.",
+    "warning": "Warning:",
+    "login": {
+      "emailNotVerified": "Verify your email before logging in. We sent an activation link during signup.",
+      "invalidCredentials": "Invalid email or password",
+      "title": "Welcome back",
+      "subtitle": "Command your AI workforce",
+      "email": "Email",
+      "emailPlaceholder": "name@company.com",
+      "password": "Password",
+      "forgot": "Forgot?",
+      "submit": "Access Command Center",
+      "verifyFirst": "New workspaces must verify their email first.",
+      "resendActivation": "Resend activation",
+      "createAccount": "Create account",
+      "documentation": "Documentation"
+    },
+    "signup": {
+      "inviteFailures": {
+        "expired": "This invitation has expired. Please contact your administrator for a new one.",
+        "consumed": "This invitation has already been used. Log in instead.",
+        "not_found": "Invalid or expired invitation token.",
+        "email_mismatch": "This invitation is for a different email address."
+      },
+      "inviteInvalid": "Invalid invitation.",
+      "inviteCheckFailed": "Could not validate the invitation. Please try again.",
+      "validation": {
+        "companyName": "Enter a company name with at least 2 characters.",
+        "disclaimer": "You must acknowledge the beta data disclaimer.",
+        "email": "Enter your work email.",
+        "passwordLength": "Password must be at least 8 characters.",
+        "passwordMismatch": "Passwords do not match."
+      },
+      "registerFailed": "Failed to register",
+      "registrationFailed": "Registration failed",
+      "loading": "Loading...",
+      "inviteOnlyTitle": "Invite-Only Instance",
+      "inviteOnlyBody": "This instance is invite-only. Contact your administrator for an invitation.",
+      "goToLogin": "Go to Login",
+      "headingBootstrap": "Set up your instance",
+      "headingInvited": "Accept your invitation",
+      "headingOpen": "Create an account",
+      "subtitleBootstrap": "{verify, select, yes {Set up your Emperor Claw workspace and verify your email to activate it.} other {Set up your Emperor Claw workspace.}}",
+      "subtitleInvited": "You've been invited to join {company} as {role}.",
+      "subtitleOpen": "{verify, select, yes {Create your Emperor Claw account and verify your email to activate it.} other {Create your Emperor Claw account.}}",
+      "invitedTo": "Invited to join {company}",
+      "roleLabel": "Role:",
+      "companyName": "Company Name",
+      "companyPlaceholder": "Acme Corp",
+      "workEmail": "Work Email",
+      "emailPlaceholder": "name@acme.com",
+      "password": "Password",
+      "passwordHint": "Use at least 8 characters.",
+      "confirmPassword": "Confirm Password",
+      "passwordsDiffer": "Passwords do not match yet.",
+      "betaTitle": "Beta notice",
+      "betaBody": "Emperor Claw is beta software provided as-is. We do not guarantee safety, retention, recovery, availability, or suitability of stored data or agent output. You are responsible for how the system is used and for the data you place here.",
+      "betaSecrets": "Do not store critical secrets, regulated data, production-only credentials, or other information you cannot afford to expose, lose, or recreate.",
+      "betaAuthorized": "By creating a workspace, you confirm you are authorized to use this email address for the company you enter below.",
+      "betaAccept": "I understand this product is in beta, is provided without warranty, and that I am responsible for the data and operations I run inside this workspace.",
+      "verificationNotice": "We will send a verification link to this email before the workspace can be used.",
+      "noEmailServer": "No email server is configured, so your account is activated immediately — you can log in right after signing up.",
+      "oneWorkspace": "Create only one workspace per company unless you intentionally want separate isolated datasets and agent state.",
+      "submitBootstrap": "Create Workspace",
+      "submitInvited": "Accept Invitation",
+      "submitOpen": "Create Account",
+      "haveAccount": "Already have an account?",
+      "logIn": "Log in"
+    },
+    "forgot": {
+      "title": "Reset Password",
+      "subtitle": "Enter your email address and we'll send you a link to reset your password.",
+      "checkInbox": "Check your inbox",
+      "sentTo": "We've sent a password reset link to <strong>{email}</strong>.",
+      "backToLogin": "Back to login",
+      "accountEmail": "Account Email",
+      "emailPlaceholder": "you@company.com",
+      "sending": "Sending Link...",
+      "submit": "Send Reset Link"
+    },
+    "reset": {
+      "mismatch": "Passwords do not match",
+      "tooShort": "Password must be at least 8 characters",
+      "failed": "An error occurred setting the new password",
+      "invalidTitle": "Invalid Reset Link",
+      "invalidBody": "This password reset link is invalid or malformed. Please request a new one.",
+      "requestNew": "Request New Link",
+      "successTitle": "Password Reset Successful",
+      "successBody": "Your password has been securely updated. Redirecting you to login...",
+      "proceed": "Proceed to Login",
+      "resettingFor": "Resetting for:",
+      "newPassword": "New Password",
+      "confirmPassword": "Confirm New Password",
+      "updating": "Updating...",
+      "submit": "Set New Password",
+      "loading": "Loading secure tunnel...",
+      "title": "Create New Password",
+      "subtitle": "Secure your account with a strong new password."
+    },
+    "checkEmail": {
+      "noEmail": "Enter your email again from the signup page to request a new activation link.",
+      "resendFailed": "Failed to resend verification email.",
+      "resent": "Verification email sent.",
+      "title": "Check your inbox",
+      "sentTo": "We sent an activation link to <address>{email}</address>.",
+      "sentToYou": "We sent an activation link to your email address.",
+      "nextStep": "Next step",
+      "nextStepBody": "Open the verification email and click the activation link. The workspace stays locked until the address is confirmed.",
+      "betaTitle": "Beta reminder",
+      "betaBody": "Emperor Claw is beta software provided as-is. Do not store critical secrets, regulated data, or anything you cannot afford to expose, lose, or recreate.",
+      "resend": "Resend Activation Email",
+      "differentEmail": "Use a different email",
+      "backToLogin": "Back to login",
+      "loading": "Loading activation details..."
+    },
+    "verify": {
+      "verifying": "Verifying your email...",
+      "incomplete": "This verification link is incomplete or malformed.",
+      "invalid": "This verification link is invalid or expired.",
+      "verified": "Email verified. You can now log in.",
+      "networkError": "Network error while verifying your email. Try the link again.",
+      "verifyingTitle": "Verifying your email",
+      "activatedTitle": "Workspace activated",
+      "beforeContinue": "Before you continue",
+      "betaBody": "Emperor Claw remains beta software. Use the workspace carefully and keep critical or regulated data out of it.",
+      "logIn": "Log in",
+      "failedTitle": "Verification failed",
+      "resendActivation": "Resend activation",
+      "createAgain": "Create account again",
+      "loading": "Loading verification link..."
+    },
+    "authorize": {
+      "errors": {
+        "responseType": "response_type must be 'code'.",
+        "challengeMethod": "code_challenge_method must be 'S256'.",
+        "challengeRequired": "code_challenge is required.",
+        "unknownClient": "Unknown client_id — this app hasn't registered with EmperorClaw.",
+        "redirectMismatch": "redirect_uri does not match what this client registered."
+      },
+      "noHttps": "This instance isn't served over HTTPS. OAuth requires TLS on every step — claude.ai will likely fail to complete this even if you approve below. Put a reverse proxy (Caddy, nginx, Cloudflare Tunnel) in front with a real certificate, or use a manually-created Bearer token instead (Settings → Tokens) — that works over plain HTTP fine.",
+      "cantConnect": "Can't connect this app",
+      "wantsToConnect": "{app} wants to connect",
+      "anAppWantsToConnect": "An app wants to connect",
+      "yourCompany": "your company",
+      "grants": "This grants access to agents, tasks, projects, Knowledge & Rules, and messaging for this company — the same access a manually-created Agent access token has. You can revoke it any time from Settings → Tokens.",
+      "approve": "Approve",
+      "deny": "Deny"
+    }
+  },
+  "avatarPicker": {
+    "saveFailed": "Could not save",
+    "othersFailed": "Could not update the other agents",
+    "allUpdated": "Every agent now shares this look",
+    "updated": "Avatar updated",
+    "change": "Change {name}'s avatar",
+    "title": "{name}'s avatar",
+    "description": "Pick a look. Shuffle for a different character with the same settings.",
+    "robot": "Robot",
+    "person": "Person",
+    "colour": "Colour",
+    "colourN": "Colour {hue}",
+    "accessory": "Accessory",
+    "accessories": {
+      "none": "None",
+      "glasses": "Glasses",
+      "headset": "Headset",
+      "cap": "Cap",
+      "bow": "Bow"
+    },
+    "shuffle": "Shuffle",
+    "applyToAll": "Use this look for every agent",
+    "cancel": "Cancel",
+    "save": "Save"
+  },
+  "budget": {
+    "agentSaveFailed": "Could not save agent settings",
+    "budgetSaveFailed": "Could not save the budget",
+    "modelSaveFailed": "Could not save the model",
+    "modelOwnersOnly": "Only owners and admins can change an agent's model.",
+    "pricingSaveFailed": "Could not save model pricing",
+    "availabilityFailed": "Could not update model availability",
+    "disable": "Disable",
+    "enable": "Enable",
+    "pricingAddFailed": "Could not add model pricing",
+    "addPricing": "+ Add model pricing",
+    "labelPlaceholder": "Label",
+    "reactivateFailed": "Could not reactivate the agent",
+    "stats": {
+      "monthlySpend": "Monthly Spend",
+      "kTokens": "{count}K tokens",
+      "budget": "Budget",
+      "unlimited": "Unlimited",
+      "capped": "{count} agents capped",
+      "weeklySpend": "7-Day Spend",
+      "last7Days": "last 7 days",
+      "alerts": "Alerts",
+      "paused": "{count} paused",
+      "warning": "{count} at warning"
+    },
+    "agentBudgets": "Agent Budgets",
+    "agentCount": "{count} agents",
+    "columns": {
+      "agent": "Agent",
+      "model": "Model",
+      "tokens": "Tokens",
+      "cost": "Cost",
+      "limit": "Limit",
+      "status": "Status"
+    },
+    "pausedBadge": "Paused",
+    "exhaustedTitle": "Budget exhausted. Click to reactivate.",
+    "nearingTitle": "Nearing limit. Click to dismiss.",
+    "noAgents": "No agents found.",
+    "pricingTitle": "Model Pricing",
+    "pricingEditHint": "Click prices to edit. Toggle ✓ to disable. + to add new.",
+    "pricingReadHint": "Prices used to estimate costs (USD per 1M tokens).",
+    "pricingColumns": {
+      "provider": "Provider",
+      "modelId": "Model ID",
+      "input": "Input /1M",
+      "output": "Output /1M",
+      "on": "On"
+    }
+  },
+  "costs": {
+    "views": "Cost views",
+    "tabs": {
+      "customer": "By client",
+      "project": "By project",
+      "model": "By model",
+      "agent": "By agent",
+      "budgets": "Budgets"
+    },
+    "ranges": {
+      "7d": "7 days",
+      "30d": "30 days",
+      "90d": "90 days",
+      "this-month": "This month",
+      "last-month": "Last month",
+      "custom": "Custom"
+    },
+    "columns": {
+      "customer": "Client",
+      "project": "Project",
+      "task": "Task",
+      "model": "Model",
+      "agent": "Agent",
+      "day": "Day"
+    },
+    "exportCsv": "Export CSV",
+    "filterLabel": "{noun}:",
+    "openBoard": "Open project board",
+    "clear": "Clear",
+    "stats": {
+      "cost": "Cost",
+      "costDetail": "{reported} reported · {estimated} estimated",
+      "runs": "Runs",
+      "runsDetail": "{days, plural, one {# day} other {# days}} · {from} to {to} (UTC)",
+      "tokens": "Tokens",
+      "tokensDetail": "{input} in · {output} out",
+      "estimated": "Estimated",
+      "unpriced": "{count, plural, one {{runs} unpriced run} other {{runs} unpriced runs}} ({tokens} tokens) not counted",
+      "priced": "of cost priced from your table"
+    },
+    "share": "Share",
+    "basis": "Basis",
+    "total": "Total",
+    "emptyTitle": "No agent runs in this range",
+    "emptyRestricted": "None of the clients and agents you can see ran in this range. Pick a wider range.",
+    "emptyDescription": "No agent reported a run in this range, so nothing was spent. Pick a wider range.",
+    "legend": "Reported: the runtime sent the cost. Estimated: priced from the model pricing table (subscription-billed runs included). Unpriced: no cost from the runtime and no price for the model. Runs without a task are counted as “Chat (no task)”.",
+    "basisChips": {
+      "reported": "reported",
+      "estimated": "estimated",
+      "unpriced": "unpriced",
+      "costFrom": "{cost} from {runs} runs",
+      "unpricedTitle": "{runs} runs, {tokens} tokens with no price"
+    },
+    "dateRange": "Date range",
+    "from": "From",
+    "to": "To",
+    "apply": "Apply",
+    "chart": {
+      "title": "Daily cost",
+      "max": "max {cost}",
+      "noCost": "no cost in this range",
+      "label": "Daily cost from {from} to {to}",
+      "bar": "{day}: {cost} · {runs, plural, one {# run} other {# runs}}"
+    },
+    "loading": "Loading costs",
+    "eyebrow": "Finance",
+    "title": "Costs",
+    "budgetsDescription": "Click limit or model to edit inline. Toggle ✓ to disable models. Estimated usage: 80% warning; 100% blocks subsequent Codex/Hermes turns. Running turns can exceed the limit.",
+    "description": "What agent runs cost, by client, project, model and agent. Reported costs come from the runtime; estimated ones are priced from your model pricing table."
+  },
+  "customers": {
+    "created": "Customer created.",
+    "createFailed": "Failed to create customer.",
+    "notesSaved": "Notes saved.",
+    "notesFailed": "Failed to save notes.",
+    "eyebrow": "Customers",
+    "title": "Customer Directory",
+    "description": "Find a customer, inspect its portfolio health, and maintain the customer description agents should follow.",
+    "add": "Add Customer",
+    "createTitle": "Create Customer",
+    "createIntro": "Create a durable customer record and attach initial portfolio context.",
+    "namePlaceholder": "Customer name",
+    "notesPlaceholder": "ICP details, project context, operational notes...",
+    "nameFirst": "Enter the customer's name first",
+    "creating": "Creating...",
+    "summary": {
+      "customers": "Customers",
+      "customersHint": "Portfolio records",
+      "projects": "Projects",
+      "projectsHint": "Projects across customers",
+      "tasks": "Tasks",
+      "tasksHint": "Open and closed work",
+      "blocked": "Blocked",
+      "blockedHint": "Tasks waiting on dependencies",
+      "approvals": "Approvals",
+      "approvalsHint": "Pending human decisions"
+    },
+    "emptyTitle": "No customers yet",
+    "emptyDescription": "Add a customer to group its projects, files and notes, and to record the context your agents should follow when they work for it.",
+    "searchPlaceholder": "Search customers",
+    "rowCounts": "{projects, plural, one {# project} other {# projects}} · {tasks, plural, one {# task} other {# tasks}}",
+    "toCheckTitle": "Approvals, blocked tasks, incidents, or tasks in review; open the customer to see them",
+    "toCheck": "{count} to check",
+    "noMatches": "No customers match that search",
+    "clearSearch": "Clear the search",
+    "id": "ID: {id}",
+    "tags": {
+      "projects": "{count, plural, one {# project} other {# projects}}",
+      "tasks": "{count, plural, one {# task} other {# tasks}}",
+      "inReview": "{count} in review",
+      "blocked": "{count} blocked",
+      "approvals": "{count, plural, one {# approval} other {# approvals}}",
+      "incidents": "{count, plural, one {# incident} other {# incidents}}",
+      "pipelines": "{count, plural, one {# pipeline} other {# pipelines}}"
+    },
+    "attention": {
+      "title": "Needs attention",
+      "hint": "Work for this customer that is waiting on someone. Open an item to resolve it.",
+      "kinds": {
+        "approval": "Approval",
+        "blocked": "Blocked",
+        "incident": "Incident",
+        "review": "In review"
+      }
+    },
+    "projects": "Projects",
+    "projectRow": "{status} · {count, plural, one {# open task} other {# open tasks}}",
+    "descriptionLabel": "Description",
+    "save": "Save",
+    "descriptionPlaceholder": "# Target Audience\nDescribe who the team should optimize for...",
+    "descriptionHint": "Brief description and notes about this customer. For reusable rules and SOPs, use the Knowledge Base instead.",
+    "approvalRequested": "Approval requested"
+  },
+  "delivery": {
+    "tools": "{count, plural, one {# tool} other {# tools}}",
+    "events": "{count, plural, one {# event} other {# events}}",
+    "notFound": "Message not found",
+    "loadFailed": "Could not load delivery",
+    "show": "Show delivery details for this message",
+    "title": "Delivery",
+    "details": "Delivery details",
+    "refresh": "Refresh delivery details",
+    "loading": "Loading delivery…",
+    "agent": "Agent",
+    "triggeredRuns": "Triggered runs",
+    "answeredWith": "Answered together with message <mono>{id}</mono>.",
+    "alsoAnswered": "The reply also answered {count, plural, one {# queued message} other {# queued messages}}:",
+    "noVerdict": "No delivery decision recorded — this message predates the ledger or addressed nobody",
+    "verdicts": {
+      "self": "Not delivered — the agent's own message",
+      "targeted": "Delivered — directed to this agent",
+      "targeted_other": "Not delivered — addressed to another agent",
+      "direct": "Delivered — direct message",
+      "mention": "Delivered — mentioned",
+      "all": "Delivered — @all in the group",
+      "agent_pair": "Delivered — pair handoff",
+      "task_assigned": "Delivered — task assigned",
+      "not_addressed": "Not delivered — not addressed",
+      "out_of_scope": "Not delivered — the sender's agent scope does not reach this agent",
+      "loop_paused": "Not delivered — paused by the loop guard ({streak} of {max} agent messages without a human)",
+      "otherDelivered": "Delivered — {reason}",
+      "otherNotDelivered": "Not delivered — {reason}"
+    }
+  },
+  "directChat": {
+    "headerDescription": "Dedicated human-to-agent thread for {name}. Team, task, and attention threads stay under `Threads`.",
+    "failedAfter": "{count, plural, one {Failed after # attempt} other {Failed after # attempts}}",
+    "failed": "Failed",
+    "stopped": {
+      "cancelled": "cancelled",
+      "failed": "failed",
+      "mixed": "failed or cancelled"
+    },
+    "more": "+{count} more",
+    "queuedBusy": "Queued — {name} is busy with {count} things; it will pick this up next.",
+    "queueSummary": "Message queue · {count} pending",
+    "pending": "{count} pending",
+    "waitingOf": "Waiting · {n} of {total}",
+    "waitingState": "Waiting",
+    "recently": "Recently {label}",
+    "recentlyReview": "{count} recently {label} · Review or retry",
+    "micBlocked": "Microphone is blocked. Click the <strong>lock icon</strong> in your browser's address bar → <strong>Site settings</strong> → set Microphone to <strong>Allow</strong>, then reload the page.",
+    "messagePlaceholder": "Message {name}…",
+    "messageLabel": "Message {name}",
+    "queueAfter": "Queue after current",
+    "replaceCurrent": "Replace current work",
+    "mic": {
+      "insecure": "Microphone access requires a secure (HTTPS) connection.",
+      "unavailable": "Microphone not available on this browser.",
+      "denied": "Microphone access denied. Check your browser settings and site permissions (look for the lock icon in the address bar), then reload and try again.",
+      "notFound": "No microphone found. Plug one in and try again.",
+      "busy": "Microphone is busy. Close other apps using it and try again.",
+      "startFailed": "Could not start recording. Check your microphone and try again."
+    },
+    "voiceUploadFailed": "Voice upload failed",
+    "sendFailed": "Failed to send message",
+    "unknownError": "Unknown error",
+    "uploadFailed": "Upload failed",
+    "stopFailed": "Could not stop agent",
+    "queueUpdateFailed": "Could not update queued message",
+    "attachmentsQueued": "Send attachments as a queued message",
+    "sendDirectFailed": "Failed to send direct message",
+    "duplicate": "That exact prompt is already active or queued. It was not sent twice.",
+    "title": "Direct Chat",
+    "thread": "Thread",
+    "provisioning": "provisioning",
+    "loading": "Loading direct thread...",
+    "emptyTitle": "No direct messages yet.",
+    "emptyBody": "Send an instruction here and the connected agent should answer inside this private thread.",
+    "loadingOlder": "Loading...",
+    "loadOlder": "Load older messages",
+    "runtimeConfirmed": "Runtime confirmed",
+    "waitingHermes": "Waiting for Hermes confirmation. An offline or older runtime cannot stop yet.",
+    "cancelled": "Cancelled",
+    "beingHandled": "Being handled",
+    "queued": "Queued",
+    "read": "Read",
+    "sent": "Sent",
+    "isWorking": "is working",
+    "working": "Working",
+    "alsoWorkingOn": "Also working on",
+    "queueLabel": "Agent message queue",
+    "queueTitle": "Message queue",
+    "close": "Close",
+    "handlingNow": "Handling now",
+    "recording": "Recording…",
+    "stop": "Stop",
+    "discard": "Discard",
+    "send": "Send",
+    "attachFiles": "Attach files",
+    "recordVoice": "Record voice message",
+    "nextPromptBehavior": "Next prompt behavior",
+    "busyBehavior": "What happens when the agent is busy",
+    "stopTitle": "Stop the agent and clear its queue",
+    "stopLabel": "Stop agent and clear queue",
+    "sending": "Sending message",
+    "sendMessage": "Send message",
+    "shortcutHint": "Enter to send · Shift+Enter for a new line · /kill · /queue prompt · /replace prompt",
+    "cancel": "Cancel",
+    "retry": "Retry",
+    "requestSource": "{source} (via API)",
+    "requestSourceOnBehalf": "{source} (via API) · on behalf of {by}"
+  },
+  "docs": {
+    "contentNotFound": "Content not found.",
+    "contentFailed": "Failed to load content.",
+    "documentation": "Documentation",
+    "backToDashboard": "Back to Dashboard",
+    "version": "Version",
+    "searchPlaceholder": "Search docs...",
+    "searchResults": "Search Results",
+    "noPages": "No pages found",
+    "syncing": "Syncing documentation...",
+    "needHelp": "Need help? Join the <link>Discord community</link>"
+  },
+  "editor": {
+    "loading": {
+      "spreadsheet": "Loading spreadsheet editor…",
+      "document": "Loading document editor…",
+      "file": "Opening file…"
+    },
+    "savedAt": "Saved {time}",
+    "savedInStorage": "Saved in Storage",
+    "openingWorkbook": "Opening workbook…",
+    "errors": {
+      "details": "Unable to load file details",
+      "unsupported": "Emperor can edit .xlsx and .docx files here. This file type is not supported.",
+      "download": "Unable to download file content",
+      "open": "Unable to open this file",
+      "save": "Unable to save file"
+    },
+    "saved": "Saved to Storage",
+    "cantOpen": "Couldn’t open this file",
+    "backToStorage": "Back to Storage",
+    "beta": "Beta",
+    "saving": "Saving…",
+    "unsaved": "Unsaved changes",
+    "savingShort": "Saving",
+    "save": "Save",
+    "toolbar": {
+      "undo": "Undo",
+      "redo": "Redo",
+      "paragraphStyle": "Paragraph style",
+      "fontFamily": "Font family",
+      "fontSize": "Font size",
+      "bold": "Bold",
+      "italic": "Italic",
+      "underline": "Underline",
+      "textColor": "Text color",
+      "highlight": "Highlight",
+      "alignLeft": "Align left",
+      "alignCenter": "Align center",
+      "alignRight": "Align right",
+      "justify": "Justify",
+      "bulletedList": "Bulleted list",
+      "numberedList": "Numbered list",
+      "insertTable": "Insert table",
+      "insertImage": "Insert image",
+      "zoomOut": "Zoom out",
+      "zoomIn": "Zoom in",
+      "addWorksheet": "Add worksheet"
+    },
+    "styles": {
+      "body": "Body",
+      "heading1": "Heading 1",
+      "heading2": "Heading 2",
+      "heading3": "Heading 3"
+    },
+    "openingDocument": "Opening document…",
+    "workbookError": "This workbook could not be opened.",
+    "formula": {
+      "label": "Cell value or formula",
+      "placeholder": "Select a cell to edit its value or formula"
+    }
+  },
+  "failureFix": {
+    "retryFailed": "Couldn't retry the message",
+    "sentAgain": "Sent again.",
+    "reachFailed": "Couldn't reach the agent",
+    "nudged": "Nudged the agent.",
+    "askedRetry": "Asked the agent to try again.",
+    "restartFailed": "Couldn't restart the runtime",
+    "restarting": "Restarting the runtime.",
+    "somethingWrong": "Something went wrong",
+    "rateLimited": "The provider is rate limiting: wait a moment before retrying",
+    "labelIn": "{label} in {seconds}s"
+  },
+  "goalHub": {
+    "eyebrow": "Autonomous Mission Control",
+    "title": "What is the mission for today?",
+    "description": "Describe your high-level goal. The Emperor Claw Orchestrator will break it down into projects, tasks, and assign them to the best-suited agents.",
+    "placeholder": "e.g. Audit our main landing page for SEO and launch a basic Twitter campaign",
+    "thinking": "Thinking",
+    "breakDown": "Break Down",
+    "cancel": "Cancel",
+    "provisioning": "Provisioning Infrastructure...",
+    "initiated": "Mission Initiated",
+    "execute": "Execute Mission Plan",
+    "online": "Orchestrator Online",
+    "poweredBy": "Powered by OpenClaw Autonomous Logic"
+  },
+  "goals": {
+    "cadence": {
+      "15": "Every 15 minutes",
+      "60": "Every hour",
+      "240": "Every 4 hours",
+      "1440": "Once a day"
+    },
+    "cadenceEvery": "Every {minutes} min",
+    "status": {
+      "starting": "starting",
+      "active": "working",
+      "paused": "paused",
+      "blocked": "blocked",
+      "completed": "completed",
+      "cancelled": "stopped"
+    },
+    "updateFailed": "Could not update objective",
+    "summaryTitle": "Give the agent an objective with scheduled check-ins",
+    "objective": "Objective",
+    "objectiveWithStatus": "Objective · {status}",
+    "managedElsewhere": "Managed in another private conversation.",
+    "checkIns": "{cadence} · {done}/{max} check-ins",
+    "blocked": "Blocked: {reason}",
+    "result": "Result: {summary}",
+    "pause": "Pause",
+    "resume": "Resume",
+    "stop": "Stop",
+    "whatToFinish": "What should the agent finish?",
+    "placeholder": "Describe the outcome and how to verify it.",
+    "cadenceLabel": "Check-in cadence",
+    "starting": "Starting…",
+    "start": "Start objective",
+    "stopHint": "Check-ins stop when the objective completes, blocks, is stopped, or uses its budget."
+  },
+  "groups": {
+    "templates": {
+      "development": "Development team",
+      "marketing": "Marketing",
+      "support": "Support"
+    },
+    "somethingWrong": "Something went wrong",
+    "nameRequired": "Give the group a name.",
+    "saveFailed": "Could not save the group",
+    "archiveFailed": "Could not archive the group",
+    "manageTitle": "Manage group",
+    "newTitle": "New group",
+    "description": "A shared workspace for selected agents and people. Agents reply when you @mention them.",
+    "icon": "Icon",
+    "iconLabel": "Group icon",
+    "defaultIcon": "Default",
+    "name": "Name",
+    "namePlaceholder": "Development team",
+    "purpose": "Purpose",
+    "purposeHint": "(agents read this every turn)",
+    "purposePlaceholder": "What this group works on, and how members should use it.",
+    "members": "Members",
+    "memberCounts": "{agents, plural, one {# agent} other {# agents}} · {humans, plural, one {# human} other {# humans}}",
+    "findPlaceholder": "Find agents or people",
+    "findLabel": "Find members",
+    "agent": "Agent",
+    "noMatches": "Nobody matches “{query}”.",
+    "autoAdded": "You are added automatically. Anyone in the company can open the group; people become members when they post.",
+    "coordinator": "Coordinator",
+    "optional": "(optional)",
+    "noCoordinator": "No coordinator",
+    "agentOption": "{name} · Agent",
+    "humanOption": "{name} · Human",
+    "coordinatorHint": "Coordinates work and helps resolve blockers in this team. Members can belong to other teams too.",
+    "archiveConfirm": "Archive this group?",
+    "archive": "Archive",
+    "keep": "Keep",
+    "cancel": "Cancel",
+    "saving": "Saving…",
+    "save": "Save",
+    "create": "Create group"
+  },
+  "hermesImage": {
+    "unpackingOf": "Unpacking the agent runtime (one time) — {done} of {total} GB",
+    "unpacking": "Unpacking the agent runtime (one time)…",
+    "downloadingOf": "Downloading the agent runtime (one time) — {done} of {total} GB",
+    "downloadingSoFar": "Downloading the agent runtime (one time) — {amount} so far",
+    "downloading": "Downloading the agent runtime (one time)…",
+    "unpackingLabel": "Agent runtime unpacking",
+    "downloadLabel": "Agent runtime download"
+  },
+  "messagingHub": {
+    "noMessagesYet": "No messages yet",
+    "justNow": "Just now",
+    "privateThread": "{name} · Private",
+    "agentConversation": "Agent conversation: {title}",
+    "groupDescription": "{count, plural, one {# agent} other {# agents}} · @mention a member to get a reply",
+    "groupRow": "{count, plural, one {# agent} other {# agents}} · {time}",
+    "switchCurrent": "Switch conversation. Current: {title}",
+    "agentCount": "{count} agents",
+    "groupPlaceholder": "Message {title}… (@ a member, or @all)",
+    "teamChannel": "Team Channel",
+    "privateAgentConversation": "Private agent conversation",
+    "privateEarlier": "Your private conversation from when direct chats were private",
+    "workLogDescription": "System updates and work this agent started on its own",
+    "directConversation": "Direct agent conversation",
+    "teamDescription": "Everyone can see & reply. @mention an agent to get replies.",
+    "title": "Messages",
+    "subtitle": "Team and direct conversations",
+    "filterPlaceholder": "Filter agents...",
+    "filterLabel": "Filter conversations",
+    "everyone": "Everyone",
+    "groups": "Groups",
+    "newGroup": "New group",
+    "showAgentConversations": "Show agent-to-agent conversations",
+    "createGroupHint": "Create a group for a team, like your devs and tester",
+    "directMessages": "Direct Messages",
+    "operator": "Operator",
+    "noDirectYet": "No direct conversation yet.",
+    "sharedThreads": "Shared agent threads",
+    "noMatches": "No agents match that search",
+    "clearSearch": "Clear the search",
+    "emptyTitle": "No agents to chat with yet",
+    "emptyDescription": "Each agent gets a direct chat here once it is hired. Hire one from Agents.",
+    "backToConversations": "Back to conversations",
+    "switchConversation": "Switch conversation",
+    "directMessagesMenu": "Direct messages",
+    "manageMembers": "Manage group members",
+    "membersSettings": "Members & settings",
+    "showConversations": "Show conversations",
+    "focusConversation": "Focus on conversation",
+    "focusMode": "Focus mode",
+    "readOnlyPlaceholder": "This is a private agent conversation (read-only)",
+    "agent": "Agent"
+  },
+  "search": {
+    "loading": "Loading search",
+    "minLength": "Type at least {count} characters.",
+    "searching": "Searching…",
+    "failed": "Search failed. Try again in a moment.",
+    "resultCount": "{more, select, yes {{count, plural, one {#+ result} other {#+ results}}} other {{count, plural, one {# result} other {# results}}}}",
+    "eyebrow": "Search",
+    "title": "Search everything",
+    "description": "Tasks and their notes, messages, Knowledge & Rules, files, projects, customers and agents you can open.",
+    "placeholder": "Search tasks, messages, knowledge, files…",
+    "clear": "Clear search",
+    "filterByType": "Filter by type",
+    "all": "All",
+    "emptyTitle": "Find anything",
+    "emptyDescription": "Search tasks, projects, customers, notes, files, agents and messages by a few words. The last word matches as you type, and accents don't matter (cafe finds café).",
+    "noMatches": "Nothing matches “{query}”",
+    "noMatchesOfType": "No {type} you can see contain these words. Search all types, or use fewer words.",
+    "noMatchesHint": "Nothing you can see contains these words. Try fewer or different words.",
+    "searchAllTypes": "Search all types",
+    "results": "Search results",
+    "showMore": "Show more results",
+    "hints": {
+      "move": "move",
+      "open": "open",
+      "search": "search"
+    }
+  },
+  "timeline": {
+    "loading": "Loading timeline",
+    "loadFailed": "Could not load the timeline",
+    "eyebrow": "Timeline",
+    "title": "Who worked on what",
+    "descriptionAgents": "One row per agent: when it was busy, on what, and which agent handed work to which. People's actions show as markers on the agent they reached.",
+    "descriptionProjects": "One row per project: which agents worked on it and when. Chat with no task is the last, greyed row.",
+    "totals": {
+      "runs": "Runs",
+      "agentsActive": "Agents active",
+      "runTime": "Run time",
+      "tokens": "Tokens",
+      "cost": "Cost",
+      "successRate": "Success rate"
+    },
+    "timeRange": "Time range",
+    "presets": {
+      "today": "Today",
+      "7d": "7 days",
+      "30d": "30 days"
+    },
+    "fromDate": "From date",
+    "toDate": "To date",
+    "apply": "Apply",
+    "rows": "Rows",
+    "rowsAgents": "Agents",
+    "rowsProjects": "Projects",
+    "colourBy": "Colour by",
+    "colourModes": {
+      "outcome": "Outcome",
+      "source": "Source",
+      "project": "Project"
+    },
+    "showEvents": "Show events",
+    "allAgents": "All agents",
+    "allProjects": "All projects",
+    "allCustomers": "All customers",
+    "clear": "Clear",
+    "zoomOut": "Zoom out",
+    "resetZoom": "Reset zoom",
+    "reset": "Reset",
+    "zoomIn": "Zoom in",
+    "capped": "This window has more activity than the chart can draw. Narrow the range or use the filters.",
+    "legend": "Legend",
+    "chatNoTask": "Chat (no task)",
+    "sources": {
+      "delegated": "Delegated",
+      "automation": "Automation"
+    },
+    "legendProjects": "Each colour is a project; chat runs are grey.",
+    "legendFaded": "Faded bars are chat (no task)",
+    "opensRun": "opens a run",
+    "clears": "clears",
+    "runCount": "{count, plural, one {# run} other {# runs}}",
+    "agentSub": "{runs} runs · {busy}% busy",
+    "emptyTitle": "No work in this time range",
+    "emptyDescription": "No agent or person ran, chatted or moved a task here. Pick a wider range, or clear the filters.",
+    "hideIdle": "Hide idle agents",
+    "showIdle": "{count, plural, one {+# idle agent} other {+# idle agents}}",
+    "now": "now",
+    "agent": "Agent",
+    "chat": "Chat",
+    "chatIn": "Chat ({thread})",
+    "task": "Task",
+    "clusterTooltip": "{count} runs · mostly {mostly}",
+    "clusterLabel": "{count} runs, zoom to expand",
+    "spanLabel": "{what}: {outcome}",
+    "toolCount": "{count, plural, one {# tool} other {# tools}}",
+    "tokenCount": "{tokens} tokens",
+    "detail": {
+      "openChat": "Open chat",
+      "openTask": "Open task",
+      "chatRun": "Chat run",
+      "taskRun": "Task run",
+      "close": "Close",
+      "agent": "Agent",
+      "kind": "Kind",
+      "project": "Project",
+      "customer": "Customer",
+      "outcome": "Outcome",
+      "time": "Time",
+      "duration": "Duration",
+      "tools": "Tools"
+    },
+    "timeSpent": {
+      "title": "Where the time went",
+      "subtitle": "Busy hours in this range, summed per run · {total} total",
+      "noRuns": "No runs in this range.",
+      "topTasks": "Top tasks",
+      "noTaskWork": "No task work in this range.",
+      "projects": "Projects"
+    },
+    "events": {
+      "kinds": {
+        "created": "Created",
+        "assigned": "Assigned",
+        "status": "Status",
+        "note": "Note",
+        "approval_requested": "Approval requested",
+        "approval_decided": "Approval decided",
+        "file": "File"
+      },
+      "by": {
+        "created": "Created by {name}",
+        "assigned": "Assigned by {name}",
+        "status": "Status changed by {name}",
+        "note": "Note by {name}",
+        "approval_requested": "Approval requested by {name}",
+        "file": "File added by {name}"
+      },
+      "decidedBy": {
+        "approved": "Approved by {name}",
+        "rejected": "Rejected by {name}",
+        "dismissed": "Dismissed by {name}",
+        "other": "Decided by {name}"
+      }
+    },
+    "edges": {
+      "created": "Created and assigned",
+      "assigned": "Assigned",
+      "reassigned": "Reassigned",
+      "triggered_run": "Triggered a run"
+    }
+  },
+  "messages": {
+    "eyebrow": "Messages",
+    "title": "Team, Groups & Direct Messages",
+    "description": "Coordinate with the team, a group, or open a private agent thread."
+  },
+  "moduleGate": {
+    "title": "The {module} module is off",
+    "description": "Turn it on in Settings → Modules. Its data was kept, so everything comes back as it was.",
+    "action": "Open Settings → Modules"
+  },
+  "theme": {
+    "toggle": "Toggle theme",
+    "switchToLight": "Switch to light mode",
+    "switchToDark": "Switch to dark mode",
+    "lightMode": "Light mode",
+    "darkMode": "Dark mode"
+  },
+  "onboarding": {
+    "businessTypes": {
+      "software": {
+        "label": "Software & product",
+        "hint": "SaaS, apps, dev studio"
+      },
+      "agency": {
+        "label": "Marketing agency",
+        "hint": "Campaigns, content, SEO for clients"
+      },
+      "ecommerce": {
+        "label": "E-commerce",
+        "hint": "Online store, D2C brand"
+      },
+      "services": {
+        "label": "Services & consulting",
+        "hint": "Clients, proposals, delivery"
+      },
+      "finance": {
+        "label": "Finance & accounting",
+        "hint": "Books, reporting, analysis"
+      },
+      "other": {
+        "label": "Something else",
+        "hint": "Start with a lead and add as you go"
+      }
+    },
+    "wizard": {
+      "availabilityCheckFailed": "Could not check whether this installation can start agents.",
+      "saveCompanyFailed": "Could not save your company.",
+      "saveModulesFailed": "Could not save your modules.",
+      "keyWorks": "Key works.",
+      "keyCheckFailed": "Couldn't check the key.",
+      "keyCheckUnreachable": "Couldn't check the key from here.",
+      "planProblems": {
+        "empty": "Pick at least one team or agent.",
+        "tooMany": "Start with at most {max} agents; you can hire more later.",
+        "unnamed": "Every agent needs a name.",
+        "nameTooLong": "Keep names under 40 characters.",
+        "duplicateName": "Two agents have the same name."
+      },
+      "createAgentsFailed": "Could not create your agents.",
+      "noResult": "Setup returned no result for this profile.",
+      "reportingRetry": "Team chats are ready, but the reporting setup needs a retry. Review it in Agents → Organization.",
+      "restartFailed": "Could not restart this runtime",
+      "doc": {
+        "handingOver": "Handing over the job…",
+        "startsWhenOnline": "Starts as soon as {name} is online.",
+        "done": "{count, plural, =0 {Done: its notes written. Every agent now reads them.} one {Done: # note written. Every agent now reads them.} other {Done: # notes written. Every agent now reads them.}}",
+        "waiting": "Sent. Waiting for {name} to pick it up…",
+        "writing": "Writing… updated {notes}",
+        "reading": "{name} is reading your profile and website…"
+      },
+      "railTitle": "Emperor setup",
+      "steps": {
+        "welcome": "Welcome",
+        "company": "Your company",
+        "model": "AI model",
+        "team": "Your teams",
+        "launch": "Launch"
+      },
+      "setUpLater": "Set up later",
+      "stepOf": "Step {step} of {total} · {label}",
+      "later": "Later",
+      "optional": "(optional)",
+      "welcome": {
+        "title": "Let's set up your AI team",
+        "introProfileOnly": "Tell your agents about the company so they work from the same facts. It takes a minute.",
+        "introProfileDone": "Your company is on file. Connect an AI model and choose your team; your agents start working in about two minutes.",
+        "intro": "Four short steps: your company, an AI model key, the team you want, and then your agents start working. About three minutes.",
+        "companyTitle": "Your company",
+        "companyBody": "So agents know what you do",
+        "teamsTitle": "Your teams",
+        "teamsBody": "Ready-made teams with their own group chats",
+        "documentedTitle": "Documented",
+        "documentedBody": "Your lead writes the company handbook"
+      },
+      "company": {
+        "title": "Tell us about your company",
+        "intro": "Every agent reads this before it works. You can change it any time in Knowledge & Rules.",
+        "nameLabel": "Company name",
+        "namePlaceholder": "Acme Robotics",
+        "company": "Company",
+        "change": "Change",
+        "whatLabel": "What does it do, and for whom?",
+        "whatPlaceholder": "We build warehouse robots for mid-size logistics companies in Europe.",
+        "kindLabel": "What kind of company is it?",
+        "useLabel": "How will you use Emperor?",
+        "useHint": "This only picks which modules are on. Change them any time in Settings → Modules.",
+        "website": "Website",
+        "websitePlaceholder": "https://acme.example",
+        "houseRules": "House rules",
+        "houseRulesHint": "(optional, one per line)",
+        "houseRulesPlaceholder": "Never quote prices without approval\nReply to customers in Spanish",
+        "documentIt": "Have my lead agent document the company",
+        "documentItHint": "{website, select, yes {Once it's online, it turns this profile and your website into Knowledge & Rules notes (overview, products, customers, brand voice) and asks you what it couldn't find. You'll watch it happen.} other {Once it's online, it turns this profile into Knowledge & Rules notes (overview, products, customers, brand voice) and asks you what it couldn't find. You'll watch it happen.}}"
+      },
+      "model": {
+        "title": "Connect an AI model",
+        "intro": "Your agents think with a language model, so they need an API key. It's stored encrypted and only your agents use it.",
+        "unavailableTitle": "This installation can't start agents by itself.",
+        "unavailableHint": "Run Hermes on another machine and connect it, or reinstall with Docker so Emperor can start agents for you. You set the model key in Hermes in that case.",
+        "connectHermes": "Connect a Hermes agent",
+        "dockerGuide": "Docker install guide",
+        "recommended": "Recommended",
+        "providerHints": {
+          "openrouter": "One key for hundreds of models, including free ones.",
+          "deepseek": "Low-cost DeepSeek models, billed by DeepSeek.",
+          "custom": "Your own endpoint: Ollama, LM Studio, vLLM or LiteLLM."
+        },
+        "localhostHint": "Agents run in their own containers, so localhost there is not this machine: for a server here, use host.docker.internal.",
+        "apiKey": "API key",
+        "providerApiKey": "{provider} API key",
+        "getKey": "Get a key",
+        "continueAgain": "Click Continue again to go on.",
+        "freeModel": "Starts on a <strong>free model</strong>, so you can try everything at no cost. Switch to a stronger model per agent later.",
+        "hideModel": "Hide model",
+        "chooseModel": "Choose a specific model",
+        "modelExample": "e.g. {model}"
+      },
+      "team": {
+        "title": "Choose your teams",
+        "suggested": "Suggested for your kind of company.",
+        "intro": "Pick any mix. Each team gets its specialists and its own group chat; the Boss leads them all.",
+        "templatesLabel": "Team templates",
+        "yourAgents": "Your agents",
+        "addSpecialist": "Add a specialist",
+        "addAgent": "+ Add an agent",
+        "nameLabel": "{role} name",
+        "lead": "Lead",
+        "leadsEveryTeam": "Leads every team",
+        "noGroup": "No group",
+        "remove": "Remove {name}",
+        "groupChats": "Group chats",
+        "groupMembers": "{names}, you",
+        "smallMachine": "Each agent runs its own runtime. On a small machine (a Raspberry Pi, a laptop), start with {count} or fewer and add more later.",
+        "noBoss": "Without a Boss, assign work to each specialist yourself."
+      },
+      "launch": {
+        "ready": "Your team is ready",
+        "starting": "Starting your team",
+        "creating": "Creating your agents…",
+        "readyHint": "Talk to your lead in its private chat, or give it a project.",
+        "startingHint": "The first start downloads and connects each agent. This can take a minute or two.",
+        "creatingCount": "Creating {count, plural, one {# agent} other {# agents}}…",
+        "createdOnline": "{name} is created and online",
+        "createdStarting": "{name} is created and starting up…",
+        "failed": "Failed",
+        "online": "Online",
+        "retry": "Retry",
+        "startingLabel": "Starting",
+        "groupsCreated": "Group chats created",
+        "groupWith": "group chat with {names} and you",
+        "groupNotReady": "not ready yet; create missing profiles or retry the chat",
+        "creatingChats": "Creating team chats…",
+        "retryChats": "Retry team chats",
+        "documenting": "{name} is documenting {company} in Knowledge & Rules",
+        "documentingYours": "{name} is documenting your company in Knowledge & Rules",
+        "watchInChat": "Watch in chat",
+        "openTask": "Open the task",
+        "knowledgeCount": "Knowledge & Rules ({count})",
+        "privateChatHint": "Its direct chat is private, so no @mention is needed. For work that should be tracked, create a task and assign it; every morning each agent reviews its open tasks."
+      },
+      "back": "Back",
+      "getStarted": "Get started",
+      "saveAndFinish": "Save and finish",
+      "continue": "Continue",
+      "finishSetup": "Finish setup",
+      "checkingKey": "Checking key…",
+      "continueAnyway": "Continue anyway",
+      "createAgents": "Create {count, plural, one {# agent} other {# agents}}",
+      "goToDashboard": "Go to dashboard",
+      "leadOffline": "{name} isn't online yet. This turns on as soon as it connects.",
+      "yourLeadOffline": "Your lead isn't online yet. This turns on as soon as it connects.",
+      "openDirectChat": "Open direct chat",
+      "openDirectChatWith": "Open direct chat with {name}"
+    },
+    "sample": {
+      "addFailed": "Could not add the sample client.",
+      "readyTitle": "Sample: {name} is ready to explore",
+      "offerTitle": "Add a sample client to explore",
+      "readyBody": "A customer, a project with three tasks, and a note. <board>See it on the board</board>; remove it any time in Settings.",
+      "offerBody": "A labelled practice client with one project, three tasks in different states and a note. Nothing runs on it, and Settings removes it in one click.",
+      "adding": "Adding…",
+      "add": "Add sample client",
+      "removeFailed": "Could not remove the sample data.",
+      "removedKept": "Sample data removed. Work you added to the sample project was kept.",
+      "removed": "Sample data removed.",
+      "sectionLabel": "Sample data",
+      "cardTitle": "This workspace has sample data",
+      "cardBody": "Sample: {name}, its project, three tasks and a note, added during setup. Removing deletes only those rows; anything you added yourself stays.",
+      "removing": "Removing…",
+      "remove": "Remove sample data"
+    },
+    "workspaceTour": {
+      "start": "Start Tour",
+      "title": "Emperor Claw workspace tour",
+      "intro": "A quick map of where work, context, files, and agent operations live.",
+      "close": "Close workspace tour",
+      "done": "Done",
+      "steps": {
+        "projects": {
+          "title": "Start with Projects",
+          "body": "Projects hold the business goal. Tasks inside the project are the concrete work agents can claim, finish, and send for review."
+        },
+        "knowledge": {
+          "title": "Put reusable context in Knowledge & Rules",
+          "body": "This is where agents find durable instructions: SOPs, customer rules, inbox details, templates, identities, and operating doctrine."
+        },
+        "storage": {
+          "title": "Keep files in Storage",
+          "body": "Storage is for deliverables, proofs, exported reports, working files, and uploads that should survive beyond the chat."
+        },
+        "messages": {
+          "title": "Use Messages for coordination",
+          "body": "Messages show the live control-plane conversations between you, managers, and worker agents."
+        },
+        "agents": {
+          "title": "Agents are runtimes",
+          "body": "Agents are the connected OpenClaw workers. Keep shared business context out of agent-local settings unless it truly belongs to one machine."
+        }
+      }
+    },
+    "interactiveTour": {
+      "close": "Close tour",
+      "back": "Back",
+      "skip": "Skip",
+      "done": "Done",
+      "next": "Next",
+      "steps": {
+        "dashboard": {
+          "title": "Dashboard — your command center",
+          "body": "Your home base. See agent status, recent activity, team chat, and open issues at a glance. The sidebar on the left takes you everywhere."
+        },
+        "projects": {
+          "title": "Projects — where work lives",
+          "body": "Create projects for each business goal. Inside, break work into tasks that agents claim, execute, and submit for review. Drag tasks across the Kanban as they progress."
+        },
+        "automations": {
+          "title": "Automations — recurring work on autopilot",
+          "body": "Set up pipelines and recurring task definitions. Agents register their automations here so you always know what's running."
+        },
+        "knowledge": {
+          "title": "Knowledge Base — durable context",
+          "body": "Store SOPs, customer rules, templates, and operating doctrine. Agents read from here before executing tasks — this is their long-term memory."
+        },
+        "messages": {
+          "title": "Messages — team coordination",
+          "body": "Live conversations between you and your agents. Direct threads for human-to-agent control, team channel for broadcast visibility."
+        },
+        "approvals": {
+          "title": "Approvals — human-in-the-loop",
+          "body": "Tasks needing your sign-off land here. Review agent output, approve or request changes, and keep quality gates enforced."
+        },
+        "agents": {
+          "title": "Agents — your AI workforce",
+          "body": "Register and manage your connected OpenClaw workers. Each agent has a profile, capabilities, and runtime config."
+        },
+        "customers": {
+          "title": "Customers — client context",
+          "body": "Organize work by customer. Link projects, tasks, and knowledge to specific clients for clear separation."
+        },
+        "files": {
+          "title": "Files — persistent storage",
+          "body": "Deliverables, proofs, reports, and uploads that survive beyond chat. Agents store output here for you to review."
+        },
+        "settings": {
+          "title": "Settings — workspace config",
+          "body": "Manage API tokens for agent connections, configure instance settings, and control workspace access. The Members tab lets you invite your team and manage roles."
+        },
+        "docs": {
+          "title": "Docs — learn more anytime",
+          "body": "Full guides for OpenClaw agents, Hermes bridges, pipelines, webhooks, and advanced config. Available anytime from the sidebar."
+        }
+      }
+    }
+  },
+  "ops": {
+    "eyebrow": "Ops",
+    "title": "Platform Ops",
+    "description": "Launch visibility for users, workspaces, runtimes, and platform errors.",
+    "nav": {
+      "overview": "Overview",
+      "users": "Users",
+      "companies": "Companies",
+      "errors": "Errors",
+      "runtimes": "Runtimes",
+      "storage": "Storage"
+    },
+    "noData": "No data.",
+    "never": "Never",
+    "noEvents": "No ops events recorded yet.",
+    "noUsers": "No users found.",
+    "verified": "Verified",
+    "pending": "Pending",
+    "unknown": "Unknown",
+    "none": "None",
+    "notApplicable": "n/a",
+    "columns": {
+      "when": "When",
+      "level": "Level",
+      "source": "Source",
+      "message": "Message",
+      "route": "Route",
+      "context": "Context",
+      "email": "Email",
+      "created": "Created",
+      "verified": "Verified",
+      "companies": "Companies",
+      "lastSession": "Last Session",
+      "company": "Company",
+      "createdBy": "Created By",
+      "members": "Members",
+      "agents": "Agents",
+      "activeRuntimes": "Active Runtimes",
+      "runtime": "Runtime",
+      "status": "Status",
+      "lastSeen": "Last Seen",
+      "started": "Started",
+      "sessions7d": "Sessions (7d)",
+      "lastProvisionError": "Last Provision Error"
+    },
+    "overview": {
+      "users": "Users",
+      "usersDetail": "{verified} verified ({rate}%)",
+      "companies": "Companies",
+      "companiesDetail": "Active workspaces on the platform",
+      "agents": "Agents",
+      "agentsDetail": "Registered durable worker identities",
+      "activeRuntimes": "Active Runtimes",
+      "activeRuntimesDetail": "Runtime nodes reporting active status",
+      "errors": "Errors (24h)",
+      "errorsDetail": "Ops events recorded at error level in the last 24 hours",
+      "signups": "Recent Signups",
+      "signupsDetail": "Newest accounts created on the platform",
+      "recentErrors": "Recent Platform Errors",
+      "recentErrorsDescription": "Newest captured server and auth/mailer failures.",
+      "openErrors": "Open full error feed",
+      "newestUsers": "Newest Users",
+      "newestUsersDescription": "Recent account creation and verification state.",
+      "openUsers": "Open user directory"
+    },
+    "users": {
+      "title": "Users",
+      "description": "Platform-wide account list with verification and recent activity."
+    },
+    "companies": {
+      "title": "Companies",
+      "description": "Workspace inventory with owners, members, agents, and active runtimes.",
+      "empty": "No companies found."
+    },
+    "errors": {
+      "title": "Ops Errors And Events",
+      "description": "Captured platform events for debugging launch issues, auth failures, mailer failures, and server/runtime problems.",
+      "stack": "stack",
+      "companyId": "company: {id}",
+      "userId": "user: {id}"
+    },
+    "runtimes": {
+      "title": "Runtimes",
+      "description": "Runtime nodes, heartbeat freshness, recent session volume, and latest provisioning failures.",
+      "empty": "No runtimes found.",
+      "noHostname": "no hostname"
+    },
+    "storage": {
+      "databaseSize": "Database size",
+      "databaseSizeDetail": "On-disk size of the current database (pg_database_size)",
+      "tablesSized": "Tables sized",
+      "tablesSizedDetail": "Largest {count} tables by total relation size",
+      "largestTable": "Largest table",
+      "noTables": "No tables found",
+      "noTablesPeriod": "No tables found.",
+      "lastRetention": "Last retention",
+      "rowsDeletedAt": "Rows deleted {when}",
+      "noRetention": "No retention run recorded yet",
+      "noRetentionPeriod": "No retention run recorded yet.",
+      "topTables": "Top Tables by Size",
+      "topTablesDescription": "Total relation size (table + indexes + TOAST) with the planner's estimated row count.",
+      "recentRuns": "Recent Retention Runs",
+      "recentRunsDescription": "The last few cleanup passes: when they ran, how long they took, and what each step deleted.",
+      "columns": {
+        "table": "Table",
+        "totalSize": "Total size",
+        "estimatedRows": "Estimated rows",
+        "started": "Started",
+        "duration": "Duration",
+        "rowsDeleted": "Rows deleted",
+        "perStep": "Per step"
+      },
+      "budget": "(budget)",
+      "error": "(error)"
+    }
+  },
+  "organization": {
+    "saveChartFailed": "Could not save chart",
+    "saveChartPartial": "{error}. Team chats were updated; retry to finish saving the chart.",
+    "addTeammatesTo": "Add teammates to {name}",
+    "addBelowName": "Add below {name}",
+    "optionsFor": "Options for {name}",
+    "teammateCount": "{count, plural, one {# teammate} other {# teammates}}",
+    "teammatesIn": "Teammates in {name}",
+    "humanMembers": "{count, plural, one {# human member in the chat} other {# human members in the chat}}",
+    "expandName": "Expand {name}",
+    "collapseName": "Collapse {name}",
+    "directReports": "{count} direct reports",
+    "reportsTo": "Reports to {name}",
+    "addBelowLeader": "Add below the company leader",
+    "chooseLeaderFor": "Choose a leader for {team}",
+    "chooseLeaderForThis": "Choose a leader for this team",
+    "chooseAgentsFor": "Choose agents for {team}. They join its group chat when you save and keep their other teams. This team’s leader coordinates their work here.",
+    "existingChat": "{count, plural, one {# member} other {# members}} · Existing chat",
+    "addTeammatesCount": "{count, plural, =0 {Add teammates} one {Add # teammate} other {Add # teammates}}",
+    "worksWith": "Works with {team}. Its leader coordinates work for this team; other team roles stay the same.",
+    "unavailableMember": "Unavailable member",
+    "unavailableTeam": "Unavailable team",
+    "saveFailed": "Could not save changes",
+    "updateTeamFailed": "Could not update team",
+    "addTeammates": "Add teammates",
+    "teamFallback": "Team",
+    "teammate": "Teammate",
+    "chooseAiLeader": "Choose an AI leader",
+    "aiTeamLeader": "AI team leader",
+    "humanExecutive": "Human executive",
+    "aiLead": "AI lead",
+    "sharedAgent": "Shared agent",
+    "aiAgent": "AI agent",
+    "shared": "Shared",
+    "openTeamChat": "Open team chat",
+    "saveToCreateChat": "Save to create this team’s group chat",
+    "eyebrow": "Agents",
+    "title": "Organization",
+    "description": "Choose your leaders, build teams, and open their shared chats.",
+    "backToAgents": "Back to agents",
+    "discard": "Discard changes",
+    "saving": "Saving…",
+    "saveChanges": "Save changes",
+    "saved": "Saved. Agents will read their reporting relationships on their next turn.",
+    "unsaved": "Unsaved changes · Save to create new team chats and add teammates. Removing a branch keeps existing chats.",
+    "chartLabel": "Organization chart",
+    "useAdd": "Use + to add an agent or team",
+    "reportingRelationships": "Reporting relationships",
+    "scrollableChart": "Scrollable reporting chart",
+    "companyLeadership": "Company leadership",
+    "startTitle": "Start with your company leader",
+    "startBody": "Choose an AI lead, or a human executive with AI leaders beneath them.",
+    "chooseLeader": "Choose leader",
+    "chooseTeam": "Choose a team",
+    "chooseHumanExec": "Choose a human executive",
+    "chooseCompanyLeader": "Choose the company leader",
+    "chooseAgent": "Choose an agent",
+    "descTeamLeader": "Choose a dedicated AI leader for this team. Leaders belong to one team; specialists can be shared. The leader joins its group chat.",
+    "descTeam": "Every team has a shared group chat in Messages. Create a new team here, or reuse an existing chat with its members and history.",
+    "descReplacement": "Choose a replacement. Saving updates this team and its chat; other teams stay the same.",
+    "descDefault": "Choose existing people and teams. Shared agents keep their other roles.",
+    "agentOptionHint": "An AI agent reporting to this node",
+    "teamOptionHint": "Create a team with a group chat, or reuse one",
+    "human": "Human",
+    "searchTeamsLabel": "Search teams",
+    "searchPeopleLabel": "Search by name or role",
+    "searchTeamsPlaceholder": "Search teams…",
+    "searchPeoplePlaceholder": "Search by name or role…",
+    "noMatchingTeams": "No matching teams. Try another name, or create a new team below.",
+    "noOtherTeams": "No other teams available. Create a new one below.",
+    "noMatchingPeople": "No matching people. Try another name or role.",
+    "specialistsShared": "Specialists can be shared between teams. Company and team leaders stay dedicated to their own roles.",
+    "createTeam": "Create a new team",
+    "createTeamHint": "Name it, choose an AI leader, then add teammates on the chart. Saving creates its chat.",
+    "teamName": "Team name",
+    "chooseAiLeaderButton": "Choose AI leader",
+    "back": "Back",
+    "nodeOptions": "Node options",
+    "teamNodeDescription": "One AI leader, shared teammates, and one group chat. Create other teams alongside this one.",
+    "manageRelationship": "Manage this reporting relationship.",
+    "addBelow": "Add below",
+    "changeAiLeader": "Change AI leader",
+    "replaceTeammate": "Replace teammate",
+    "changeAgent": "Change agent",
+    "changePerson": "Change person",
+    "editTeamNamePurpose": "Edit team name & purpose",
+    "archiveTeamChat": "Archive team & chat",
+    "saveBeforeEditing": "Save chart changes before editing or archiving the team.",
+    "saveToCreate": "Save changes to create the group chat. You can add teammates first.",
+    "agentProfile": "Agent profile",
+    "removeFromTeam": "Remove from this team",
+    "removeBranch": "Remove branch from chart",
+    "removeFromTeamHint": "Saving removes this teammate from this team and its chat. Other teams and past messages stay intact.",
+    "removeBranchHint": "Removing a branch keeps its chat and memberships.",
+    "editTeam": "Edit team",
+    "archiveDescription": "Removes the team from the chart and Messages, and stops new deliveries. Its history is retained; the agents and their other teams stay available.",
+    "editDescription": "The name and purpose are shared with the team’s existing chat.",
+    "purpose": "Purpose",
+    "cancel": "Cancel",
+    "archiveTeam": "Archive team",
+    "saveTeam": "Save team"
+  },
+  "pipelines": {
+    "statuses": {
+      "active": "active",
+      "draft": "draft",
+      "paused": "paused",
+      "retired": "retired"
+    },
+    "runStatuses": {
+      "succeeded": "succeeded",
+      "failed": "failed",
+      "partial": "partial",
+      "running": "running"
+    },
+    "trigger": {
+      "scheduleAt": "Schedule: {cron}",
+      "schedule": "Schedule",
+      "event": "Event trigger",
+      "manual": "Manual run",
+      "agent": "Agent trigger"
+    },
+    "scope": {
+      "customer": "Customer",
+      "project": "Project",
+      "agent": "Agent",
+      "company": "Company workspace"
+    },
+    "graph": {
+      "trigger": "Trigger",
+      "contextPack": "Context Pack",
+      "ragContract": "RAG contract",
+      "pinnedSources": "{count, plural, one {# pinned source} other {# pinned sources}}",
+      "noSteps": "No steps registered",
+      "output": "Output contract",
+      "deliverable": "Deliverable",
+      "runEvidenceOf": "{status} run evidence",
+      "runEvidence": "Run evidence",
+      "auditTrail": "Audit trail"
+    },
+    "stepN": "Step {n}",
+    "anyAgent": "Any agent",
+    "collapse": "Collapse",
+    "expand": "Expand",
+    "stepCount": "{count, plural, one {# step} other {# steps}}",
+    "owner": "Owner: {name}",
+    "contextSources": "{count, plural, one {# context source} other {# context sources}}",
+    "lastRun": "Last run: {status}",
+    "noRunsYet": "No runs yet",
+    "copied": "Pipeline documentation copied",
+    "copyFailed": "Could not copy documentation",
+    "emptyTitle": "No pipelines registered yet",
+    "emptyDescription": "Pipelines are documentation contracts registered by agents through MCP. Emperor stores the map, context rules, and run evidence; the agent still performs the work in its own runtime.",
+    "deleteFailed": "Could not delete pipeline",
+    "deleted": "Pipeline deleted",
+    "eyebrow": "Automations",
+    "title": "Pipelines",
+    "description": "A simple workspace to understand what agents do: visual map, Context Pack, run evidence, and copy-ready docs. Emperor documents and audits; agents execute in their own runtime.",
+    "metrics": {
+      "active": "Active",
+      "runs": "Runs",
+      "documented": "Documented"
+    },
+    "explorer": "Pipeline Explorer",
+    "searchPlaceholder": "Search pipelines",
+    "all": "all",
+    "noPurpose": "No purpose documented yet.",
+    "noRuns": "No runs",
+    "visualMap": "Visual Map",
+    "copyDocs": "Copy docs",
+    "confirmDelete": "Click again to confirm",
+    "delete": "Delete",
+    "documentation": "Documentation",
+    "contract": "Human-readable contract",
+    "context": {
+      "query": "Query",
+      "notSet": "Not set",
+      "pinned": "Pinned sources",
+      "none": "None",
+      "tags": "Tags",
+      "budget": "Budget",
+      "chars": "{count} chars"
+    },
+    "workflowSteps": "Workflow steps",
+    "noStepsHint": "No steps registered. Ask the agent to register steps, decisions, outputs, and evidence through the pipeline MCP endpoint.",
+    "noStepDescription": "No description registered.",
+    "recentRuns": "Recent runs",
+    "noRunsReported": "No runs reported yet.",
+    "sourcesUsed": "Sources used: {count}",
+    "evidenceProduced": "Evidence produced: {tasks} tasks / {artifacts} artifacts",
+    "copyReady": "Copy-ready markdown"
+  },
+  "resources": {
+    "inject": {
+      "always": {
+        "label": "Always",
+        "hint": "Push this note's body into every matching session. Always notes share a 1,500-character budget."
+      },
+      "index": {
+        "label": "In index",
+        "hint": "Show a one-line summary in the agent's knowledge index; the body loads on demand."
+      },
+      "on_request": {
+        "label": "On request",
+        "hint": "Keep the note out of the index; agents find it only by search or a direct fetch."
+      }
+    },
+    "scopes": {
+      "company": "Company",
+      "customer": "Customer",
+      "project": "Project",
+      "agent": "Agent"
+    },
+    "unknownCustomer": "Unknown customer",
+    "unknownProject": "Unknown project",
+    "unknownAgent": "Unknown agent",
+    "insightsFailed": "Could not load related knowledge metadata",
+    "folder": {
+      "noSlash": "Folder names cannot contain /",
+      "enterName": "Enter a folder name",
+      "ready": "Folder {path} ready — right-click it to add a note",
+      "renameFailed": "Failed to rename folder",
+      "renamed": "Renamed to {path}",
+      "renamedMoved": "Renamed to {path} ({count} notes moved)",
+      "removed": "Folder {path} removed",
+      "deleteFailed": "Failed to delete folder",
+      "deleted": "Deleted folder {path} ({count} notes)"
+    },
+    "draftBadge": "draft",
+    "alwaysBadge": "always",
+    "indexBadge": "index",
+    "injected": "Injected into agent context",
+    "open": "Open",
+    "deleteNote": "Delete note",
+    "newNoteHere": "New note here",
+    "newSubfolder": "New subfolder",
+    "renameMove": "Rename / move",
+    "deleteFolder": "Delete folder",
+    "createFailed": "Failed to create rule",
+    "created": "Knowledge rule created",
+    "linkedFailed": "Failed to create linked note",
+    "linkedCreated": "Linked note created",
+    "saveFailed": "Failed to save rule",
+    "saved": "Knowledge rule saved",
+    "statusFailed": "Failed to update publication status",
+    "published": "Knowledge note published",
+    "movedToDraft": "Knowledge note moved to draft",
+    "deleteFailed": "Failed to delete note",
+    "deleted": "Knowledge note deleted",
+    "eyebrow": "Knowledge base",
+    "title": "Knowledge & Rules",
+    "description": "Durable notes, SOPs, and instructions your agents read before they act.",
+    "newNote": "New note",
+    "newFolder": "New folder",
+    "newLinkedTitle": "New note linked to this one",
+    "newLinked": "New linked note",
+    "refresh": "Refresh vault",
+    "confirmAgain": "Click again to confirm",
+    "previousNote": "Previous note",
+    "nextNote": "Next note",
+    "untitled": "Untitled note",
+    "publish": "Publish",
+    "moveToDraft": "Move to draft",
+    "saving": "Saving",
+    "save": "Save",
+    "confirmDelete": "Click again to confirm delete",
+    "graphTitle": "Knowledge graph",
+    "graphOf": "Graph of {title}",
+    "vaultExplorer": "Vault explorer",
+    "searchPlaceholder": "Search notes...",
+    "filters": {
+      "all": "All",
+      "shared": "Shared",
+      "drafts": "Drafts"
+    },
+    "noteCount": "{count, plural, one {# note} other {# notes}}",
+    "newFolderIn": "New folder in {scope}",
+    "scopeEmpty": "No notes yet. Right-click to add one.",
+    "noMatches": "No notes match this search",
+    "noDrafts": "No draft notes",
+    "noShared": "No shared notes",
+    "showAll": "Show all notes",
+    "emptyTitle": "No notes yet",
+    "emptyDescription": "Right-click Company to add the first note. Agents also write notes here as they learn how you work.",
+    "allNotes": "All notes",
+    "editorPlaceholder": "Write one reusable rule, SOP, or instruction here...",
+    "selectOrCreate": "Select or create a note.",
+    "expandGraph": "Expand graph",
+    "stats": {
+      "incoming": "<n>{count}</n> incoming",
+      "outgoing": "<n>{count}</n> outgoing",
+      "words": "<n>{count}</n> words"
+    },
+    "properties": "Properties",
+    "folderLabel": "Folder",
+    "folderPlaceholder": "Company/Fundraising",
+    "folderHint": "Slash-separated, like a vault path. Leave empty to keep the note at the root. Folders are created automatically when you save.",
+    "publicationStatus": "Publication status",
+    "statusDraft": "Draft / Needs review",
+    "statusPublished": "Published",
+    "publishNote": "Publish note",
+    "moveBackToDraft": "Move back to draft",
+    "publishedHint": "Published means this note is trusted doctrine. Agent context is separate: it controls whether agents receive the note.",
+    "scopeLabel": "Scope",
+    "chooseScope": "Choose {scope}",
+    "agentContext": "Agent context",
+    "injectionMode": "Knowledge injection mode",
+    "alwaysBudget": "Always budget",
+    "budgetUsage": "{used, number} / {budget, number} characters",
+    "overBudget": "Over budget: the last always note is truncated in the agent context.",
+    "summaryLabel": "Summary",
+    "summaryPlaceholder": "One line agents see in the index; leave blank to auto-derive from the note.",
+    "summaryHint": "Shown as this note's index line. Leave blank to derive the first sentence automatically ({length}/200).",
+    "linkedMentions": "Linked mentions",
+    "outgoing": "Outgoing",
+    "noOutgoing": "No outgoing links.",
+    "incoming": "Incoming",
+    "noIncoming": "No incoming links yet.",
+    "newFolderTitle": "New folder",
+    "newFolderDescription": "Create a folder inside the location you selected.",
+    "location": "Location",
+    "folderName": "Folder name",
+    "folderNamePlaceholder": "e.g. Fundraising",
+    "newFolderHint": "The folder stays visible while you work and becomes durable when a note is filed inside it.",
+    "cancel": "Cancel",
+    "createFolder": "Create folder",
+    "renameTitle": "Rename or move folder",
+    "renameDescription": "Every note under <hl>{path}</hl> is re-filed. Give it a new path to move the whole folder.",
+    "deleteFolderTitle": "Delete folder “{path}”?",
+    "deleteFolderDescription": "This permanently deletes the folder and <hl>every note inside it and its subfolders</hl>. This cannot be undone.",
+    "deleteNoteTitle": "Delete “{name}”?",
+    "deleteNoteDescription": "This can't be undone. Any links pointing to this note will become unresolved.",
+    "deleting": "Deleting...",
+    "delete": "Delete",
+    "unresolved": "unresolved",
+    "currentNote": "Current note",
+    "noGraph": "No graph connections yet",
+    "graphHint": "Graph connections: {count}. Local graph is generated from [[links]] and inferred title mentions. Amber nodes are unresolved links."
+  },
+  "rich": {
+    "interactiveWidget": "Interactive widget",
+    "actionsUnavailable": "Widget actions aren't available here",
+    "sent": "Sent: {text}",
+    "fullScreen": "Open full screen",
+    "widgetDescription": "Interactive widget sent by an agent, running in a sandbox.",
+    "chart": "Chart",
+    "overview": "Overview",
+    "hideSource": "Hide source",
+    "viewSource": "View source",
+    "copySource": "Copy source",
+    "sections": "Sections",
+    "nothingHere": "Nothing here.",
+    "choices": "Choices",
+    "replyInChat": "Reply in the chat to answer.",
+    "ofTotal": "{percent}% of total",
+    "total": "Total"
+  },
+  "entities": {
+    "inTime": "in {time}",
+    "timeAgo": "{time} ago",
+    "notAvailableLabel": "{label} (not available)",
+    "notAvailable": "Not available: deleted, or outside your access.",
+    "openTitle": "Open {title}",
+    "knowledgeMeta": "Knowledge · {scope} · {status}",
+    "open": "Open",
+    "download": "Download",
+    "task": "Task",
+    "lead": "Lead: {name}",
+    "project": "Project",
+    "agent": "Agent",
+    "unassigned": "Unassigned",
+    "due": "Due {time}",
+    "updated": "Updated {time}",
+    "doneOf": "{done}/{total} done",
+    "openTasks": "{count, plural, one {# open task} other {# open tasks}}",
+    "load": "Load {load}",
+    "seen": "Seen {time}"
+  },
+  "markdown": {
+    "callouts": {
+      "note": "Note",
+      "tip": "Tip",
+      "important": "Important",
+      "warning": "Warning",
+      "caution": "Caution"
+    },
+    "done": "Done",
+    "notDone": "Not done",
+    "file": "File",
+    "imageUnavailable": "Image unavailable",
+    "imageUnavailableAlt": "Image unavailable: {alt}",
+    "plainText": "Plain text"
+  },
+  "mentions": {
+    "mentionQuery": "Mention \"{query}\"",
+    "mentionAgent": "Mention agent",
+    "everyone": "Everyone in this group"
+  },
+  "richText": {
+    "showLess": "Show less",
+    "showMore": "Show more"
+  },
+  "reasoning": {
+    "hide": "Hide reasoning",
+    "show": "Show reasoning",
+    "loading": "Loading reasoning…",
+    "loadFailed": "Could not load reasoning",
+    "none": "No reasoning was recorded for this message."
+  },
+  "modelSelect": {
+    "notSet": "Not set — uses provider default",
+    "unavailable": "(unavailable)",
+    "search": "Search models…",
+    "currentUnavailable": "Current: {label} — disabled or missing from pricing",
+    "noMatches": "No active models match"
+  },
+  "updatePanel": {
+    "checkFailed": "Failed to check for updates",
+    "confirm": "Update EmperorClaw from v{current} to v{latest}? This will restart the server.",
+    "failed": "Update failed. Check steps below.",
+    "requestFailed": "Update request failed. The server may be restarting.",
+    "steps": {
+      "git-fetch": "Pulling latest code",
+      "npm-install": "Installing dependencies",
+      "db-migrate": "Running database migrations",
+      "npm-build": "Building application",
+      "copy-static": "Copying static assets",
+      "pm2-restart": "Restarting server",
+      "find-container": "Locating container",
+      "inspect-container": "Capturing configuration",
+      "pull-image": "Pulling latest image",
+      "create-container": "Creating replacement container",
+      "stop-old": "Stopping old container",
+      "start-new": "Starting new container",
+      "docker-socket": "Docker socket check"
+    },
+    "title": "EmperorClaw Update",
+    "available": "v{current} → v{latest} available",
+    "upToDate": "v{current} — up to date",
+    "checking": "Checking...",
+    "check": "Check",
+    "update": "Update"
+  },
+  "runTimeline": {
+    "noSteps": "No steps recorded.",
+    "steps": "Run steps",
+    "failed": "failed",
+    "usage": {
+      "in": "{tokens} in",
+      "out": "{tokens} out",
+      "cached": "{tokens} cached",
+      "cachedHit": "{tokens} cached ({hit}%)",
+      "context": "{percent}% context"
+    },
+    "timing": {
+      "queued": "queued {duration}",
+      "firstToken": "first token {duration}",
+      "exit": "exit: {reason}"
+    },
+    "notFound": "Run not found",
+    "loadFailed": "Could not load steps",
+    "loading": "Loading steps…",
+    "private": "Steps are private to this chat's participants.",
+    "noStepsBridge": "No steps recorded. Bridge 0.9 and later stream steps.",
+    "dropped": "{count} minor steps were not kept.",
+    "openOnTask": "Open this run on its task",
+    "hideSteps": "Hide steps",
+    "stepsToggle": "Steps",
+    "stepsCount": "Steps ({count})",
+    "noStepsYet": "No steps yet.",
+    "thinkingLine": "Thinking · {summary}",
+    "rows": {
+      "thinking": "Thinking",
+      "note": "Note",
+      "tidyingMemory": "Tidying memory",
+      "memoryTidied": "Memory tidied",
+      "delegating": "Delegating",
+      "subagentFinished": "Subagent finished",
+      "autoApproved": "Auto-approved",
+      "bestJudgment": "Proceeded with best judgment",
+      "failed": "Failed",
+      "stopped": "Stopped"
+    }
+  },
+  "teamChat": {
+    "today": "Today",
+    "yesterday": "Yesterday",
+    "sendFailed": "Message could not be sent — your draft was kept. Please try again.",
+    "unknownAgent": "Unknown Agent",
+    "title": "Team Channel",
+    "typingOne": "{name} is typing…",
+    "online": "{count, plural, one {# agent online} other {# agents online}}",
+    "thread": "Team Thread",
+    "close": "Close",
+    "you": "You",
+    "typing": "{count, plural, one {{names} is typing…} other {{names} are typing…}}",
+    "mention": "Mention an agent",
+    "placeholder": "Message Team Channel…",
+    "teamPlaceholder": "Message the team… (@ to mention)",
+    "uploadFailed": "Upload failed",
+    "system": "System",
+    "namesAnd": "{names} and {last}",
+    "groupChat": "Group chat",
+    "agentTeamChat": "Agent Team Chat",
+    "newCount": "{count} new",
+    "offline": "{count, plural, one {# agent offline} other {# agents offline}}",
+    "liveFeed": "Live Feed",
+    "jumpToLatest": "{count, plural, one {# new message} other {# new messages}} · Jump to latest",
+    "emptyGroup": "No messages yet. @mention a member to get their reply.",
+    "emptyTeam": "No communications yet.",
+    "loading": "Loading...",
+    "loadOlder": "Load older messages",
+    "member": "Member",
+    "resume": "Resume",
+    "readBy": "Read by {name}",
+    "readByCount": "Read by {count} agents",
+    "queued": "Agent offline — message queued",
+    "waiting": "Waiting for agent...",
+    "areWorking": "are working",
+    "isWorking": "is working",
+    "workingOnMessage": "Working on your message",
+    "attachFiles": "Attach files",
+    "send": "Send message",
+    "sendHint": "Enter to send · Shift+Enter for a new line",
+    "readOnly": "Read-only preview — open Team Channel to participate",
+    "sections": {
+      "update": "Update",
+      "evidence": "Evidence",
+      "next": "Next"
+    }
+  },
+  "failures": {
+    "headlines": {
+      "provider_credits": "LLM provider is out of credits",
+      "provider_auth": "The model provider rejected the API key",
+      "rate_limited": "Rate limited by the model provider",
+      "model_unavailable": "This model isn't available",
+      "provider_unreachable": "Can't reach the model provider",
+      "budget": "Budget limit reached",
+      "runtime_offline": "Agent runtime is offline",
+      "scope_denied": "Agent needs access to this project",
+      "unknown": "Run failed",
+      "stalledTimedOut": "No progress before it timed out",
+      "stalledMinutes": "No progress for {count} min",
+      "stalledHours": "No progress for {count} h"
+    },
+    "fixes": {
+      "openProviderSettings": "Open provider settings",
+      "updateKey": "Update key",
+      "raiseBudget": "Raise budget",
+      "openAgentScope": "Open agent scope",
+      "chooseModel": "Choose a model",
+      "checkProviderSettings": "Check provider settings",
+      "reconnectRuntime": "Reconnect runtime",
+      "retry": "Retry",
+      "nudge": "Nudge"
+    },
+    "trouble": {
+      "provider_unreachable": "model unreachable",
+      "provider_auth": "model key rejected",
+      "provider_credits": "provider out of credits",
+      "model_unavailable": "model unavailable",
+      "rate_limited": "rate limited",
+      "other": "model failing"
+    }
+  },
+  "runStatus": {
+    "succeeded": "Succeeded",
+    "failed": "Failed",
+    "timeout": "Timed out",
+    "cancelled": "Cancelled",
+    "blocked": "Blocked",
+    "lost": "Lost",
+    "running": "Running"
+  },
+  "apiErrors": {
+    "internal": "Something went wrong on the server. Try again.",
+    "unauthorized": "You're not signed in.",
+    "signInRequired": "Sign in to continue.",
+    "forbidden": "You don't have permission to do that.",
+    "noMembership": "You're not a member of this workspace.",
+    "notFound": "Not found.",
+    "jsonBodyRequired": "The request was empty or malformed.",
+    "validationFailed": "Some fields are not valid.",
+    "rateLimited": "Too many requests. Wait a moment and try again.",
+    "agentNotFound": "Agent not found.",
+    "taskNotFound": "Task not found.",
+    "projectNotFound": "Project not found.",
+    "folderNotFound": "Folder not found.",
+    "artifactNotFound": "File not found.",
+    "customerNotFound": "Customer not found.",
+    "viewNotFound": "View not found.",
+    "resourceNotFound": "Not found.",
+    "memberNotFound": "Member not found.",
+    "companyNotFound": "Workspace not found.",
+    "approvalNotFound": "Approval not found.",
+    "authFieldsRequired": "Enter your email and password.",
+    "missingFields": "Some required fields are missing.",
+    "emailRequired": "Enter your email address.",
+    "invalidEmail": "Enter a valid email address.",
+    "emailInUse": "An account with this email already exists.",
+    "passwordLength": "Password must be between 8 and 128 characters.",
+    "passwordTooShort": "Password must be at least 8 characters.",
+    "companyNameRequired": "Enter a company name.",
+    "companyNameLength": "Company name must be between 2 and 120 characters.",
+    "betaDisclaimerRequired": "Acknowledge the beta data disclaimer to create a workspace.",
+    "inviteOnly": "This instance is invite-only. Ask your administrator for an invitation.",
+    "noCompany": "No workspace found. Contact your administrator.",
+    "inviteExpired": "This invitation has expired. Ask your administrator for a new one.",
+    "inviteConsumed": "This invitation has already been used.",
+    "inviteInvalid": "This invitation is invalid or has expired.",
+    "inviteEmailMismatch": "This invitation is for a different email address.",
+    "verificationIncomplete": "This verification link is incomplete.",
+    "verificationInvalid": "This verification link is invalid or expired.",
+    "resetInvalid": "This reset request is invalid.",
+    "resetLinkExpired": "This reset link has expired or is invalid."
+  },
+  "email": {
+    "greeting": "Hello {email},",
+    "linkFallback": "If the button does not work, copy and paste this link into your browser:",
+    "welcome": {
+      "preheader": "Your Emperor Claw workspace is ready.",
+      "eyebrow": "Workspace Ready",
+      "title": "Welcome to Emperor Claw",
+      "intro": "Your control plane is ready. You can now log in and start operating agents inside your workspace.",
+      "thanks": "Thanks for joining Emperor Claw. This workspace gives your OpenClaw agents durable coordination, scoped resources, and operational state inside a shared company environment.",
+      "start": "Start by logging in, connecting your first agents, and reviewing the setup guide before you rely on the workspace for production-critical operations.",
+      "footnote": "Beta software. Emperor Claw is provided as-is without warranties or guarantees of safety, retention, recovery, availability, or fitness for any purpose. You remain responsible for what you store and operate in the workspace."
+    },
+    "verification": {
+      "subject": "Verify your Emperor Claw email",
+      "preheader": "Verify your email to activate your Emperor Claw workspace.",
+      "eyebrow": "Email Verification",
+      "title": "Confirm your email address",
+      "intro": "Verify this address to activate your workspace and finish signup.",
+      "created": "A new Emperor Claw workspace was created for {company}. Confirm this email address to activate access.",
+      "beforeTitle": "Before you continue",
+      "beforeBody": "Emperor Claw is in beta. We do not guarantee safety, retention, recovery, uninterrupted availability, or suitability for regulated or business-critical workloads.",
+      "noSecrets": "Do not store secrets, regulated data, production-only credentials, or any information you cannot afford to expose, lose, or recreate.",
+      "expiry": "This verification link expires in 24 hours. If you did not initiate this signup, you can ignore this email.",
+      "cta": "Verify Email",
+      "footnote": "By activating the workspace, you acknowledge that Emperor Claw is beta software provided as-is and that you remain responsible for how it is used and what data is stored inside it.",
+      "yourCompany": "your company"
+    },
+    "passwordReset": {
+      "subject": "Reset your Emperor Claw Password",
+      "preheader": "Reset your Emperor Claw password.",
+      "eyebrow": "Account Security",
+      "title": "Reset your password",
+      "intro": "Use the secure link below to choose a new password for your Emperor Claw account.",
+      "received": "We received a request to reset the password for this account. If that was you, use the link below to set a new password.",
+      "ignore": "If you did not request a reset, you can ignore this message. Your existing password will remain unchanged.",
+      "cta": "Reset Password",
+      "footnote": "For your protection, password reset links expire automatically and active browser sessions are revoked after a successful password change."
+    },
+    "invitation": {
+      "subject": "You're invited to join {company} on Emperor Claw",
+      "invited": "You've been invited to join {company} as a {role}.",
+      "accept": "Click here to accept the invitation",
+      "expires": "This invitation expires on {date, date, long}.",
+      "theWorkspace": "the workspace"
+    },
+    "notification": {
+      "open": "Open in EmperorClaw",
+      "footer": "You can change which notifications you get by email in Settings → Notifications."
     }
   }
 }

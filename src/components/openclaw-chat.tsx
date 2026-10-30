@@ -9,6 +9,7 @@ import { agentAvatarSrc } from "@/lib/avatar";
 import { cn } from "@/lib/utils";
 import { useLivePoll } from "@/lib/use-realtime";
 import { toast } from "sonner";
+import { useFormatter, useTranslations } from "next-intl";
 
 const CHAT_PAGE_SIZE = 25;
 
@@ -52,17 +53,24 @@ function isGroupContinuation(
     return (new Date(curr.createdAt).getTime() - new Date(prev.createdAt).getTime()) < 5 * 60 * 1000;
 }
 
-function dateSeparatorLabel(date: string | Date) {
-    const d = new Date(date);
-    const today = new Date();
-    const yesterday = new Date(today);
-    yesterday.setDate(today.getDate() - 1);
-    if (isSameDay(d, today)) return "Today";
-    if (isSameDay(d, yesterday)) return "Yesterday";
-    return d.toLocaleDateString([], { month: "short", day: "numeric" });
+/** "Today", "Yesterday" or "Oct 29", in the viewer's language. */
+function useDateSeparatorLabel() {
+    const t = useTranslations("teamChat");
+    const format = useFormatter();
+    return (date: string | Date) => {
+        const d = new Date(date);
+        const today = new Date();
+        const yesterday = new Date(today);
+        yesterday.setDate(today.getDate() - 1);
+        if (isSameDay(d, today)) return t("today");
+        if (isSameDay(d, yesterday)) return t("yesterday");
+        return format.dateTime(d, { month: "short", day: "numeric" });
+    };
 }
 
 export function OpenClawChat() {
+    const t = useTranslations("teamChat");
+    const dateSeparatorLabel = useDateSeparatorLabel();
     const pathname = usePathname();
     const [isOpen, setIsOpen] = useState(false);
     const [message, setMessage] = useState("");
@@ -267,11 +275,11 @@ export function OpenClawChat() {
                         ? data.message.createdAt : prevLast;
                 });
             } else {
-                toast.error("Message could not be sent — your draft was kept. Please try again.");
+                toast.error(t("sendFailed"));
             }
         } catch (err) {
             console.error("Failed to send message", err);
-            toast.error("Message could not be sent — your draft was kept. Please try again.");
+            toast.error(t("sendFailed"));
         }
     };
 
@@ -283,7 +291,7 @@ export function OpenClawChat() {
     const getAgentName = (id?: string | null) => {
         if (!id) return "OpenClaw System";
         const agent = agents.find(a => a.id === id);
-        return agent ? agent.name : "Unknown Agent";
+        return agent ? agent.name : t("unknownAgent");
     };
 
     // Compute typing agents
@@ -324,7 +332,7 @@ export function OpenClawChat() {
                     {/* Header */}
                     <div className="flex items-center justify-between px-4 py-3 border-b border-zinc-800 bg-zinc-900/60 shrink-0">
                         <div className="flex flex-col">
-                            <span className="text-sm font-semibold text-zinc-100 leading-tight">Team Channel</span>
+                            <span className="text-sm font-semibold text-zinc-100 leading-tight">{t("title")}</span>
                             {typingNames.length > 0 ? (
                                 <span className="text-[10px] text-cyan-400 flex items-center gap-1">
                                     <span className="flex gap-0.5">
@@ -332,19 +340,19 @@ export function OpenClawChat() {
                                         <span className="w-1 h-1 rounded-full bg-cyan-400 animate-bounce [animation-delay:-0.15s]" />
                                         <span className="w-1 h-1 rounded-full bg-cyan-400 animate-bounce" />
                                     </span>
-                                    {typingNames[0]} is typing…
+                                    {t("typingOne", { name: typingNames[0] })}
                                 </span>
                             ) : (
                                 <span className="text-[10px] text-zinc-500 flex items-center gap-1.5">
                                     <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
-                                    {onlineAgentCount > 0 ? `${onlineAgentCount} agent${onlineAgentCount !== 1 ? "s" : ""} online` : "Team Thread"}
+                                    {onlineAgentCount > 0 ? t("online", { count: onlineAgentCount }) : t("thread")}
                                 </span>
                             )}
                         </div>
                         <button
                             onClick={() => setIsOpen(false)}
                             className="w-7 h-7 flex items-center justify-center rounded-lg hover:bg-zinc-800 text-zinc-500 hover:text-zinc-300 transition-colors text-lg leading-none"
-                            aria-label="Close"
+                            aria-label={t("close")}
                         >
                             ×
                         </button>
@@ -379,7 +387,7 @@ export function OpenClawChat() {
                                         <div className={cn("flex justify-end", isContinuation ? "mt-0.5" : "mt-3")}>
                                             <div className="flex min-w-0 max-w-[80%] flex-col items-end">
                                                 {!isContinuation && (
-                                                    <span className="text-[10px] font-medium text-zinc-500 mb-1 mr-1">You</span>
+                                                    <span className="text-[10px] font-medium text-zinc-500 mb-1 mr-1">{t("you")}</span>
                                                 )}
                                                 <div className={cn(
                                                     "min-w-0 max-w-full px-3.5 py-2 text-sm bg-cyan-500 text-white rounded-2xl",
@@ -438,7 +446,7 @@ export function OpenClawChat() {
                                 <div className="w-1 h-1 rounded-full bg-cyan-500 animate-bounce" />
                             </div>
                             <span className="text-[10px] text-zinc-400 font-bold uppercase tracking-wider">
-                                {typingNames.join(', ')} {typingNames.length > 1 ? 'are' : 'is'} typing…
+                                {t("typing", { names: typingNames.join(', '), count: typingNames.length })}
                             </span>
                         </div>
                     )}
@@ -451,7 +459,7 @@ export function OpenClawChat() {
                                 handleTyping(message.trimEnd() ? `${message.trimEnd()} @` : "@");
                                 requestAnimationFrame(() => textareaRef.current?.focus());
                             }}
-                            title="Mention an agent"
+                            title={t("mention")}
                             className="w-9 h-9 shrink-0 flex items-center justify-center rounded-xl bg-zinc-800 border border-zinc-700 hover:border-cyan-500/50 hover:text-cyan-400 text-zinc-500 transition-colors"
                         >
                             <IconAt className="w-4 h-4" />
@@ -463,7 +471,7 @@ export function OpenClawChat() {
                             onValueChange={handleTyping}
                             agents={agents}
                             onSubmit={sendMessage}
-                            placeholder="Message Team Channel…"
+                            placeholder={t("placeholder")}
                             rows={1}
                             className="w-full resize-none bg-zinc-900 border border-zinc-800 rounded-xl px-3 py-2 text-sm text-zinc-200 placeholder:text-zinc-600 focus:outline-none focus:ring-1 focus:ring-cyan-500 max-h-24 overflow-y-auto"
                             style={{ minHeight: "2.25rem" }}

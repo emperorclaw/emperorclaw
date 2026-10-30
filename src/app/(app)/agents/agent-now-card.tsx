@@ -13,6 +13,7 @@ import { taskHref } from "@/lib/task-story";
 import { describeFailure, fixAudience } from "@/lib/failure-cause";
 import { useViewerPermissions } from "@/lib/use-viewer-permissions";
 import { FailureFixButton } from "@/components/failure-fix";
+import { useCopy } from "@/lib/i18n/use-copy";
 
 /** Labelled by agents.now.states.<state>. */
 const STATE_PILL: Record<AgentNow["state"], { className: string }> = {
@@ -157,6 +158,7 @@ export function AgentNowCard({ now }: { now: AgentNow | undefined }) {
 /** A failed last run: one plain cause and, for those allowed, one fix. */
 function LastRunFailure({ agentId, lastRun }: { agentId: string; lastRun: NonNullable<AgentNow["lastRun"]> }) {
     const permissions = useViewerPermissions();
+    const render = useCopy();
     const failure = describeFailure(
         { texts: [lastRun.error, lastRun.exitReason], runStatus: lastRun.status },
         { audience: fixAudience({ canAct: permissions.canWrite, isOwnerOrAdmin: permissions.canAdmin }), agentId, failedAt: lastRun.endedAt ?? lastRun.startedAt },
@@ -164,7 +166,7 @@ function LastRunFailure({ agentId, lastRun }: { agentId: string; lastRun: NonNul
     return (
         <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
             <p className="min-w-0 flex-1 text-xs text-rose-400 line-clamp-2">
-                {failure.headline}{failure.detail && <span className="text-rose-400/70">: {failure.detail}</span>}
+                {render(failure.headlineCopy, failure.headline)}{failure.detail && <span className="text-rose-400/70">: {failure.detail}</span>}
             </p>
             {failure.fix && (
                 <FailureFixButton fix={failure.fix} className="inline-flex h-11 shrink-0 items-center gap-1.5 rounded-lg border border-cyan-400/30 bg-cyan-400/10 px-3 text-xs font-medium text-cyan-100 transition-colors hover:bg-cyan-400/20 disabled:cursor-not-allowed disabled:opacity-50 sm:h-8" />

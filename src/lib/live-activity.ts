@@ -12,6 +12,7 @@
 
 import type { RunLive, RunLiveUsage, RunStep } from "@/lib/run-events";
 import { formatRunDuration, formatTokenCount } from "@/lib/run-ledger-copy";
+import { copy, type CodedCopy } from "@/lib/coded-copy";
 
 /** How long the last known activity line stays visible after a missed refresh. */
 export const LIVE_ACTIVITY_HOLD_MS = 20_000;
@@ -162,6 +163,19 @@ export function lastReasoningLine(run: Pick<RunLive, "steps" | "current">): stri
     return null;
 }
 
+/** lastReasoningLine as coded copy (runTimeline.thinkingLine), for the viewer's language. */
+export function lastReasoningCopy(run: Pick<RunLive, "steps" | "current">): CodedCopy | null {
+    if (run.current.kind === "reasoning") return null;
+    for (let i = run.steps.length - 1; i >= 0; i--) {
+        const step = run.steps[i];
+        if (step.kind === "reasoning" && step.summary) {
+            const summary = clipActivity(step.summary, LIVE_ACTIVITY_MAX_CHARS - "Thinking · ".length);
+            return summary ? copy("runTimeline.thinkingLine", { summary }) : null;
+        }
+    }
+    return null;
+}
+
 /**
  * The part of an activity line worth announcing to a screen reader: the step
  * itself ("Thinking", "Running write_file", "write_file done"), without the
@@ -197,11 +211,15 @@ export interface TimelineRow {
     key: string;
     kind: TimelineRowKind;
     label: string;
+    /** The label as coded copy (runTimeline.rows.*); tool rows show the tool name and have none. */
+    labelCopy?: CodedCopy;
     detail: string | null;
     status: TimelineRowStatus;
     durationMs: number | null;
     ts: string;
 }
+
+const row = (key: string) => copy(`runTimeline.rows.${key}`);
 
 function rowStatus(status: string | undefined, fallback: TimelineRowStatus): TimelineRowStatus {
     if (status === "ok" || status === "error" || status === "interrupted" || status === "running") return status;
@@ -258,41 +276,41 @@ export function timelineRows(steps: readonly TimelineStep[]): TimelineRow[] {
                 break;
             }
             case "reasoning":
-                rows.push({ ...base, kind: "reasoning", label: "Thinking", status: "info", durationMs: null });
+                rows.push({ ...base, kind: "reasoning", label: "Thinking", labelCopy: row("thinking"), status: "info", durationMs: null });
                 break;
             case "notice":
-                rows.push({ ...base, kind: "notice", label: "Note", status: "info", durationMs: null });
+                rows.push({ ...base, kind: "notice", label: "Note", labelCopy: row("note"), status: "info", durationMs: null });
                 break;
             case "compaction.start":
-                rows.push({ ...base, kind: "compaction", label: "Tidying memory", detail: null, status: "running", durationMs: null });
+                rows.push({ ...base, kind: "compaction", label: "Tidying memory", labelCopy: row("tidyingMemory"), detail: null, status: "running", durationMs: null });
                 break;
             case "compaction.end": {
                 let open = -1;
                 for (let i = rows.length - 1; i >= 0; i--) {
                     if (rows[i].kind === "compaction" && rows[i].status === "running") { open = i; break; }
                 }
-                const done = { label: "Memory tidied", status: rowStatus(step.status, "ok"), durationMs: base.durationMs };
+                const done = { label: "Memory tidied", labelCopy: row("memoryTidied"), status: rowStatus(step.status, "ok"), durationMs: base.durationMs };
                 if (open >= 0) rows[open] = { ...rows[open], ...done };
                 else rows.push({ ...base, kind: "compaction", detail: null, ...done });
                 break;
             }
             case "subagent.start":
-                rows.push({ ...base, kind: "subagent", label: "Delegating", status: "running" });
+                rows.push({ ...base, kind: "subagent", label: "Delegating", labelCopy: row("delegating"), status: "running" });
                 break;
             case "subagent.end":
-                rows.push({ ...base, kind: "subagent", label: "Subagent finished", status: rowStatus(step.status, "ok") });
+                rows.push({ ...base, kind: "subagent", label: "Subagent finished", labelCopy: row("subagentFinished"), status: rowStatus(step.status, "ok") });
                 break;
             case "approval.auto":
-                rows.push({ ...base, kind: "approval", label: "Auto-approved", status: "info", durationMs: null });
+                rows.push({ ...base, kind: "approval", label: "Auto-approved", labelCopy: row("autoApproved"), status: "info", durationMs: null });
                 break;
             case "clarify.auto":
-                rows.push({ ...base, kind: "approval", label: "Proceeded with best judgment", status: "info", durationMs: null });
+                rows.push({ ...base, kind: "approval", label: "Proceeded with best judgment", labelCopy: row("bestJudgment"), status: "info", durationMs: null });
                 break;
             case "turn.failed":
-                rows.push({ ...base, kind: "end", label: "Failed", status: "error" });
+                rows.push({ ...base, kind: "end", label: "Failed", labelCopy: row("failed"), status: "error" });
                 break;
             case "turn.interrupted":
-                rows.push({ ...base, kind: "end", label: "Stopped", status: "interrupted" });
+                rows.push({ ...base, kind: "end", label: "Stopped", labelCopy: row("stopped"), status: "interrupted" });
                 break;
             default:
                 break;

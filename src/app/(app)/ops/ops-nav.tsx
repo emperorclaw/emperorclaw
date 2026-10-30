@@ -2,17 +2,19 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { useTranslations } from "next-intl";
 
 const OPS_LINKS = [
-    { href: "/ops", label: "Overview" },
-    { href: "/ops/users", label: "Users" },
-    { href: "/ops/companies", label: "Companies" },
-    { href: "/ops/errors", label: "Errors" },
-    { href: "/ops/runtimes", label: "Runtimes" },
-    { href: "/ops/storage", label: "Storage" },
-];
+    { href: "/ops", id: "overview" },
+    { href: "/ops/users", id: "users" },
+    { href: "/ops/companies", id: "companies" },
+    { href: "/ops/errors", id: "errors" },
+    { href: "/ops/runtimes", id: "runtimes" },
+    { href: "/ops/storage", id: "storage" },
+] as const;
 
 export function OpsNav() {
+    const t = useTranslations("ops.nav");
     const pathname = usePathname();
 
     return (
@@ -29,7 +31,7 @@ export function OpsNav() {
                                 : "border-zinc-800 bg-zinc-900/50 text-zinc-400 hover:border-zinc-700 hover:text-zinc-200"
                         }`}
                     >
-                        {link.label}
+                        {t(link.id)}
                     </Link>
                 );
             })}

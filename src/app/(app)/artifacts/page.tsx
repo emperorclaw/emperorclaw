@@ -4,6 +4,7 @@ import { db } from "@/db";
 import { projects, tasks, companyMembers, customers } from "@/db/schema";
 import { eq, and, isNull, inArray } from "drizzle-orm";
 import { redirect } from "next/navigation";
+import { getTranslations } from "next-intl/server";
 import ArtifactsManager from "./artifacts-manager";
 
 export const dynamic = "force-dynamic";
@@ -20,7 +21,8 @@ export default async function ArtifactsPage() {
         .limit(1);
 
     if (!membership) {
-        return <div className="p-8 text-zinc-400">Company not found.</div>;
+        const t = await getTranslations("common");
+        return <div className="p-8 text-zinc-400">{t("companyNotFound")}</div>;
     }
 
     const companyId = membership.companyId;

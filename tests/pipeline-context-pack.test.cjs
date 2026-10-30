@@ -70,8 +70,10 @@ test("Pipeline MCP APIs accept context rules and run context source snapshots", 
 
 test("Pipelines UI and docs explain Context Pack without pretending Emperor executes pipelines", () => {
   const ui = read("src/app/(app)/pipelines/pipelines-client.tsx");
+  // The page's copy lives in messages/en.json (i18n).
+  const uiCopy = `${ui}\n${read("messages/en.json")}`;
   ["Context Pack", "Sources used", "Evidence produced", "contextSourceIds", "contextSnapshot"].forEach((needle) => {
-    assertContains(ui, needle, `Pipelines UI should show ${needle}`);
+    assertContains(uiCopy, needle, `Pipelines UI should show ${needle}`);
   });
   assert.equal(ui.includes("Chain of thought"), false, "Pipelines UI should not expose internal chain-of-thought language");
 
@@ -92,7 +94,8 @@ test("Pipelines page is a documentation workspace with React Flow visual map", (
   const route = read("src/app/api/pipelines/[id]/route.ts");
   assertContains(route, "export async function DELETE", "Pipelines UI delete action should have a working API route");
 
-  const ui = read("src/app/(app)/pipelines/pipelines-client.tsx");
+  // The page's copy lives in messages/en.json (i18n).
+  const ui = `${read("src/app/(app)/pipelines/pipelines-client.tsx")}\n${read("messages/en.json")}`;
   [
     "@xyflow/react",
     "PipelineFlowMap",

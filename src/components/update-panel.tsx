@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { IconRefresh, IconLoader2, IconCircleCheck, IconAlertTriangle } from "@tabler/icons-react";
+import { useTranslations } from "next-intl";
 import { Button } from "@/components/ui/button";
 
 type VersionInfo = {
@@ -19,7 +20,12 @@ type UpdateStep = {
     output: string;
 };
 
+/** The runtime's name: never translated. */
+const DOCKER = "Docker";
+const UPDATE_STEPS = new Set(["git-fetch", "npm-install", "db-migrate", "npm-build", "copy-static", "pm2-restart", "find-container", "inspect-container", "pull-image", "create-container", "stop-old", "start-new", "docker-socket"]);
+
 export function UpdatePanel() {
+    const t = useTranslations("updatePanel");
     const [version, setVersion] = useState<VersionInfo | null>(null);
     const [checking, setChecking] = useState(false);
     const [updating, setUpdating] = useState(false);
@@ -34,7 +40,7 @@ export function UpdatePanel() {
             const data = await res.json();
             setVersion(data);
         } catch {
-            setError("Failed to check for updates");
+            setError(t("checkFailed"));
         } finally {
             setChecking(false);
         }
@@ -45,7 +51,7 @@ export function UpdatePanel() {
     }, []);
 
     const handleUpdate = async () => {
-        if (!confirm(`Update EmperorClaw from v${version?.current} to v${version?.latest}? This will restart the server.`)) return;
+        if (!confirm(t("confirm", { current: version?.current ?? "", latest: version?.latest ?? "" }))) return;
 
         setUpdating(true);
         setSteps([]);
@@ -61,34 +67,17 @@ export function UpdatePanel() {
                 setTimeout(() => checkVersion(), 3000);
             } else {
                 setSteps(data.steps || []);
-                setError("Update failed. Check steps below.");
+                setError(t("failed"));
             }
         } catch {
-            setError("Update request failed. The server may be restarting.");
+            setError(t("requestFailed"));
             setTimeout(() => checkVersion(), 5000);
         } finally {
             setUpdating(false);
         }
     };
 
-    const stepLabel = (step: string) => {
-        const map: Record<string, string> = {
-            "git-fetch": "Pulling latest code",
-            "npm-install": "Installing dependencies",
-            "db-migrate": "Running database migrations",
-            "npm-build": "Building application",
-            "copy-static": "Copying static assets",
-            "pm2-restart": "Restarting server",
-            "find-container": "Locating container",
-            "inspect-container": "Capturing configuration",
-            "pull-image": "Pulling latest image",
-            "create-container": "Creating replacement container",
-            "stop-old": "Stopping old container",
-            "start-new": "Starting new container",
-            "docker-socket": "Docker socket check",
-        };
-        return map[step] || step;
-    };
+    const stepLabel = (step: string) => (UPDATE_STEPS.has(step) ? t(`steps.${step as "git-fetch"}`) : step);
 
     const isDocker = version?.mode === "docker";
 
@@ -96,15 +85,15 @@ export function UpdatePanel() {
         <div className="rounded-xl border border-border bg-card p-5 force-dark">
             <div className="flex items-center justify-between mb-3">
                 <div>
-                    <h3 className="text-sm font-semibold text-foreground">EmperorClaw Update</h3>
+                    <h3 className="text-sm font-semibold text-foreground">{t("title")}</h3>
                     <p className="text-xs text-muted-foreground mt-0.5">
                         {version
                             ? version.updateAvailable
-                                ? `v${version.current} → v${version.latest} available`
-                                : `v${version.current} — up to date`
-                            : "Checking..."}
+                                ? t("available", { current: version.current, latest: version.latest })
+                                : t("upToDate", { current: version.current })
+                            : t("checking")}
                         {isDocker && (
-                            <span className="text-zinc-600 ml-1">· Docker</span>
+                            <span className="text-zinc-600 ml-1">{`· ${DOCKER}`}</span>
                         )}
                     </p>
                 </div>
@@ -117,7 +106,7 @@ export function UpdatePanel() {
                         className="h-7 text-xs border-zinc-700 text-zinc-400 hover:text-zinc-200"
                     >
                         <IconRefresh className={`h-3 w-3 ${checking ? "animate-spin" : ""}`} />
-                        Check
+                        {t("check")}
                     </Button>
                     {version?.updateAvailable && (
                         <Button
@@ -129,7 +118,7 @@ export function UpdatePanel() {
                             {updating ? (
                                 <IconLoader2 className="h-3 w-3 animate-spin" />
                             ) : (
-                                "Update"
+                                t("update")
                             )}
                         </Button>
                     )}

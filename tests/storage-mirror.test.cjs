@@ -33,7 +33,8 @@ test("Drive setup documents a dedicated OAuth client and avoids filesystem metad
 });
 
 test("untracked Drive files are promoted explicitly instead of entering artifact APIs", () => {
-    const manager = fs.readFileSync(path.join(root, "src/app/(app)/artifacts/artifacts-manager.tsx"), "utf8");
+    // The page's copy lives in messages/en.json (i18n).
+    const manager = `${fs.readFileSync(path.join(root, "src/app/(app)/artifacts/artifacts-manager.tsx"), "utf8")}\n${fs.readFileSync(path.join(root, "messages/en.json"), "utf8")}`;
     const contentsRoute = fs.readFileSync(path.join(root, "src/app/api/ui/folders/contents/route.ts"), "utf8");
     assert.match(manager, /Missing metadata/);
     assert.match(manager, /api\/ui\/artifacts\/finalize/);

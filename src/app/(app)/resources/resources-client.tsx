@@ -13,6 +13,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { cn } from "@/lib/utils";
 import { useIsDarkTheme } from "@/lib/use-is-dark-theme";
 import { toast } from "sonner";
+import { useTranslations } from "next-intl";
 
 const ForceGraph2D = dynamic(() => import("react-force-graph-2d"), { ssr: false });
 const MarkdownLiveEditor = dynamic(() => import("@/components/markdown-live-editor").then((mod) => mod.MarkdownLiveEditor), { ssr: false });
@@ -46,10 +47,11 @@ type KnowledgeInjectMode = "always" | "index" | "on_request";
 /** Must match KNOWLEDGE_ALWAYS_MAX_CHARS on the server. */
 const ALWAYS_BUDGET_CHARS = 1500;
 
-const INJECT_OPTIONS: { value: KnowledgeInjectMode; label: string; hint: string }[] = [
-  { value: "always", label: "Always", hint: "Push this note's body into every matching session. Always notes share a 1,500-character budget." },
-  { value: "index", label: "In index", hint: "Show a one-line summary in the agent's knowledge index; the body loads on demand." },
-  { value: "on_request", label: "On request", hint: "Keep the note out of the index; agents find it only by search or a direct fetch." },
+// Labels and hints: resources.inject.{value} in messages/*.json.
+const INJECT_OPTIONS: { value: KnowledgeInjectMode }[] = [
+  { value: "always" },
+  { value: "index" },
+  { value: "on_request" },
 ];
 
 /** The note's injection mode, falling back to the legacy isShared boolean. */
@@ -81,8 +83,11 @@ function slugifyResourceKey(value: string) {
   return value.trim().toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 80) || "untitled-note";
 }
 
-function scopeLabel(scopeType: string) {
-  return { company: "Company", customer: "Customer", project: "Project", agent: "Agent" }[scopeType] || scopeType;
+const SCOPE_TYPES = new Set(["company", "customer", "project", "agent"]);
+
+function useScopeLabel() {
+  const t = useTranslations("resources.scopes");
+  return (scopeType: string) => (SCOPE_TYPES.has(scopeType) ? t(scopeType as "company") : scopeType);
 }
 
 // A scope key uniquely identifies where a note (or folder) lives:
@@ -154,6 +159,8 @@ export default function ResourcesClient({
   projects: ScopeOption[];
   agents: ScopeOption[];
 }) {
+  const t = useTranslations("resources");
+  const scopeLabel = useScopeLabel();
   const [resources, setResources] = useState(initialResources);
   useEffect(() => {
     if (requestedResource && initialResources.some(resource => resource.id === requestedResource)) {
@@ -210,7 +217,7 @@ export default function ResourcesClient({
     if (selectedResource && draftInject === "always") used += draftContent.length;
     return { used, budget: ALWAYS_BUDGET_CHARS, over: used > ALWAYS_BUDGET_CHARS };
   }, [resources, selectedResourceId, selectedResource, draftInject, draftContent]);
-  const injectHint = INJECT_OPTIONS.find((option) => option.value === draftInject)?.hint ?? "";
+  const injectHint = t(`inject.${draftInject}.hint`);
 
   const filteredResources = useMemo(() => {
     const normalized = query.trim().toLowerCase();
@@ -230,10 +237,10 @@ export default function ResourcesClient({
     const projectNames = new Map(projects.map((project) => [project.id, project.name]));
     const agentNames = new Map(agents.map((agent) => [agent.id, agent.name]));
     const labelFor = (scopeType: string, scopeId: string | null) => {
-      if (scopeType === "company") return "Company";
-      if (scopeType === "customer") return customerNames.get(scopeId || "") || "Unknown customer";
-      if (scopeType === "project") return projectNames.get(scopeId || "") || "Unknown project";
-      if (scopeType === "agent") return agentNames.get(scopeId || "") || "Unknown agent";
+      if (scopeType === "company") return t("scopes.company");
+      if (scopeType === "customer") return customerNames.get(scopeId || "") || t("unknownCustomer");
+      if (scopeType === "project") return projectNames.get(scopeId || "") || t("unknownProject");
+      if (scopeType === "agent") return agentNames.get(scopeId || "") || t("unknownAgent");
       return scopeLabel(scopeType);
     };
 
@@ -272,7 +279,8 @@ export default function ResourcesClient({
       }
       return { ...group, tree, notesByFolder, rootNotes: notesByFolder.get("") || [] };
     }).sort((a, b) => rank(a.key) - rank(b.key) || a.label.localeCompare(b.label));
-  }, [agents, customers, filteredResources, pendingFolders, projects]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- scopeLabel only reads t
+  }, [agents, customers, filteredResources, pendingFolders, projects, t]);
 
   useEffect(() => {
     if (!selectedResource) return;
@@ -304,7 +312,7 @@ export default function ResourcesClient({
       });
     } catch (error) {
       console.error(error);
-      toast.error("Could not load related knowledge metadata");
+      toast.error(t("insightsFailed"));
     }
   }
 
@@ -339,7 +347,7 @@ export default function ResourcesClient({
 
   function createFolder() {
     const path = buildResourceChildPath(newFolderParentPath, newFolderName);
-    if (!path) return toast.error(newFolderName.includes("/") ? "Folder names cannot contain /" : "Enter a folder name");
+    if (!path) return toast.error(newFolderName.includes("/") ? t("folder.noSlash") : t("folder.enterName"));
     const scopeKey = newFolderScope || "company";
 
     // A folder only becomes real once a note lives in it; hold it (with its
@@ -356,7 +364,7 @@ export default function ResourcesClient({
     setNewFolderOpen(false);
     setNewFolderName("");
     setNewFolderParentPath("");
-    toast.success(`Folder ${path} ready — right-click it to add a note`);
+    toast.success(t("folder.ready", { path }));
   }
 
   async function renameFolder() {
@@ -371,7 +379,7 @@ export default function ResourcesClient({
       body: JSON.stringify({ fromPath, toPath, ...parseScopeKey(scopeKey) }),
     });
     const body = await response.json();
-    if (!response.ok) { setRenameFolderTarget(null); return toast.error(body.error || "Failed to rename folder"); }
+    if (!response.ok) { setRenameFolderTarget(null); return toast.error(body.error || t("folder.renameFailed")); }
 
     // Re-file only this scope's notes so the tree updates without a reload.
     setResources((current) => current.map((resource) => {
@@ -382,7 +390,7 @@ export default function ResourcesClient({
     }));
     setPendingFolders((current) => current.map((pf) => (pf.scopeKey === scopeKey && pf.path === fromPath ? { ...pf, path: toPath } : pf)));
     setRenameFolderTarget(null);
-    toast.success(`Renamed to ${toPath}${body.moved ? ` (${body.moved} notes moved)` : ""}`);
+    toast.success(body.moved ? t("folder.renamedMoved", { path: toPath, count: body.moved }) : t("folder.renamed", { path: toPath }));
   }
 
   async function deleteFolder() {
@@ -397,7 +405,7 @@ export default function ResourcesClient({
     if (noteCount === 0) {
       setPendingFolders((current) => current.filter((pf) => !(pf.scopeKey === scopeKey && inFolder(pf.path))));
       setDeleteFolderTarget(null);
-      toast.success(`Folder ${path} removed`);
+      toast.success(t("folder.removed", { path }));
       return;
     }
 
@@ -407,7 +415,7 @@ export default function ResourcesClient({
       body: JSON.stringify({ path, ...parseScopeKey(scopeKey) }),
     });
     const body = await response.json();
-    if (!response.ok) { setDeleteFolderTarget(null); return toast.error(body.error || "Failed to delete folder"); }
+    if (!response.ok) { setDeleteFolderTarget(null); return toast.error(body.error || t("folder.deleteFailed")); }
 
     setResources((current) => current.filter((resource) => {
       if (scopeKeyOf(resource.scopeType, resource.scopeType === "company" ? null : resource.scopeId) !== scopeKey) return true;
@@ -419,7 +427,7 @@ export default function ResourcesClient({
       setSelectedResourceId(null);
     }
     setDeleteFolderTarget(null);
-    toast.success(`Deleted folder ${path} (${body.deleted ?? noteCount} notes)`);
+    toast.success(t("folder.deleted", { path, count: body.deleted ?? noteCount }));
   }
 
   function renderNoteRow(note: ResourceRecord, depth: number): ReactNode {
@@ -433,16 +441,16 @@ export default function ResourcesClient({
           >
             <IconFileText className={cn("h-3.5 w-3.5 shrink-0", selectedResourceId === note.id ? "text-cyan-300" : "text-zinc-600 group-hover:text-zinc-400")} />
             <span className="min-w-0 flex-1 truncate">{note.displayName || note.name}</span>
-            {noteStatus(note.configText || "") === "draft" && <span className="rounded bg-amber-500/10 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wider text-amber-300">draft</span>}
-            {injectOf(note) !== "on_request" && <span className="h-1.5 w-1.5 rounded-full bg-cyan-400" title="Injected into agent context" />}
+            {noteStatus(note.configText || "") === "draft" && <span className="rounded bg-amber-500/10 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wider text-amber-300">{t("draftBadge")}</span>}
+            {injectOf(note) !== "on_request" && <span className="h-1.5 w-1.5 rounded-full bg-cyan-400" title={t("injected")} />}
           </button>
         </ContextMenuTrigger>
         <ContextMenuContent className="w-48 border-zinc-800 bg-zinc-950 text-zinc-100">
           <ContextMenuItem onClick={() => { setSelectedResourceId(note.id); setMobilePane("note"); }}>
-            <IconFileText className="h-3.5 w-3.5" /> Open
+            <IconFileText className="h-3.5 w-3.5" /> {t("open")}
           </ContextMenuItem>
           <ContextMenuItem variant="destructive" onClick={() => setDeleteDialogTarget(note)}>
-            <IconTrash className="h-3.5 w-3.5" /> Delete note
+            <IconTrash className="h-3.5 w-3.5" /> {t("deleteNote")}
           </ContextMenuItem>
         </ContextMenuContent>
       </ContextMenu>
@@ -474,16 +482,16 @@ export default function ResourcesClient({
           </ContextMenuTrigger>
           <ContextMenuContent className="w-52 border-zinc-800 bg-zinc-950 text-zinc-100">
             <ContextMenuItem onClick={() => createResource(group.key, node.path)}>
-              <IconPlus className="h-3.5 w-3.5" /> New note here
+              <IconPlus className="h-3.5 w-3.5" /> {t("newNoteHere")}
             </ContextMenuItem>
             <ContextMenuItem onClick={() => openNewFolderDialog(group.key, node.path)}>
-              <IconFolderPlus className="h-3.5 w-3.5" /> New subfolder
+              <IconFolderPlus className="h-3.5 w-3.5" /> {t("newSubfolder")}
             </ContextMenuItem>
             <ContextMenuItem onClick={() => { setRenameFolderTarget({ scopeKey: group.key, path: node.path }); setRenameFolderValue(node.path); }}>
-              <IconPencil className="h-3.5 w-3.5" /> Rename / move
+              <IconPencil className="h-3.5 w-3.5" /> {t("renameMove")}
             </ContextMenuItem>
             <ContextMenuItem variant="destructive" onClick={() => setDeleteFolderTarget({ scopeKey: group.key, path: node.path })}>
-              <IconTrash className="h-3.5 w-3.5" /> Delete folder
+              <IconTrash className="h-3.5 w-3.5" /> {t("deleteFolder")}
             </ContextMenuItem>
           </ContextMenuContent>
         </ContextMenu>
@@ -517,7 +525,7 @@ export default function ResourcesClient({
       }),
     });
     const body = await response.json();
-    if (!response.ok) return toast.error(body.error || "Failed to create rule");
+    if (!response.ok) return toast.error(body.error || t("createFailed"));
     setResources((current) => [body.resource, ...current]);
     setSelectedResourceId(body.resource.id);
     setMobilePane("note");
@@ -529,7 +537,7 @@ export default function ResourcesClient({
       [...resourcePathAncestors(cleanPath), cleanPath].forEach((p) => next.add(folderKey(scopeKey, p)));
       return next;
     });
-    toast.success("Knowledge rule created");
+    toast.success(t("created"));
   }
 
   async function createLinkedResource() {
@@ -550,11 +558,11 @@ export default function ResourcesClient({
       }),
     });
     const body = await response.json();
-    if (!response.ok) return toast.error(body.error || "Failed to create linked note");
+    if (!response.ok) return toast.error(body.error || t("linkedFailed"));
     setResources((current) => [body.resource, ...current]);
     setSelectedResourceId(body.resource.id);
     setMobilePane("note");
-    toast.success("Linked note created");
+    toast.success(t("linkedCreated"));
   }
 
   function selectAdjacentResource(direction: "previous" | "next") {
@@ -592,12 +600,12 @@ export default function ResourcesClient({
         }),
       });
       const body = await response.json();
-      if (!response.ok) throw new Error(body.error || "Failed to save rule");
+      if (!response.ok) throw new Error(body.error || t("saveFailed"));
       setResources((current) => current.map((resource) => resource.id === selectedResource.id ? { ...resource, ...body.resource } : resource));
       await loadBrainInsights(selectedResource.id);
-      toast.success("Knowledge rule saved");
+      toast.success(t("saved"));
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Failed to save rule");
+      toast.error(error instanceof Error ? error.message : t("saveFailed"));
     } finally {
       setIsSaving(false);
     }
@@ -627,13 +635,13 @@ export default function ResourcesClient({
         }),
       });
       const body = await response.json();
-      if (!response.ok) throw new Error(body.error || "Failed to update publication status");
+      if (!response.ok) throw new Error(body.error || t("statusFailed"));
       setResources((current) => current.map((resource) => resource.id === selectedResource.id ? { ...resource, ...body.resource } : resource));
       await loadBrainInsights(selectedResource.id);
-      toast.success(nextStatus === "active" ? "Knowledge note published" : "Knowledge note moved to draft");
+      toast.success(nextStatus === "active" ? t("published") : t("movedToDraft"));
     } catch (error) {
       setPublicationStatus(previousStatus);
-      toast.error(error instanceof Error ? error.message : "Failed to update publication status");
+      toast.error(error instanceof Error ? error.message : t("statusFailed"));
     } finally {
       setIsSaving(false);
     }
@@ -648,11 +656,11 @@ export default function ResourcesClient({
     }
     setConfirmingDelete(null);
     const response = await fetch(`/api/resources/${selectedResource.id}`, { method: "DELETE" });
-    if (!response.ok) return toast.error("Failed to delete note");
+    if (!response.ok) return toast.error(t("deleteFailed"));
     const remaining = resources.filter((resource) => resource.id !== selectedResource.id);
     setResources(remaining);
     setSelectedResourceId(remaining[0]?.id || null);
-    toast.success("Knowledge note deleted");
+    toast.success(t("deleted"));
   }
 
   async function confirmDeleteFromContextMenu() {
@@ -660,14 +668,14 @@ export default function ResourcesClient({
     setIsDeletingDialog(true);
     try {
       const response = await fetch(`/api/resources/${deleteDialogTarget.id}`, { method: "DELETE" });
-      if (!response.ok) throw new Error("Failed to delete note");
+      if (!response.ok) throw new Error(t("deleteFailed"));
       const remaining = resources.filter((resource) => resource.id !== deleteDialogTarget.id);
       setResources(remaining);
       if (selectedResourceId === deleteDialogTarget.id) setSelectedResourceId(remaining[0]?.id || null);
-      toast.success("Knowledge note deleted");
+      toast.success(t("deleted"));
       setDeleteDialogTarget(null);
     } catch {
-      toast.error("Failed to delete note");
+      toast.error(t("deleteFailed"));
     } finally {
       setIsDeletingDialog(false);
     }
@@ -681,9 +689,9 @@ export default function ResourcesClient({
   return (
     <div className="mx-auto flex min-h-0 max-w-[1800px] flex-col gap-4 animate-in fade-in duration-500 lg:h-[calc(100vh-8rem)]">
       <PageHeader
-        eyebrow="Knowledge base"
-        title="Knowledge & Rules"
-        description="Durable notes, SOPs, and instructions your agents read before they act."
+        eyebrow={t("eyebrow")}
+        title={t("title")}
+        description={t("description")}
       />
       <div className="min-h-0 flex-1 overflow-visible rounded-2xl border border-zinc-800 bg-zinc-950 shadow-2xl shadow-black/20 lg:overflow-hidden">
       <div className="flex min-h-[360px] sm:min-h-[500px] flex-col lg:h-full">
@@ -691,42 +699,42 @@ export default function ResourcesClient({
         <div className="grid grid-cols-1 border-b border-zinc-800 bg-zinc-950/95 lg:grid-cols-[260px_minmax(0,1fr)] xl:grid-cols-[300px_minmax(0,1fr)_360px]">
           <div className={cn("h-11 items-center justify-between border-b border-zinc-800 px-3 lg:border-b-0 lg:border-r", mobilePane === "note" ? "hidden lg:flex" : "flex")}>
             <div className="flex items-center gap-1.5 text-zinc-500">
-              <button className="cursor-pointer rounded p-2.5 transition-colors hover:bg-zinc-900 hover:text-zinc-200 lg:p-1" title="New note" aria-label="New note" onClick={() => void createResource("company", "")}><IconFileText className="h-4 w-4" /></button>
-              <button className="cursor-pointer rounded p-2.5 transition-colors hover:bg-zinc-900 hover:text-zinc-200 lg:p-1" title="New folder" aria-label="New folder" onClick={() => openNewFolderDialog("company", "")}><IconFolderPlus className="h-4 w-4" /></button>
-              <button className="cursor-pointer rounded p-2.5 transition-colors hover:bg-zinc-900 hover:text-zinc-200 lg:p-1" title="New note linked to this one" aria-label="New linked note" onClick={createLinkedResource}><IconPlus className="h-4 w-4" /></button>
-              <button className="cursor-pointer rounded p-2.5 transition-colors hover:bg-zinc-900 hover:text-zinc-200 lg:p-1" title="Refresh vault" aria-label="Refresh vault" onClick={refreshResources}><IconRefresh className="h-4 w-4" /></button>
+              <button className="cursor-pointer rounded p-2.5 transition-colors hover:bg-zinc-900 hover:text-zinc-200 lg:p-1" title={t("newNote")} aria-label={t("newNote")} onClick={() => void createResource("company", "")}><IconFileText className="h-4 w-4" /></button>
+              <button className="cursor-pointer rounded p-2.5 transition-colors hover:bg-zinc-900 hover:text-zinc-200 lg:p-1" title={t("newFolder")} aria-label={t("newFolder")} onClick={() => openNewFolderDialog("company", "")}><IconFolderPlus className="h-4 w-4" /></button>
+              <button className="cursor-pointer rounded p-2.5 transition-colors hover:bg-zinc-900 hover:text-zinc-200 lg:p-1" title={t("newLinkedTitle")} aria-label={t("newLinked")} onClick={createLinkedResource}><IconPlus className="h-4 w-4" /></button>
+              <button className="cursor-pointer rounded p-2.5 transition-colors hover:bg-zinc-900 hover:text-zinc-200 lg:p-1" title={t("refresh")} aria-label={t("refresh")} onClick={refreshResources}><IconRefresh className="h-4 w-4" /></button>
             </div>
             <button onClick={archiveSelectedResource} disabled={!selectedResource} className={cn("inline-flex min-h-10 cursor-pointer items-center gap-1 rounded-md border px-2 py-1 text-[11px] font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-40 lg:min-h-0", isDeleteArmed ? "border-red-500/40 bg-red-500/10 text-red-300" : "border-transparent text-zinc-500 hover:bg-red-500/10 hover:text-red-300")}>
-              <IconTrash className="h-3.5 w-3.5" /> {isDeleteArmed ? "Click again to confirm" : "Delete note"}
+              <IconTrash className="h-3.5 w-3.5" /> {isDeleteArmed ? t("confirmAgain") : t("deleteNote")}
             </button>
           </div>
           <div className={cn("h-11 items-center justify-between border-b border-zinc-800 px-4 lg:border-b-0 lg:border-r", mobilePane === "list" ? "hidden lg:flex" : "flex")}>
             <div className="flex min-w-0 items-center gap-3">
               <div className="flex items-center gap-1 text-zinc-600">
-                <button onClick={() => selectAdjacentResource("previous")} className="cursor-pointer rounded p-2.5 transition-colors hover:bg-zinc-900 hover:text-zinc-300 lg:p-1" title="Previous note" aria-label="Previous note"><IconArrowLeft className="h-4 w-4" /></button>
-                <button onClick={() => selectAdjacentResource("next")} className="cursor-pointer rounded p-2.5 transition-colors hover:bg-zinc-900 hover:text-zinc-300 lg:p-1" title="Next note" aria-label="Next note"><IconArrowRight className="h-4 w-4" /></button>
+                <button onClick={() => selectAdjacentResource("previous")} className="cursor-pointer rounded p-2.5 transition-colors hover:bg-zinc-900 hover:text-zinc-300 lg:p-1" title={t("previousNote")} aria-label={t("previousNote")}><IconArrowLeft className="h-4 w-4" /></button>
+                <button onClick={() => selectAdjacentResource("next")} className="cursor-pointer rounded p-2.5 transition-colors hover:bg-zinc-900 hover:text-zinc-300 lg:p-1" title={t("nextNote")} aria-label={t("nextNote")}><IconArrowRight className="h-4 w-4" /></button>
               </div>
               <div className="min-w-0 truncate text-xs text-zinc-500">
-                <span>Knowledge & Rules</span>
+                <span>{t("title")}</span>
                 {selectedResource && <span className="text-muted-foreground/50"> / </span>}
-                {selectedResource && <span className="text-zinc-300">{draftTitle || "Untitled note"}</span>}
+                {selectedResource && <span className="text-zinc-300">{draftTitle || t("untitled")}</span>}
               </div>
             </div>
             <div className="flex shrink-0 items-center gap-1.5 text-zinc-500">
               <button onClick={() => void updatePublicationStatus(publicationStatus === "draft" ? "active" : "draft")} disabled={!selectedResource || isSaving} className={cn("inline-flex min-h-10 cursor-pointer items-center gap-1 rounded-md border px-2 py-1 text-[11px] font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-50 lg:min-h-0", publicationStatus === "draft" ? "border-emerald-400/30 bg-emerald-400/10 text-emerald-200 hover:bg-emerald-400/15" : "border-amber-400/25 bg-amber-400/10 text-amber-200 hover:bg-amber-400/15")}>
-                <IconCheck className="h-3.5 w-3.5" /> {publicationStatus === "draft" ? "Publish" : "Move to draft"}
+                <IconCheck className="h-3.5 w-3.5" /> {publicationStatus === "draft" ? t("publish") : t("moveToDraft")}
               </button>
               <button onClick={saveSelectedResource} disabled={!selectedResource || isSaving} className="inline-flex min-h-10 cursor-pointer items-center gap-1 rounded-md border border-zinc-800 px-2 py-1 text-[11px] font-medium text-zinc-300 transition-colors hover:bg-zinc-900 disabled:cursor-not-allowed disabled:opacity-50 lg:min-h-0">
-                <IconCheck className="h-3.5 w-3.5" /> {isSaving ? "Saving" : "Save"}
+                <IconCheck className="h-3.5 w-3.5" /> {isSaving ? t("saving") : t("save")}
               </button>
-              <button onClick={archiveSelectedResource} disabled={!selectedResource} className={cn("cursor-pointer rounded p-2.5 transition-colors disabled:cursor-not-allowed disabled:opacity-40 lg:p-1", isDeleteArmed ? "bg-red-500/10 text-red-300" : "text-zinc-500 hover:bg-red-500/10 hover:text-red-300")} title={isDeleteArmed ? "Click again to confirm delete" : "Delete note"} aria-label={isDeleteArmed ? "Click again to confirm delete" : "Delete note"}><IconTrash className="h-4 w-4" /></button>
+              <button onClick={archiveSelectedResource} disabled={!selectedResource} className={cn("cursor-pointer rounded p-2.5 transition-colors disabled:cursor-not-allowed disabled:opacity-40 lg:p-1", isDeleteArmed ? "bg-red-500/10 text-red-300" : "text-zinc-500 hover:bg-red-500/10 hover:text-red-300")} title={isDeleteArmed ? t("confirmDelete") : t("deleteNote")} aria-label={isDeleteArmed ? t("confirmDelete") : t("deleteNote")}><IconTrash className="h-4 w-4" /></button>
             </div>
           </div>
           <div className="hidden h-11 items-center border-zinc-800 px-4 xl:flex">
             <div className="min-w-0 truncate text-xs text-zinc-500">
-              Knowledge graph
+              {t("graphTitle")}
               {selectedResource && <span className="text-muted-foreground/50"> / </span>}
-              {selectedResource && <span className="text-zinc-300">Graph of {draftTitle || "Untitled note"}</span>}
+              {selectedResource && <span className="text-zinc-300">{t("graphOf", { title: draftTitle || t("untitled") })}</span>}
             </div>
           </div>
         </div>
@@ -734,16 +742,16 @@ export default function ResourcesClient({
         <div className="grid min-h-0 flex-1 grid-cols-1 lg:grid-cols-[260px_minmax(0,1fr)] lg:grid-rows-[minmax(0,1fr)_minmax(0,38%)] xl:grid-cols-[300px_minmax(0,1fr)_360px] xl:grid-rows-1">
           <aside className={cn("flex-col border-b border-zinc-800 bg-zinc-950 min-h-[60dvh] lg:row-span-2 lg:min-h-0 lg:border-b-0 lg:border-r xl:row-span-1", mobilePane === "note" ? "hidden lg:flex" : "flex")}>
             <div className="border-b border-zinc-800 p-3">
-              <div className="mb-3 text-[11px] font-semibold uppercase tracking-wider text-zinc-500">Vault explorer</div>
+              <div className="mb-3 text-[11px] font-semibold uppercase tracking-wider text-zinc-500">{t("vaultExplorer")}</div>
               <div className="relative">
                 <IconSearch className="absolute left-3 top-2.5 h-4 w-4 text-zinc-600" />
-                <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search notes..." className="h-11 w-full rounded-md border border-zinc-800 bg-zinc-900 py-2 pl-9 pr-3 text-sm text-zinc-100 outline-none focus:border-cyan-400/60 lg:h-9" />
+                <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder={t("searchPlaceholder")} className="h-11 w-full rounded-md border border-zinc-800 bg-zinc-900 py-2 pl-9 pr-3 text-sm text-zinc-100 outline-none focus:border-cyan-400/60 lg:h-9" />
               </div>
               <div className="mt-3 flex items-center gap-2">
                 {(["all", "shared", "drafts"] as const).map((item) => (
-                  <button key={item} onClick={() => setFilter(item)} className={cn("min-h-9 cursor-pointer rounded-md px-2.5 py-1 text-[11px] font-medium capitalize transition-colors lg:min-h-0", filter === item ? "bg-zinc-800 text-zinc-100" : "text-zinc-500 hover:bg-zinc-900 hover:text-zinc-300")}>{item}</button>
+                  <button key={item} onClick={() => setFilter(item)} className={cn("min-h-9 cursor-pointer rounded-md px-2.5 py-1 text-[11px] font-medium capitalize transition-colors lg:min-h-0", filter === item ? "bg-zinc-800 text-zinc-100" : "text-zinc-500 hover:bg-zinc-900 hover:text-zinc-300")}>{t(`filters.${item}`)}</button>
                 ))}
-                <span className="ml-auto text-[11px] text-zinc-600">{filteredResources.length} notes</span>
+                <span className="ml-auto text-[11px] text-zinc-600">{t("noteCount", { count: filteredResources.length })}</span>
               </div>
             </div>
 
@@ -767,7 +775,7 @@ export default function ResourcesClient({
                             <span className="min-w-0 flex-1 truncate">{group.label}</span>
                             <button
                               type="button"
-                              aria-label={`New folder in ${group.label}`}
+                              aria-label={t("newFolderIn", { scope: group.label })}
                               onClick={(event) => { event.stopPropagation(); openNewFolderDialog(group.key, ""); }}
                               className="rounded p-0.5 text-zinc-600 opacity-100 transition-opacity hover:bg-zinc-800 hover:text-zinc-200 lg:opacity-0 lg:group-hover:opacity-100"
                             >
@@ -778,10 +786,10 @@ export default function ResourcesClient({
                         </ContextMenuTrigger>
                         <ContextMenuContent className="w-52 border-zinc-800 bg-zinc-950 text-zinc-100">
                           <ContextMenuItem onClick={() => createResource(group.key, "")}>
-                            <IconPlus className="h-3.5 w-3.5" /> New note
+                            <IconPlus className="h-3.5 w-3.5" /> {t("newNote")}
                           </ContextMenuItem>
                           <ContextMenuItem onClick={() => openNewFolderDialog(group.key, "")}>
-                            <IconFolderPlus className="h-3.5 w-3.5" /> New folder
+                            <IconFolderPlus className="h-3.5 w-3.5" /> {t("newFolder")}
                           </ContextMenuItem>
                         </ContextMenuContent>
                       </ContextMenu>
@@ -789,7 +797,7 @@ export default function ResourcesClient({
                         <div className="mt-0.5 space-y-0.5">
                           {group.tree.map((node) => renderFolderNode(group, node, 1))}
                           {group.rootNotes.map((note) => renderNoteRow(note, 1))}
-                          {isEmpty && <p className="py-1.5 pl-6 text-[11px] text-zinc-600">No notes yet. Right-click to add one.</p>}
+                          {isEmpty && <p className="py-1.5 pl-6 text-[11px] text-zinc-600">{t("scopeEmpty")}</p>}
                         </div>
                       )}
                     </div>
@@ -799,15 +807,15 @@ export default function ResourcesClient({
                   <SharedEmptyState
                     compact
                     icon={IconSearch}
-                    title={query.trim() ? "No notes match this search" : `No ${filter === "drafts" ? "draft" : "shared"} notes`}
-                    description={<button type="button" onClick={() => { setQuery(""); setFilter("all"); }} className="text-primary hover:underline">Show all notes</button>}
+                    title={query.trim() ? t("noMatches") : filter === "drafts" ? t("noDrafts") : t("noShared")}
+                    description={<button type="button" onClick={() => { setQuery(""); setFilter("all"); }} className="text-primary hover:underline">{t("showAll")}</button>}
                   />
                 ) : (
                   <SharedEmptyState
                     compact
                     icon={IconFileText}
-                    title="No notes yet"
-                    description="Right-click Company to add the first note. Agents also write notes here as they learn how you work."
+                    title={t("emptyTitle")}
+                    description={t("emptyDescription")}
                   />
                 ))}
               </div>
@@ -820,7 +828,7 @@ export default function ResourcesClient({
               onClick={() => setMobilePane("list")}
               className="flex min-h-11 w-full cursor-pointer items-center gap-2 border-b border-zinc-800 px-4 text-sm text-zinc-300 transition-colors hover:bg-zinc-900 lg:hidden"
             >
-              <IconArrowLeft className="h-4 w-4" /> All notes
+              <IconArrowLeft className="h-4 w-4" /> {t("allNotes")}
             </button>
             {selectedResource ? (
               <>
@@ -828,8 +836,8 @@ export default function ResourcesClient({
                   <div className="flex min-w-0 items-center gap-2">
                     <IconFileText className="h-4 w-4 shrink-0 text-zinc-500" />
                     <input value={draftTitle} onChange={(event) => setDraftTitle(event.target.value)} className="min-w-0 flex-1 bg-transparent text-sm font-medium text-zinc-100 outline-none" />
-                    {publicationStatus === "draft" && <span className="rounded border border-amber-500/20 bg-amber-500/10 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wider text-amber-300">draft</span>}
-                    {draftInject !== "on_request" && <span className="rounded border border-cyan-400/20 bg-cyan-400/10 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wider text-cyan-300">{draftInject === "always" ? "always" : "index"}</span>}
+                    {publicationStatus === "draft" && <span className="rounded border border-amber-500/20 bg-amber-500/10 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wider text-amber-300">{t("draftBadge")}</span>}
+                    {draftInject !== "on_request" && <span className="rounded border border-cyan-400/20 bg-cyan-400/10 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wider text-cyan-300">{draftInject === "always" ? t("alwaysBadge") : t("indexBadge")}</span>}
                   </div>
                 </div>
                 <div className="min-h-0 flex-1 overflow-auto">
@@ -837,13 +845,13 @@ export default function ResourcesClient({
                     key={selectedResource.id}
                     markdown={splitFrontmatter(selectedResource.configText || "").body}
                     onChange={(nextBody) => setDraftContent(joinFrontmatter(splitFrontmatter(draftContent).frontmatter, nextBody))}
-                    placeholder="Write one reusable rule, SOP, or instruction here..."
+                    placeholder={t("editorPlaceholder")}
                     className="mx-auto min-h-[620px] max-w-4xl px-4 py-4"
                   />
                 </div>
               </>
             ) : (
-              <div className="flex h-full items-center justify-center text-sm text-zinc-500">Select or create a note.</div>
+              <div className="flex h-full items-center justify-center text-sm text-zinc-500">{t("selectOrCreate")}</div>
             )}
           </main>
 
@@ -854,7 +862,7 @@ export default function ResourcesClient({
                   <ExpandablePanel
                     className="h-[360px] overflow-hidden"
                     expandedClassName="overflow-hidden rounded-3xl border border-zinc-800 bg-zinc-950 shadow-2xl shadow-black/60"
-                    label="Expand graph"
+                    label={t("expandGraph")}
                   >
                     {(expanded) => <div className="h-full"><LocalGraph key={expanded ? "expanded" : "collapsed"} graph={insights.graph} selectedId={selectedResource.id} showLabels={expanded} /></div>}
                   </ExpandablePanel>
@@ -862,55 +870,54 @@ export default function ResourcesClient({
 
                 <div className="shrink-0 p-3">
                   <div className="grid grid-cols-3 gap-2 text-center text-[11px] text-zinc-500">
-                    <div className="rounded-md border border-zinc-800 bg-zinc-950/60 px-2 py-1"><span className="text-zinc-200">{insights.backlinks.length}</span> incoming</div>
-                    <div className="rounded-md border border-zinc-800 bg-zinc-950/60 px-2 py-1"><span className="text-zinc-200">{insights.outgoing.length}</span> outgoing</div>
-                    <div className="rounded-md border border-zinc-800 bg-zinc-950/60 px-2 py-1"><span className="text-zinc-200">{splitFrontmatter(draftContent).body.split(/\s+/).filter(Boolean).length}</span> words</div>
+                    <div className="rounded-md border border-zinc-800 bg-zinc-950/60 px-2 py-1">{t.rich("stats.incoming", { count: insights.backlinks.length, n: (chunks) => <span className="text-zinc-200">{chunks}</span> })}</div>
+                    <div className="rounded-md border border-zinc-800 bg-zinc-950/60 px-2 py-1">{t.rich("stats.outgoing", { count: insights.outgoing.length, n: (chunks) => <span className="text-zinc-200">{chunks}</span> })}</div>
+                    <div className="rounded-md border border-zinc-800 bg-zinc-950/60 px-2 py-1">{t.rich("stats.words", { count: splitFrontmatter(draftContent).body.split(/\s+/).filter(Boolean).length, n: (chunks) => <span className="text-zinc-200">{chunks}</span> })}</div>
                   </div>
                   <details className="mt-3 rounded-lg border border-zinc-800 bg-zinc-900/40 p-3">
-                    <summary className="cursor-pointer text-xs font-semibold text-zinc-300">Properties</summary>
+                    <summary className="cursor-pointer text-xs font-semibold text-zinc-300">{t("properties")}</summary>
                     <div className="mt-3">
-                      <label className="text-[11px] font-medium uppercase tracking-wider text-zinc-500">Folder</label>
+                      <label className="text-[11px] font-medium uppercase tracking-wider text-zinc-500">{t("folderLabel")}</label>
                       <input
                         value={draftPath}
                         onChange={(event) => setDraftPath(event.target.value)}
-                        placeholder="Company/Fundraising"
+                        placeholder={t("folderPlaceholder")}
                         spellCheck={false}
                         className="mt-1 h-9 w-full rounded-md border border-zinc-800 bg-zinc-950 px-2 text-sm text-zinc-100 outline-none placeholder:text-zinc-600 focus:border-cyan-400/60"
                       />
                       <p className="mt-1 text-[11px] text-zinc-600">
-                        Slash-separated, like a vault path. Leave empty to keep the note at the root.
-                        Folders are created automatically when you save.
+                        {t("folderHint")}
                       </p>
                     </div>
 
                     <div className="mt-3">
-                      <label className="text-[11px] font-medium uppercase tracking-wider text-zinc-500">Publication status</label>
+                      <label className="text-[11px] font-medium uppercase tracking-wider text-zinc-500">{t("publicationStatus")}</label>
                       <select value={publicationStatus} onChange={(event) => setPublicationStatus(event.target.value === "draft" ? "draft" : "active")} className="mt-1 h-9 w-full rounded-md border border-zinc-800 bg-zinc-950 px-2 text-sm text-zinc-100 outline-none focus:border-cyan-400/60">
-                        <option value="draft">Draft / Needs review</option>
-                        <option value="active">Published</option>
+                        <option value="draft">{t("statusDraft")}</option>
+                        <option value="active">{t("statusPublished")}</option>
                       </select>
                       <button onClick={() => void updatePublicationStatus(publicationStatus === "draft" ? "active" : "draft")} disabled={isSaving} className={cn("mt-2 inline-flex w-full cursor-pointer items-center justify-center gap-2 rounded-md border px-3 py-2 text-xs font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-50", publicationStatus === "draft" ? "border-emerald-400/30 bg-emerald-400/10 text-emerald-200 hover:bg-emerald-400/15" : "border-amber-400/25 bg-amber-400/10 text-amber-200 hover:bg-amber-400/15")}>
                         <IconCheck className="h-3.5 w-3.5" />
-                        {publicationStatus === "draft" ? "Publish note" : "Move back to draft"}
+                        {publicationStatus === "draft" ? t("publishNote") : t("moveBackToDraft")}
                       </button>
-                      <p className="mt-1 text-[11px] leading-4 text-zinc-500">Published means this note is trusted doctrine. Agent context is separate: it controls whether agents receive the note.</p>
+                      <p className="mt-1 text-[11px] leading-4 text-zinc-500">{t("publishedHint")}</p>
 
-                      <label className="mt-3 block text-[11px] font-medium uppercase tracking-wider text-zinc-600">Scope</label>
+                      <label className="mt-3 block text-[11px] font-medium uppercase tracking-wider text-zinc-600">{t("scopeLabel")}</label>
                       <select value={draftScopeType} onChange={(event) => setDraftScopeType(event.target.value)} className="mt-1 h-9 w-full rounded-md border border-zinc-800 bg-zinc-950 px-2 text-sm text-zinc-100 outline-none focus:border-cyan-400/60">
-                        <option value="company">Company</option>
-                        <option value="customer">Customer</option>
-                        <option value="project">Project</option>
-                        <option value="agent">Agent</option>
+                        <option value="company">{t("scopes.company")}</option>
+                        <option value="customer">{t("scopes.customer")}</option>
+                        <option value="project">{t("scopes.project")}</option>
+                        <option value="agent">{t("scopes.agent")}</option>
                       </select>
                       {draftScopeType !== "company" && (
                         <select value={draftScopeId} onChange={(event) => setDraftScopeId(event.target.value)} className="mt-2 h-9 w-full rounded-md border border-zinc-800 bg-zinc-950 px-2 text-sm text-zinc-100 outline-none focus:border-cyan-400/60">
-                          <option value="">Choose {scopeLabel(draftScopeType).toLowerCase()}</option>
+                          <option value="">{t("chooseScope", { scope: scopeLabel(draftScopeType).toLowerCase() })}</option>
                           {(scopeOptions[draftScopeType as "customer" | "project" | "agent"] || []).map((option) => <option key={option.id} value={option.id}>{option.name}</option>)}
                         </select>
                       )}
                       <div className="mt-3">
-                        <span className="block text-[11px] font-medium uppercase tracking-wider text-zinc-600">Agent context</span>
-                        <div role="group" aria-label="Knowledge injection mode" className="mt-1 grid grid-cols-3 gap-1 rounded-md border border-zinc-800 bg-zinc-950 p-1">
+                        <span className="block text-[11px] font-medium uppercase tracking-wider text-zinc-600">{t("agentContext")}</span>
+                        <div role="group" aria-label={t("injectionMode")} className="mt-1 grid grid-cols-3 gap-1 rounded-md border border-zinc-800 bg-zinc-950 p-1">
                           {INJECT_OPTIONS.map((option) => {
                             const active = draftInject === option.value;
                             return (
@@ -921,7 +928,7 @@ export default function ResourcesClient({
                                 onClick={() => setDraftInject(option.value)}
                                 className={cn("cursor-pointer rounded px-2 py-1.5 text-[11px] font-semibold transition-colors", active ? "bg-cyan-400/15 text-cyan-200" : "text-zinc-500 hover:bg-zinc-900 hover:text-zinc-300")}
                               >
-                                {option.label}
+                                {t(`inject.${option.value}.label`)}
                               </button>
                             );
                           })}
@@ -930,37 +937,37 @@ export default function ResourcesClient({
                         {draftInject === "always" && (
                           <div className="mt-2 rounded-md border border-zinc-800 bg-zinc-950/60 px-2 py-1.5">
                             <div className="flex items-center justify-between text-[11px]">
-                              <span className="text-zinc-500">Always budget</span>
-                              <span className={cn("font-semibold", alwaysBudget.over ? "text-amber-300" : "text-zinc-300")}>{alwaysBudget.used.toLocaleString()} / {alwaysBudget.budget.toLocaleString()} characters</span>
+                              <span className="text-zinc-500">{t("alwaysBudget")}</span>
+                              <span className={cn("font-semibold", alwaysBudget.over ? "text-amber-300" : "text-zinc-300")}>{t("budgetUsage", { used: alwaysBudget.used, budget: alwaysBudget.budget })}</span>
                             </div>
                             <div className="mt-1 h-1.5 w-full overflow-hidden rounded-full bg-zinc-800">
                               <div className={cn("h-full rounded-full", alwaysBudget.over ? "bg-amber-400" : "bg-cyan-400")} style={{ width: `${Math.min(100, (alwaysBudget.used / alwaysBudget.budget) * 100)}%` }} />
                             </div>
-                            {alwaysBudget.over && <p className="mt-1 text-[11px] text-amber-300">Over budget: the last always note is truncated in the agent context.</p>}
+                            {alwaysBudget.over && <p className="mt-1 text-[11px] text-amber-300">{t("overBudget")}</p>}
                           </div>
                         )}
                       </div>
 
-                      <label className="mt-3 block text-[11px] font-medium uppercase tracking-wider text-zinc-600">Summary</label>
+                      <label className="mt-3 block text-[11px] font-medium uppercase tracking-wider text-zinc-600">{t("summaryLabel")}</label>
                       <textarea
                         value={draftSummary}
                         onChange={(event) => setDraftSummary(event.target.value)}
                         maxLength={200}
                         rows={2}
-                        placeholder="One line agents see in the index; leave blank to auto-derive from the note."
+                        placeholder={t("summaryPlaceholder")}
                         className="mt-1 w-full resize-y rounded-md border border-zinc-800 bg-zinc-950 px-2 py-1.5 text-sm text-zinc-100 outline-none placeholder:text-zinc-600 focus:border-cyan-400/60"
                       />
-                      <p className="mt-1 text-[11px] text-zinc-600">Shown as this note's index line. Leave blank to derive the first sentence automatically ({draftSummary.trim().length}/200).</p>
+                      <p className="mt-1 text-[11px] text-zinc-600">{t("summaryHint", { length: draftSummary.trim().length })}</p>
                       {insights.tags.length > 0 && <div className="mt-3"><TagList tags={insights.tags} /></div>}
-                      <button onClick={archiveSelectedResource} className={cn("mt-3 inline-flex cursor-pointer items-center gap-2 rounded-md px-2 py-1 text-xs font-medium transition-colors", isDeleteArmed ? "bg-red-500/10 text-red-300" : "text-zinc-600 hover:text-red-300")}><IconArchive className="h-3.5 w-3.5" /> {isDeleteArmed ? "Click again to confirm" : "Delete note"}</button>
+                      <button onClick={archiveSelectedResource} className={cn("mt-3 inline-flex cursor-pointer items-center gap-2 rounded-md px-2 py-1 text-xs font-medium transition-colors", isDeleteArmed ? "bg-red-500/10 text-red-300" : "text-zinc-600 hover:text-red-300")}><IconArchive className="h-3.5 w-3.5" /> {isDeleteArmed ? t("confirmAgain") : t("deleteNote")}</button>
                     </div>
                   </details>
                   <details className="mt-2 rounded-lg border border-zinc-800 bg-zinc-900/40 p-3">
-                    <summary className="cursor-pointer text-xs font-semibold text-zinc-300">Linked mentions</summary>
+                    <summary className="cursor-pointer text-xs font-semibold text-zinc-300">{t("linkedMentions")}</summary>
                     <div className="mt-3">
-                      <LinkList title="Outgoing" links={insights.outgoing} empty="No outgoing links." />
+                      <LinkList title={t("outgoing")} links={insights.outgoing} empty={t("noOutgoing")} />
                       <div className="mt-3" />
-                      <LinkList title="Incoming" links={insights.backlinks} empty="No incoming links yet." />
+                      <LinkList title={t("incoming")} links={insights.backlinks} empty={t("noIncoming")} />
                     </div>
                   </details>
                 </div>
@@ -979,38 +986,38 @@ export default function ResourcesClient({
       }}>
         <DialogContent className="border-zinc-800 bg-zinc-950 text-zinc-100 sm:max-w-md">
           <DialogHeader>
-            <DialogTitle>New folder</DialogTitle>
+            <DialogTitle>{t("newFolderTitle")}</DialogTitle>
             <DialogDescription className="text-zinc-400">
-              Create a folder inside the location you selected.
+              {t("newFolderDescription")}
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
             <div className="space-y-1.5">
-              <span className="text-[11px] font-medium uppercase tracking-wider text-zinc-500">Location</span>
+              <span className="text-[11px] font-medium uppercase tracking-wider text-zinc-500">{t("location")}</span>
               <div className="flex min-h-9 items-center gap-2 rounded-md border border-zinc-800 bg-zinc-900/70 px-3 text-sm text-zinc-300">
                 <IconFolder className="h-4 w-4 shrink-0 text-amber-300/70" />
                 <span className="truncate">{newFolderLocation}</span>
               </div>
             </div>
             <label className="block space-y-1.5">
-              <span className="text-[11px] font-medium uppercase tracking-wider text-zinc-500">Folder name</span>
+              <span className="text-[11px] font-medium uppercase tracking-wider text-zinc-500">{t("folderName")}</span>
               <input
                 autoFocus
                 value={newFolderName}
                 onChange={(event) => setNewFolderName(event.target.value)}
                 onKeyDown={(event) => { if (event.key === "Enter") createFolder(); }}
-                placeholder="e.g. Fundraising"
+                placeholder={t("folderNamePlaceholder")}
                 spellCheck={false}
                 className="h-10 w-full rounded-md border border-zinc-800 bg-zinc-950 px-3 text-sm text-zinc-100 outline-none placeholder:text-zinc-600 focus:border-cyan-400/60 focus:ring-2 focus:ring-cyan-400/10"
               />
             </label>
             <p className="text-xs leading-5 text-zinc-500">
-              The folder stays visible while you work and becomes durable when a note is filed inside it.
+              {t("newFolderHint")}
             </p>
           </div>
           <DialogFooter>
-            <button onClick={() => setNewFolderOpen(false)} className="cursor-pointer rounded-md border border-zinc-800 px-3 py-2 text-xs font-semibold text-zinc-300 hover:bg-zinc-900">Cancel</button>
-            <button onClick={createFolder} className="cursor-pointer rounded-md border border-cyan-400/30 bg-cyan-400/10 px-3 py-2 text-xs font-semibold text-cyan-200 hover:bg-cyan-400/15">Create folder</button>
+            <button onClick={() => setNewFolderOpen(false)} className="cursor-pointer rounded-md border border-zinc-800 px-3 py-2 text-xs font-semibold text-zinc-300 hover:bg-zinc-900">{t("cancel")}</button>
+            <button onClick={createFolder} className="cursor-pointer rounded-md border border-cyan-400/30 bg-cyan-400/10 px-3 py-2 text-xs font-semibold text-cyan-200 hover:bg-cyan-400/15">{t("createFolder")}</button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -1018,10 +1025,9 @@ export default function ResourcesClient({
       <Dialog open={Boolean(renameFolderTarget)} onOpenChange={(open) => { if (!open) setRenameFolderTarget(null); }}>
         <DialogContent className="border-zinc-800 bg-zinc-950 text-zinc-100 sm:max-w-md">
           <DialogHeader>
-            <DialogTitle>Rename or move folder</DialogTitle>
+            <DialogTitle>{t("renameTitle")}</DialogTitle>
             <DialogDescription className="text-zinc-400">
-              Every note under <span className="text-zinc-200">{renameFolderTarget?.path}</span> is re-filed.
-              Give it a new path to move the whole folder.
+              {t.rich("renameDescription", { path: renameFolderTarget?.path ?? "", hl: (chunks) => <span className="text-zinc-200">{chunks}</span> })}
             </DialogDescription>
           </DialogHeader>
           <input
@@ -1033,8 +1039,8 @@ export default function ResourcesClient({
             className="h-9 w-full rounded-md border border-zinc-800 bg-zinc-950 px-2 text-sm text-zinc-100 outline-none focus:border-cyan-400/60"
           />
           <DialogFooter>
-            <button onClick={() => setRenameFolderTarget(null)} className="cursor-pointer rounded-md border border-zinc-800 px-3 py-2 text-xs font-semibold text-zinc-300 hover:bg-zinc-900">Cancel</button>
-            <button onClick={() => void renameFolder()} className="cursor-pointer rounded-md border border-cyan-400/30 bg-cyan-400/10 px-3 py-2 text-xs font-semibold text-cyan-200 hover:bg-cyan-400/15">Save</button>
+            <button onClick={() => setRenameFolderTarget(null)} className="cursor-pointer rounded-md border border-zinc-800 px-3 py-2 text-xs font-semibold text-zinc-300 hover:bg-zinc-900">{t("cancel")}</button>
+            <button onClick={() => void renameFolder()} className="cursor-pointer rounded-md border border-cyan-400/30 bg-cyan-400/10 px-3 py-2 text-xs font-semibold text-cyan-200 hover:bg-cyan-400/15">{t("save")}</button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -1042,14 +1048,14 @@ export default function ResourcesClient({
       <Dialog open={Boolean(deleteFolderTarget)} onOpenChange={(open) => { if (!open) setDeleteFolderTarget(null); }}>
         <DialogContent className="border-zinc-800 bg-zinc-950 text-zinc-100 sm:max-w-md">
           <DialogHeader>
-            <DialogTitle>Delete folder &ldquo;{deleteFolderTarget?.path}&rdquo;?</DialogTitle>
+            <DialogTitle>{t("deleteFolderTitle", { path: deleteFolderTarget?.path ?? "" })}</DialogTitle>
             <DialogDescription className="text-zinc-400">
-              This permanently deletes the folder and <span className="text-zinc-200">every note inside it and its subfolders</span>. This cannot be undone.
+              {t.rich("deleteFolderDescription", { hl: (chunks) => <span className="text-zinc-200">{chunks}</span> })}
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
-            <button onClick={() => setDeleteFolderTarget(null)} className="cursor-pointer rounded-md border border-zinc-800 px-3 py-2 text-xs font-semibold text-zinc-300 hover:bg-zinc-900">Cancel</button>
-            <button onClick={() => void deleteFolder()} className="cursor-pointer rounded-md border border-red-500/40 bg-red-500/10 px-3 py-2 text-xs font-semibold text-red-300 hover:bg-red-500/15">Delete folder</button>
+            <button onClick={() => setDeleteFolderTarget(null)} className="cursor-pointer rounded-md border border-zinc-800 px-3 py-2 text-xs font-semibold text-zinc-300 hover:bg-zinc-900">{t("cancel")}</button>
+            <button onClick={() => void deleteFolder()} className="cursor-pointer rounded-md border border-red-500/40 bg-red-500/10 px-3 py-2 text-xs font-semibold text-red-300 hover:bg-red-500/15">{t("deleteFolder")}</button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -1057,15 +1063,15 @@ export default function ResourcesClient({
       <Dialog open={Boolean(deleteDialogTarget)} onOpenChange={(open) => { if (!open && !isDeletingDialog) setDeleteDialogTarget(null); }}>
         <DialogContent className="border-zinc-800 bg-zinc-950 text-zinc-100 sm:max-w-md">
           <DialogHeader>
-            <DialogTitle>Delete &ldquo;{deleteDialogTarget?.displayName || deleteDialogTarget?.name}&rdquo;?</DialogTitle>
-            <DialogDescription className="text-zinc-400">This can&apos;t be undone. Any links pointing to this note will become unresolved.</DialogDescription>
+            <DialogTitle>{t("deleteNoteTitle", { name: deleteDialogTarget?.displayName || deleteDialogTarget?.name || "" })}</DialogTitle>
+            <DialogDescription className="text-zinc-400">{t("deleteNoteDescription")}</DialogDescription>
           </DialogHeader>
           <DialogFooter>
             <button type="button" onClick={() => setDeleteDialogTarget(null)} disabled={isDeletingDialog} className="cursor-pointer rounded-lg border border-zinc-800 bg-zinc-950 px-4 py-2 text-sm text-zinc-200 transition-colors hover:bg-zinc-900 disabled:cursor-not-allowed disabled:opacity-50">
-              Cancel
+              {t("cancel")}
             </button>
             <button type="button" onClick={() => void confirmDeleteFromContextMenu()} disabled={isDeletingDialog} className="cursor-pointer rounded-lg bg-rose-500 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-rose-400 disabled:cursor-not-allowed disabled:opacity-50">
-              {isDeletingDialog ? "Deleting..." : "Delete"}
+              {isDeletingDialog ? t("deleting") : t("delete")}
             </button>
           </DialogFooter>
         </DialogContent>
@@ -1084,7 +1090,8 @@ function TagList({ tags }: { tags: BrainTag[] }) {
 }
 
 function LinkList({ title, links, empty }: { title: string; links: BrainLink[]; empty: string }) {
-  return <div><div className="mb-2 text-[11px] font-medium uppercase tracking-wider text-zinc-600">{title}</div>{links.length ? <div className="space-y-2">{links.map((link) => <div key={link.id} className="rounded-lg border border-zinc-800 bg-zinc-950 p-2 text-xs text-zinc-300"><span>[[{link.linkText}]]</span>{!link.targetResourceId && <span className="ml-2 text-amber-300">unresolved</span>}</div>)}</div> : <EmptyState>{empty}</EmptyState>}</div>;
+  const t = useTranslations("resources");
+  return <div><div className="mb-2 text-[11px] font-medium uppercase tracking-wider text-zinc-600">{title}</div>{links.length ? <div className="space-y-2">{links.map((link) => <div key={link.id} className="rounded-lg border border-zinc-800 bg-zinc-950 p-2 text-xs text-zinc-300"><span>[[{link.linkText}]]</span>{!link.targetResourceId && <span className="ml-2 text-amber-300">{t("unresolved")}</span>}</div>)}</div> : <EmptyState>{empty}</EmptyState>}</div>;
 }
 
 
@@ -1144,6 +1151,8 @@ function LocalGraph({ graph, selectedId, showLabels = false }: { graph: { nodes:
   const graphRef = useRef<any>(null);
   const [hoveredNodeId, setHoveredNodeId] = useState<string | null>(null);
   const palette = GRAPH_PALETTE[useIsDarkTheme() ? "dark" : "light"];
+  const t = useTranslations("resources");
+  const currentNoteLabel = t("currentNote");
 
   // Memoized against graph/selectedId only: node/link *objects* must stay
   // referentially stable across renders (d3-force mutates them in place with
@@ -1162,7 +1171,7 @@ function LocalGraph({ graph, selectedId, showLabels = false }: { graph: { nodes:
         tags: [],
         unresolved: true,
       }));
-    const resolvedNodes = graph.nodes.length ? graph.nodes : [{ id: selectedId, label: "Current note", scopeType: "company", resourceType: "knowledge_base", isShared: false, tags: [] }];
+    const resolvedNodes = graph.nodes.length ? graph.nodes : [{ id: selectedId, label: currentNoteLabel, scopeType: "company", resourceType: "knowledge_base", isShared: false, tags: [] }];
     const rawNodes = [...resolvedNodes, ...unresolvedNodes].slice(0, 18);
     const nodeIds = new Set(rawNodes.map((node) => node.id));
 
@@ -1186,7 +1195,7 @@ function LocalGraph({ graph, selectedId, showLabels = false }: { graph: { nodes:
     });
 
     return { graphData: { nodes: computedNodes, links: computedLinks }, connectedNodeIds: computedConnectedNodeIds, neighborMap: computedNeighborMap };
-  }, [graph, selectedId]);
+  }, [graph, selectedId, currentNoteLabel]);
   const { links } = graphData;
 
   useEffect(() => {
@@ -1259,10 +1268,10 @@ function LocalGraph({ graph, selectedId, showLabels = false }: { graph: { nodes:
         />
       )}
       {links.length === 0 && (
-        <div className="pointer-events-none absolute inset-0 flex items-center justify-center text-sm text-zinc-600">No graph connections yet</div>
+        <div className="pointer-events-none absolute inset-0 flex items-center justify-center text-sm text-zinc-600">{t("noGraph")}</div>
       )}
       <p className="absolute bottom-3 left-3 right-3 rounded-md border border-zinc-800 bg-zinc-950/80 px-3 py-2 text-[11px] leading-4 text-zinc-500 backdrop-blur">
-        Graph connections: {links.length}. Local graph is generated from [[links]] and inferred title mentions. Amber nodes are unresolved links.
+        {t("graphHint", { count: links.length })}
       </p>
     </div>
   );

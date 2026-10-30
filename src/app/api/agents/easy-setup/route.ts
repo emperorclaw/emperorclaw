@@ -16,6 +16,7 @@ import { mintAgentSetupToken, provisionHermesContainer, recordRuntimeSetup, revo
 import { hermesSafeName } from "@/lib/hermes-names";
 import { resolveAgentModelConfiguration } from "@/lib/agent-model-config";
 import { humanActor, recordAudit } from "@/lib/audit";
+import { EASY_SETUP_REASONS, type EasySetupReasonCode } from "@/lib/easy-setup-reasons";
 
 export const dynamic = "force-dynamic";
 
@@ -32,25 +33,29 @@ export async function GET() {
     try {
         companyId = (await requireRole("owner", "admin")()).companyId;
     } catch (error) {
-        if (error instanceof AuthError) return NextResponse.json({ available: false, configurations: [], reason: error.statusCode === 401 ? "Sign in to create a worker." : "Ask a workspace owner or administrator to hire local agents." });
+        if (error instanceof AuthError) return NextResponse.json({ available: false, configurations: [], reason: EASY_SETUP_REASONS[error.statusCode === 401 ? "sign_in" : "not_admin"], reasonCode: error.statusCode === 401 ? "sign_in" : "not_admin" });
         throw error;
     }
     let available = false;
-    let reason = "Sign in to create a worker.";
+    let reason: string = EASY_SETUP_REASONS.sign_in;
+    // reason is English (API clients read it); reasonCode lets the UI say it in the viewer's language.
+    let reasonCode: EasySetupReasonCode | null = "sign_in";
     if (companyId) {
-        if (!isDocker() || !fs.existsSync(DOCKER_SOCKET)) reason = "This installation needs Docker with its socket mounted for automatic Hermes setup.";
+        if (!isDocker() || !fs.existsSync(DOCKER_SOCKET)) { reasonCode = "no_docker"; reason = EASY_SETUP_REASONS[reasonCode]; }
         else {
             try {
                 available = (await dockerCall("GET", "/_ping")).code === 200;
-                reason = available ? "" : "Docker is not responding. Restart Docker and retry.";
+                reason = available ? "" : EASY_SETUP_REASONS.docker_unresponsive;
+                reasonCode = available ? null : "docker_unresponsive";
             } catch {
-                reason = "The app cannot access Docker. Rerun the installer to repair socket permissions, then retry.";
+                reason = EASY_SETUP_REASONS.docker_access;
+                reasonCode = "docker_access";
             }
         }
     }
     const configurations = available ? await db.select({ id: agents.id, name: agents.name, llmProvider: agents.llmProvider, llmModel: agents.llmModel })
         .from(agents).where(and(eq(agents.companyId, companyId!), eq(agents.provider, "hermes"), isNull(agents.deletedAt), isNotNull(agents.llmApiKeyEncrypted), isNotNull(agents.llmProvider))) : [];
-    return NextResponse.json({ available, configurations, reason });
+    return NextResponse.json({ available, configurations, reason, reasonCode });
 }
 
 type AgentSpec = {

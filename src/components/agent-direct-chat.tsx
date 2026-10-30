@@ -4,6 +4,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { useSession } from "next-auth/react";
+import { useFormatter, useTranslations } from "next-intl";
+import { useCopy } from "@/lib/i18n/use-copy";
 import { IconArrowUp, IconPaperclip, IconPlayerStop, IconRobot, IconMicrophone, IconSend, IconSquare, IconTrash, IconUser } from "@tabler/icons-react";
 import { DeliveryInspector } from "@/components/delivery-inspector";
 import { isPersistedUuid } from "@/lib/run-ledger-copy";
@@ -16,10 +18,10 @@ import { MessageReasoningDisclosure } from "@/components/message-reasoning-discl
 import { queuePromptPreview } from "@/lib/queue-prompt-preview";
 import { takeChatDraft } from "@/lib/chat-draft";
 import { AgentGoalControls } from "@/components/agent-goal-controls";
-import { requestSourceLabel } from "@/lib/request-label";
+import { requestSourceCopy, requestSourceLabel } from "@/lib/request-label";
 import { LiveStatusRow } from "@/components/live-status-row";
 import { LiveRunSteps, ReplyRunFooter, type ReplyRun } from "@/components/run-timeline";
-import { chatPollDelayMs, eventsSinceParam, formatElapsed, isTimedStepKind, lastReasoningLine, mergeLiveRuns, runningRun, type ClientLiveRun } from "@/lib/live-activity";
+import { chatPollDelayMs, eventsSinceParam, formatElapsed, isTimedStepKind, lastReasoningCopy, lastReasoningLine, mergeLiveRuns, runningRun, type ClientLiveRun } from "@/lib/live-activity";
 import { useLivePoll } from "@/lib/use-realtime";
 import { summarizeAlsoWorking, type RunningRun } from "@/lib/agent-visibility";
 import type { RunLive } from "@/lib/run-events";
@@ -91,14 +93,19 @@ function isGroupContinuation(
     return (new Date(curr.createdAt).getTime() - new Date(prev.createdAt).getTime()) < 5 * 60 * 1000;
 }
 
-function dateSeparatorLabel(date: string | Date) {
-    const d = new Date(date);
-    const today = new Date();
-    const yesterday = new Date(today);
-    yesterday.setDate(today.getDate() - 1);
-    if (isSameDay(d, today)) return "Today";
-    if (isSameDay(d, yesterday)) return "Yesterday";
-    return d.toLocaleDateString([], { month: "short", day: "numeric" });
+/** "Today", "Yesterday" or "Oct 29", in the viewer's language. */
+function useDateSeparatorLabel() {
+    const t = useTranslations("teamChat");
+    const format = useFormatter();
+    return (date: string | Date) => {
+        const d = new Date(date);
+        const today = new Date();
+        const yesterday = new Date(today);
+        yesterday.setDate(today.getDate() - 1);
+        if (isSameDay(d, today)) return t("today");
+        if (isSameDay(d, yesterday)) return t("yesterday");
+        return format.dateTime(d, { month: "short", day: "numeric" });
+    };
 }
 
 export function AgentDirectChat({
@@ -117,6 +124,16 @@ export function AgentDirectChat({
     canSend?: boolean;
     onAgentReply?: (message: { text: string; createdAt: string }) => void;
 }) {
+    const t = useTranslations("directChat");
+    const render = useCopy();
+    const tTeam = useTranslations("teamChat");
+    const format = useFormatter();
+    const dateSeparatorLabel = useDateSeparatorLabel();
+    const failureLabel = (message: DirectMessage) => {
+        const failure = runtimeFailureOf(message);
+        if (!failure) return null;
+        return failure.attempts ? t("failedAfter", { count: failure.attempts }) : t("failed");
+    };
     const { data: session } = useSession();
     // session.user.id is set in the auth session callback at runtime but not
     // part of next-auth's default user type — access it with the same cast the
@@ -358,7 +375,7 @@ export function AgentDirectChat({
         },
     });
 
-    // The agent's running runs elsewhere, for "Also working on" and the busy
+    // The agent's running runs elsewhere, for t("alsoWorkingOn") and the busy
     // queue signal. Refetches on `agents` and this thread's invalidations.
     useLivePoll(async (poll) => {
         if (typeof document !== "undefined" && document.visibilityState === "hidden") return;
@@ -422,12 +439,12 @@ export function AgentDirectChat({
 
         // getUserMedia requires a secure context (HTTPS or localhost)
         if (!window.isSecureContext) {
-            setMicError("Microphone access requires a secure (HTTPS) connection.");
+            setMicError(t("mic.insecure"));
             return;
         }
 
         if (!navigator.mediaDevices?.getUserMedia) {
-            setMicError("Microphone not available on this browser.");
+            setMicError(t("mic.unavailable"));
             return;
         }
 
@@ -458,13 +475,13 @@ export function AgentDirectChat({
                 //   - The user denied the prompt
                 //   - A Permissions-Policy header blocks microphone (e.g. microphone=())
                 //   - The user has previously denied and the browser doesn't re-prompt
-                setMicError("Microphone access denied. Check your browser settings and site permissions (look for the lock icon in the address bar), then reload and try again.");
+                setMicError(t("mic.denied"));
             } else if (err instanceof Error && err.name === "NotFoundError") {
-                setMicError("No microphone found. Plug one in and try again.");
+                setMicError(t("mic.notFound"));
             } else if (err instanceof Error && err.name === "NotReadableError") {
-                setMicError("Microphone is busy. Close other apps using it and try again.");
+                setMicError(t("mic.busy"));
             } else {
-                setMicError("Could not start recording. Check your microphone and try again.");
+                setMicError(t("mic.startFailed"));
             }
         }
     };
@@ -491,7 +508,7 @@ export function AgentDirectChat({
             form.append("file", audioBlobRef.current, `voice-${Date.now()}.webm`);
             const uploadRes = await fetch("/api/chat/voice", { method: "POST", body: form });
             if (!uploadRes.ok) {
-                let errMsg = "Voice upload failed";
+                let errMsg = t("voiceUploadFailed");
                 try { const body = await uploadRes.json(); if (body.error) errMsg = body.error; } catch {}
                 throw new Error(errMsg);
             }
@@ -511,7 +528,7 @@ export function AgentDirectChat({
                 body: JSON.stringify({ text, targetAgentId: agentId, directThreadId, attachments: [voiceArtifact.id] }),
             });
             if (!res.ok) {
-                let errMsg = "Failed to send message";
+                let errMsg = t("sendFailed");
                 try { const body = await res.json(); if (body.error) errMsg = body.error; } catch {}
                 throw new Error(errMsg);
             }
@@ -530,7 +547,7 @@ export function AgentDirectChat({
             }
             discardVoice();
         } catch (err) {
-            const message = err instanceof Error ? err.message : "Unknown error";
+            const message = err instanceof Error ? err.message : t("unknownError");
             console.error("Failed to send voice message", err);
             setMicError(message);
         } finally {
@@ -550,7 +567,7 @@ export function AgentDirectChat({
                 form.append("file", file);
                 const uploadRes = await fetch("/api/chat/attachments", { method: "POST", body: form });
                 if (!uploadRes.ok) {
-                    let errMsg = "Upload failed";
+                    let errMsg = t("uploadFailed");
                     try { const body = await uploadRes.json(); if (body.error) errMsg = body.error; } catch {}
                     setAttachError(errMsg);
                     continue;
@@ -558,7 +575,7 @@ export function AgentDirectChat({
                 const data = await uploadRes.json() as { id: string; name: string; contentType: string; sizeBytes: number };
                 setPendingAttachments((prev) => [...prev, { id: data.id, name: data.name, contentType: data.contentType, sizeBytes: data.sizeBytes }]);
             } catch {
-                setAttachError("Upload failed");
+                setAttachError(t("uploadFailed"));
             }
         }
     };
@@ -577,9 +594,9 @@ export function AgentDirectChat({
                 body: JSON.stringify({ action: "kill", directThreadId }),
             });
             const data = await res.json();
-            if (!res.ok) throw new Error(data.error || "Could not stop agent");
+            if (!res.ok) throw new Error(data.error || t("stopFailed"));
             await loadMessages();
-        } catch (e) { setControlError(e instanceof Error ? e.message : "Could not stop agent"); }
+        } catch (e) { setControlError(e instanceof Error ? e.message : t("stopFailed")); }
         finally { setIsSending(false); }
     };
 
@@ -590,12 +607,12 @@ export function AgentDirectChat({
         try {
             const res = await fetch(`/api/chat/messages/${messageId}`, { method: action === "cancel" ? "DELETE" : "POST" });
             const data = await res.json() as { error?: string; message?: DirectMessage };
-            if (!res.ok || !data.message) throw new Error(data.error || "Could not update queued message");
+            if (!res.ok || !data.message) throw new Error(data.error || t("queueUpdateFailed"));
             setMessages((previous) => previous.map((message) => message.id === data.message!.id ? data.message! : message));
             if (action === "cancel") setShowCancelledHistory(true);
             void loadMessages().catch(() => {});
         } catch (error) {
-            setControlError(error instanceof Error ? error.message : "Could not update queued message");
+            setControlError(error instanceof Error ? error.message : t("queueUpdateFailed"));
         } finally {
             setIsSending(false);
         }
@@ -615,7 +632,7 @@ export function AgentDirectChat({
 
         try {
             const replacing = sendMode === "replace" && !text.trim().startsWith("/");
-            if (replacing && pendingAttachments.length) throw new Error("Send attachments as a queued message");
+            if (replacing && pendingAttachments.length) throw new Error(t("attachmentsQueued"));
             const res = await fetch(replacing ? `/api/agents/${agentId}/control` : "/api/chat", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
@@ -624,7 +641,7 @@ export function AgentDirectChat({
 
             if (!res.ok) {
                 const data = await res.json().catch(() => ({}));
-                throw new Error(data.error || "Failed to send direct message");
+                throw new Error(data.error || t("sendDirectFailed"));
             }
 
             const data = await res.json() as { thread?: DirectThread; message?: DirectMessage; deduplicated?: boolean };
@@ -648,12 +665,12 @@ export function AgentDirectChat({
                 schedulePoll(8000, false);  // 8s: FULL reload (no since) — catch anything missed
             }
             if (data.deduplicated) {
-                setControlError("That exact prompt is already active or queued. It was not sent twice.");
+                setControlError(t("duplicate"));
             }
         } catch (error) {
-            console.error("Failed to send direct message", error);
+            console.error(t("sendDirectFailed"), error);
             setDraft(text);
-            setControlError(error instanceof Error ? error.message : "Failed to send message");
+            setControlError(error instanceof Error ? error.message : t("sendFailed"));
         } finally {
             setIsSending(false);
         }
@@ -684,7 +701,7 @@ export function AgentDirectChat({
             });
             if (!res.ok) {
                 const data = await res.json().catch(() => ({}));
-                throw new Error(data.error || "Failed to send message");
+                throw new Error(data.error || t("sendFailed"));
             }
             const data = await res.json() as { thread?: DirectThread; message?: DirectMessage };
             if (data.thread) setThread(data.thread);
@@ -695,7 +712,7 @@ export function AgentDirectChat({
             void loadMessages().catch(() => {});
             return true;
         } catch (error) {
-            setControlError(error instanceof Error ? error.message : "Failed to send message");
+            setControlError(error instanceof Error ? error.message : t("sendFailed"));
             return false;
         }
     }, [agentId, directThreadId, loadMessages, canSend]);
@@ -716,7 +733,7 @@ export function AgentDirectChat({
         .filter((message) => message.senderType === "human" && message.deliveryState === "cancelled")
         .slice(-3).reverse(), [messages]);
     // A message the runtime gave up on is stored as cancelled too; say "failed" for those.
-    const recentlyStoppedLabel = stoppedLabel(recentlyCancelledItems);
+    const recentlyStoppedLabel = t(`stopped.${stoppedKind(recentlyCancelledItems)}`);
 
     // "Also working on <task/chat> · 23 min →" for the agent's runs in other
     // threads, plus a "Queued — busy" signal when this chat's last message has
@@ -738,16 +755,16 @@ export function AgentDirectChat({
                                 <IconRobot className="w-4 h-4 text-emerald-400" />
                             </div>
                             <div>
-                                <h2 className="text-lg font-medium text-zinc-100">Direct Chat</h2>
+                                <h2 className="text-lg font-medium text-zinc-100">{t("title")}</h2>
                                 <p className="text-xs text-zinc-500">
-                                    Dedicated human-to-agent thread for {agentName}. Team, task, and attention threads stay under `Threads`.
+                                    {t("headerDescription", { name: agentName })}
                                 </p>
                             </div>
                         </div>
                     </div>
                     <div className="text-right">
-                        <div className="text-[10px] uppercase tracking-wider font-semibold text-zinc-500">Thread</div>
-                        <div className="text-xs font-mono text-zinc-400">{thread?.id || "provisioning"}</div>
+                        <div className="text-[10px] uppercase tracking-wider font-semibold text-zinc-500">{t("thread")}</div>
+                        <div className="text-xs font-mono text-zinc-400">{thread?.id || t("provisioning")}</div>
                     </div>
                 </div>
             )}
@@ -755,14 +772,14 @@ export function AgentDirectChat({
             <div ref={scrollRef} onScroll={handleScroll} style={{ overflowAnchor: "none" }} className="relative flex-1 overflow-y-auto bg-[radial-gradient(circle_at_top,_rgba(16,185,129,0.08),_transparent_35%),linear-gradient(180deg,var(--chat-gradient-start),var(--chat-gradient-end))] p-3 sm:p-5">
                 {isLoading ? (
                     <div className="h-full flex items-center justify-center text-sm text-zinc-500 animate-pulse">
-                        Loading direct thread...
+                        {t("loading")}
                     </div>
                 ) : messages.length === 0 ? (
                     <div className="h-full flex items-center justify-center">
                         <div className="max-w-sm rounded-2xl border border-dashed border-zinc-800 bg-zinc-950/50 p-6 text-center">
-                            <div className="text-sm text-zinc-300 mb-2">No direct messages yet.</div>
+                            <div className="text-sm text-zinc-300 mb-2">{t("emptyTitle")}</div>
                             <div className="text-xs text-zinc-500 leading-relaxed">
-                                Send an instruction here and the connected agent should answer inside this private thread.
+                                {t("emptyBody")}
                             </div>
                         </div>
                     </div>
@@ -776,7 +793,7 @@ export function AgentDirectChat({
                                     disabled={isLoadingOlder}
                                     className="rounded-full border border-zinc-800 bg-zinc-950/80 px-3 py-1.5 text-xs font-medium text-zinc-400 transition-colors hover:border-emerald-500/40 hover:text-emerald-300 disabled:cursor-not-allowed disabled:opacity-50"
                                 >
-                                    {isLoadingOlder ? "Loading..." : "Load older messages"}
+                                    {isLoadingOlder ? t("loadingOlder") : t("loadOlder")}
                                 </button>
                             </div>
                         )}
@@ -788,7 +805,7 @@ export function AgentDirectChat({
                             const isControl = message.senderType === "system" && Boolean((message.metadataJson as Record<string, unknown> | null)?.runtimeControl);
                             // System messages say who they are from: a request names its
                             // source platform; anything else comes from Emperor itself.
-                            const senderLabel = message.senderType === "system" ? (requestSourceLabel(message.metadataJson) ?? "Emperor") : agentName;
+                            const senderLabel = message.senderType === "system" ? (requestSourceLabel(message.metadataJson) ? render(requestSourceCopy(message.metadataJson), requestSourceLabel(message.metadataJson)!) : "Emperor") : agentName;
                             const isRead = isHuman && agentLastReadAt && new Date(agentLastReadAt).getTime() >= new Date(message.createdAt).getTime();
                             const prev = messages[i - 1] ?? null;
                             const next = messages[i + 1] ?? null;
@@ -841,7 +858,7 @@ export function AgentDirectChat({
                                                             {isHuman ? <IconUser className="w-3 h-3" /> : <IconRobot className="w-3 h-3 text-emerald-400" />}
                                                         </div>
                                                         <span className={cn("text-[10px] uppercase tracking-wider font-bold", isHuman ? "text-emerald-950/70" : "text-zinc-500")}>
-                                                            {isHuman ? (isOwn ? "You" : getMessageSenderName(message) || "Member") : senderLabel}
+                                                            {isHuman ? (isOwn ? tTeam("you") : getMessageSenderName(message) || tTeam("member")) : senderLabel}
                                                         </span>
                                                     </div>
                                                 )}
@@ -853,7 +870,7 @@ export function AgentDirectChat({
                                                     <MessageContent text={message.text} isHuman={isHuman} />
                                                 )}
                                                 {isControl && <p className="mt-2 text-xs text-zinc-400">
-                                                    {message.deliveryState === "resolved" ? "Runtime confirmed" : "Waiting for Hermes confirmation. An offline or older runtime cannot stop yet."}
+                                                    {message.deliveryState === "resolved" ? t("runtimeConfirmed") : t("waitingHermes")}
                                                 </p>}
                                                 {messageAttachments.length > 0 && (
                                                     <div className="mt-2 flex flex-col gap-1.5">
@@ -890,7 +907,7 @@ export function AgentDirectChat({
                                                 )}
                                                 {/* Timestamp — bottom-right of bubble, on every message */}
                                                 <div className={cn("text-[10px] mt-1.5 text-right opacity-50", isHuman ? "text-emerald-950" : "text-zinc-400")}>
-                                                    {new Date(message.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                                                    {format.dateTime(new Date(message.createdAt), { hour: "2-digit", minute: "2-digit" })}
                                                 </div>
                                             </div>
 
@@ -907,13 +924,13 @@ export function AgentDirectChat({
                                                         "text-[10px] font-medium",
                                                         message.deliveryState === "acting" ? "text-emerald-500" : runtimeFailureOf(message) ? "text-rose-400" : "text-zinc-600"
                                                     )} title={runtimeFailureOf(message)?.reason ?? undefined}>
-                                                        {message.deliveryState === "cancelled" ? (failureLabel(message) ?? "Cancelled") : message.deliveryState === "acting" ? "Being handled" : "Queued"}
+                                                        {message.deliveryState === "cancelled" ? (failureLabel(message) ?? t("cancelled")) : message.deliveryState === "acting" ? t("beingHandled") : t("queued")}
                                                     </span>
                                                 </div>
                                             ) : isHuman && isLastInGroup && (
                                                 <div className="mt-1 flex items-center gap-1 px-1">
                                                     <span className={cn("text-[10px] font-medium transition-colors", isRead ? "text-emerald-500" : "text-zinc-600")}>
-                                                        {isRead ? "Read" : "Sent"}
+                                                        {isRead ? t("read") : t("sent")}
                                                     </span>
                                                     {isRead && <div className="w-1 h-1 rounded-full bg-emerald-500" />}
                                                 </div>
@@ -926,19 +943,19 @@ export function AgentDirectChat({
                         </div>
                         {/* One steady row for the whole turn: shown while the viewer's prompt
                             is being handled OR the runtime reports typing, so a late bridge
-                            refresh no longer drops it back to a bare "Being handled" pill.
+                            refresh no longer drops it back to a bare t("beingHandled") pill.
                             Always mounted so its live region is ready before work starts. */}
                         <LiveStatusRow
                             active={liveActive}
                             activityKey={activeQueueItem?.id ?? null}
                             activity={agentActivity}
                             label={agentName}
-                            idleVerb="is working"
-                            fallbackText="Working"
+                            idleVerb={t("isWorking")}
+                            fallbackText={t("working")}
                             variant="direct"
                             step={liveRun?.current.summary ?? null}
                             stepStartedAt={liveRun && isTimedStepKind(liveRun.current.kind) ? liveRun.currentStartedAt : null}
-                            detail={liveRun ? lastReasoningLine(liveRun) : null}
+                            detail={liveRun ? render(lastReasoningCopy(liveRun), lastReasoningLine(liveRun) ?? "") || null : null}
                         />
                         {liveActive && liveRun && (
                             <div className="mt-1 max-w-[88%] pl-4 sm:max-w-[80%]">
@@ -955,14 +972,14 @@ export function AgentDirectChat({
                     onClick={scrollToLatest}
                     className="absolute bottom-24 left-1/2 z-10 -translate-x-1/2 rounded-full border border-emerald-500/30 bg-zinc-900/95 px-3 py-1.5 text-xs font-medium text-emerald-300 shadow-lg transition-colors hover:bg-zinc-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400/70"
                 >
-                    {unreadCount} new message{unreadCount === 1 ? "" : "s"} · Jump to latest
+                    {tTeam("jumpToLatest", { count: unreadCount })}
                 </button>
             )}
 
             {canSend && <div className="space-y-2 border-t border-zinc-800 bg-zinc-950/80 p-2 sm:p-4">
                 {alsoWorking.primary && (
                     <div className="flex flex-wrap items-center gap-x-1.5 gap-y-1 text-xs text-zinc-400">
-                        <span className="shrink-0">Also working on</span>
+                        <span className="shrink-0">{t("alsoWorkingOn")}</span>
                         {alsoWorking.primary.href ? (
                             <Link href={alsoWorking.primary.href} className="min-w-0 truncate text-cyan-300 hover:text-cyan-200">
                                 {alsoWorking.primary.text}{alsoWorking.primary.startedAt && <> · <WorkElapsed startedAt={alsoWorking.primary.startedAt} /></>}
@@ -971,25 +988,25 @@ export function AgentDirectChat({
                             <span className="min-w-0 truncate text-zinc-300">{alsoWorking.primary.text}{alsoWorking.primary.startedAt && <> · <WorkElapsed startedAt={alsoWorking.primary.startedAt} /></>}</span>
                         )}
                         <span className="shrink-0 text-zinc-500">→</span>
-                        {alsoWorking.more > 0 && <span className="shrink-0 text-zinc-500">+{alsoWorking.more} more</span>}
+                        {alsoWorking.more > 0 && <span className="shrink-0 text-zinc-500">{t("more", { count: alsoWorking.more })}</span>}
                     </div>
                 )}
                 {showQueuedBusy && (
                     <p className="rounded-lg border border-amber-500/20 bg-amber-500/[0.06] px-3 py-2 text-xs text-amber-200">
-                        Queued — {agentName} is busy with {busyRunningCount} things; it will pick this up next.
+                        {t("queuedBusy", { name: agentName, count: busyRunningCount })}
                     </p>
                 )}
                 {(hasQueueBacklog || showCancelledHistory) && (
-                    <details key={showCancelledHistory ? "history" : "pending"} open={showCancelledHistory ? true : undefined} aria-label="Agent message queue" className="rounded-xl border border-zinc-800 bg-zinc-900/50 text-xs">
-                        <summary className="min-h-11 cursor-pointer px-3 py-3 font-medium text-zinc-300">Message queue · {queueItems.length} pending</summary>
+                    <details key={showCancelledHistory ? "history" : "pending"} open={showCancelledHistory ? true : undefined} aria-label={t("queueLabel")} className="rounded-xl border border-zinc-800 bg-zinc-900/50 text-xs">
+                        <summary className="min-h-11 cursor-pointer px-3 py-3 font-medium text-zinc-300">{t("queueSummary", { count: queueItems.length })}</summary>
                         <div className="max-h-48 overflow-y-auto px-3 pb-3">
                         <div className="mb-2 flex items-center justify-between gap-2">
-                            <span className="font-semibold text-zinc-200">Message queue</span>
+                            <span className="font-semibold text-zinc-200">{t("queueTitle")}</span>
                             <div className="flex items-center gap-3">
-                                <span className="text-zinc-500">{queueItems.length} pending</span>
+                                <span className="text-zinc-500">{t("pending", { count: queueItems.length })}</span>
                                 {!hasQueueBacklog && (
                                     <button type="button" onClick={() => setShowCancelledHistory(false)} className="text-zinc-500 hover:text-zinc-200">
-                                        Close
+                                        {t("close")}
                                     </button>
                                 )}
                             </div>
@@ -997,7 +1014,7 @@ export function AgentDirectChat({
                         {hasQueueBacklog && activeQueueItem && (
                             <QueueItem
                                 message={activeQueueItem}
-                                stateLabel="Handling now"
+                                stateLabel={t("handlingNow")}
                                 disabled={isSending}
                                 onCancel={() => void updateQueueItem(activeQueueItem.id, "cancel")}
                             />
@@ -1006,19 +1023,19 @@ export function AgentDirectChat({
                             <QueueItem
                                 key={message.id}
                                 message={message}
-                                stateLabel={`Waiting${waitingQueueItems.length > 1 ? ` · ${index + 1} of ${waitingQueueItems.length}` : ""}`}
+                                stateLabel={waitingQueueItems.length > 1 ? t("waitingOf", { n: index + 1, total: waitingQueueItems.length }) : t("waitingState")}
                                 disabled={isSending}
                                 onCancel={() => void updateQueueItem(message.id, "cancel")}
                             />
                         ))}
                         {showCancelledHistory && recentlyCancelledItems.length > 0 && (
                             <div className="mt-2 border-t border-zinc-800 pt-2">
-                                <p className="mb-1 text-[10px] font-medium uppercase tracking-wide text-zinc-500">Recently {recentlyStoppedLabel}</p>
+                                <p className="mb-1 text-[10px] font-medium uppercase tracking-wide text-zinc-500">{t("recently", { label: recentlyStoppedLabel })}</p>
                                 {recentlyCancelledItems.map((message) => (
                                     <QueueItem
                                         key={message.id}
                                         message={message}
-                                        stateLabel={failureLabel(message) ?? "Cancelled"}
+                                        stateLabel={failureLabel(message) ?? t("cancelled")}
                                         disabled={isSending}
                                         onRetry={() => void updateQueueItem(message.id, "retry")}
                                     />
@@ -1030,7 +1047,7 @@ export function AgentDirectChat({
                 )}
                 {recentlyCancelledItems.length > 0 && !showCancelledHistory && (
                     <button type="button" onClick={() => setShowCancelledHistory(true)} className="px-1 text-[10px] text-zinc-600 hover:text-zinc-300">
-                        {recentlyCancelledItems.length} recently {recentlyStoppedLabel} · Review or retry
+                        {t("recentlyReview", { count: recentlyCancelledItems.length, label: recentlyStoppedLabel })}
                     </button>
                 )}
                 {controlError && <p role="alert" className="text-xs text-red-300">{controlError}</p>}
@@ -1039,7 +1056,7 @@ export function AgentDirectChat({
                         <IconMicrophone className="w-3.5 h-3.5 shrink-0 text-red-400 mt-0.5" />
                         <span>
                             {micError === "blocked"
-                                ? <>Microphone is blocked. Click the <strong>lock icon</strong> in your browser&apos;s address bar → <strong>Site settings</strong> → set Microphone to <strong>Allow</strong>, then reload the page.</>
+                                ? t.rich("micBlocked", { strong: (chunks) => <strong>{chunks}</strong> })
                                 : micError}
                         </span>
                     </div>
@@ -1049,7 +1066,7 @@ export function AgentDirectChat({
                     <div className="flex items-center gap-3">
                         <div className="flex items-center gap-2 flex-1">
                             <span className="w-2.5 h-2.5 rounded-full bg-red-500 animate-pulse shrink-0" />
-                            <span className="text-sm font-medium text-zinc-300">Recording…</span>
+                            <span className="text-sm font-medium text-zinc-300">{t("recording")}</span>
                             <span className="text-sm font-mono text-zinc-400">
                                 {Math.floor(recordingSecs / 60)}:{String(recordingSecs % 60).padStart(2, "0")}
                             </span>
@@ -1060,7 +1077,7 @@ export function AgentDirectChat({
                             className="inline-flex items-center gap-2 rounded-full bg-red-500 px-4 py-2.5 text-sm font-semibold text-white hover:bg-red-400 transition-colors"
                         >
                             <IconSquare className="w-3.5 h-3.5 fill-white" />
-                            Stop
+                            {t("stop")}
                         </button>
                     </div>
                 )}
@@ -1073,7 +1090,7 @@ export function AgentDirectChat({
                             type="button"
                             onClick={discardVoice}
                             className="p-2 rounded-full hover:bg-zinc-800 text-zinc-500 hover:text-zinc-300 transition-colors"
-                            title="Discard"
+                            title={t("discard")}
                         >
                             <IconTrash className="w-4 h-4" />
                         </button>
@@ -1084,7 +1101,7 @@ export function AgentDirectChat({
                             className="inline-flex items-center gap-2 rounded-full bg-emerald-500 px-4 py-2.5 text-sm font-semibold text-emerald-950 hover:bg-emerald-400 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                         >
                             <IconSend className="w-4 h-4" />
-                            Send
+                            {t("send")}
                         </button>
                     </div>
                 )}
@@ -1115,7 +1132,7 @@ export function AgentDirectChat({
                         multiple
                         className="hidden"
                         onChange={handleAttachFiles}
-                        aria-label="Attach files"
+                        aria-label={t("attachFiles")}
                     />
                     <textarea
                         value={draft}
@@ -1126,8 +1143,8 @@ export function AgentDirectChat({
                                 event.currentTarget.form?.requestSubmit();
                             }
                         }}
-                        placeholder={`Message ${agentName}…`}
-                        aria-label={`Message ${agentName}`}
+                        placeholder={t("messagePlaceholder", { name: agentName })}
+                        aria-label={t("messageLabel", { name: agentName })}
                         aria-describedby="direct-message-shortcut"
                         rows={1}
                         className="block max-h-40 min-h-11 w-full resize-none overflow-y-auto bg-transparent px-3 pt-3 pb-1 text-base leading-5 text-zinc-200 placeholder:text-zinc-600 focus:outline-none sm:px-4 sm:text-sm"
@@ -1136,8 +1153,8 @@ export function AgentDirectChat({
                         <button
                             type="button"
                             onClick={() => fileInputRef.current?.click()}
-                            title="Attach files"
-                            aria-label="Attach files"
+                            title={t("attachFiles")}
+                            aria-label={t("attachFiles")}
                             className={composerIconButton}
                         >
                             <IconPaperclip className="h-4 w-4" />
@@ -1145,28 +1162,28 @@ export function AgentDirectChat({
                         <button
                             type="button"
                             onClick={startRecording}
-                            title="Record voice message"
-                            aria-label="Record voice message"
+                            title={t("recordVoice")}
+                            aria-label={t("recordVoice")}
                             className={composerIconButton}
                         >
                             <IconMicrophone className="h-4 w-4" />
                         </button>
                         <AgentGoalControls agentId={agentId} />
-                        <select aria-label="Next prompt behavior" title="What happens when the agent is busy" value={sendMode} onChange={e => setSendMode(e.target.value as "queue" | "replace")}
+                        <select aria-label={t("nextPromptBehavior")} title={t("busyBehavior")} value={sendMode} onChange={e => setSendMode(e.target.value as "queue" | "replace")}
                             className="h-8 min-w-0 max-w-[7rem] cursor-pointer sm:max-w-[9.5rem] truncate rounded-full border border-transparent bg-transparent px-2 text-xs text-zinc-400 hover:border-zinc-700 hover:text-zinc-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500/70">
-                            <option value="queue">Queue after current</option>
-                            <option value="replace">Replace current work</option>
+                            <option value="queue">{t("queueAfter")}</option>
+                            <option value="replace">{t("replaceCurrent")}</option>
                         </select>
                         <div className="ml-auto flex items-center gap-1.5">
                             <button type="button" onClick={stopAgent} disabled={isSending}
-                                title="Stop the agent and clear its queue" aria-label="Stop agent and clear queue"
+                                title={t("stopTitle")} aria-label={t("stopLabel")}
                                 className={cn(composerIconButton, activeQueueItem ? "text-red-300 hover:bg-red-500/10 hover:text-red-200" : "")}>
                                 <IconPlayerStop className="h-4 w-4" />
                             </button>
                             <button
                                 type="submit"
                                 disabled={(!draft.trim() && pendingAttachments.length === 0) || isSending}
-                                aria-label={isSending ? "Sending message" : "Send message"}
+                                aria-label={isSending ? t("sending") : t("sendMessage")}
                                 className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-emerald-500 text-emerald-950 transition-colors hover:bg-emerald-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-300 disabled:cursor-not-allowed disabled:bg-zinc-700 disabled:text-zinc-400"
                             >
                                 <IconArrowUp className="h-4 w-4" stroke={2.5} />
@@ -1175,7 +1192,7 @@ export function AgentDirectChat({
                     </div>
                 </div>
                 <p id="direct-message-shortcut" className="mt-1.5 hidden px-1 text-center text-[10px] text-zinc-600 sm:block">
-                    Enter to send · Shift+Enter for a new line · /kill · /queue prompt · /replace prompt
+                    {t("shortcutHint")}
                 </p>
             </form>
                 )}
@@ -1192,17 +1209,11 @@ function runtimeFailureOf(message: DirectMessage): { attempts?: number | null; r
     return failure && typeof failure === "object" ? failure as { attempts?: number | null; reason?: string | null } : null;
 }
 
-/** "failed", "cancelled", or "failed or cancelled" for a list of stopped messages. */
-function stoppedLabel(messages: DirectMessage[]): string {
+/** Whether a list of stopped messages failed, was cancelled, or both (directChat.stopped.*). */
+function stoppedKind(messages: DirectMessage[]): "cancelled" | "failed" | "mixed" {
     const failed = messages.filter((message) => runtimeFailureOf(message)).length;
     if (failed === 0) return "cancelled";
-    return failed === messages.length ? "failed" : "failed or cancelled";
-}
-
-function failureLabel(message: DirectMessage): string | null {
-    const failure = runtimeFailureOf(message);
-    if (!failure) return null;
-    return failure.attempts ? `Failed after ${failure.attempts} attempt${failure.attempts === 1 ? "" : "s"}` : "Failed";
+    return failed === messages.length ? "failed" : "mixed";
 }
 
 /** Operator messages after index `i`, so a choices block knows its answer. */
@@ -1233,6 +1244,7 @@ function QueueItem({
     onCancel?: () => void;
     onRetry?: () => void;
 }) {
+    const t = useTranslations("directChat");
     return (
         <div className="flex items-center gap-2 py-1.5">
             <span className={cn("h-1.5 w-1.5 shrink-0 rounded-full", message.deliveryState === "acting" ? "bg-emerald-400 animate-pulse" : "bg-zinc-500")} />
@@ -1243,13 +1255,13 @@ function QueueItem({
             {onCancel && (
                 <button type="button" onClick={onCancel} disabled={disabled}
                     className="min-h-11 rounded-lg border border-zinc-700 px-3 py-2 text-xs text-zinc-300 hover:border-red-400/60 hover:text-red-300 disabled:opacity-50">
-                    Cancel
+                    {t("cancel")}
                 </button>
             )}
             {onRetry && (
                 <button type="button" onClick={onRetry} disabled={disabled}
                     className="min-h-11 rounded-lg border border-zinc-700 px-3 py-2 text-xs text-zinc-300 hover:border-emerald-400/60 hover:text-emerald-300 disabled:opacity-50">
-                    Retry
+                    {t("retry")}
                 </button>
             )}
         </div>

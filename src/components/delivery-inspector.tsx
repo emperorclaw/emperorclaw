@@ -8,13 +8,17 @@ import {
     IconLoader2,
     IconRefresh,
 } from "@tabler/icons-react";
+import { useTranslations } from "next-intl";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { RunStatusChip } from "@/components/run-status-chip";
 import { agentAvatarSrc } from "@/lib/avatar";
 import { cn } from "@/lib/utils";
+import { copy as codedCopy } from "@/lib/coded-copy";
+import { useCopy } from "@/lib/i18n/use-copy";
 import {
     NO_DELIVERY_VERDICT_COPY,
     deliveryVerdictCopy,
+    deliveryVerdictMessage,
     formatRunDuration,
     formatRunTokens,
     triggerKindLabel,
@@ -64,6 +68,8 @@ interface DeliveryView {
 }
 
 function RunLine({ run }: { run: DeliveryRun }) {
+    const t = useTranslations("delivery");
+    const render = useCopy();
     return (
         <div className="rounded-lg border border-zinc-800/80 bg-zinc-900/40 p-2">
             <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
@@ -72,13 +78,13 @@ function RunLine({ run }: { run: DeliveryRun }) {
                 <span className="text-[11px] tabular-nums text-zinc-400">{formatRunTokens(run.inputTokens, run.outputTokens)}</span>
                 {run.toolCalls !== null && (
                     <span className="text-[11px] text-zinc-500">
-                        {run.toolCalls} {run.toolCalls === 1 ? "tool" : "tools"}
+                        {t("tools", { count: run.toolCalls })}
                     </span>
                 )}
-                <span className="text-[11px] text-zinc-500">{triggerKindLabel(run.triggerKind)}</span>
+                <span className="text-[11px] text-zinc-500">{render(codedCopy(`agents.runs.triggers.${run.triggerKind ?? "unknown"}`), triggerKindLabel(run.triggerKind))}</span>
                 {run.eventsCount ? (
                     <span className="text-[11px] tabular-nums text-zinc-500">
-                        {run.eventsCount} {run.eventsCount === 1 ? "event" : "events"}
+                        {t("events", { count: run.eventsCount })}
                     </span>
                 ) : null}
             </div>
@@ -88,17 +94,18 @@ function RunLine({ run }: { run: DeliveryRun }) {
 }
 
 function DeliveryInspectorImpl({ messageId, tone = "dark" }: { messageId: string; tone?: "dark" | "light" }) {
+    const t = useTranslations("delivery");
     const [open, setOpen] = useState(false);
     const [data, setData] = useState<DeliveryView | null>(null);
     const [loading, setLoading] = useState(false);
-    const [error, setError] = useState<string | null>(null);
+    const [error, setError] = useState<"notFound" | "loadFailed" | null>(null);
 
     const load = useCallback(async () => {
         setLoading(true);
         setError(null);
         try {
             const res = await fetch(`/api/messages/${encodeURIComponent(messageId)}/delivery`);
-            if (!res.ok) throw new Error(res.status === 404 ? "Message not found" : "Could not load delivery");
+            if (!res.ok) throw new Error(res.status === 404 ? "notFound" : "loadFailed");
             const json = (await res.json()) as Partial<DeliveryView>;
             setData({
                 verdicts: json.verdicts ?? [],
@@ -107,7 +114,7 @@ function DeliveryInspectorImpl({ messageId, tone = "dark" }: { messageId: string
                 coalescedInto: json.coalescedInto ?? null,
             });
         } catch (e) {
-            setError(e instanceof Error ? e.message : "Could not load delivery");
+            setError(e instanceof Error && e.message === "notFound" ? "notFound" : "loadFailed");
         } finally {
             setLoading(false);
         }
@@ -123,7 +130,7 @@ function DeliveryInspectorImpl({ messageId, tone = "dark" }: { messageId: string
             <PopoverTrigger asChild>
                 <button
                     type="button"
-                    aria-label="Show delivery details for this message"
+                    aria-label={t("show")}
                     className={cn(
                         "inline-flex items-center gap-1 rounded-md text-[10px] font-medium uppercase tracking-wider transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-0",
                         tone === "light"
@@ -132,17 +139,17 @@ function DeliveryInspectorImpl({ messageId, tone = "dark" }: { messageId: string
                     )}
                 >
                     <IconRoute className="h-3 w-3" aria-hidden="true" />
-                    Delivery
+                    {t("title")}
                 </button>
             </PopoverTrigger>
-            <PopoverContent aria-label="Delivery details" align="start" className="w-[22rem] p-0">
+            <PopoverContent aria-label={t("details")} align="start" className="w-[22rem] p-0">
                 <div className="flex items-center justify-between gap-2 border-b border-zinc-800 px-3 py-2">
-                    <h3 className="text-xs font-semibold uppercase tracking-wider text-zinc-300">Delivery</h3>
+                    <h3 className="text-xs font-semibold uppercase tracking-wider text-zinc-300">{t("title")}</h3>
                     <button
                         type="button"
                         onClick={() => void load()}
                         disabled={loading}
-                        aria-label="Refresh delivery details"
+                        aria-label={t("refresh")}
                         className="inline-flex h-6 w-6 items-center justify-center rounded-md text-zinc-500 transition-colors hover:text-cyan-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400/60 disabled:opacity-50"
                     >
                         <IconRefresh className={cn("h-3.5 w-3.5", loading && "animate-spin motion-reduce:animate-none")} aria-hidden="true" />
@@ -152,11 +159,11 @@ function DeliveryInspectorImpl({ messageId, tone = "dark" }: { messageId: string
                     {loading && data === null && (
                         <p className="flex items-center gap-2 text-[11px] text-zinc-500">
                             <IconLoader2 className="h-3.5 w-3.5 animate-spin motion-reduce:animate-none" aria-hidden="true" />
-                            Loading delivery…
+                            {t("loading")}
                         </p>
                     )}
                     {error && (
-                        <p className="text-[11px] text-amber-400" role="alert">{error}</p>
+                        <p className="text-[11px] text-amber-400" role="alert">{t(error)}</p>
                     )}
                     {data && <DeliveryBody data={data} />}
                 </div>
@@ -174,6 +181,8 @@ function DeliveryInspectorImpl({ messageId, tone = "dark" }: { messageId: string
 export const DeliveryInspector = memo(DeliveryInspectorImpl);
 
 function DeliveryBody({ data }: { data: DeliveryView }) {
+    const t = useTranslations("delivery");
+    const render = useCopy();
     const runsByAgent = new Map<string, DeliveryRun[]>();
     for (const run of data.runs) {
         if (!run.agentId) continue;
@@ -197,7 +206,7 @@ function DeliveryBody({ data }: { data: DeliveryView }) {
                                 alt=""
                                 className="h-6 w-6 shrink-0 rounded-full border border-zinc-700 object-cover"
                             />
-                            <span className="truncate text-xs font-medium text-zinc-200">{verdict.agentName || "Agent"}</span>
+                            <span className="truncate text-xs font-medium text-zinc-200">{verdict.agentName || t("agent")}</span>
                         </div>
                         <p className={cn(
                             "mt-1.5 flex items-start gap-1.5 text-[11px]",
@@ -206,7 +215,7 @@ function DeliveryBody({ data }: { data: DeliveryView }) {
                             {copy.outcome === "delivered"
                                 ? <IconCircleCheck className="mt-px h-3.5 w-3.5 shrink-0" aria-hidden="true" />
                                 : <IconCircleX className="mt-px h-3.5 w-3.5 shrink-0" aria-hidden="true" />}
-                            <span className="min-w-0">{copy.label}</span>
+                            <span className="min-w-0">{render(deliveryVerdictMessage(verdict), copy.label)}</span>
                         </p>
                         {runs.length > 0 && (
                             <div className="mt-2 space-y-1.5">
@@ -219,7 +228,7 @@ function DeliveryBody({ data }: { data: DeliveryView }) {
 
             {orphanRuns.length > 0 && (
                 <div className="rounded-xl border border-zinc-800/80 bg-zinc-900/30 p-2.5">
-                    <p className="text-[11px] font-medium text-zinc-400">Triggered runs</p>
+                    <p className="text-[11px] font-medium text-zinc-400">{t("triggeredRuns")}</p>
                     <div className="mt-2 space-y-1.5">
                         {orphanRuns.map((run) => <RunLine key={run.id} run={run} />)}
                     </div>
@@ -230,15 +239,13 @@ function DeliveryBody({ data }: { data: DeliveryView }) {
                 <div className="rounded-xl border border-zinc-800/80 bg-zinc-900/30 p-2.5 text-[11px] text-zinc-400">
                     {data.coalescedInto ? (
                         <p>
-                            Answered together with message{" "}
-                            <span className="font-mono text-zinc-300">{data.coalescedInto.slice(0, 8)}</span>.
+                            {t.rich("answeredWith", { id: data.coalescedInto.slice(0, 8), mono: (chunks) => <span className="font-mono text-zinc-300">{chunks}</span> })}
                         </p>
                     ) : null}
                     {data.coalescedMessageIds.length > 0 ? (
                         <>
                             <p>
-                                The reply also answered {data.coalescedMessageIds.length} queued{" "}
-                                {data.coalescedMessageIds.length === 1 ? "message" : "messages"}:
+                                {t("alsoAnswered", { count: data.coalescedMessageIds.length })}
                             </p>
                             <p className="mt-1 break-all font-mono text-[10px] text-zinc-500">
                                 {data.coalescedMessageIds.map((id) => id.slice(0, 8)).join(", ")}
@@ -249,7 +256,7 @@ function DeliveryBody({ data }: { data: DeliveryView }) {
             )}
 
             {data.verdicts.length === 0 && data.runs.length === 0 && (
-                <p className="text-[11px] leading-relaxed text-zinc-500">{NO_DELIVERY_VERDICT_COPY}</p>
+                <p className="text-[11px] leading-relaxed text-zinc-500">{render(codedCopy("delivery.noVerdict"), NO_DELIVERY_VERDICT_COPY)}</p>
             )}
         </div>
     );

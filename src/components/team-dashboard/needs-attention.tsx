@@ -10,6 +10,7 @@ import {
 } from "@tabler/icons-react";
 import type { AttentionEntry, AttentionKind, DashboardMember } from "@/lib/team-scene";
 import { useTimeAgo } from "@/lib/i18n/format";
+import { useCopy } from "@/lib/i18n/use-copy";
 import { approvalAgeDays, isStaleApproval } from "@/lib/approval-status";
 import { cn } from "@/lib/utils";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
@@ -46,6 +47,7 @@ export function NeedsAttention({ entries: listed, now, onFocusMember, canAct, ag
 }) {
     const t = useTranslations("home.attention");
     const tCommon = useTranslations("common");
+    const render = useCopy();
     const timeAgo = useTimeAgo();
     const scene = useSceneCopy();
     const router = useRouter();
@@ -156,9 +158,9 @@ export function NeedsAttention({ entries: listed, now, onFocusMember, canAct, ag
                                             <Link href={entry.href} onClick={() => inbox.markRead(entry)} className={cn("min-w-0 flex-1 break-words text-sm text-foreground after:absolute after:inset-0 after:content-[''] focus-visible:outline-none focus-visible:rounded-lg focus-visible:ring-2 focus-visible:ring-cyan-400", unread ? "font-bold" : "font-medium")}>
                                                 {unread && <><span aria-hidden className="mr-1.5 inline-block h-2 w-2 rounded-full bg-cyan-500 align-middle" /><span className="sr-only">{t("unreadPrefix")}</span></>}
                                                 <span className="mr-1.5 inline-flex items-center rounded bg-muted/70 px-1 py-px text-[10px] font-semibold uppercase tracking-wide text-muted-foreground dark:bg-white/[0.06]">{scene.kind(entry.kind)}</span>
-                                                {entry.title}
+                                                {render(entry.titleCopy, entry.title)}
                                             </Link>
-                                            <button type="button" onClick={() => void inbox.archive(entry)} title={t("archiveTitle")} aria-label={t("archiveLabel", { title: entry.title })}
+                                            <button type="button" onClick={() => void inbox.archive(entry)} title={t("archiveTitle")} aria-label={t("archiveLabel", { title: render(entry.titleCopy, entry.title) })}
                                                 className="relative z-10 -my-2 -mr-1 grid h-11 w-11 shrink-0 place-items-center rounded-lg text-muted-foreground transition hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400 md:h-8 md:w-8">
                                                 <IconArchive className="h-4 w-4" />
                                             </button>
@@ -169,10 +171,10 @@ export function NeedsAttention({ entries: listed, now, onFocusMember, canAct, ag
                                                 <button type="button" onClick={() => onFocusMember(entry.memberKey!)} className="relative z-10 font-medium hover:text-foreground">{entry.memberName}</button>
                                             ) : entry.memberName}
                                             {entry.memberName && entry.area && <span aria-hidden> · </span>}
-                                            {entry.area}
+                                            {entry.area && render(entry.areaCopy, entry.area)}
                                         </div>
                                         {entry.kind === "incident" && entry.reason && (
-                                            <div className="mt-0.5 truncate text-xs text-rose-500/90 dark:text-rose-300/90">{entry.reason}</div>
+                                            <div className="mt-0.5 truncate text-xs text-rose-500/90 dark:text-rose-300/90">{render(entry.reasonCopy, entry.reason)}</div>
                                         )}
                                         {canAct ? (
                                             <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
@@ -211,6 +213,7 @@ function Actions({ entry, busy, agents, onApprove, onReject, onDismiss, onResume
 }) {
     const t = useTranslations("home.attention");
     const tCommon = useTranslations("common");
+    const render = useCopy();
     const [confirming, setConfirming] = useState(false);
     const [confirmDays, setConfirmDays] = useState(0);
     const disabled = busy;
@@ -233,7 +236,7 @@ function Actions({ entry, busy, agents, onApprove, onReject, onDismiss, onResume
     switch (entry.kind) {
         case "approval":
             // A task that requires approval but has no request yet is decided on the Approvals page.
-            if (!entry.approvalId) return <Link href={entry.href} className={cn(btn, primary)}>{entry.actionLabel || t("review")}</Link>;
+            if (!entry.approvalId) return <Link href={entry.href} className={cn(btn, primary)}>{entry.actionLabel ? render(entry.actionCopy, entry.actionLabel) : t("review")}</Link>;
             if (confirming) {
                 return (
                     <span role="alertdialog" aria-label={t("confirmStale")} className="relative z-10 flex flex-col gap-1.5 rounded-lg border border-amber-500/40 bg-amber-400/10 p-2 text-left dark:bg-amber-300/[0.07]">
@@ -257,7 +260,7 @@ function Actions({ entry, busy, agents, onApprove, onReject, onDismiss, onResume
             return <button type="button" disabled={disabled} onClick={() => onResume(entry)} className={cn(btn, primary)}><IconPlayerPlay className="h-3.5 w-3.5" />{t("resume")}</button>;
         case "agent":
         case "run_failed":
-            if (!entry.canRestartRuntime) return <Link href={entry.href} className={cn(btn, primary)}>{entry.actionLabel || t("inspectConnection")}</Link>;
+            if (!entry.canRestartRuntime) return <Link href={entry.href} className={cn(btn, primary)}>{entry.actionLabel ? render(entry.actionCopy, entry.actionLabel) : t("inspectConnection")}</Link>;
             return (
                 <span className="relative z-10 flex flex-wrap items-center gap-1.5">
                     <button type="button" disabled={disabled} onClick={() => onRestart(entry)} className={cn(btn, primary)}><IconRefresh className="h-3.5 w-3.5" />{t("restart")}</button>
@@ -268,17 +271,17 @@ function Actions({ entry, busy, agents, onApprove, onReject, onDismiss, onResume
         case "task_blocked":
         case "request":
         case "stalled":
-            if (!entry.taskId) return <Link href={entry.href} className={cn(btn, primary)}>{entry.actionLabel || t("inspectIssue")}</Link>;
+            if (!entry.taskId) return <Link href={entry.href} className={cn(btn, primary)}>{entry.actionLabel ? render(entry.actionCopy, entry.actionLabel) : t("inspectIssue")}</Link>;
             return (
                 <span className="relative z-10 flex flex-wrap items-center gap-1.5">
-                    <Link href={entry.href} className={cn(btn, primary)}>{entry.actionLabel || t("openTask")}</Link>
+                    <Link href={entry.href} className={cn(btn, primary)}>{entry.actionLabel ? render(entry.actionCopy, entry.actionLabel) : t("openTask")}</Link>
                     {agents.some((agent) => agent.key !== entry.memberKey) && <ReassignMenu entry={entry} disabled={disabled} agents={agents} onReassign={onReassign} />}
                 </span>
             );
         default:
             return (
                 <Link href={entry.href} className={cn(btn, primary)}>
-                    {entry.actionLabel || tCommon("open")}
+                    {entry.actionLabel ? render(entry.actionCopy, entry.actionLabel) : tCommon("open")}
                 </Link>
             );
     }

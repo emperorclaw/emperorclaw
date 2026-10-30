@@ -12,7 +12,8 @@ function read(relativePath) {
 test("native Office editors are pinned, lazy-loaded, and save through artifact replacement", () => {
     const pkg = JSON.parse(read("package.json"));
     const shell = read("src/app/(app)/artifacts/[id]/edit/artifact-office-editor.tsx");
-    const manager = read("src/app/(app)/artifacts/artifacts-manager.tsx");
+    // The page's copy lives in messages/en.json (i18n).
+    const manager = `${read("src/app/(app)/artifacts/artifacts-manager.tsx")}\n${read("messages/en.json")}`;
 
     assert.equal(pkg.dependencies["@extend-ai/react-xlsx"], "0.16.0");
     assert.equal(pkg.dependencies["@extend-ai/react-docx"], "0.8.1");

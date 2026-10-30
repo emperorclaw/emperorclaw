@@ -4,7 +4,8 @@ import { users, companies, companyMembers } from "@/db/schema";
 import { eq } from "drizzle-orm";
 import { consumeRateLimit, getClientIp } from "@/lib/rate-limit";
 import { issueEmailVerificationToken } from "@/lib/email-verification";
-import { sendEmail, getEmailVerificationEmailHtml } from "@/lib/email";
+import { sendEmail, getEmailVerificationEmailHtml, emailVerificationSubject, yourCompanyLabel } from "@/lib/email";
+import { emailLocale } from "@/i18n/server-translator";
 import { getAppUrl } from "@/lib/env";
 import { recordOpsError } from "@/lib/ops-events";
 
@@ -50,10 +51,12 @@ export async function POST(req: NextRequest) {
             ? await db.select().from(companies).where(eq(companies.id, membership.companyId)).limit(1)
             : [];
 
+        // The recipient's saved language, else the language of the browser asking.
+        const locale = emailLocale(req, user.locale ?? null);
         await sendEmail({
             to: email,
-            subject: "Verify your Emperor Claw email",
-            html: getEmailVerificationEmailHtml(email, verificationUrl, company?.name || "your company"),
+            subject: emailVerificationSubject(locale),
+            html: getEmailVerificationEmailHtml(email, verificationUrl, company?.name || yourCompanyLabel(locale), locale),
         });
 
         return NextResponse.json({

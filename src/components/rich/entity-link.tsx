@@ -2,12 +2,15 @@
 
 import React from "react";
 import Link from "next/link";
+import { useTranslations } from "next-intl";
 import { IconBook, IconFile, IconCalendarDue, IconChecklist, IconFolder, IconRobot, IconUser } from "@tabler/icons-react";
 import { entityTone, humanizeState, type EntityRef, type EntitySummary } from "@/lib/emperor-entities";
 import { formatBytes } from "@/components/chat-attachments";
 import { agentAvatarSrc } from "@/lib/avatar";
 import { cn } from "@/lib/utils";
 import { useEmperorEntity } from "./use-emperor-entities";
+import { copy } from "@/lib/coded-copy";
+import { useCopy } from "@/lib/i18n/use-copy";
 
 const KIND_ICON = { task: IconChecklist, project: IconFolder, agent: IconRobot, knowledge: IconBook, artifact: IconFile } as const;
 
@@ -27,23 +30,38 @@ const TONE_BADGE = {
     muted: "bg-zinc-500/12 text-zinc-400 ring-zinc-500/25",
 } as const;
 
-function stateLabel(summary: EntitySummary): string {
-    return humanizeState(summary.kind === "task" ? summary.state : summary.status);
+function summaryState(summary: EntitySummary): string {
+    return summary.kind === "task" ? summary.state : summary.status;
 }
 
-function relativeTime(iso: string | null): string | null {
-    if (!iso) return null;
-    const diff = Date.now() - new Date(iso).getTime();
-    if (!Number.isFinite(diff)) return null;
-    const future = diff < 0;
-    const minutes = Math.round(Math.abs(diff) / 60_000);
-    const text = minutes < 1 ? "now" : minutes < 60 ? `${minutes}m` : minutes < 60 * 24 ? `${Math.round(minutes / 60)}h` : `${Math.round(minutes / 1440)}d`;
-    if (text === "now") return "just now";
-    return future ? `in ${text}` : `${text} ago`;
+/** A state or status in the viewer's language: a task state's label when there is one, else the humanized value. */
+function useStateLabel() {
+    const render = useCopy();
+    return (value: string) => render(copy(`tasks.states.${value}`), humanizeState(value));
+}
+
+/** "5m ago", "in 3h", "just now", in the viewer's language. */
+function useRelativeTime() {
+    const t = useTranslations("entities");
+    const tTime = useTranslations("time");
+    return (iso: string | null): string | null => {
+        if (!iso) return null;
+        const diff = Date.now() - new Date(iso).getTime();
+        if (!Number.isFinite(diff)) return null;
+        const future = diff < 0;
+        const minutes = Math.round(Math.abs(diff) / 60_000);
+        if (minutes < 1) return tTime("justNow");
+        const text = minutes < 60 ? tTime("minutesShort", { count: minutes })
+            : minutes < 60 * 24 ? tTime("hoursShort", { count: Math.round(minutes / 60) })
+                : tTime("daysShort", { count: Math.round(minutes / 1440) });
+        return future ? t("inTime", { time: text }) : t("timeAgo", { time: text });
+    };
 }
 
 /** Inline record reference: icon, live title, and a status dot. */
 export function EntityChip({ entityRef, label }: { entityRef: EntityRef; label: string }) {
+    const t = useTranslations("entities");
+    const stateLabel = useStateLabel();
     const { value, status } = useEmperorEntity(entityRef);
     const Icon = KIND_ICON[entityRef.kind];
     const title = value?.title || label || entityRef.kind;
@@ -61,7 +79,7 @@ export function EntityChip({ entityRef, label }: { entityRef: EntityRef; label: 
             ? "border-dashed border-zinc-700 text-zinc-500"
             : "border-zinc-700/80 bg-zinc-800/50 text-zinc-100 hover:border-zinc-500 hover:bg-zinc-800",
     );
-    const tooltip = value ? `${title} · ${stateLabel(value)}` : unavailable ? `${label} (not available)` : label;
+    const tooltip = value ? `${title} · ${stateLabel(summaryState(value))}` : unavailable ? t("notAvailableLabel", { label }) : label;
     if (!value) return <span className={className} title={tooltip}>{content}</span>;
     return <Link href={value.href} className={className} title={tooltip} {...newTabProps(value.kind)}>{content}</Link>;
 }
@@ -80,6 +98,9 @@ function CardShell({ href, children }: { href?: string; children: React.ReactNod
 
 /** A full card for a record linked on a line of its own. */
 export function EntityCard({ entityRef, label }: { entityRef: EntityRef; label: string }) {
+    const t = useTranslations("entities");
+    const relativeTime = useRelativeTime();
+    const stateLabel = useStateLabel();
     const { value, status } = useEmperorEntity(entityRef);
     const Icon = KIND_ICON[entityRef.kind];
 
@@ -92,7 +113,7 @@ export function EntityCard({ entityRef, label }: { entityRef: EntityRef; label: 
                 </div>
                 {status === "loading"
                     ? <div className="h-3 w-24 animate-pulse rounded bg-zinc-800" />
-                    : <div className="text-xs text-zinc-600">Not available: deleted, or outside your access.</div>}
+                    : <div className="text-xs text-zinc-600">{t("notAvailable")}</div>}
             </CardShell>
         );
     }
@@ -100,7 +121,7 @@ export function EntityCard({ entityRef, label }: { entityRef: EntityRef; label: 
     if (value.kind === "knowledge" || value.kind === "artifact") {
         return <div className="not-prose min-w-0 overflow-hidden rounded-xl border border-zinc-800 bg-zinc-900/60">
             {value.kind === "artifact" && value.previewUrl && (
-                <Link href={value.href} aria-label={`Open ${value.title}`} {...newTabProps(value.kind)}>
+                <Link href={value.href} aria-label={t("openTitle", { title: value.title })} {...newTabProps(value.kind)}>
                     {/* eslint-disable-next-line @next/next/no-img-element */}
                     <img src={value.previewUrl} alt={value.title} loading="lazy"
                         className="max-h-80 w-full object-contain bg-zinc-950"
@@ -112,13 +133,13 @@ export function EntityCard({ entityRef, label }: { entityRef: EntityRef; label: 
                 <div className="min-w-0 flex-1">
                     <Link href={value.href} className="line-clamp-2 text-sm font-semibold text-zinc-100 hover:underline" {...newTabProps(value.kind)}>{value.title}</Link>
                     <div className="mt-1 text-xs text-zinc-400">
-                        {value.kind === "knowledge" ? `Knowledge · ${value.scope} · ${humanizeState(value.status)}`
+                        {value.kind === "knowledge" ? t("knowledgeMeta", { scope: value.scope, status: stateLabel(value.status) })
                             : `${value.contentType} · ${formatBytes(value.sizeBytes)}`}
                     </div>
                 </div>
-                <Link href={value.href} className="text-xs text-emerald-400" {...newTabProps(value.kind)}>Open</Link>
+                <Link href={value.href} className="text-xs text-emerald-400" {...newTabProps(value.kind)}>{t("open")}</Link>
                 {value.kind === "artifact" && value.downloadUrl && <a href={value.downloadUrl}
-                    className="text-xs text-zinc-400" download>Download</a>}
+                    className="text-xs text-zinc-400" download>{t("download")}</a>}
             </div>
         </div>;
     }
@@ -137,21 +158,21 @@ export function EntityCard({ entityRef, label }: { entityRef: EntityRef; label: 
                 <div className="min-w-0 flex-1">
                     <div className="line-clamp-2 text-sm font-semibold leading-snug text-zinc-100 group-hover/entity:text-zinc-50">{value.title}</div>
                     <div className="mt-0.5 truncate text-xs text-zinc-500">
-                        {value.kind === "task" && (value.project || "Task")}
-                        {value.kind === "project" && (value.lead ? `Lead: ${value.lead}` : "Project")}
-                        {value.kind === "agent" && (value.role || "Agent")}
+                        {value.kind === "task" && (value.project || t("task"))}
+                        {value.kind === "project" && (value.lead ? t("lead", { name: value.lead }) : t("project"))}
+                        {value.kind === "agent" && (value.role || t("agent"))}
                     </div>
                 </div>
                 <span className={cn("shrink-0 rounded-full px-2 py-0.5 text-[11px] font-medium ring-1 ring-inset", TONE_BADGE[tone])}>
-                    {stateLabel(value)}
+                    {stateLabel(summaryState(value))}
                 </span>
             </div>
             <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-zinc-400">
                 {value.kind === "task" && (
                     <>
-                        <span className="inline-flex items-center gap-1"><IconUser className="h-3.5 w-3.5 text-zinc-500" />{value.assignee || "Unassigned"}</span>
-                        {value.dueAt && <span className="inline-flex items-center gap-1"><IconCalendarDue className="h-3.5 w-3.5 text-zinc-500" />Due {relativeTime(value.dueAt)}</span>}
-                        <span className="text-zinc-600">Updated {relativeTime(value.updatedAt)}</span>
+                        <span className="inline-flex items-center gap-1"><IconUser className="h-3.5 w-3.5 text-zinc-500" />{value.assignee || t("unassigned")}</span>
+                        {value.dueAt && <span className="inline-flex items-center gap-1"><IconCalendarDue className="h-3.5 w-3.5 text-zinc-500" />{t("due", { time: relativeTime(value.dueAt) ?? "" })}</span>}
+                        <span className="text-zinc-600">{t("updated", { time: relativeTime(value.updatedAt) ?? "" })}</span>
                     </>
                 )}
                 {value.kind === "project" && (() => {
@@ -162,15 +183,15 @@ export function EntityCard({ entityRef, label }: { entityRef: EntityRef; label: 
                             <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-zinc-800">
                                 <div className="h-full rounded-full bg-[var(--chart-2)]" style={{ width: `${pct}%` }} />
                             </div>
-                            <span className="shrink-0 tabular-nums">{value.doneTasks}/{total} done</span>
+                            <span className="shrink-0 tabular-nums">{t("doneOf", { done: value.doneTasks, total })}</span>
                         </div>
                     );
                 })()}
                 {value.kind === "agent" && (
                     <>
-                        <span className="tabular-nums">{value.openTasks} open task{value.openTasks === 1 ? "" : "s"}</span>
-                        <span className="tabular-nums">Load {value.load}</span>
-                        {value.lastSeenAt && <span className="text-zinc-600">Seen {relativeTime(value.lastSeenAt)}</span>}
+                        <span className="tabular-nums">{t("openTasks", { count: value.openTasks })}</span>
+                        <span className="tabular-nums">{t("load", { load: value.load })}</span>
+                        {value.lastSeenAt && <span className="text-zinc-600">{t("seen", { time: relativeTime(value.lastSeenAt) ?? "" })}</span>}
                     </>
                 )}
             </div>

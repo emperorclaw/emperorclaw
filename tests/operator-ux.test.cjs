@@ -59,24 +59,25 @@ test("Operator navigation and docs expose the right pages without hiding key man
 test("Customer and pipeline operator copy avoids runtime-specific or internal jargon", () => {
   const customers = read("src/app/(app)/customers/customers-client.tsx");
   assertNotContains(customers, "OpenClaw should", "customers should not imply only OpenClaw consumes customer context");
-  assertContains(customers, "your agents should follow", "customers should use runtime-neutral agent wording");
+  assertContains(readUi("src/app/(app)/customers/customers-client.tsx"), "your agents should follow", "customers should use runtime-neutral agent wording");
 
   const pipelines = read("src/app/(app)/pipelines/pipelines-client.tsx");
-  assertContains(pipelines, "visual map, Context Pack, run evidence", "pipelines should explain Context Pack in operator language");
+  assertContains(readUi("src/app/(app)/pipelines/pipelines-client.tsx"), "visual map, Context Pack, run evidence", "pipelines should explain Context Pack in operator language");
   assertNotContains(pipelines, "via MCP", "pipelines UI copy should avoid MCP jargon for normal operators");
 });
 
 test("Storage keeps operator workflow folder-first and hides technical metadata", () => {
   const storage = read("src/app/(app)/artifacts/artifacts-manager.tsx");
-  assertContains(storage, "Folder-first files, deliverables, proofs", "storage should explain the operator workflow first");
-  assertContains(storage, "without knowing the backing storage provider", "storage should keep providers abstracted from agents/operators");
-  assertContains(storage, "Advanced filters", "task/type filters should be behind progressive disclosure");
-  assertContains(storage, "Advanced folder metadata", "folder metadata JSON should be behind progressive disclosure");
+  const storageCopy = readUi("src/app/(app)/artifacts/artifacts-manager.tsx");
+  assertContains(storageCopy, "Folder-first files, deliverables, proofs", "storage should explain the operator workflow first");
+  assertContains(storageCopy, "without knowing the backing storage provider", "storage should keep providers abstracted from agents/operators");
+  assertContains(storageCopy, "Advanced filters", "task/type filters should be behind progressive disclosure");
+  assertContains(storageCopy, "Advanced folder metadata", "folder metadata JSON should be behind progressive disclosure");
   assertNotContains(storage, "All kinds", "normal storage filters should not expose implementation-ish kind language");
 
   const directChat = read("src/components/agent-direct-chat.tsx");
   assertNotContains(directChat, "OpenClaw should answer", "direct chat empty state should be runtime-neutral");
-  assertContains(directChat, "connected agent should answer", "direct chat should refer to the connected agent generically");
+  assertContains(readUi("src/components/agent-direct-chat.tsx"), "connected agent should answer", "direct chat should refer to the connected agent generically");
 });
 
 test("Core workspaces use the standardized Emperor visual system", () => {
@@ -122,8 +123,8 @@ test("Directories scale with search-first navigation instead of card dumps", () 
   assertContains(searchableSelect, "Escape", "searchable combobox should close on escape");
   assertNotContains(searchableSelect, "onBlur", "searchable combobox should not close when focus moves into its own search input");
   assertContains(projects, "SearchableSelect", "projects should use searchable customer/project/agent filters");
-  assertContains(customers, "Search customers", "customers should have directory search");
-  assertContains(customers, "Customer Directory", "customers should be framed as a scalable directory");
+  assertContains(readUi("src/app/(app)/customers/customers-client.tsx"), "Search customers", "customers should have directory search");
+  assertContains(readUi("src/app/(app)/customers/customers-client.tsx"), "Customer Directory", "customers should be framed as a scalable directory");
   const agentsCopy = readUi("src/app/(app)/agents/agents-client.tsx");
   assertContains(agentsCopy, "Search agents", "agents should have directory search");
   assertContains(agentsCopy, "Agent Directory", "agents should be framed as a scalable directory");
@@ -138,9 +139,9 @@ test("Operator polish pass keeps advanced pages consistent and removes dead-feel
   const agents = read("src/app/(app)/agents/agents-client.tsx");
   const storage = read("src/app/(app)/artifacts/artifacts-manager.tsx");
 
-  assertContains(resources, "Publish note", "draft KB notes should have an obvious publish action");
-  assertContains(resources, "Move back to draft", "published KB notes should be reversible without hunting in metadata");
-  assertContains(resources, "Agent context is separate", "KB copy should clarify published versus agent injection");
+  assertContains(readUi("src/app/(app)/resources/resources-client.tsx"), "Publish note", "draft KB notes should have an obvious publish action");
+  assertContains(readUi("src/app/(app)/resources/resources-client.tsx"), "Move back to draft", "published KB notes should be reversible without hunting in metadata");
+  assertContains(readUi("src/app/(app)/resources/resources-client.tsx"), "Agent context is separate", "KB copy should clarify published versus agent injection");
 
   [approvals, storage].forEach((source) => {
     assertContains(source, "max-w-[1800px]", "operator pages should use the standard wide workspace container");
@@ -148,7 +149,7 @@ test("Operator polish pass keeps advanced pages consistent and removes dead-feel
 
   assertContains(settings, "max-w-[1440px]", "settings should constrain form width while retaining its grouped navigation");
   assertContains(readUi("src/app/(app)/settings/settings-client.tsx"), "Settings section", "mobile settings should provide a labeled section selector");
-  assertContains(approvals, "Decision Queue", "approvals should be framed as a useful operator queue");
+  assertContains(readUi("src/app/(app)/approvals/approvals-client.tsx"), "Decision Queue", "approvals should be framed as a useful operator queue");
   assertNotContains(agents, "What belongs here", "agent cards should not repeat generic instructional copy");
   assertNotContains(agents, "Open detail", "the agent panel is the profile; there is no duplicate detail page");
   assertContains(agents, 'searchParams.get("agent")', "?agent=<id> deep links open that agent in the directory");
@@ -158,6 +159,6 @@ test("Operator polish pass keeps advanced pages consistent and removes dead-feel
   assert.match(agentDetail, /<DeleteAgentDialog\s+agentId=\{agent\.id\}\s+agentName=\{agent\.name\}/,
     "the rendered agent detail panel should expose a real delete action with confirmation");
   assertNotContains(storage, "window.confirm", "storage destructive actions should use app-native confirmation dialogs");
-  assertContains(storage, "Delete folder?", "storage should confirm folder deletion in an app dialog");
-  assertContains(storage, "Delete file?", "storage should confirm file deletion in an app dialog");
+  assertContains(readUi("src/app/(app)/artifacts/artifacts-manager.tsx"), "Delete folder?", "storage should confirm folder deletion in an app dialog");
+  assertContains(readUi("src/app/(app)/artifacts/artifacts-manager.tsx"), "Delete file?", "storage should confirm file deletion in an app dialog");
 });

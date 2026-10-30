@@ -3,6 +3,7 @@ import { getCompanyId, getUserId } from "@/lib/auth";
 import { db } from "@/db";
 import { agents, companyMembers, messageThreads, threadMessages, threadParticipants, users } from "@/db/schema";
 import { and, count, eq, gt, inArray, isNull } from "drizzle-orm";
+import { getTranslations } from "next-intl/server";
 import { MessagingHub } from "@/components/messaging-hub";
 import { ensureTeamThread, getDirectChatMode, getThreadMessages } from "@/lib/control-plane";
 import { listGroupsForUser } from "@/lib/groups";
@@ -188,15 +189,16 @@ export default async function MessagesPage() {
         .where(and(eq(companyMembers.companyId, companyId), isNull(users.deletedAt))))
         .map((u) => ({ id: u.id, name: u.displayName || u.email }));
 
+    const t = await getTranslations("messages");
     return (
         <div className="mx-auto flex h-[calc(100dvh-10.5rem-env(safe-area-inset-top)-env(safe-area-inset-bottom))] max-w-[1800px] flex-col gap-3 animate-in fade-in slide-in-from-bottom-2 duration-500 md:h-[calc(100dvh-2.5rem)]">
             <div className="hidden shrink-0 items-end justify-between gap-6 sm:flex">
                 <div className="min-w-0">
-                    <p className="text-[10px] font-bold uppercase tracking-[0.24em] text-cyan-300">Messages</p>
-                    <h1 className="mt-0.5 text-2xl font-semibold tracking-tight text-zinc-100">Team, Groups & Direct Messages</h1>
+                    <p className="text-[10px] font-bold uppercase tracking-[0.24em] text-cyan-300">{t("eyebrow")}</p>
+                    <h1 className="mt-0.5 text-2xl font-semibold tracking-tight text-zinc-100">{t("title")}</h1>
                 </div>
                 <p className="max-w-xl pb-0.5 text-right text-xs leading-5 text-zinc-500">
-                    Coordinate with the team, a group, or open a private agent thread.
+                    {t("description")}
                 </p>
             </div>
             <div className="flex min-h-0 flex-1 overflow-hidden rounded-2xl emperor-panel sm:rounded-[2rem]">

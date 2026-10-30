@@ -6,7 +6,8 @@ import { IconCircleCheck, IconLoader2, IconServer2 } from "@tabler/icons-react";
 import { useTranslations } from "next-intl";
 import { cn } from "@/lib/utils";
 import { DEFAULT_HOST_MODEL, isHostLlmProvider, type HostLlmProvider } from "@/lib/runtime-hosts/commands";
-import type { HireReadiness } from "@/lib/runtime-hosts/hire";
+import { hireReasonCopy, type HireReadiness } from "@/lib/runtime-hosts/hire";
+import { useCopy } from "@/lib/i18n/use-copy";
 import { JobProgress } from "./job-progress";
 
 /** A host as the hire dialog needs it (GET /api/runtime-hosts). */
@@ -42,6 +43,13 @@ const HOST_STATUSES = new Set(["online", "offline", "revoked", "pending"]);
 export function useHostStatusLabel() {
     const t = useTranslations("runtimeHosts.hostStatus");
     return (status: string) => HOST_STATUSES.has(status) ? t(status as "online") : status;
+}
+
+/** Why a host cannot take a new agent, in the viewer's language (lib/runtime-hosts/hire.ts reason, translated by code). */
+export function useHireReasonLabel() {
+    const render = useCopy();
+    return (hire: Pick<HireReadiness, "code" | "reason" | "reasonValues">): string | null =>
+        hire.reason ? render(hireReasonCopy(hire), hire.reason) : null;
 }
 
 /**
@@ -87,6 +95,7 @@ export function HostPicker({ hosts, forbidden, value, onChange }: {
 }) {
     const t = useTranslations("runtimeHosts.picker");
     const statusLabel = useHostStatusLabel();
+    const hireReason = useHireReasonLabel();
     if (hosts === null) {
         return <div className="h-16 animate-pulse rounded-lg border border-zinc-800 bg-zinc-900/50" aria-label={t("loading")} />;
     }
@@ -114,7 +123,7 @@ export function HostPicker({ hosts, forbidden, value, onChange }: {
                     const disabled = !host.hire.ok;
                     return (
                         <button key={host.id} type="button" role="radio" aria-checked={active} disabled={disabled} onClick={() => pick(host)}
-                            title={disabled ? host.hire.reason ?? undefined : undefined}
+                            title={disabled ? hireReason(host.hire) ?? undefined : undefined}
                             className={cn(
                                 "flex w-full items-start gap-3 rounded-lg border px-3 py-2 text-left text-xs transition-colors",
                                 disabled ? "cursor-not-allowed border-zinc-800/60 bg-zinc-900/30 text-zinc-500"
@@ -130,7 +139,7 @@ export function HostPicker({ hosts, forbidden, value, onChange }: {
                                     {t("hostSummary", { free: mb(host.resources.memAvailMiB), needs: mb(host.hire.needMiB), browser: host.capabilities.browser ? "yes" : "no", count: host.agents.length })}
                                     {host.hire.gateway === "shared" ? t("sharedGatewaySuffix") : ""}
                                 </span>
-                                {disabled && host.hire.reason && <span className="block text-[10px] text-amber-300/90">{host.hire.reason}</span>}
+                                {disabled && host.hire.reason && <span className="block text-[10px] text-amber-300/90">{hireReason(host.hire)}</span>}
                             </span>
                         </button>
                     );

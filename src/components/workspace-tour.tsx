@@ -3,44 +3,22 @@
 import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import Link from "next/link";
+import { useTranslations } from "next-intl";
 import { IconBook, IconRobot, IconFolder, IconDeviceSdCard, IconMessage, IconPlayerPlay, IconShieldCheck, IconX } from "@tabler/icons-react";
 
 const TOUR_STORAGE_KEY = "emperor:workspace-tour:v1";
 
+// Each step's title and body: onboarding.workspaceTour.steps.{id} in messages/*.json.
 const tourSteps = [
-    {
-        title: "Start with Projects",
-        body: "Projects hold the business goal. Tasks inside the project are the concrete work agents can claim, finish, and send for review.",
-        href: "/projects",
-        icon: IconFolder,
-    },
-    {
-        title: "Put reusable context in Knowledge & Rules",
-        body: "This is where agents find durable instructions: SOPs, customer rules, inbox details, templates, identities, and operating doctrine.",
-        href: "/resources",
-        icon: IconShieldCheck,
-    },
-    {
-        title: "Keep files in Storage",
-        body: "Storage is for deliverables, proofs, exported reports, working files, and uploads that should survive beyond the chat.",
-        href: "/artifacts",
-        icon: IconDeviceSdCard,
-    },
-    {
-        title: "Use Messages for coordination",
-        body: "Messages show the live control-plane conversations between you, managers, and worker agents.",
-        href: "/messages",
-        icon: IconMessage,
-    },
-    {
-        title: "Agents are runtimes",
-        body: "Agents are the connected OpenClaw workers. Keep shared business context out of agent-local settings unless it truly belongs to one machine.",
-        href: "/agents",
-        icon: IconRobot,
-    },
-];
+    { id: "projects", href: "/projects", icon: IconFolder },
+    { id: "knowledge", href: "/resources", icon: IconShieldCheck },
+    { id: "storage", href: "/artifacts", icon: IconDeviceSdCard },
+    { id: "messages", href: "/messages", icon: IconMessage },
+    { id: "agents", href: "/agents", icon: IconRobot },
+] as const;
 
 export function WorkspaceTour() {
+    const t = useTranslations("onboarding.workspaceTour");
     const [open, setOpen] = useState(false);
     const [ready, setReady] = useState(false);
 
@@ -70,7 +48,7 @@ export function WorkspaceTour() {
                 className="flex w-full cursor-pointer items-center space-x-3 rounded-md px-3 py-2 text-left text-sm font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-foreground focus:outline-none focus:ring-2 focus:ring-indigo-500/50"
             >
                 <IconPlayerPlay className="h-4 w-4 text-muted-foreground" />
-                <span>Start Tour</span>
+                <span>{t("start")}</span>
             </button>
 
             {open && createPortal(
@@ -82,9 +60,9 @@ export function WorkspaceTour() {
                                     <IconBook className="h-5 w-5" />
                                 </div>
                                 <div>
-                                    <h2 className="text-lg font-semibold tracking-tight">Emperor Claw workspace tour</h2>
+                                    <h2 className="text-lg font-semibold tracking-tight">{t("title")}</h2>
                                     <p className="mt-1 max-w-2xl text-sm leading-6 text-muted-foreground">
-                                        A quick map of where work, context, files, and agent operations live.
+                                        {t("intro")}
                                     </p>
                                 </div>
                             </div>
@@ -92,7 +70,7 @@ export function WorkspaceTour() {
                                 type="button"
                                 onClick={closeTour}
                                 className="cursor-pointer rounded-md p-2 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground focus:outline-none focus:ring-2 focus:ring-indigo-500/50"
-                                aria-label="Close workspace tour"
+                                aria-label={t("close")}
                             >
                                 <IconX className="h-4 w-4" />
                             </button>
@@ -112,8 +90,8 @@ export function WorkspaceTour() {
                                                 <Icon className="h-4 w-4" />
                                             </div>
                                             <div className="min-w-0">
-                                                <h3 className="text-sm font-semibold text-foreground">{step.title}</h3>
-                                                <p className="mt-1 text-sm leading-5 text-muted-foreground">{step.body}</p>
+                                                <h3 className="text-sm font-semibold text-foreground">{t(`steps.${step.id}.title`)}</h3>
+                                                <p className="mt-1 text-sm leading-5 text-muted-foreground">{t(`steps.${step.id}.body`)}</p>
                                             </div>
                                         </div>
                                     </Link>
@@ -126,7 +104,7 @@ export function WorkspaceTour() {
                                 onClick={closeTour}
                                 className="cursor-pointer rounded-md bg-foreground px-4 py-2 text-sm font-semibold text-background transition-colors hover:bg-foreground/90 focus:outline-none focus:ring-2 focus:ring-indigo-500/50"
                             >
-                                Done
+                                {t("done")}
                             </button>
                         </div>
                     </div>

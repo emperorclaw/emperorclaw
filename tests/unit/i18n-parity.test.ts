@@ -25,6 +25,10 @@ import { agentAccessSummary } from "../../src/lib/agent-access";
 import { refreshCadenceText } from "../../src/lib/view-access";
 import { bridgeBadgeCopy } from "../../src/lib/live-activity";
 import { stallLabel } from "../../src/lib/stall-signal";
+import { BUSINESS_TYPES, MAX_WIZARD_AGENTS, TEAM_PLAN_PROBLEM_TEXT } from "../../src/lib/onboarding-shared";
+import { COST_TAB_LABELS, RANGE_PRESET_LABELS } from "../../src/lib/costs";
+import { ARTIFACT_CLASS_OPTIONS, ARTIFACT_IMPORTANCE_OPTIONS } from "../../src/lib/artifact-taxonomy";
+import { hermesImageProgressLabel, hermesImageProgressMessage } from "../../src/components/hermes-image-progress";
 
 const ROOT = path.join(__dirname, "..", "..");
 type Tree = { [key: string]: string | Tree };
@@ -119,11 +123,14 @@ test("Chinese copy follows the glossary (messages/GLOSSARY.zh-CN.md)", () => {
 /**
  * Every English message as verified against the HEAD source literals it
  * replaced when it moved into en.json: phase 1 (shell, Home, Inbox, errors,
- * time, …) and phase 2 (agents, projects and tasks, views, settings, runtime
- * hosts, access). Changing English copy is deliberate: update the snapshot of
+ * time, …), phase 2 (agents, projects and tasks, views, settings, runtime
+ * hosts, access) and phase 3 (sign-in and sign-up, onboarding, the remaining
+ * app pages, chat and shared components) and phase 3b (server-built copy the UI renders from codes:
+ * failures, inbox entries, task story, run timeline, delivery, role templates,
+ * providers, hire reasons, common API errors, emails). Changing English copy is deliberate: update the snapshot of
  * its phase in the same change; new keys go in the current phase's snapshot.
  */
-const SNAPSHOTS = ["tests/fixtures/i18n-en-phase1.snapshot.json", "tests/fixtures/i18n-en-phase2.snapshot.json"];
+const SNAPSHOTS = ["tests/fixtures/i18n-en-phase1.snapshot.json", "tests/fixtures/i18n-en-phase2.snapshot.json", "tests/fixtures/i18n-en-phase3.snapshot.json", "tests/fixtures/i18n-en-phase3b.snapshot.json"];
 
 test("English copy is frozen to the verified phase snapshots", () => {
     const snapshot = new Map<string, string>();
@@ -198,6 +205,31 @@ test("English copy moved to en.json is unchanged: phase-2 formatted copy", () =>
     assert.equal(render("tasks.live.noProgressFor", { idle: render("tasks.live.idleMinutes", { count: 14 }) }), stallLabel({ stalled: true, idleMs: 14 * 60_000 }));
     assert.equal(render("tasks.live.lastUsefulAction", { idle: render("tasks.live.idleSeconds", { count: 40 }) }), stallLabel({ stalled: false, idleMs: 40_000 }));
     assert.equal(render("tasks.live.noProgressFor", { idle: render("tasks.live.idleHours", { hours: 1, minutes: "05" }) }), stallLabel({ stalled: true, idleMs: 65 * 60_000 }));
+});
+
+test("English copy moved to en.json is unchanged: phase-3 label maps", () => {
+    for (const type of BUSINESS_TYPES) {
+        assert.equal(enMessage(`onboarding.businessTypes.${type.id}.label`), type.label, type.id);
+        assert.equal(enMessage(`onboarding.businessTypes.${type.id}.hint`), type.hint, type.id);
+    }
+    for (const [kind, text] of Object.entries(TEAM_PLAN_PROBLEM_TEXT)) {
+        assert.equal(render(`onboarding.wizard.planProblems.${kind}`, { max: MAX_WIZARD_AGENTS }), text, kind);
+    }
+    for (const [tab, label] of Object.entries(COST_TAB_LABELS)) assert.equal(enMessage(`costs.tabs.${tab}`), label, tab);
+    for (const [preset, label] of Object.entries(RANGE_PRESET_LABELS)) assert.equal(enMessage(`costs.ranges.${preset}`), label, preset);
+    for (const option of ARTIFACT_CLASS_OPTIONS) {
+        assert.equal(enMessage(`artifacts.classes.${option.value}.label`), option.label, option.value);
+        assert.equal(enMessage(`artifacts.classes.${option.value}.description`), option.description, option.value);
+    }
+    for (const option of ARTIFACT_IMPORTANCE_OPTIONS) {
+        assert.equal(enMessage(`artifacts.importance.${option.value}.label`), option.label, option.value);
+        assert.equal(enMessage(`artifacts.importance.${option.value}.description`), option.description, option.value);
+    }
+    // The one-time runtime download line (components/hermes-image-progress.tsx).
+    for (const state of [{}, { downloadedBytes: 600_000_000 }, { downloadedBytes: 250_000_000, totalBytes: 1_460_000_000 }, { phase: "extracting" as const }, { phase: "extracting" as const, extractedBytes: 700_000_000, totalBytes: 1_460_000_000 }]) {
+        const message = hermesImageProgressMessage(state);
+        assert.equal(render(`hermesImage.${message.key}`, message.values), hermesImageProgressLabel(state), JSON.stringify(state));
+    }
 });
 
 test("English copy moved to en.json is unchanged: navigation", () => {

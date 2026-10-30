@@ -26,7 +26,8 @@
     "copy": "复制",
     "copied": "已复制",
     "back": "返回",
-    "creating": "正在创建…"
+    "creating": "正在创建…",
+    "companyNotFound": "公司未找到。"
   },
   "errors": {
     "title": "出了点问题",
@@ -724,7 +725,50 @@
       "markReadFailed": "无法标为已读"
     },
     "theAgent": "该智能体",
-    "theAgentLower": "该智能体"
+    "theAgentLower": "该智能体",
+    "entries": {
+      "titles": {
+        "agentBlocked": "{name} 已被阻止",
+        "agentNoConnection": "{name} 近期无连接，但有工作等待",
+        "agentOfflineWithWork": "{name} 离线，且有进行中的工作",
+        "allowOnce": "允许一次：{action}",
+        "approve": "批准 {what}",
+        "approveAction": "批准 {action}：{what}",
+        "messageFailed": "消息发送失败：“{text}”",
+        "awaitingResponse": "等待智能体响应：“{text}”",
+        "paused": "智能体反复来回却没有进展",
+        "runFailed": "{name} 的上次运行失败",
+        "runTimedOut": "{name} 的上次运行超时",
+        "runLost": "{name} 的上次运行已丢失",
+        "stalledAgent": "{name} 正在运行但无进展"
+      },
+      "reasons": {
+        "causeWithDetail": "{cause}：{detail}",
+        "exceededRetries": "任务超出重试次数",
+        "stateBlocked": "已阻止",
+        "stateGaveUp": "重试后放弃",
+        "stateFailed": "失败",
+        "stateWithCause": "{state}：{cause}",
+        "requestedFrom": "{state}。请求来自 {source}",
+        "requestedFromVia": "{state}。由 {by} 通过 {source} 请求"
+      },
+      "actions": {
+        "openTask": "打开任务",
+        "inspectConnection": "检查连接",
+        "reviewWork": "查看工作",
+        "reviewRequest": "查看请求",
+        "inspectDelivery": "检查交付",
+        "openChat": "打开聊天",
+        "resume": "继续",
+        "openRuns": "打开运行",
+        "openAgent": "打开智能体",
+        "openConversation": "打开对话"
+      },
+      "areas": {
+        "messages": "消息",
+        "teamChat": "团队聊天"
+      }
+    }
   },
   "settings": {
     "sections": {
@@ -1486,6 +1530,14 @@
       "emptyTitle": "尚未连接任何主机",
       "emptyBody": "连接运行你的智能体的 PC 或 Raspberry Pi。只需一条命令即可完成。",
       "revokedRecently": "最近 30 天内已撤销（{count}）"
+    },
+    "hireReasons": {
+      "revoked": "此主机已被撤销",
+      "offline": "离线",
+      "update": "更新此主机以在此部署智能体",
+      "no_provider": "此主机上没有模型提供商密钥（请在 ~/.hermes/.env 中添加）",
+      "memory": "可用内存不足（{free} MB 可用，新智能体需要 {need} MB）",
+      "memoryReserved": "可用内存不足（已排队的设置需要 {reserved} MB，剩余 {left} MB；新智能体需要 {need} MB）"
     }
   },
   "access": {
@@ -2186,7 +2238,30 @@
       "replyIn": "在 {thread} 中回复",
       "empty": "此任务还没有任何动态。",
       "emptyHint": "随着工作推进，运行、备注、审批和文件会显示在这里。",
-      "quoted": "“{text}”"
+      "quoted": "“{text}”",
+      "today": "今天",
+      "yesterday": "昨天",
+      "events": {
+        "handoff": "移交",
+        "handoffFromTo": "从 {from} 移交给 {to}",
+        "blockerNoted": "已记录阻塞项",
+        "note": "备注",
+        "created": "已创建",
+        "createdAndAssigned": "已创建并分配给 {who}",
+        "claimedBy": "由 {who} 认领",
+        "assignedTo": "分配给 {who}",
+        "reassignedTo": "重新分配给 {who}",
+        "unassigned": "已取消分配",
+        "updatedState": "已更新 · {state}",
+        "detailsUpdated": "详情已更新",
+        "leaseExpired": "租约已过期，已排队等待重试",
+        "deadLettered": "重试次数过多，已移至死信队列",
+        "stallEscalated": "停滞已升级给人工处理",
+        "stallNudged": "无进展后已提醒",
+        "movedTo": "已移至 {state}",
+        "anAgent": "一个智能体",
+        "aPerson": "人工"
+      }
     }
   },
   "agents": {
@@ -2219,7 +2294,45 @@
     "roles": {
       "leadYourTeam": "领导你的团队",
       "custom": "自定义角色",
-      "customHint": "空白画布"
+      "customHint": "空白画布",
+      "templates": {
+        "boss": {
+          "title": "老板（团队负责人）",
+          "description": "管理团队：将目标转化为项目和任务，把每项任务分配给合适的智能体或成员，并确认任务收尾。协调专业人员并推进工作。"
+        },
+        "seo": {
+          "title": "SEO 专员",
+          "description": "关键词研究、排名跟踪、内容审计、外链分析以及搜索可见性报告。使用 Ahrefs、GSC 和内容工具。"
+        },
+        "developer": {
+          "title": "技术开发人员",
+          "description": "全栈实现、代码审查、调试、测试和部署。使用 Git、CI/CD 以及任意技术栈。"
+        },
+        "qa": {
+          "title": "QA 与测试智能体",
+          "description": "自动化测试、缺陷验证、回归测试套件、测试计划执行和质量报告。使用任意测试框架。"
+        },
+        "growth": {
+          "title": "增长与线索生成",
+          "description": "线索研究、外联准备、CRM 数据完善、活动分析和增长报告。使用 LinkedIn、电子邮件和 CRM 工具。"
+        },
+        "content": {
+          "title": "内容与文案",
+          "description": "博客文章、社交媒体、邮件活动、落地页文案和内容策略。兼顾 SEO 的写作，并保持品牌语调一致。"
+        },
+        "accountant": {
+          "title": "会计与簿记",
+          "description": "发票处理、费用分类、对账、财务报告和税务准备支持。使用会计软件和电子表格。"
+        },
+        "support": {
+          "title": "客户支持",
+          "description": "工单分诊、客户沟通、常见问题维护、问题升级和满意度跟踪。使用帮助台和沟通工具。"
+        },
+        "analyst": {
+          "title": "数据分析师",
+          "description": "数据提取、分析、可视化、报告和仪表盘维护。使用 SQL、电子表格和 BI 工具。"
+        }
+      }
     },
     "delete": {
       "failed": "智能体删除失败。",
@@ -2740,7 +2853,14 @@
       "hireOnHost": "在 {host} 上聘用并设置",
       "createAndStart": "创建并启动 {count, plural, other {# 个智能体}}",
       "retryProvisioning": "重试置备",
-      "viewAgents": "查看智能体"
+      "viewAgents": "查看智能体",
+      "availability": {
+        "sign_in": "登录以创建工作进程。",
+        "not_admin": "请让工作区的所有者或管理员雇佣本地智能体。",
+        "no_docker": "此安装需要挂载了套接字的 Docker 才能自动设置 Hermes。",
+        "docker_unresponsive": "Docker 无响应。请重启 Docker 后重试。",
+        "docker_access": "应用无法访问 Docker。请重新运行安装程序以修复套接字权限，然后重试。"
+      }
     },
     "detail": {
       "customEndpoint": "自定义端点",
@@ -2860,6 +2980,2544 @@
       "saveEnv": "将其保存为 <code>{path}</code>。在 <strong>设置 → 访问令牌</strong> 中生成 API 令牌，替换占位符，然后启动 bridge。",
       "checklist": "连接后检查清单",
       "checkDashboard": "检查 Emperor 仪表盘 —— {name} 应显示为 <strong>在线</strong>"
+    },
+    "providers": {
+      "openclaw": {
+        "description": "原生插件。自动创建工作区、桥接和引导文件。附带 Doctor/修复命令。"
+      },
+      "hermes": {
+        "description": "预热的 Hermes 网关以及每个智能体的 Emperor 桥接，只需一条命令即可安装。最适合工作站、VPS 或 Raspberry Pi。"
+      },
+      "mcp": {
+        "description": "任意兼容 MCP 的运行时。由你处理智能体逻辑，Emperor 提供 API、任务和上下文。"
+      },
+      "claude": {
+        "description": "将 Claude Code CLI 用作按需智能体。Emperor 会针对每项任务以工作区上下文启动 claude。即将推出。"
+      },
+      "codex": {
+        "description": "将 OpenAI Codex CLI 用作按需智能体。即将推出。"
+      },
+      "bash": {
+        "description": "将任意 shell 脚本或 CLI 工具用作智能体。兼容 Cron。即将推出。"
+      }
+    }
+  },
+  "activity": {
+    "targets": {
+      "everything": "全部",
+      "agent": "智能体",
+      "task": "任务",
+      "approval": "审批",
+      "project": "项目",
+      "customer": "客户",
+      "knowledge_note": "知识库笔记",
+      "member": "成员",
+      "invitation": "邀请",
+      "company": "公司设置",
+      "organization": "组织架构图",
+      "pricing": "模型定价"
+    },
+    "today": "今天",
+    "yesterday": "昨天",
+    "changes": "变更",
+    "whatChanged": "变更内容",
+    "taskCount": "{count} 个任务",
+    "itemCount": "{count} 项",
+    "byAgent": "智能体",
+    "byAutomation": "自动化",
+    "loadFailed": "无法加载动态",
+    "loadOlderFailed": "无法加载更早的动态",
+    "actors": {
+      "anyone": "任何人",
+      "allPeople": "所有成员",
+      "allAgents": "所有智能体",
+      "automation": "自动化",
+      "person": "成员",
+      "agent": "智能体"
+    },
+    "eyebrow": "组织",
+    "title": "动态",
+    "description": "谁改了什么：智能体设置、预算和范围、任务移动和负责人、审批、成员、项目、客户和知识库笔记。仅保留标题、名称、状态和数字，绝不保留消息文本或机密。",
+    "filterLabel": "筛选动态",
+    "who": "谁",
+    "findActor": "查找成员或智能体",
+    "what": "类型",
+    "from": "开始",
+    "to": "结束",
+    "clear": "清除",
+    "noMatchesTitle": "没有符合这些筛选条件的动态",
+    "emptyTitle": "暂无动态",
+    "noMatchesDescription": "没有记录该成员、智能体或日期范围的动态。请尝试扩大范围。",
+    "emptyDescription": "智能体、任务、审批、成员和设置的变更会实时显示在这里。",
+    "clearFilters": "清除筛选",
+    "loadingMore": "加载中…",
+    "loadOlder": "加载更早的动态",
+    "loading": "正在加载动态",
+    "sentences": {
+      "agent": {
+        "created": "<who>{actor}</who> 创建了 <target>智能体 {label}</target> {detail}",
+        "updated": "<who>{actor}</who> 更新了 <target>智能体 {label}</target> {detail}",
+        "paused": "<who>{actor}</who> 暂停了 <target>智能体 {label}</target> {detail}",
+        "resumed": "<who>{actor}</who> 恢复了 <target>智能体 {label}</target> {detail}",
+        "deleted": "<who>{actor}</who> 删除了 <target>智能体 {label}</target> {detail}",
+        "scope_changed": "<who>{actor}</who> 更改了 <target>智能体 {label}</target> 的数据范围 {detail}",
+        "budget_changed": "<who>{actor}</who> 更改了 <target>智能体 {label}</target> 的预算 {detail}",
+        "permission_changed": "<who>{actor}</who> 更改了 <target>智能体 {label}</target> 的一项操作权限 {detail}",
+        "access_changed": "<who>{actor}</who> 更改了可使用 <target>智能体 {label}</target> 的人员 {detail}",
+        "owner_transferred": "<who>{actor}</who> 转移了 <target>智能体 {label}</target> {detail}",
+        "runtime_host_changed": "<who>{actor}</who> 更改了 <target>智能体 {label}</target> 的主机 {detail}"
+      },
+      "company": {
+        "permission_changed": "<who>{actor}</who> 更改了一项公司操作权限 {detail}",
+        "settings_changed": "<who>{actor}</who> 更改了公司设置 {detail}",
+        "host_pairing_created": "<who>{actor}</who> 创建了一个用于连接主机的代码 {detail}",
+        "direct_chat_mode_changed": "<who>{actor}</who> 更改了公司设置 {detail}"
+      },
+      "task": {
+        "state_changed": "<who>{actor}</who> 移动了 <target>任务 {label}</target> {detail}",
+        "assigned": "<who>{actor}</who> 重新分配了 <target>任务 {label}</target> {detail}",
+        "archived": "<who>{actor}</who> 归档了 <target>任务 {label}</target> {detail}",
+        "unarchived": "<who>{actor}</who> 恢复了 <target>任务 {label}</target> {detail}"
+      },
+      "approval": {
+        "approved": "<who>{actor}</who> 批准了 <target>审批 {label}</target> {detail}",
+        "rejected": "<who>{actor}</who> 拒绝了 <target>审批 {label}</target> {detail}",
+        "dismissed": "<who>{actor}</who> 驳回了 <target>审批 {label}</target> {detail}"
+      },
+      "member": {
+        "role_changed": "<who>{actor}</who> 更改了 <target>{label}</target> 的角色 {detail}",
+        "scope_changed": "<who>{actor}</who> 更改了 <target>{label}</target> 的访问权限 {detail}",
+        "removed": "<who>{actor}</who> 移除了 <target>{label}</target> {detail}",
+        "invited": "<who>{actor}</who> 邀请了 <target>{label}</target> {detail}",
+        "access_granted": "<who>{actor}</who> 授予了 <target>{label}</target> {detail}",
+        "access_changed": "<who>{actor}</who> 更改了 <target>{label}</target> 的访问权限 {detail}",
+        "access_removed": "<who>{actor}</who> 移除了 <target>{label}</target> 的访问权限 {detail}"
+      },
+      "invitation": {
+        "revoked": "<who>{actor}</who> 撤销了 <target>对 {label} 的邀请</target> {detail}"
+      },
+      "organization": {
+        "updated": "<who>{actor}</who> 编辑了组织架构图 {detail}"
+      },
+      "project": {
+        "created": "<who>{actor}</who> 创建了 <target>项目 {label}</target> {detail}",
+        "updated": "<who>{actor}</who> 更新了 <target>项目 {label}</target> {detail}",
+        "archived": "<who>{actor}</who> 归档了 <target>项目 {label}</target> {detail}"
+      },
+      "customer": {
+        "created": "<who>{actor}</who> 添加了 <target>客户 {label}</target> {detail}",
+        "updated": "<who>{actor}</who> 更新了 <target>客户 {label}</target> {detail}",
+        "deleted": "<who>{actor}</who> 删除了 <target>客户 {label}</target> {detail}"
+      },
+      "knowledge_note": {
+        "created": "<who>{actor}</who> 创建了 <target>笔记 {label}</target> {detail}",
+        "moved": "<who>{actor}</who> 移动了 <target>笔记 {label}</target> {detail}",
+        "deleted": "<who>{actor}</who> 删除了 <target>笔记 {label}</target> {detail}"
+      },
+      "pricing": {
+        "created": "<who>{actor}</who> 添加了 <target>{label} 的定价</target> {detail}",
+        "updated": "<who>{actor}</who> 更改了 <target>{label} 的定价</target> {detail}"
+      },
+      "view": {
+        "created": "<who>{actor}</who> 创建了 <target>视图 {label}</target> {detail}",
+        "updated": "<who>{actor}</who> 更新了 <target>视图 {label}</target> {detail}",
+        "archived": "<who>{actor}</who> 归档了 <target>视图 {label}</target> {detail}",
+        "restored": "<who>{actor}</who> 恢复了 <target>视图 {label}</target> {detail}",
+        "reverted": "<who>{actor}</who> 还原了 <target>视图 {label}</target> {detail}",
+        "visibility_changed": "<who>{actor}</who> 更改了可查看 <target>视图 {label}</target> 的人员 {detail}",
+        "owner_transferred": "<who>{actor}</who> 转移了 <target>视图 {label}</target> {detail}",
+        "deleted": "<who>{actor}</who> 删除了 <target>视图 {label}</target> {detail}",
+        "read_unbound_token": "<who>{actor}</who> 使用全公司令牌打开了 <target>视图 {label}</target> {detail}"
+      },
+      "runtime_host": {
+        "paired": "<who>{actor}</who> 配对了 <target>主机 {label}</target> {detail}",
+        "renamed": "<who>{actor}</who> 重命名了 <target>主机 {label}</target> {detail}",
+        "revoked": "<who>{actor}</who> 撤销了 <target>主机 {label}</target> {detail}",
+        "connected": "<who>{actor}</who> 连接了 <target>主机 {label}</target> {detail}",
+        "disconnected": "<who>{actor}</who> 与 <target>主机 {label}</target> 的连接断开 {detail}",
+        "job_queued": "<who>{actor}</who> 向 <target>主机 {label}</target> 发送了命令 {detail}",
+        "job_finished": "<who>{actor}</who> 在 <target>主机 {label}</target> 上完成了一条命令 {detail}",
+        "job_dismissed": "<who>{actor}</who> 在 <target>主机 {label}</target> 上驳回了一次失败的移除 {detail}",
+        "removal_canceled": "<who>{actor}</who> 取消了从 <target>主机 {label}</target> 移除智能体个人资料的操作 {detail}",
+        "removal_abandoned": "<who>{actor}</who> 将智能体的个人资料留在了 <target>主机 {label}</target> 上 {detail}"
+      },
+      "register_agent": "<who>{actor}</who> 创建了 <target>智能体 {label}</target> {detail}",
+      "delete_agent": "<who>{actor}</who> 删除了 <target>智能体 {label}</target> {detail}",
+      "hire_hermes_agent": "<who>{actor}</who> 聘用了 <target>智能体 {label}</target> {detail}"
+    },
+    "unnamedActors": {
+      "agent": "一个智能体",
+      "human": "某人",
+      "system": "系统"
+    },
+    "untitled": "（未命名）",
+    "details": {
+      "toState": "至 {state}",
+      "toName": "至 {name}",
+      "toNobody": "至无人",
+      "toRole": "为 {role}",
+      "asRole": "作为 {role}",
+      "invitedTo": "邀请至 {resource} 担任 {role}",
+      "accessTo": "对 {resource} 的访问权限",
+      "accessToAs": "对 {resource} 的访问权限（{role}）",
+      "onResource": "在 {resource} 上",
+      "onResourceTo": "在 {resource} 上改为 {role}",
+      "agentAccess": {
+        "everyone": "（所有人）",
+        "people": "（指定人员）",
+        "owner": "（仅其所有者）"
+      },
+      "setting": "（{setting}）",
+      "permission": "（{action}：{permission}）",
+      "budgetMonthly": "至每月 {amount}",
+      "budgetNoLimit": "至无限制",
+      "toVersion": "至版本 {version}",
+      "viewVisibility": {
+        "private": "（仅其所有者）",
+        "shared": "（共享人员）",
+        "scope": "（范围内所有人）"
+      },
+      "toPath": "至 {path}",
+      "toTopLevel": "至顶层",
+      "taskCount": "（{count} 个任务）"
+    },
+    "words": {
+      "aPerson": "一个人",
+      "anAgent": "一个智能体",
+      "someResource": "一个客户或项目",
+      "roles": {
+        "owner": "所有者",
+        "admin": "管理员",
+        "member": "成员",
+        "viewer": "访客"
+      },
+      "settings": {
+        "directChatMode": "直接聊天模式",
+        "contextNotes": "公司上下文",
+        "agentRoutine": "每日智能体例行任务",
+        "instance": "实例设置",
+        "modules": "模块"
+      },
+      "permissions": {
+        "off": "关闭",
+        "ask": "先询问",
+        "allowed": "允许",
+        "default": "默认"
+      }
+    }
+  },
+  "approvals": {
+    "actions": {
+      "task_done": "关闭任务",
+      "send_email": "发送邮件",
+      "spend": "支出费用",
+      "publish": "发布",
+      "delete": "删除"
+    },
+    "noDetails": "未提供详细信息。",
+    "theAgent": "该智能体",
+    "theAgentCapital": "该智能体",
+    "anAgent": "一个智能体",
+    "asksTo": "请求",
+    "once": "{action}，一次",
+    "covers": "涵盖 {count} 个任务",
+    "owner": "负责人：{name}",
+    "noOwner": "无负责人",
+    "askFirstHint": "该智能体在执行此操作前会先请求批准。批准后，此次调用会在 24 小时内运行一次。",
+    "noReason": "未提供原因。",
+    "noRequestYet": "此任务在关闭前需要审批，目前尚未发起请求。",
+    "taskDescription": "任务描述",
+    "staleLabel": "确认批准一个过期的请求",
+    "staleQuestion": "此请求已发起 {days} 天。是否批准并让 {name} 立即执行？",
+    "approveAnyway": "仍然批准",
+    "dismissInstead": "改为忽略",
+    "cancel": "取消",
+    "rejectPlaceholder": "需要修改什么？（会发送给该智能体）",
+    "notePlaceholder": "给智能体的备注（可选）",
+    "noteLabel": "给智能体的备注",
+    "sendBack": "退回",
+    "reject": "拒绝",
+    "dismissTitle": "已过时——该智能体不会执行",
+    "dismissLabel": "忽略（已过时——该智能体不会执行）",
+    "dismiss": "忽略",
+    "approve": "批准",
+    "status": {
+      "approved": "已批准",
+      "dismissed": "已忽略",
+      "expired": "已过期",
+      "rejected": "已拒绝"
+    },
+    "resolvedTitle": "{name}：{action}",
+    "resolvedBy": "{label}：{name}",
+    "createFailed": "无法创建审批",
+    "idMissing": "缺少审批 ID",
+    "decideFailed": "无法记录决定",
+    "alreadyResolved": "{status}——未应用你的决定。",
+    "approvedToast": "已批准。已通知 {name}。",
+    "dismissedToast": "已忽略。已告知 {name} 不要执行。",
+    "sentBackToast": "已连同你的备注退回给 {name}。",
+    "somethingWrong": "出了点问题",
+    "eyebrow": "审批",
+    "title": "决策队列",
+    "description": "智能体在支出、向公司外部发送任何内容、发布、删除或关闭需要审批的工作之前会先请求批准。你的决定和备注会直接反馈给该智能体。",
+    "searchPlaceholder": "搜索审批…",
+    "searchLabel": "搜索审批",
+    "waitingOnYou": "待你处理",
+    "noMatches": "没有审批符合该搜索",
+    "clearSearch": "清除搜索",
+    "emptyTitle": "没有等待你处理的事项",
+    "emptyDescription": "还没有智能体请求支出、发送、发布、删除或关闭需要审批的工作。新的请求会显示在这里和收件箱中。",
+    "recentlyDecided": "最近已处理",
+    "noDecidedMatches": "没有已处理的审批符合该搜索。",
+    "noDecisions": "还没有任何决定。你处理过的审批会显示在这里。"
+  },
+  "artifacts": {
+    "preview": {
+      "loadingSpreadsheet": "正在加载电子表格预览…",
+      "loadingDocument": "正在加载文档预览…",
+      "unavailable": "{type} 预览暂不可用。",
+      "loading": "正在加载预览…",
+      "selectFile": "选择要预览的文件。",
+      "downloadHint": "下载文件，用默认应用查看。",
+      "imageAlt": "文件预览",
+      "pdfTitle": "PDF 预览",
+      "spreadsheetReadOnly": "电子表格预览（只读）",
+      "openEditor": "打开编辑器",
+      "documentReadOnly": "文档预览（只读）",
+      "spreadsheetFile": "电子表格文件",
+      "wordDocument": "Word 文档",
+      "editDocument": "编辑文档"
+    },
+    "confirm": {
+      "removeUntrackedTitle": "{type, select, folder {移除未跟踪的文件夹？} other {移除未跟踪的文件？}}",
+      "deleteFolderTitle": "删除文件夹？",
+      "deleteFolderDescription": "此操作会归档该文件夹、从存储和智能体上下文中移除其已跟踪文件，并在启用 Drive 同步时将其 Google Drive 镜像移至回收站。",
+      "deleteFileTitle": "删除文件？",
+      "deleteFileDescription": "此操作会从存储归档该文件。智能体将不再把它作为证据接收，并在启用 Drive 同步时将其 Google Drive 镜像移至回收站。",
+      "removeUntrackedDescription": "此操作会从本地存储中移除未跟踪条目，并将镜像的 Google Drive 副本移至回收站。已跟踪文件受到保护。",
+      "deleteItem": "删除条目？",
+      "deleteItemDescription": "此操作会归档所选存储条目。"
+    },
+    "toasts": {
+      "renamed": "已重命名为 {name}",
+      "created": "已创建 {name}",
+      "folderCreated": "文件夹已创建",
+      "folderUpdated": "文件夹已更新",
+      "folderDeleted": "文件夹已删除",
+      "uploaded": "文件已上传",
+      "propertiesUpdated": "文件属性已更新",
+      "locationUpdated": "文件位置已更新",
+      "replaced": "文件内容已替换",
+      "fileDeleted": "文件已删除",
+      "untrackedRemoved": "未跟踪条目已加入从 Drive 移除的队列",
+      "tracked": "文件现由 Emperor 跟踪",
+      "csvRefreshed": "CSV 网格已刷新"
+    },
+    "badges": {
+      "folders": "{count} 个文件夹",
+      "tracked": "{count} 个已跟踪",
+      "needsMetadata": "{count} 个需要元数据"
+    },
+    "kinds": {
+      "report": "报告",
+      "invoice": "发票",
+      "statement": "对账单",
+      "document": "文档",
+      "export": "导出"
+    },
+    "actionsFor": "{name} 的操作",
+    "visibility": {
+      "private": "私有",
+      "company": "公司"
+    },
+    "inspectorView": {
+      "openCsv": "打开 CSV 工作区",
+      "openLarge": "打开大视图",
+      "replace": "替换内容",
+      "markCanonical": "标记为规范",
+      "saveProperties": "保存属性",
+      "saveLocation": "保存位置"
+    },
+    "unclassified": "未分类",
+    "classes": {
+      "working_file": {
+        "label": "工作文件",
+        "description": "一般工作材料、草稿和进行中的输出。"
+      },
+      "deliverable": {
+        "label": "交付物",
+        "description": "用于评审、交接或交付的成品输出。"
+      },
+      "source_document": {
+        "label": "来源文档",
+        "description": "为工作提供依据的参考输入材料。"
+      },
+      "proof": {
+        "label": "证明",
+        "description": "证据、截图、回执、日志或验证材料。"
+      },
+      "template": {
+        "label": "模板",
+        "description": "可复用的起点或样板资产。"
+      },
+      "export_bundle": {
+        "label": "导出包",
+        "description": "为传输而打包的导出文件或归档。"
+      }
+    },
+    "importance": {
+      "operational": {
+        "label": "运营",
+        "description": "对当前执行有用的工作上下文。"
+      },
+      "record": {
+        "label": "记录",
+        "description": "值得作为持久项目记录的一部分保留。"
+      },
+      "canonical": {
+        "label": "规范",
+        "description": "人们应首先信赖的权威文件。"
+      },
+      "temporary": {
+        "label": "临时",
+        "description": "可能日后无关紧要的短期材料。"
+      }
+    },
+    "fileTypes": {
+      "xlsx": {
+        "label": "Excel 工作簿",
+        "description": "在电子表格编辑器中从空白工作表开始。"
+      },
+      "docx": {
+        "label": "Word 文档",
+        "description": "在文档编辑器中从空白页面开始。"
+      },
+      "csv": {
+        "label": "CSV 电子表格",
+        "description": "以网格形式或原始 CSV 编辑单元格。"
+      },
+      "markdown": {
+        "label": "Markdown",
+        "description": "编写格式化的笔记和文档。"
+      },
+      "text": {
+        "label": "纯文本",
+        "description": "创建简单的文本文档。"
+      },
+      "json": {
+        "label": "JSON",
+        "description": "创建带校验的结构化数据。"
+      }
+    },
+    "csv": {
+      "columnN": "第 {n} 列",
+      "header": "表头",
+      "rowN": "第 {n} 行",
+      "hint": "网格编辑最适合快速更正、清理列和行级修复。",
+      "addColumn": "添加列",
+      "addRow": "添加行",
+      "row": "行"
+    },
+    "errors": {
+      "fetchFolder": "无法获取文件夹内容",
+      "fetchFile": "无法获取文件详情",
+      "search": "无法搜索存储",
+      "preview": "无法加载预览",
+      "createFolder": "无法创建文件夹",
+      "saveFolder": "无法保存文件夹",
+      "deleteFolder": "无法删除文件夹",
+      "upload": "无法上传文件",
+      "saveProperties": "无法保存文件属性",
+      "move": "无法移动文件",
+      "replace": "无法替换文件",
+      "deleteFile": "无法删除文件",
+      "removeUntracked": "无法移除未跟踪条目",
+      "rename": "无法重命名文件",
+      "createFile": "无法创建文件",
+      "track": "无法跟踪文件",
+      "parseCsv": "无法解析 CSV",
+      "invalidJson": "JSON 无效"
+    },
+    "folderNameRequired": "文件夹名称必填",
+    "chooseFile": "选择要上传的文件",
+    "invalidFileName": "输入不含文件夹或路径字符的文件名",
+    "createFolderFirst": "请先在 Emperor 中创建此文件夹，再跟踪其中的文件。",
+    "selectScopeFirst": "跟踪此文件前，请先选择客户或项目。",
+    "root": "根目录",
+    "menu": {
+      "open": "打开",
+      "newFileHere": "在此新建文件",
+      "newFolderHere": "在此新建文件夹",
+      "editProperties": "编辑属性",
+      "deleteFolder": "删除文件夹",
+      "editInEmperor": "在 Emperor 中编辑",
+      "preview": "预览",
+      "download": "下载",
+      "rename": "重命名",
+      "deleteFile": "删除文件",
+      "addMetadata": "添加元数据",
+      "removeExternal": "从存储和 Drive 移除"
+    },
+    "eyebrow": "存储",
+    "description": "以文件夹优先组织文件、交付物、证明和工作文档。保持清晰的客户与项目结构，让智能体无需了解底层存储提供商即可找到正确的文件。",
+    "refresh": "刷新",
+    "newFolder": "新建文件夹",
+    "newFile": "新建文件",
+    "upload": "上传",
+    "searchPlaceholder": "搜索文件、名称或路径",
+    "allCustomers": "全部客户",
+    "allProjects": "全部项目",
+    "clear": "清除",
+    "advancedFilters": "高级筛选",
+    "allTasks": "全部任务",
+    "allFileTypes": "全部文件类型",
+    "folders": "文件夹",
+    "searchResults": "搜索结果",
+    "columns": {
+      "name": "名称",
+      "context": "上下文",
+      "size": "大小",
+      "updated": "更新时间"
+    },
+    "scopedFolder": "限定范围的文件夹",
+    "folder": "文件夹",
+    "externalFolder": "外部文件夹",
+    "missingMetadata": "缺少元数据",
+    "loadingFolder": "正在加载文件夹内容……",
+    "searching": "正在搜索存储……",
+    "empty": {
+      "searchTitle": "没有符合这些筛选条件的文件",
+      "rootTitle": "还没有文件",
+      "folderTitle": "此文件夹为空",
+      "searchDescription": "存储中没有符合搜索条件或项目、任务、客户和类型筛选条件的内容。",
+      "rootDescription": "你的智能体保存的文件和你上传的文件都会存放在这里。上传一个文件，或创建一个文件夹来整理它们。",
+      "folderDescription": "在此上传文件，或将文件移入此文件夹。"
+    },
+    "clearFilters": "清除筛选",
+    "inspector": "检查器",
+    "cancel": "取消",
+    "deleting": "正在删除……",
+    "delete": "删除",
+    "folderInspector": {
+      "rootSubtitle": "顶层文件夹容器",
+      "rootBody": "根目录是所有存储文件夹的顶层容器。",
+      "rootFolder": "根文件夹",
+      "save": "保存文件夹"
+    },
+    "fields": {
+      "folderName": "文件夹名称",
+      "parentFolder": "上级文件夹",
+      "project": "项目",
+      "customer": "客户",
+      "none": "无",
+      "metadataJson": "元数据 JSON",
+      "title": "标题",
+      "kind": "类型",
+      "visibility": "可见性",
+      "task": "任务",
+      "fileRole": "文件角色",
+      "lifecycle": "生命周期",
+      "retentionPolicy": "保留策略",
+      "filename": "文件名",
+      "folder": "文件夹",
+      "companyNoCustomer": "公司（无客户）",
+      "fileName": "文件名",
+      "file": "文件",
+      "selectCustomer": "选择客户"
+    },
+    "folderMetadata": {
+      "title": "高级文件夹元数据",
+      "inspectorHint": "用于集成的可选结构化元数据。大多数文件夹只需要名称、客户、项目和上级文件夹。",
+      "dialogHint": "用于集成的可选结构化元数据。除非你清楚文件夹为什么需要它，否则请保持默认。"
+    },
+    "tabs": {
+      "preview": "预览",
+      "properties": "属性",
+      "grid": "网格编辑器",
+      "raw": "原始 CSV",
+      "editor": "编辑器"
+    },
+    "canonicalBadge": "规范",
+    "classification": {
+      "title": "分类和高级",
+      "hint": "这些字段主要是给系统使用的归档提示。大多数用户只需要标题、范围、位置和规范状态。"
+    },
+    "info": {
+      "path": "路径",
+      "size": "大小",
+      "updated": "更新时间"
+    },
+    "folderDialog": {
+      "title": "创建文件夹",
+      "description": "在当前目录中创建新文件夹。"
+    },
+    "create": "创建",
+    "newFileDialog": {
+      "title": "创建文件",
+      "description": "在当前文件夹中创建并立即开始编辑。无需 Office 服务。",
+      "fileType": "文件类型",
+      "extensionHint": "系统会自动添加正确的扩展名。",
+      "submit": "创建并编辑"
+    },
+    "renameDialog": {
+      "title": "重命名文件",
+      "description": "更改文件名，不移动文件，也不更改其格式。",
+      "extensionHint": "扩展名保持不变，以确保文件继续在正确的编辑器中打开。"
+    },
+    "uploadDialog": {
+      "title": "上传文件",
+      "description": "将文件上传到当前文件夹。客户和项目为可选项——两者都留空即为公司级存储。",
+      "advanced": "高级",
+      "advancedHint": "默认设置通常没问题。大多数上传只需要标题以及正确的项目或客户范围。"
+    },
+    "trackDialog": {
+      "title": "添加元数据以跟踪此文件",
+      "description": "此文件存在于同步存储中，但尚不可见于智能体或文件 API。",
+      "submit": "跟踪文件"
+    },
+    "previewDialog": {
+      "fallbackTitle": "文件预览",
+      "csvDescription": "在更大的工作区中查看文件，并在不离开存储面板的情况下编辑 CSV 内容。",
+      "textDescription": "直接在存储中预览和编辑此轻量文件。",
+      "description": "展开预览，便于舒适阅读和核对。",
+      "rawHint": "当你需要精确控制格式或粘贴的数据时，直接编辑原始 CSV。",
+      "refreshGrid": "刷新网格",
+      "fileContents": "文件内容",
+      "savingHint": "保存会更新文件内容，同时保留其元数据和存储记录。",
+      "actionsHint": "下载和替换仍通过文件操作完成。",
+      "reset": "重置",
+      "saveCsv": "保存 CSV",
+      "saveFile": "保存文件",
+      "close": "关闭"
+    },
+    "emptyInspector": {
+      "title": "选择文件或文件夹",
+      "description": "通过此检查器预览文件内容、编辑元数据、重命名项目并管理文件夹结构。"
+    }
+  },
+  "auth": {
+    "genericError": "发生错误",
+    "networkError": "网络错误。请重试。",
+    "warning": "警告：",
+    "login": {
+      "emailNotVerified": "登录前请先验证你的邮箱。我们在注册时已发送激活链接。",
+      "invalidCredentials": "邮箱或密码错误",
+      "title": "欢迎回来",
+      "subtitle": "指挥你的 AI 劳动力",
+      "email": "邮箱",
+      "emailPlaceholder": "name@company.com",
+      "password": "密码",
+      "forgot": "忘记密码？",
+      "submit": "进入指挥中心",
+      "verifyFirst": "新工作区必须先验证邮箱。",
+      "resendActivation": "重新发送激活",
+      "createAccount": "创建账户",
+      "documentation": "文档"
+    },
+    "signup": {
+      "inviteFailures": {
+        "expired": "此邀请已过期。请联系你的管理员获取新的邀请。",
+        "consumed": "此邀请已被使用。请直接登录。",
+        "not_found": "邀请令牌无效或已过期。",
+        "email_mismatch": "此邀请适用于其他邮箱地址。"
+      },
+      "inviteInvalid": "邀请无效。",
+      "inviteCheckFailed": "无法验证邀请。请重试。",
+      "validation": {
+        "companyName": "请输入至少 2 个字符的公司名称。",
+        "disclaimer": "你必须确认 Beta 版数据免责声明。",
+        "email": "请输入你的工作邮箱。",
+        "passwordLength": "密码至少需要 8 个字符。",
+        "passwordMismatch": "两次输入的密码不一致。"
+      },
+      "registerFailed": "注册失败",
+      "registrationFailed": "注册失败",
+      "loading": "加载中……",
+      "inviteOnlyTitle": "仅限邀请的实例",
+      "inviteOnlyBody": "此实例仅限邀请。请联系你的管理员获取邀请。",
+      "goToLogin": "前往登录",
+      "headingBootstrap": "设置你的实例",
+      "headingInvited": "接受你的邀请",
+      "headingOpen": "创建账户",
+      "subtitleBootstrap": "{verify, select, yes {设置你的 Emperor Claw 工作区并验证邮箱以激活。} other {设置你的 Emperor Claw 工作区。}}",
+      "subtitleInvited": "你已被邀请以{role}身份加入{company}。",
+      "subtitleOpen": "{verify, select, yes {创建你的 Emperor Claw 账户并验证邮箱以激活。} other {创建你的 Emperor Claw 账户。}}",
+      "invitedTo": "受邀加入{company}",
+      "roleLabel": "角色：",
+      "companyName": "公司名称",
+      "companyPlaceholder": "Acme Corp",
+      "workEmail": "工作邮箱",
+      "emailPlaceholder": "name@acme.com",
+      "password": "密码",
+      "passwordHint": "请使用至少 8 个字符。",
+      "confirmPassword": "确认密码",
+      "passwordsDiffer": "两次输入的密码尚不一致。",
+      "betaTitle": "Beta 版提示",
+      "betaBody": "Emperor Claw 是按原样提供的 Beta 版软件。我们不保证所存储数据或智能体输出的安全性、留存、恢复、可用性或适用性。你需要对系统的使用方式以及在此放置的数据负责。",
+      "betaSecrets": "请勿存储关键密钥、受监管数据、仅限生产的凭据，或其他你无法承受暴露、丢失或重建的信息。",
+      "betaAuthorized": "创建即表示你确认，你有权使用此邮箱地址注册下方填写的公司。",
+      "betaAccept": "我了解此产品处于 Beta 阶段，不提供任何保证，并对自己在此工作区内运行的数据和操作负责。",
+      "verificationNotice": "我们会先向此邮箱发送验证链接，工作区方可使用。",
+      "noEmailServer": "未配置邮件服务器，因此你的账户会立即激活——注册完成后即可登录。",
+      "oneWorkspace": "除非你有意使用彼此隔离的数据集和智能体状态，否则每家公司只创建一个工作区。",
+      "submitBootstrap": "创建工作区",
+      "submitInvited": "接受邀请",
+      "submitOpen": "创建账户",
+      "haveAccount": "已有账户？",
+      "logIn": "登录"
+    },
+    "forgot": {
+      "title": "重置密码",
+      "subtitle": "输入你的邮箱地址，我们会发送一个重置密码的链接。",
+      "checkInbox": "查看收件箱",
+      "sentTo": "我们已向<strong>{email}</strong>发送了密码重置链接。",
+      "backToLogin": "返回登录",
+      "accountEmail": "账户邮箱",
+      "emailPlaceholder": "you@company.com",
+      "sending": "正在发送链接……",
+      "submit": "发送重置链接"
+    },
+    "reset": {
+      "mismatch": "两次输入的密码不一致",
+      "tooShort": "密码至少需要 8 个字符",
+      "failed": "设置新密码时发生错误",
+      "invalidTitle": "重置链接无效",
+      "invalidBody": "此密码重置链接无效或格式错误。请重新申请。",
+      "requestNew": "申请新链接",
+      "successTitle": "密码重置成功",
+      "successBody": "你的密码已安全更新。正在跳转到登录……",
+      "proceed": "前往登录",
+      "resettingFor": "正在为以下账户重置：",
+      "newPassword": "新密码",
+      "confirmPassword": "确认新密码",
+      "updating": "正在更新……",
+      "submit": "设置新密码",
+      "loading": "正在加载安全通道……",
+      "title": "创建新密码",
+      "subtitle": "使用一个强密码来保护你的账户。"
+    },
+    "checkEmail": {
+      "noEmail": "请从注册页面重新输入你的邮箱以申请新的激活链接。",
+      "resendFailed": "重新发送验证邮件失败。",
+      "resent": "验证邮件已发送。",
+      "title": "查看收件箱",
+      "sentTo": "我们已向<address>{email}</address>发送激活链接。",
+      "sentToYou": "我们已向你的邮箱地址发送激活链接。",
+      "nextStep": "下一步",
+      "nextStepBody": "打开验证邮件并点击激活链接。在地址确认之前，工作区将保持锁定。",
+      "betaTitle": "Beta 版提醒",
+      "betaBody": "Emperor Claw 是按原样提供的 Beta 版软件。请勿存储关键密钥、受监管数据，或其他你无法承受暴露、丢失或重建的内容。",
+      "resend": "重新发送激活邮件",
+      "differentEmail": "使用其他邮箱",
+      "backToLogin": "返回登录",
+      "loading": "正在加载激活详情……"
+    },
+    "verify": {
+      "verifying": "正在验证你的邮箱……",
+      "incomplete": "此验证链接不完整或格式错误。",
+      "invalid": "此验证链接无效或已过期。",
+      "verified": "邮箱已验证。你现在可以登录了。",
+      "networkError": "验证邮箱时发生网络错误。请重新尝试链接。",
+      "verifyingTitle": "正在验证你的邮箱",
+      "activatedTitle": "工作区已激活",
+      "beforeContinue": "继续之前",
+      "betaBody": "Emperor Claw 仍为 Beta 版软件。请谨慎使用工作区，并避免在其中存放关键或受监管的数据。",
+      "logIn": "登录",
+      "failedTitle": "验证失败",
+      "resendActivation": "重新发送激活",
+      "createAgain": "重新创建账户",
+      "loading": "正在加载验证链接……"
+    },
+    "authorize": {
+      "errors": {
+        "responseType": "response_type 必须为 'code'。",
+        "challengeMethod": "code_challenge_method 必须为 'S256'。",
+        "challengeRequired": "需要 code_challenge。",
+        "unknownClient": "未知的 client_id——此应用尚未在 EmperorClaw 注册。",
+        "redirectMismatch": "redirect_uri 与该客户端注册的不一致。"
+      },
+      "noHttps": "此实例并非通过 HTTPS 提供。OAuth 每个环节都需要 TLS——即使你在下方批准，claude.ai 也很可能无法完成此操作。请在前面放置一个反向代理（Caddy、nginx、Cloudflare Tunnel）并配置真实证书，或改用手动创建的 Bearer 令牌（设置 → 令牌）——它在纯 HTTP 下也能正常工作。",
+      "cantConnect": "无法连接此应用",
+      "wantsToConnect": "{app} 想要连接",
+      "anAppWantsToConnect": "有一个应用想要连接",
+      "yourCompany": "你的公司",
+      "grants": "这将授予对公司智能体、任务、项目、知识库与规则以及消息功能的访问权限——与手动创建的智能体访问令牌拥有相同权限。你可以随时在设置 → 令牌中撤销。",
+      "approve": "批准",
+      "deny": "拒绝"
+    }
+  },
+  "avatarPicker": {
+    "saveFailed": "无法保存",
+    "othersFailed": "无法更新其他智能体",
+    "allUpdated": "现在所有智能体都使用这一外观",
+    "updated": "头像已更新",
+    "change": "更换 {name} 的头像",
+    "title": "{name} 的头像",
+    "description": "选择一个外观。点击随机可在保持相同设置的情况下更换角色。",
+    "robot": "机器人",
+    "person": "人物",
+    "colour": "颜色",
+    "colourN": "颜色 {hue}",
+    "accessory": "配饰",
+    "accessories": {
+      "none": "无",
+      "glasses": "眼镜",
+      "headset": "耳机",
+      "cap": "帽子",
+      "bow": "蝴蝶结"
+    },
+    "shuffle": "随机",
+    "applyToAll": "将此外观用于所有智能体",
+    "cancel": "取消",
+    "save": "保存"
+  },
+  "budget": {
+    "agentSaveFailed": "无法保存智能体设置",
+    "budgetSaveFailed": "无法保存预算",
+    "modelSaveFailed": "无法保存模型",
+    "modelOwnersOnly": "只有所有者和管理员可以更改智能体的模型。",
+    "pricingSaveFailed": "无法保存模型定价",
+    "availabilityFailed": "无法更新模型可用性",
+    "disable": "禁用",
+    "enable": "启用",
+    "pricingAddFailed": "无法添加模型定价",
+    "addPricing": "+ 添加模型定价",
+    "labelPlaceholder": "标签",
+    "reactivateFailed": "无法重新激活智能体",
+    "stats": {
+      "monthlySpend": "月度支出",
+      "kTokens": "{count}K tokens",
+      "budget": "预算",
+      "unlimited": "无限",
+      "capped": "{count} 个智能体已设上限",
+      "weeklySpend": "7 天支出",
+      "last7Days": "过去 7 天",
+      "alerts": "告警",
+      "paused": "{count} 个已暂停",
+      "warning": "{count} 个处于警告状态"
+    },
+    "agentBudgets": "智能体预算",
+    "agentCount": "{count} 个智能体",
+    "columns": {
+      "agent": "智能体",
+      "model": "模型",
+      "tokens": "Tokens",
+      "cost": "费用",
+      "limit": "限额",
+      "status": "状态"
+    },
+    "pausedBadge": "已暂停",
+    "exhaustedTitle": "预算已耗尽，点击重新激活。",
+    "nearingTitle": "接近上限，点击关闭。",
+    "noAgents": "未找到智能体。",
+    "pricingTitle": "模型定价",
+    "pricingEditHint": "点击价格进行编辑，切换 ✓ 以禁用，点击 + 添加新价格。",
+    "pricingReadHint": "价格用于估算费用（每 100 万 tokens 的美元价格）。",
+    "pricingColumns": {
+      "provider": "提供商",
+      "modelId": "模型 ID",
+      "input": "输入 /100 万",
+      "output": "输出 /100 万",
+      "on": "启用"
+    }
+  },
+  "costs": {
+    "views": "成本视图",
+    "tabs": {
+      "customer": "按客户",
+      "project": "按项目",
+      "model": "按模型",
+      "agent": "按智能体",
+      "budgets": "预算"
+    },
+    "ranges": {
+      "7d": "7 天",
+      "30d": "30 天",
+      "90d": "90 天",
+      "this-month": "本月",
+      "last-month": "上月",
+      "custom": "自定义"
+    },
+    "columns": {
+      "customer": "客户",
+      "project": "项目",
+      "task": "任务",
+      "model": "模型",
+      "agent": "智能体",
+      "day": "日期"
+    },
+    "exportCsv": "导出 CSV",
+    "filterLabel": "{noun}：",
+    "openBoard": "打开项目看板",
+    "clear": "清除",
+    "stats": {
+      "cost": "成本",
+      "costDetail": "{reported} 已上报 · {estimated} 估算",
+      "runs": "运行",
+      "runsDetail": "{days, plural, other {# 天}} · {from} 至 {to}（UTC）",
+      "tokens": "Token",
+      "tokensDetail": "{input} 输入 · {output} 输出",
+      "estimated": "估算",
+      "unpriced": "{count, plural, other {{runs} 次未计价运行}}（{tokens} Token）未计入",
+      "priced": "的成本按你的定价表计价"
+    },
+    "share": "分享",
+    "basis": "依据",
+    "total": "总计",
+    "emptyTitle": "此范围内没有智能体运行",
+    "emptyRestricted": "你能看到的客户和智能体在此范围内都没有运行。请选择更大的范围。",
+    "emptyDescription": "此范围内没有智能体上报运行，因此没有产生成本。请选择更大的范围。",
+    "legend": "已上报：运行时发送了成本。估算：按模型定价表计价（包括按订阅计费的运行）。未计价：运行时未发送成本且该模型没有价格。没有任务的运行计为“聊天（无任务）”。",
+    "basisChips": {
+      "reported": "已上报",
+      "estimated": "估算",
+      "unpriced": "未计价",
+      "costFrom": "{cost} 来自 {runs} 次运行",
+      "unpricedTitle": "{runs} 次运行、{tokens} Token 无价格"
+    },
+    "dateRange": "日期范围",
+    "from": "从",
+    "to": "至",
+    "apply": "应用",
+    "chart": {
+      "title": "每日成本",
+      "max": "最高 {cost}",
+      "noCost": "此范围内没有成本",
+      "label": "{from} 至 {to} 的每日成本",
+      "bar": "{day}：{cost} · {runs, plural, other {# 次运行}}"
+    },
+    "loading": "正在加载成本",
+    "eyebrow": "财务",
+    "title": "成本",
+    "budgetsDescription": "点击限额或模型进行内联编辑。切换 ✓ 以禁用模型。估算用量：80% 时警告；100% 时阻止后续 Codex/Hermes 轮次。正在运行的轮次可能超出限额。",
+    "description": "智能体运行的成本，按客户、项目、模型和智能体分类。已上报的成本来自运行时；估算的成本按你的模型定价表计价。"
+  },
+  "customers": {
+    "created": "客户已创建。",
+    "createFailed": "创建客户失败。",
+    "notesSaved": "备注已保存。",
+    "notesFailed": "保存备注失败。",
+    "eyebrow": "客户",
+    "title": "客户目录",
+    "description": "查找客户、查看其项目组合健康状况，并维护智能体应遵循的客户描述。",
+    "add": "添加客户",
+    "createTitle": "创建客户",
+    "createIntro": "创建持久的客户记录并附加初始项目组合背景。",
+    "namePlaceholder": "客户名称",
+    "notesPlaceholder": "ICP 详情、项目背景、运营备注……",
+    "nameFirst": "请先输入客户名称",
+    "creating": "创建中……",
+    "summary": {
+      "customers": "客户",
+      "customersHint": "项目组合记录",
+      "projects": "项目",
+      "projectsHint": "所有客户的项目",
+      "tasks": "任务",
+      "tasksHint": "未完成和已关闭的工作",
+      "blocked": "已阻塞",
+      "blockedHint": "等待依赖项的任务",
+      "approvals": "审批",
+      "approvalsHint": "等待人工决策"
+    },
+    "emptyTitle": "暂无客户",
+    "emptyDescription": "添加客户以分组其项目、文件和备注，并记录智能体为其工作时应遵循的上下文信息。",
+    "searchPlaceholder": "搜索客户",
+    "rowCounts": "{projects, plural, other {# 个项目}} · {tasks, plural, other {# 个任务}}",
+    "toCheckTitle": "审批、已阻塞任务、事件或审核中的任务；打开客户即可查看",
+    "toCheck": "{count} 项待处理",
+    "noMatches": "没有客户符合该搜索",
+    "clearSearch": "清除搜索",
+    "id": "ID：{id}",
+    "tags": {
+      "projects": "{count, plural, other {# 个项目}}",
+      "tasks": "{count, plural, other {# 个任务}}",
+      "inReview": "{count} 项审核中",
+      "blocked": "{count} 项已阻塞",
+      "approvals": "{count, plural, other {# 项审批}}",
+      "incidents": "{count, plural, other {# 个事件}}",
+      "pipelines": "{count, plural, other {# 条流水线}}"
+    },
+    "attention": {
+      "title": "需要关注",
+      "hint": "该客户有待他人处理的工作。打开某项即可解决。",
+      "kinds": {
+        "approval": "审批",
+        "blocked": "已阻塞",
+        "incident": "事件",
+        "review": "审核中"
+      }
+    },
+    "projects": "项目",
+    "projectRow": "{status} · {count, plural, other {# 个未完成任务}}",
+    "descriptionLabel": "描述",
+    "save": "保存",
+    "descriptionPlaceholder": "# 目标受众\n描述团队应针对谁进行优化……",
+    "descriptionHint": "关于此客户的简要描述和备注。如需可复用的规则和标准操作流程，请改用知识库。",
+    "approvalRequested": "已请求审批"
+  },
+  "delivery": {
+    "tools": "{count, plural, other {# 个工具}}",
+    "events": "{count, plural, other {# 个事件}}",
+    "notFound": "未找到消息",
+    "loadFailed": "无法加载投递",
+    "show": "显示此消息的投递详情",
+    "title": "投递",
+    "details": "投递详情",
+    "refresh": "刷新投递详情",
+    "loading": "正在加载投递…",
+    "agent": "智能体",
+    "triggeredRuns": "触发的运行",
+    "answeredWith": "与消息 <mono>{id}</mono> 一并回答。",
+    "alsoAnswered": "该回复还回答了{count, plural, other {# 条排队消息}}：",
+    "noVerdict": "未记录送达判定——此消息早于台账记录，或未指向任何对象",
+    "verdicts": {
+      "self": "未送达——智能体自身的消息",
+      "targeted": "已送达——指向此智能体",
+      "targeted_other": "未送达——指向其他智能体",
+      "direct": "已送达——直接消息",
+      "mention": "已送达——被提及",
+      "all": "已送达——群组中的 @all",
+      "agent_pair": "已送达——结对移交",
+      "task_assigned": "已送达——任务已分配",
+      "not_addressed": "未送达——未指向",
+      "out_of_scope": "未送达——发送方智能体的作用范围未覆盖此智能体",
+      "loop_paused": "未送达——已由循环保护暂停（连续 {streak} 条智能体消息（上限 {max} 条）无人类参与）",
+      "otherDelivered": "已送达——{reason}",
+      "otherNotDelivered": "未送达——{reason}"
+    }
+  },
+  "directChat": {
+    "headerDescription": "这是与 {name} 之间专用的“人—智能体”对话。团队、任务和关注话题都在 `Threads` 下。",
+    "failedAfter": "{count, plural, one {已尝试 # 次后失败} other {已尝试 # 次后失败}}",
+    "failed": "失败",
+    "stopped": {
+      "cancelled": "已取消",
+      "failed": "已失败",
+      "mixed": "已失败或取消"
+    },
+    "more": "+{count} 更多",
+    "queuedBusy": "已排队 — {name} 正在处理 {count} 项事务，稍后会接续此消息。",
+    "queueSummary": "消息队列 · {count} 项待处理",
+    "pending": "{count} 项待处理",
+    "waitingOf": "等待中 · {n} / {total}",
+    "waitingState": "等待中",
+    "recently": "最近{label}",
+    "recentlyReview": "{count} 项最近{label} · 查看或重试",
+    "micBlocked": "麦克风已被阻止。点击浏览器地址栏中的<strong>锁定图标</strong> → <strong>网站设置</strong> → 将麦克风设为<strong>允许</strong>，然后重新加载页面。",
+    "messagePlaceholder": "向 {name} 发送消息…",
+    "messageLabel": "向 {name} 发送消息",
+    "queueAfter": "排到当前任务之后",
+    "replaceCurrent": "替换当前工作",
+    "mic": {
+      "insecure": "麦克风访问需要安全（HTTPS）连接。",
+      "unavailable": "此浏览器不支持麦克风。",
+      "denied": "麦克风访问被拒绝。请检查浏览器设置和网站权限（留意地址栏中的锁定图标），然后重新加载并重试。",
+      "notFound": "未找到麦克风。请插入设备后重试。",
+      "busy": "麦克风正忙。请关闭其他正在使用它的应用后重试。",
+      "startFailed": "无法开始录音。请检查麦克风后重试。"
+    },
+    "voiceUploadFailed": "语音上传失败",
+    "sendFailed": "发送消息失败",
+    "unknownError": "未知错误",
+    "uploadFailed": "上传失败",
+    "stopFailed": "无法停止智能体",
+    "queueUpdateFailed": "无法更新已排队的消息",
+    "attachmentsQueued": "将附件作为排队消息发送",
+    "sendDirectFailed": "发送直接消息失败",
+    "duplicate": "该提示词已处于活动或排队状态，不会重复发送。",
+    "title": "直接对话",
+    "thread": "话题",
+    "provisioning": "配置中",
+    "loading": "正在加载直接对话…",
+    "emptyTitle": "还没有直接消息。",
+    "emptyBody": "在此发送指令，已连接的智能体会在这条私密话题中回复。",
+    "loadingOlder": "正在加载…",
+    "loadOlder": "加载更早的消息",
+    "runtimeConfirmed": "运行状态已确认",
+    "waitingHermes": "等待 Hermes 确认。离线或较旧版本的运行时暂无法停止。",
+    "cancelled": "已取消",
+    "beingHandled": "正在处理中",
+    "queued": "已排队",
+    "read": "已读",
+    "sent": "已发送",
+    "isWorking": "正在工作",
+    "working": "工作中",
+    "alsoWorkingOn": "同时正在处理",
+    "queueLabel": "智能体消息队列",
+    "queueTitle": "消息队列",
+    "close": "关闭",
+    "handlingNow": "正在处理",
+    "recording": "正在录音…",
+    "stop": "停止",
+    "discard": "放弃",
+    "send": "发送",
+    "attachFiles": "附加文件",
+    "recordVoice": "录制语音消息",
+    "nextPromptBehavior": "下一条提示行为",
+    "busyBehavior": "智能体忙碌时的处理方式",
+    "stopTitle": "停止智能体并清空其队列",
+    "stopLabel": "停止智能体并清空队列",
+    "sending": "正在发送消息",
+    "sendMessage": "发送消息",
+    "shortcutHint": "按 Enter 发送 · Shift+Enter 换行 · /kill · /queue 提示 · /replace 提示",
+    "cancel": "取消",
+    "retry": "重试",
+    "requestSource": "{source}（通过 API）",
+    "requestSourceOnBehalf": "{source}（通过 API）· 代表 {by}"
+  },
+  "docs": {
+    "contentNotFound": "未找到内容。",
+    "contentFailed": "内容加载失败。",
+    "documentation": "文档",
+    "backToDashboard": "返回仪表盘",
+    "version": "版本",
+    "searchPlaceholder": "搜索文档…",
+    "searchResults": "搜索结果",
+    "noPages": "未找到页面",
+    "syncing": "正在同步文档…",
+    "needHelp": "需要帮助？加入 <link>Discord 社区</link>"
+  },
+  "editor": {
+    "loading": {
+      "spreadsheet": "正在加载电子表格编辑器…",
+      "document": "正在加载文档编辑器…",
+      "file": "正在打开文件…"
+    },
+    "savedAt": "已保存 {time}",
+    "savedInStorage": "已保存到 Storage",
+    "openingWorkbook": "正在打开工作簿…",
+    "errors": {
+      "details": "无法加载文件详细信息",
+      "unsupported": "Emperor 可在此编辑 .xlsx 和 .docx 文件。不支持此文件类型。",
+      "download": "无法下载文件内容",
+      "open": "无法打开此文件",
+      "save": "无法保存文件"
+    },
+    "saved": "已保存到 Storage",
+    "cantOpen": "无法打开此文件",
+    "backToStorage": "返回 Storage",
+    "beta": "Beta",
+    "saving": "正在保存…",
+    "unsaved": "未保存的更改",
+    "savingShort": "正在保存",
+    "save": "保存",
+    "toolbar": {
+      "undo": "撤销",
+      "redo": "重做",
+      "paragraphStyle": "段落样式",
+      "fontFamily": "字体",
+      "fontSize": "字号",
+      "bold": "加粗",
+      "italic": "斜体",
+      "underline": "下划线",
+      "textColor": "文字颜色",
+      "highlight": "高亮",
+      "alignLeft": "左对齐",
+      "alignCenter": "居中对齐",
+      "alignRight": "右对齐",
+      "justify": "两端对齐",
+      "bulletedList": "项目符号列表",
+      "numberedList": "编号列表",
+      "insertTable": "插入表格",
+      "insertImage": "插入图片",
+      "zoomOut": "缩小",
+      "zoomIn": "放大",
+      "addWorksheet": "添加工作表"
+    },
+    "styles": {
+      "body": "正文",
+      "heading1": "标题 1",
+      "heading2": "标题 2",
+      "heading3": "标题 3"
+    },
+    "openingDocument": "正在打开文档…",
+    "workbookError": "无法打开此工作簿。",
+    "formula": {
+      "label": "单元格值或公式",
+      "placeholder": "选择一个单元格以编辑其值或公式"
+    }
+  },
+  "failureFix": {
+    "retryFailed": "无法重试该消息",
+    "sentAgain": "已重新发送。",
+    "reachFailed": "无法联系智能体",
+    "nudged": "已提醒智能体。",
+    "askedRetry": "已要求智能体重试。",
+    "restartFailed": "无法重启运行时",
+    "restarting": "正在重启运行时。",
+    "somethingWrong": "出问题了",
+    "rateLimited": "提供方正在限流：请稍候再重试",
+    "labelIn": "{label}，{seconds} 秒后"
+  },
+  "goalHub": {
+    "eyebrow": "自主任务控制中心",
+    "title": "今天的任务是什么？",
+    "description": "描述你的高层目标。Emperor Claw 编排器会将其拆分为项目和任务，并分配给最合适的智能体。",
+    "placeholder": "例如：审计我们的主落地页 SEO 并启动一个基础 Twitter 推广活动",
+    "thinking": "思考中",
+    "breakDown": "拆分",
+    "cancel": "取消",
+    "provisioning": "正在配置基础设施…",
+    "initiated": "任务已启动",
+    "execute": "执行任务计划",
+    "online": "编排器已上线",
+    "poweredBy": "由 OpenClaw 自主逻辑驱动"
+  },
+  "goals": {
+    "cadence": {
+      "15": "每 15 分钟",
+      "60": "每小时",
+      "240": "每 4 小时",
+      "1440": "每天一次"
+    },
+    "cadenceEvery": "每 {minutes} 分钟",
+    "status": {
+      "starting": "启动中",
+      "active": "运行中",
+      "paused": "已暂停",
+      "blocked": "已阻塞",
+      "completed": "已完成",
+      "cancelled": "已停止"
+    },
+    "updateFailed": "无法更新目标",
+    "summaryTitle": "为智能体设置一个带定时检查的目标",
+    "objective": "目标",
+    "objectiveWithStatus": "目标 · {status}",
+    "managedElsewhere": "在另一个私密对话中管理。",
+    "checkIns": "{cadence} · {done}/{max} 次检查",
+    "blocked": "已阻塞：{reason}",
+    "result": "结果：{summary}",
+    "pause": "暂停",
+    "resume": "继续",
+    "stop": "停止",
+    "whatToFinish": "智能体需要完成什么？",
+    "placeholder": "描述预期结果及验证方式。",
+    "cadenceLabel": "检查频率",
+    "starting": "启动中…",
+    "start": "启动目标",
+    "stopHint": "当目标完成、阻塞、停止或预算用尽时，检查将停止。"
+  },
+  "groups": {
+    "templates": {
+      "development": "开发团队",
+      "marketing": "市场",
+      "support": "客服"
+    },
+    "somethingWrong": "出了点问题",
+    "nameRequired": "请为群组命名。",
+    "saveFailed": "无法保存群组",
+    "archiveFailed": "无法归档群组",
+    "manageTitle": "管理群组",
+    "newTitle": "新建群组",
+    "description": "面向选定智能体与人员的共享工作区。当你 @ 提及时，智能体会回复。",
+    "icon": "图标",
+    "iconLabel": "群组图标",
+    "defaultIcon": "默认",
+    "name": "名称",
+    "namePlaceholder": "开发团队",
+    "purpose": "用途",
+    "purposeHint": "（智能体每次都会阅读此内容）",
+    "purposePlaceholder": "此群组负责的工作，以及成员应如何使用它。",
+    "members": "成员",
+    "memberCounts": "{agents, plural, one {# 个智能体} other {# 个智能体}} · {humans, plural, one {# 人} other {# 人}}",
+    "findPlaceholder": "查找智能体或人员",
+    "findLabel": "查找成员",
+    "agent": "智能体",
+    "noMatches": "没有与“{query}”匹配的人员。",
+    "autoAdded": "你会被自动添加。公司中的任何人都可以打开群组；发帖后即成为成员。",
+    "coordinator": "协调员",
+    "optional": "（可选）",
+    "noCoordinator": "无协调员",
+    "agentOption": "{name} · 智能体",
+    "humanOption": "{name} · 人员",
+    "coordinatorHint": "负责协调本团队的工作并帮助解决阻碍。成员也可以属于其他团队。",
+    "archiveConfirm": "归档此群组？",
+    "archive": "归档",
+    "keep": "保留",
+    "cancel": "取消",
+    "saving": "保存中…",
+    "save": "保存",
+    "create": "创建群组"
+  },
+  "hermesImage": {
+    "unpackingOf": "正在解压智能体运行时（仅一次）—— {done} / {total} GB",
+    "unpacking": "正在解压智能体运行时（仅一次）…",
+    "downloadingOf": "正在下载智能体运行时（仅一次）—— {done} / {total} GB",
+    "downloadingSoFar": "正在下载智能体运行时（仅一次）—— 已下载 {amount}",
+    "downloading": "正在下载智能体运行时（仅一次）…",
+    "unpackingLabel": "智能体运行时解压",
+    "downloadLabel": "智能体运行时下载"
+  },
+  "messagingHub": {
+    "noMessagesYet": "还没有消息",
+    "justNow": "刚刚",
+    "privateThread": "{name} · 私密",
+    "agentConversation": "智能体对话：{title}",
+    "groupDescription": "{count, plural, other {# 个智能体}} · @提及某位成员即可获得回复",
+    "groupRow": "{count, plural, other {# 个智能体}} · {time}",
+    "switchCurrent": "切换对话。当前：{title}",
+    "agentCount": "{count} 个智能体",
+    "groupPlaceholder": "发送消息至 {title}…（@ 某位成员，或 @all）",
+    "teamChannel": "团队频道",
+    "privateAgentConversation": "私密智能体对话",
+    "privateEarlier": "当直接聊天还是私密模式时的私人对话",
+    "workLogDescription": "系统更新以及该智能体自行启动的工作",
+    "directConversation": "直接智能体对话",
+    "teamDescription": "所有成员都可以查看并回复。@提及智能体即可获得回复。",
+    "title": "消息",
+    "subtitle": "团队与直接对话",
+    "filterPlaceholder": "筛选智能体……",
+    "filterLabel": "筛选对话",
+    "everyone": "所有人",
+    "groups": "群组",
+    "newGroup": "新建群组",
+    "showAgentConversations": "显示智能体之间的对话",
+    "createGroupHint": "为团队创建群组，例如你的开发人员和测试人员",
+    "directMessages": "直接消息",
+    "operator": "操作员",
+    "noDirectYet": "还没有直接对话。",
+    "sharedThreads": "共享智能体会话",
+    "noMatches": "没有智能体匹配该搜索",
+    "clearSearch": "清除搜索",
+    "emptyTitle": "还没有可聊天的智能体",
+    "emptyDescription": "每个智能体一经聘用，就会在此拥有直接聊天。前往「智能体」聘用一个。",
+    "backToConversations": "返回对话列表",
+    "switchConversation": "切换对话",
+    "directMessagesMenu": "直接消息",
+    "manageMembers": "管理群组成员",
+    "membersSettings": "成员与设置",
+    "showConversations": "显示对话",
+    "focusConversation": "聚焦对话",
+    "focusMode": "专注模式",
+    "readOnlyPlaceholder": "这是私密智能体对话（只读）",
+    "agent": "智能体"
+  },
+  "search": {
+    "loading": "正在加载搜索",
+    "minLength": "至少输入 {count} 个字符。",
+    "searching": "正在搜索…",
+    "failed": "搜索失败。请稍后再试。",
+    "resultCount": "{more, select, yes {{count, plural, one {#+ 个结果} other {#+ 个结果}}} other {{count, plural, one {# 个结果} other {# 个结果}}}}",
+    "eyebrow": "搜索",
+    "title": "搜索所有内容",
+    "description": "任务及其备注、消息、知识库与规则、文件、项目、客户和智能体。",
+    "placeholder": "搜索任务、消息、知识库、文件…",
+    "clear": "清除搜索",
+    "filterByType": "按类型筛选",
+    "all": "全部",
+    "emptyTitle": "查找任何内容",
+    "emptyDescription": "输入几个词即可搜索任务、项目、客户、备注、文件、智能体和消息。输入时最后一个词会自动匹配，且忽略重音符号（cafe 可找到 café）。",
+    "noMatches": "没有与“{query}”匹配的内容",
+    "noMatchesOfType": "你能看到的{type}都不包含这些词。请搜索所有类型，或使用更少的词。",
+    "noMatchesHint": "没有可见内容包含这些词。请尝试更少或不同的词。",
+    "searchAllTypes": "搜索所有类型",
+    "results": "搜索结果",
+    "showMore": "显示更多结果",
+    "hints": {
+      "move": "移动",
+      "open": "打开",
+      "search": "搜索"
+    }
+  },
+  "timeline": {
+    "loading": "正在加载时间线",
+    "loadFailed": "无法加载时间线",
+    "eyebrow": "时间线",
+    "title": "谁做了什么",
+    "descriptionAgents": "每个智能体一行：它何时忙碌、在做什么，以及哪个智能体把工作交给了哪个。人员的操作会以标记显示在其所触及的智能体上。",
+    "descriptionProjects": "每个项目一行：哪些智能体在何时处理过它。无任务的对话显示为最后一行灰色。",
+    "totals": {
+      "runs": "运行",
+      "agentsActive": "活跃智能体",
+      "runTime": "运行时间",
+      "tokens": "Token",
+      "cost": "成本",
+      "successRate": "成功率"
+    },
+    "timeRange": "时间范围",
+    "presets": {
+      "today": "今天",
+      "7d": "7 天",
+      "30d": "30 天"
+    },
+    "fromDate": "起始日期",
+    "toDate": "结束日期",
+    "apply": "应用",
+    "rows": "行",
+    "rowsAgents": "智能体",
+    "rowsProjects": "项目",
+    "colourBy": "着色依据",
+    "colourModes": {
+      "outcome": "结果",
+      "source": "来源",
+      "project": "项目"
+    },
+    "showEvents": "显示事件",
+    "allAgents": "全部智能体",
+    "allProjects": "全部项目",
+    "allCustomers": "全部客户",
+    "clear": "清除",
+    "zoomOut": "缩小",
+    "resetZoom": "重置缩放",
+    "reset": "重置",
+    "zoomIn": "放大",
+    "capped": "此窗口的活动量超出了图表可绘制的范围。请缩小时间范围或使用筛选器。",
+    "legend": "图例",
+    "chatNoTask": "对话（无任务）",
+    "sources": {
+      "delegated": "委派",
+      "automation": "自动化"
+    },
+    "legendProjects": "每种颜色代表一个项目；对话运行显示为灰色。",
+    "legendFaded": "淡色条表示对话（无任务）",
+    "opensRun": "打开一个运行",
+    "clears": "清除",
+    "runCount": "{count, plural, one {# 个运行} other {# 个运行}}",
+    "agentSub": "{runs} 个运行 · 忙碌 {busy}%",
+    "emptyTitle": "此时间范围内没有工作",
+    "emptyDescription": "此时间范围内没有智能体或人员运行、对话或推进任务。请选择更宽的时间范围，或清除筛选器。",
+    "hideIdle": "隐藏空闲智能体",
+    "showIdle": "{count, plural, one {+# 个空闲智能体} other {+# 个空闲智能体}}",
+    "now": "现在",
+    "agent": "智能体",
+    "chat": "对话",
+    "chatIn": "对话（{thread}）",
+    "task": "任务",
+    "clusterTooltip": "{count} 个运行 · 主要是 {mostly}",
+    "clusterLabel": "{count} 个运行，缩放以展开",
+    "spanLabel": "{what}：{outcome}",
+    "toolCount": "{count, plural, one {# 个工具} other {# 个工具}}",
+    "tokenCount": "{tokens} 个 Token",
+    "detail": {
+      "openChat": "打开对话",
+      "openTask": "打开任务",
+      "chatRun": "对话运行",
+      "taskRun": "任务运行",
+      "close": "关闭",
+      "agent": "智能体",
+      "kind": "类型",
+      "project": "项目",
+      "customer": "客户",
+      "outcome": "结果",
+      "time": "时间",
+      "duration": "持续时间",
+      "tools": "工具"
+    },
+    "timeSpent": {
+      "title": "时间去向",
+      "subtitle": "此范围内的忙碌时长，按运行汇总 · 总计 {total}",
+      "noRuns": "此范围内没有运行。",
+      "topTasks": "主要任务",
+      "noTaskWork": "此范围内没有任务工作。",
+      "projects": "项目"
+    },
+    "events": {
+      "kinds": {
+        "created": "已创建",
+        "assigned": "已指派",
+        "status": "状态",
+        "note": "备注",
+        "approval_requested": "已请求审批",
+        "approval_decided": "审批已决定",
+        "file": "文件"
+      },
+      "by": {
+        "created": "由 {name} 创建",
+        "assigned": "由 {name} 指派",
+        "status": "由 {name} 更改状态",
+        "note": "由 {name} 添加备注",
+        "approval_requested": "由 {name} 请求审批",
+        "file": "由 {name} 添加文件"
+      },
+      "decidedBy": {
+        "approved": "由 {name} 批准",
+        "rejected": "由 {name} 拒绝",
+        "dismissed": "由 {name} 驳回",
+        "other": "由 {name} 决定"
+      }
+    },
+    "edges": {
+      "created": "已创建并指派",
+      "assigned": "已指派",
+      "reassigned": "已重新指派",
+      "triggered_run": "触发了一次运行"
+    }
+  },
+  "messages": {
+    "eyebrow": "消息",
+    "title": "团队、群组与私信",
+    "description": "与团队或群组协作，或开启私密的智能体会话。"
+  },
+  "moduleGate": {
+    "title": "{module} 模块已关闭",
+    "description": "在 设置 → 模块 中开启。其数据已保留，开启后一切恢复原样。",
+    "action": "打开 设置 → 模块"
+  },
+  "theme": {
+    "toggle": "切换主题",
+    "switchToLight": "切换到浅色模式",
+    "switchToDark": "切换到深色模式",
+    "lightMode": "浅色模式",
+    "darkMode": "深色模式"
+  },
+  "onboarding": {
+    "businessTypes": {
+      "software": {
+        "label": "软件与产品",
+        "hint": "SaaS、应用、开发工作室"
+      },
+      "agency": {
+        "label": "营销代理机构",
+        "hint": "营销活动、内容、面向客户的 SEO"
+      },
+      "ecommerce": {
+        "label": "电商",
+        "hint": "网店、D2C 品牌"
+      },
+      "services": {
+        "label": "服务与咨询",
+        "hint": "客户、提案、交付"
+      },
+      "finance": {
+        "label": "财务与会计",
+        "hint": "记账、报表、分析"
+      },
+      "other": {
+        "label": "其他",
+        "hint": "从一个负责人开始，边用边添加"
+      }
+    },
+    "wizard": {
+      "availabilityCheckFailed": "无法检查此安装能否启动智能体。",
+      "saveCompanyFailed": "无法保存你的公司。",
+      "saveModulesFailed": "无法保存你的模块。",
+      "keyWorks": "密钥有效。",
+      "keyCheckFailed": "无法检查密钥。",
+      "keyCheckUnreachable": "无法从此处检查密钥。",
+      "planProblems": {
+        "empty": "至少选择一个团队或智能体。",
+        "tooMany": "开始时最多 {max} 个智能体，之后可以再添加。",
+        "unnamed": "每个智能体都需要一个名称。",
+        "nameTooLong": "名称不要超过 40 个字符。",
+        "duplicateName": "两个智能体名称相同。"
+      },
+      "createAgentsFailed": "无法创建你的智能体。",
+      "noResult": "设置未返回此资料的结果。",
+      "reportingRetry": "团队聊天已就绪，但报表设置需要重试。请在智能体 → 组织中检查。",
+      "restartFailed": "无法重启此运行时",
+      "doc": {
+        "handingOver": "正在移交任务……",
+        "startsWhenOnline": "{name} 上线后即开始。",
+        "done": "{count, plural, =0 {完成：笔记已写入。现在每个智能体都会读取。} one {完成：已写入 # 条笔记。现在每个智能体都会读取。} other {完成：已写入 # 条笔记。现在每个智能体都会读取。}}",
+        "waiting": "已发送。等待 {name} 接收……",
+        "writing": "正在写入……已更新 {notes}",
+        "reading": "{name} 正在读取你的资料和网站……"
+      },
+      "railTitle": "Emperor 设置",
+      "steps": {
+        "welcome": "欢迎",
+        "company": "你的公司",
+        "model": "AI 模型",
+        "team": "你的团队",
+        "launch": "启动"
+      },
+      "setUpLater": "稍后设置",
+      "stepOf": "第 {step} 步，共 {total} 步 · {label}",
+      "later": "稍后",
+      "optional": "（可选）",
+      "welcome": {
+        "title": "让我们来设置你的 AI 团队",
+        "introProfileOnly": "告诉你的智能体关于公司的信息，让它们基于一致的事实工作。只需一分钟。",
+        "introProfileDone": "你的公司信息已存档。连接 AI 模型并选择你的团队，你的智能体大约两分钟后即可开始工作。",
+        "intro": "四个简短步骤：填写公司信息、添加 AI 模型密钥、选择你想要的团队，然后你的智能体就会开始工作。大约三分钟。",
+        "companyTitle": "你的公司",
+        "companyBody": "让智能体了解你的业务",
+        "teamsTitle": "你的团队",
+        "teamsBody": "现成的团队，各自拥有自己的群聊",
+        "documentedTitle": "已建档",
+        "documentedBody": "你的负责人编写公司手册"
+      },
+      "company": {
+        "title": "介绍一下你的公司",
+        "intro": "每个智能体在工作前都会先阅读这些信息。你可以随时在知识与规则中修改。",
+        "nameLabel": "公司名称",
+        "namePlaceholder": "Acme Robotics",
+        "company": "公司",
+        "change": "更改",
+        "whatLabel": "它做什么，为谁服务？",
+        "whatPlaceholder": "我们为欧洲的中型物流公司制造仓储机器人。",
+        "kindLabel": "这是哪种类型的公司？",
+        "useLabel": "你将如何使用 Emperor？",
+        "useHint": "这里只是选择启用哪些模块。你可以在设置 → 模块中随时更改。",
+        "website": "网站",
+        "websitePlaceholder": "https://acme.example",
+        "houseRules": "内部规则",
+        "houseRulesHint": "（可选，每行一条）",
+        "houseRulesPlaceholder": "未经审批不得报价\n用西班牙语回复客户",
+        "documentIt": "让我的负责人智能体记录公司信息",
+        "documentItHint": "{website, select, yes {上线后，它会将这份资料和你的网站整理成知识与规则笔记（概述、产品、客户、品牌调性），并询问你它未能找到的内容。你会亲眼看到整个过程。} other {上线后，它会将这份资料整理成知识与规则笔记（概述、产品、客户、品牌调性），并询问你它未能找到的内容。你会亲眼看到整个过程。}}"
+      },
+      "model": {
+        "title": "连接 AI 模型",
+        "intro": "你的智能体依赖语言模型进行思考，因此需要一个 API 密钥。密钥加密存储，仅供你的智能体使用。",
+        "unavailableTitle": "此安装无法自行启动智能体。",
+        "unavailableHint": "在另一台机器上运行 Hermes 并连接它，或使用 Docker 重新安装，以便 Emperor 为你启动智能体。这种情况下，请在 Hermes 中设置模型密钥。",
+        "connectHermes": "连接 Hermes 智能体",
+        "dockerGuide": "Docker 安装指南",
+        "recommended": "推荐",
+        "providerHints": {
+          "openrouter": "一个密钥即可使用数百个模型，包括免费模型。",
+          "deepseek": "低成本的 DeepSeek 模型，由 DeepSeek 计费。",
+          "custom": "你自己的端点：Ollama、LM Studio、vLLM 或 LiteLLM。"
+        },
+        "localhostHint": "智能体运行在各自的容器中，因此那里的 localhost 并不是这台机器：要使用本机上的服务，请改用 host.docker.internal。",
+        "apiKey": "API 密钥",
+        "providerApiKey": "{provider} API 密钥",
+        "getKey": "获取密钥",
+        "continueAgain": "请再次点击“继续”。",
+        "freeModel": "从<strong>免费模型</strong>开始，你可以零成本试用所有功能。之后可以按智能体切换更强大的模型。",
+        "hideModel": "隐藏模型",
+        "chooseModel": "选择特定模型",
+        "modelExample": "例如 {model}"
+      },
+      "team": {
+        "title": "选择你的团队",
+        "suggested": "根据你的公司类型推荐。",
+        "intro": "任意组合都可以。每个团队都有自己的专家和自己的群聊；老板统领所有团队。",
+        "templatesLabel": "团队模板",
+        "yourAgents": "你的智能体",
+        "addSpecialist": "添加专家",
+        "addAgent": "+ 添加智能体",
+        "nameLabel": "{role} 名称",
+        "lead": "负责人",
+        "leadsEveryTeam": "统领每个团队",
+        "noGroup": "无群组",
+        "remove": "移除 {name}",
+        "groupChats": "群聊",
+        "groupMembers": "{names}、你",
+        "smallMachine": "每个智能体都在自己的运行时中运行。在小型机器（如树莓派、笔记本）上，先从 {count} 个或更少开始，之后再添加。",
+        "noBoss": "没有老板时，请自行向每位专家分配工作。"
+      },
+      "launch": {
+        "ready": "你的团队已就绪",
+        "starting": "正在启动你的团队",
+        "creating": "正在创建你的智能体……",
+        "readyHint": "在其私聊中与你的负责人交流，或交给它一个项目。",
+        "startingHint": "首次启动会下载并连接每个智能体。可能需要一两分钟。",
+        "creatingCount": "正在创建 {count, plural, one {# 个智能体} other {# 个智能体}}……",
+        "createdOnline": "{name} 已创建并上线",
+        "createdStarting": "{name} 已创建，正在启动……",
+        "failed": "失败",
+        "online": "在线",
+        "retry": "重试",
+        "startingLabel": "启动中",
+        "groupsCreated": "群聊已创建",
+        "groupWith": "与 {names} 和你的群聊",
+        "groupNotReady": "尚未就绪；请创建缺失的资料或重试聊天",
+        "creatingChats": "正在创建团队聊天……",
+        "retryChats": "重试团队聊天",
+        "documenting": "{name} 正在知识与规则中记录 {company} 的信息",
+        "documentingYours": "{name} 正在知识与规则中记录你的公司信息",
+        "watchInChat": "在聊天中查看",
+        "openTask": "打开任务",
+        "knowledgeCount": "知识与规则（{count}）",
+        "privateChatHint": "它的直接聊天是私密的，因此无需 @提及。对于需要跟踪的工作，请创建任务并分配；每天早上每个智能体都会检查其待处理任务。"
+      },
+      "back": "返回",
+      "getStarted": "开始使用",
+      "saveAndFinish": "保存并完成",
+      "continue": "继续",
+      "finishSetup": "完成设置",
+      "checkingKey": "正在检查密钥……",
+      "continueAnyway": "仍然继续",
+      "createAgents": "创建 {count, plural, one {# 个智能体} other {# 个智能体}}",
+      "goToDashboard": "前往仪表盘",
+      "leadOffline": "{name} 尚未上线。它连接后会立即启用。",
+      "yourLeadOffline": "你的负责人尚未上线。它连接后会立即启用。",
+      "openDirectChat": "打开私聊",
+      "openDirectChatWith": "打开与 {name} 的私聊"
+    },
+    "sample": {
+      "addFailed": "无法添加示例客户。",
+      "readyTitle": "示例：{name} 已准备好探索",
+      "offerTitle": "添加一个示例客户来探索",
+      "readyBody": "一个客户、一个包含三个任务的项目和一条笔记。<board>在看板上查看</board>；可随时在设置中移除。",
+      "offerBody": "一个带标签的练习客户，包含一个项目、三个处于不同状态的任务和一条笔记。它不会运行任何内容，在设置中一键即可移除。",
+      "adding": "正在添加……",
+      "add": "添加示例客户",
+      "removeFailed": "无法移除示例数据。",
+      "removedKept": "示例数据已删除。你在示例项目中添加的内容已保留。",
+      "removed": "示例数据已删除。",
+      "sectionLabel": "示例数据",
+      "cardTitle": "此工作区包含示例数据",
+      "cardBody": "示例：{name}、其项目、三个任务和一条备注，均于设置期间添加。删除只会移除这些行；你自行添加的内容会保留。",
+      "removing": "正在删除…",
+      "remove": "删除示例数据"
+    },
+    "workspaceTour": {
+      "start": "开始导览",
+      "title": "Emperor Claw 工作区导览",
+      "intro": "快速了解工作、上下文、文件以及智能体操作所在的位置。",
+      "close": "关闭工作区导览",
+      "done": "完成",
+      "steps": {
+        "projects": {
+          "title": "从项目开始",
+          "body": "项目承载业务目标。项目内的任务是智能体可以领取、完成并提交审核的具体工作。"
+        },
+        "knowledge": {
+          "title": "将可复用的上下文放入知识库与规则",
+          "body": "智能体在这里获取持久指令：SOP、客户规则、收件箱详情、模板、身份和运营准则。"
+        },
+        "storage": {
+          "title": "将文件保存在存储中",
+          "body": "存储用于存放交付物、凭证、导出的报告、工作文件以及需要在聊天之外保留的上传内容。"
+        },
+        "messages": {
+          "title": "使用消息进行协调",
+          "body": "消息展示你、管理者与工作智能体之间实时的控制面对话。"
+        },
+        "agents": {
+          "title": "智能体即运行时",
+          "body": "智能体是已连接的 OpenClaw 工作者。除非共享业务上下文确实属于某一台机器，否则不要将其放入智能体的本地设置。"
+        }
+      }
+    },
+    "interactiveTour": {
+      "close": "关闭导览",
+      "back": "返回",
+      "skip": "跳过",
+      "done": "完成",
+      "next": "下一步",
+      "steps": {
+        "dashboard": {
+          "title": "仪表盘——你的指挥中心",
+          "body": "你的大本营。一眼查看智能体状态、最近动态、团队聊天和待处理问题。左侧边栏可带你前往各处。"
+        },
+        "projects": {
+          "title": "项目——工作所在之处",
+          "body": "为每个业务目标创建项目。在项目内，将工作拆分为智能体领取、执行并提交审核的任务。随着进展，将任务在 Kanban 中拖动。"
+        },
+        "automations": {
+          "title": "自动化——自动运行的重复性工作",
+          "body": "设置流水线和重复任务定义。智能体在此注册其自动化，让你始终了解正在运行的内容。"
+        },
+        "knowledge": {
+          "title": "知识库——持久上下文",
+          "body": "存储 SOP、客户规则、模板和运营准则。智能体在执行任务前会在此读取内容——这是它们的长期记忆。"
+        },
+        "messages": {
+          "title": "消息——团队协作",
+          "body": "你与智能体之间的实时对话。直接会话用于人机控制，团队频道用于广播可见性。"
+        },
+        "approvals": {
+          "title": "审批——人在环中",
+          "body": "需要你签字确认的任务会显示在这里。审核智能体的输出，批准或要求修改，并持续执行质量关卡。"
+        },
+        "agents": {
+          "title": "智能体——你的 AI 团队",
+          "body": "注册并管理你已连接的 OpenClaw 工作者。每个智能体都有资料、能力和运行时配置。"
+        },
+        "customers": {
+          "title": "客户——客户上下文",
+          "body": "按客户组织工作。将项目、任务和知识库关联到特定客户，实现清晰的区分。"
+        },
+        "files": {
+          "title": "文件——持久存储",
+          "body": "在聊天之外保留的交付物、凭证、报告和上传内容。智能体将输出存储在这里供你审核。"
+        },
+        "settings": {
+          "title": "设置——工作区配置",
+          "body": "管理智能体连接的 API 令牌，配置实例设置并控制工作区访问权限。成员标签页可让你邀请团队并管理角色。"
+        },
+        "docs": {
+          "title": "文档——随时了解更多",
+          "body": "涵盖 OpenClaw 智能体、Hermes 桥接、流水线、webhook 和高级配置的完整指南。可随时从侧边栏访问。"
+        }
+      }
+    }
+  },
+  "ops": {
+    "eyebrow": "运维",
+    "title": "平台运维",
+    "description": "为用户、工作区、运行时和平台错误提供启动可见性。",
+    "nav": {
+      "overview": "概览",
+      "users": "用户",
+      "companies": "公司",
+      "errors": "错误",
+      "runtimes": "运行时",
+      "storage": "存储"
+    },
+    "noData": "暂无数据。",
+    "never": "从不",
+    "noEvents": "尚未记录任何运维事件。",
+    "noUsers": "未找到用户。",
+    "verified": "已验证",
+    "pending": "待处理",
+    "unknown": "未知",
+    "none": "无",
+    "notApplicable": "不适用",
+    "columns": {
+      "when": "时间",
+      "level": "级别",
+      "source": "来源",
+      "message": "消息",
+      "route": "路由",
+      "context": "上下文",
+      "email": "邮箱",
+      "created": "创建时间",
+      "verified": "已验证",
+      "companies": "公司",
+      "lastSession": "上次会话",
+      "company": "公司",
+      "createdBy": "创建者",
+      "members": "成员",
+      "agents": "智能体",
+      "activeRuntimes": "活跃运行时",
+      "runtime": "运行时",
+      "status": "状态",
+      "lastSeen": "最后在线",
+      "started": "启动时间",
+      "sessions7d": "会话（7 天）",
+      "lastProvisionError": "最近配置错误"
+    },
+    "overview": {
+      "users": "用户",
+      "usersDetail": "{verified} 已验证（{rate}%）",
+      "companies": "公司",
+      "companiesDetail": "平台上的活跃工作区",
+      "agents": "智能体",
+      "agentsDetail": "已注册的持久 worker 身份",
+      "activeRuntimes": "活跃运行时",
+      "activeRuntimesDetail": "报告活跃状态的运行时节点",
+      "errors": "错误（24 小时）",
+      "errorsDetail": "过去 24 小时内按错误级别记录的运维事件。",
+      "signups": "最近注册",
+      "signupsDetail": "平台上最新创建的账户",
+      "recentErrors": "最近平台错误",
+      "recentErrorsDescription": "最新捕获的服务器和认证/邮件发送故障。",
+      "openErrors": "打开完整错误流",
+      "newestUsers": "最新用户",
+      "newestUsersDescription": "最近的账户创建与验证状态。",
+      "openUsers": "打开用户目录"
+    },
+    "users": {
+      "title": "用户",
+      "description": "平台级账户列表，含验证状态与最近动态。"
+    },
+    "companies": {
+      "title": "公司",
+      "description": "工作区清单，含所有者、成员、智能体和活跃运行时。",
+      "empty": "未找到公司。"
+    },
+    "errors": {
+      "title": "运维错误与事件",
+      "description": "捕获的平台事件，用于调试启动问题、认证故障、邮件发送故障以及服务器/运行时问题。",
+      "stack": "堆栈",
+      "companyId": "公司：{id}",
+      "userId": "用户：{id}"
+    },
+    "runtimes": {
+      "title": "运行时",
+      "description": "运行时节点、心跳新鲜度、最近会话量以及最新配置故障。",
+      "empty": "未找到运行时。",
+      "noHostname": "无主机名"
+    },
+    "storage": {
+      "databaseSize": "数据库大小",
+      "databaseSizeDetail": "当前数据库的磁盘占用大小（pg_database_size）",
+      "tablesSized": "已统计表数",
+      "tablesSizedDetail": "按总关系大小排序的前 {count} 张表",
+      "largestTable": "最大的表",
+      "noTables": "未找到表",
+      "noTablesPeriod": "未找到表。",
+      "lastRetention": "上次保留",
+      "rowsDeletedAt": "删除行 {when}",
+      "noRetention": "尚未记录保留运行",
+      "noRetentionPeriod": "尚未记录保留运行。",
+      "topTables": "按大小排名的表",
+      "topTablesDescription": "总关系大小（表 + 索引 + TOAST）以及计划器估算的行数。",
+      "recentRuns": "最近保留运行",
+      "recentRunsDescription": "最近几次清理：运行时间、耗时以及每个步骤删除的内容。",
+      "columns": {
+        "table": "表",
+        "totalSize": "总大小",
+        "estimatedRows": "估算行数",
+        "started": "启动时间",
+        "duration": "耗时",
+        "rowsDeleted": "删除行数",
+        "perStep": "每步"
+      },
+      "budget": "（预算）",
+      "error": "（错误）"
+    }
+  },
+  "organization": {
+    "saveChartFailed": "无法保存图表",
+    "saveChartPartial": "{error}。团队聊天已更新；请重试以完成图表保存。",
+    "addTeammatesTo": "添加成员至 {name}",
+    "addBelowName": "添加到 {name} 下方",
+    "optionsFor": "{name} 的选项",
+    "teammateCount": "{count, plural, one {# 位成员} other {# 位成员}}",
+    "teammatesIn": "{name} 中的成员",
+    "humanMembers": "{count, plural, one {聊天中有 # 位人类成员} other {聊天中有 # 位人类成员}}",
+    "expandName": "展开 {name}",
+    "collapseName": "收起 {name}",
+    "directReports": "{count} 位直接下属",
+    "reportsTo": "汇报给 {name}",
+    "addBelowLeader": "添加到公司负责人下方",
+    "chooseLeaderFor": "为 {team} 选择负责人",
+    "chooseLeaderForThis": "为此团队选择负责人",
+    "chooseAgentsFor": "为 {team} 选择智能体。保存后它们会加入该团队群聊，同时保留其原有团队。此团队负责人会在此协调它们的工作。",
+    "existingChat": "{count, plural, one {# 位成员} other {# 位成员}} · 已有聊天",
+    "addTeammatesCount": "{count, plural, =0 {添加成员} one {添加 # 位成员} other {添加 # 位成员}}",
+    "worksWith": "与 {team} 协作。其负责人会协调此团队的工作；其他团队角色保持不变。",
+    "unavailableMember": "不可用成员",
+    "unavailableTeam": "不可用团队",
+    "saveFailed": "无法保存更改",
+    "updateTeamFailed": "无法更新团队",
+    "addTeammates": "添加成员",
+    "teamFallback": "团队",
+    "teammate": "成员",
+    "chooseAiLeader": "选择 AI 负责人",
+    "aiTeamLeader": "AI 团队负责人",
+    "humanExecutive": "人类高管",
+    "aiLead": "AI 负责人",
+    "sharedAgent": "共享智能体",
+    "aiAgent": "AI 智能体",
+    "shared": "共享",
+    "openTeamChat": "打开团队聊天",
+    "saveToCreateChat": "保存以创建此团队的群聊",
+    "eyebrow": "智能体",
+    "title": "组织架构",
+    "description": "选择负责人、组建团队，并打开它们的共享聊天。",
+    "backToAgents": "返回智能体",
+    "discard": "放弃更改",
+    "saving": "正在保存…",
+    "saveChanges": "保存更改",
+    "saved": "已保存。智能体将在下一轮读取它们的汇报关系。",
+    "unsaved": "未保存的更改 · 保存可创建新的团队聊天并添加成员。移除分支会保留已有聊天。",
+    "chartLabel": "组织架构图",
+    "useAdd": "使用 + 添加智能体或团队",
+    "reportingRelationships": "汇报关系",
+    "scrollableChart": "可滚动的汇报关系图",
+    "companyLeadership": "公司管理层",
+    "startTitle": "从公司负责人开始",
+    "startBody": "选择一名 AI 负责人，或一名下属有 AI 负责人的人类高管。",
+    "chooseLeader": "选择负责人",
+    "chooseTeam": "选择团队",
+    "chooseHumanExec": "选择人类高管",
+    "chooseCompanyLeader": "选择公司负责人",
+    "chooseAgent": "选择智能体",
+    "descTeamLeader": "为此团队选择一名专职 AI 负责人。负责人只属于一个团队；专家可在团队间共享。负责人会加入其群聊。",
+    "descTeam": "每个团队在消息中都有一处共享群聊。可在此创建新团队，或复用已有聊天及其成员和历史记录。",
+    "descReplacement": "选择一名替代者。保存会更新此团队及其聊天；其他团队保持不变。",
+    "descDefault": "选择现有人员和团队。共享智能体会保留它们的其他角色。",
+    "agentOptionHint": "向此节点汇报的 AI 智能体",
+    "teamOptionHint": "创建带群聊的团队，或复用已有团队",
+    "human": "人类",
+    "searchTeamsLabel": "搜索团队",
+    "searchPeopleLabel": "按姓名或角色搜索",
+    "searchTeamsPlaceholder": "搜索团队…",
+    "searchPeoplePlaceholder": "按姓名或角色搜索…",
+    "noMatchingTeams": "没有匹配的团队。请尝试其他名称，或在下方创建新团队。",
+    "noOtherTeams": "没有其他可用团队。请在下方创建一个新团队。",
+    "noMatchingPeople": "没有匹配的人员。请尝试其他姓名或角色。",
+    "specialistsShared": "专家可在团队间共享。公司和团队负责人则专职于各自角色。",
+    "createTeam": "创建新团队",
+    "createTeamHint": "为其命名、选择 AI 负责人，然后在图表中添加成员。保存即可创建其聊天。",
+    "teamName": "团队名称",
+    "chooseAiLeaderButton": "选择 AI 负责人",
+    "back": "返回",
+    "nodeOptions": "节点选项",
+    "teamNodeDescription": "一名 AI 负责人、共享成员和一个群聊。可与此团队并列创建其他团队。",
+    "manageRelationship": "管理此汇报关系。",
+    "addBelow": "添加到下方",
+    "changeAiLeader": "更换 AI 负责人",
+    "replaceTeammate": "替换成员",
+    "changeAgent": "更换智能体",
+    "changePerson": "更换人员",
+    "editTeamNamePurpose": "编辑团队名称与用途",
+    "archiveTeamChat": "归档团队与聊天",
+    "saveBeforeEditing": "编辑或归档团队前，请先保存图表更改。",
+    "saveToCreate": "保存更改即可创建群聊。可先添加成员。",
+    "agentProfile": "智能体资料",
+    "removeFromTeam": "从此团队移除",
+    "removeBranch": "从图表中移除分支",
+    "removeFromTeamHint": "保存会将该成员从此团队及其聊天中移除。其他团队和过往消息保持不变。",
+    "removeBranchHint": "移除分支会保留其聊天和成员关系。",
+    "editTeam": "编辑团队",
+    "archiveDescription": "从图表和消息中移除该团队，并停止新的交付。其历史记录会保留；智能体及其其他团队仍保持可用。",
+    "editDescription": "名称和用途会与团队的已有聊天共享。",
+    "purpose": "用途",
+    "cancel": "取消",
+    "archiveTeam": "归档团队",
+    "saveTeam": "保存团队"
+  },
+  "pipelines": {
+    "statuses": {
+      "active": "活跃",
+      "draft": "草稿",
+      "paused": "已暂停",
+      "retired": "已停用"
+    },
+    "runStatuses": {
+      "succeeded": "成功",
+      "failed": "失败",
+      "partial": "部分成功",
+      "running": "运行中"
+    },
+    "trigger": {
+      "scheduleAt": "调度：{cron}",
+      "schedule": "调度",
+      "event": "事件触发",
+      "manual": "手动运行",
+      "agent": "智能体触发"
+    },
+    "scope": {
+      "customer": "客户",
+      "project": "项目",
+      "agent": "智能体",
+      "company": "公司工作区"
+    },
+    "graph": {
+      "trigger": "触发器",
+      "contextPack": "上下文包",
+      "ragContract": "RAG 合约",
+      "pinnedSources": "{count, plural, other {# 个固定来源}}",
+      "noSteps": "尚未注册步骤",
+      "output": "输出合约",
+      "deliverable": "交付物",
+      "runEvidenceOf": "{status} 运行证据",
+      "runEvidence": "运行证据",
+      "auditTrail": "审计追踪"
+    },
+    "stepN": "步骤 {n}",
+    "anyAgent": "任意智能体",
+    "collapse": "折叠",
+    "expand": "展开",
+    "stepCount": "{count, plural, other {# 个步骤}}",
+    "owner": "负责人：{name}",
+    "contextSources": "{count, plural, other {# 个上下文来源}}",
+    "lastRun": "上次运行：{status}",
+    "noRunsYet": "尚无运行",
+    "copied": "流水线文档已复制",
+    "copyFailed": "无法复制文档",
+    "emptyTitle": "尚未注册流水线",
+    "emptyDescription": "流水线是智能体通过 MCP 注册的文档合约。Emperor 存储映射、上下文规则和运行证据；智能体仍在自己的运行时中执行工作。",
+    "deleteFailed": "无法删除流水线",
+    "deleted": "流水线已删除",
+    "eyebrow": "自动化",
+    "title": "流水线",
+    "description": "一个简单的工作区，用于了解智能体做了什么：可视化映射、上下文包、运行证据和可复制的文档。Emperor 负责记录与审计；智能体在各自运行时中执行。",
+    "metrics": {
+      "active": "活跃",
+      "runs": "运行",
+      "documented": "已记录"
+    },
+    "explorer": "流水线浏览器",
+    "searchPlaceholder": "搜索流水线",
+    "all": "全部",
+    "noPurpose": "尚未记录用途。",
+    "noRuns": "无运行",
+    "visualMap": "可视化映射",
+    "copyDocs": "复制文档",
+    "confirmDelete": "再次点击以确认",
+    "delete": "删除",
+    "documentation": "文档",
+    "contract": "人类可读合约",
+    "context": {
+      "query": "查询",
+      "notSet": "未设置",
+      "pinned": "固定来源",
+      "none": "无",
+      "tags": "标签",
+      "budget": "预算",
+      "chars": "{count} 字符"
+    },
+    "workflowSteps": "工作流步骤",
+    "noStepsHint": "尚未注册步骤。请让智能体通过流水线 MCP 端点注册步骤、决策、输出和证据。",
+    "noStepDescription": "尚未注册描述。",
+    "recentRuns": "最近运行",
+    "noRunsReported": "尚未上报运行。",
+    "sourcesUsed": "已使用的来源：{count}",
+    "evidenceProduced": "产生的证据：{tasks} 个任务 / {artifacts} 个文件",
+    "copyReady": "可复制的 Markdown"
+  },
+  "resources": {
+    "inject": {
+      "always": {
+        "label": "始终",
+        "hint": "将这篇笔记的正文推送到每个匹配的会话中。始终笔记共享 1,500 个字符的预算。"
+      },
+      "index": {
+        "label": "在索引中",
+        "hint": "在智能体的知识索引中显示一行摘要；正文按需加载。"
+      },
+      "on_request": {
+        "label": "按需",
+        "hint": "将笔记排除在索引之外；智能体只能通过搜索或直接获取找到它。"
+      }
+    },
+    "scopes": {
+      "company": "公司",
+      "customer": "客户",
+      "project": "项目",
+      "agent": "智能体"
+    },
+    "unknownCustomer": "未知客户",
+    "unknownProject": "未知项目",
+    "unknownAgent": "未知智能体",
+    "insightsFailed": "无法加载相关知识库元数据",
+    "folder": {
+      "noSlash": "文件夹名称不能包含 /",
+      "enterName": "输入文件夹名称",
+      "ready": "文件夹 {path} 已就绪——右键点击即可添加笔记",
+      "renameFailed": "重命名文件夹失败",
+      "renamed": "已重命名为 {path}",
+      "renamedMoved": "已重命名为 {path}（移动了 {count} 篇笔记）",
+      "removed": "文件夹 {path} 已移除",
+      "deleteFailed": "删除文件夹失败",
+      "deleted": "已删除文件夹 {path}（{count} 篇笔记）"
+    },
+    "draftBadge": "草稿",
+    "alwaysBadge": "始终",
+    "indexBadge": "索引",
+    "injected": "已注入智能体上下文",
+    "open": "打开",
+    "deleteNote": "删除笔记",
+    "newNoteHere": "在此新建笔记",
+    "newSubfolder": "新建子文件夹",
+    "renameMove": "重命名 / 移动",
+    "deleteFolder": "删除文件夹",
+    "createFailed": "创建规则失败",
+    "created": "知识库规则已创建",
+    "linkedFailed": "创建关联笔记失败",
+    "linkedCreated": "关联笔记已创建",
+    "saveFailed": "保存规则失败",
+    "saved": "知识库规则已保存",
+    "statusFailed": "更新发布状态失败",
+    "published": "知识笔记已发布",
+    "movedToDraft": "知识笔记已移至草稿",
+    "deleteFailed": "删除笔记失败",
+    "deleted": "知识笔记已删除",
+    "eyebrow": "知识库",
+    "title": "知识与规则",
+    "description": "你的智能体在行动前阅读的持久笔记、SOP 和指令。",
+    "newNote": "新建笔记",
+    "newFolder": "新建文件夹",
+    "newLinkedTitle": "链接到当前笔记的新笔记",
+    "newLinked": "新建关联笔记",
+    "refresh": "刷新仓库",
+    "confirmAgain": "再次点击以确认",
+    "previousNote": "上一篇笔记",
+    "nextNote": "下一篇笔记",
+    "untitled": "无标题笔记",
+    "publish": "发布",
+    "moveToDraft": "移至草稿",
+    "saving": "保存中",
+    "save": "保存",
+    "confirmDelete": "再次点击以确认删除",
+    "graphTitle": "知识图谱",
+    "graphOf": "{title} 的图谱",
+    "vaultExplorer": "仓库资源管理器",
+    "searchPlaceholder": "搜索笔记……",
+    "filters": {
+      "all": "全部",
+      "shared": "共享",
+      "drafts": "草稿"
+    },
+    "noteCount": "{count, plural, one {# 篇笔记} other {# 篇笔记}}",
+    "newFolderIn": "在 {scope} 中新建文件夹",
+    "scopeEmpty": "暂无笔记。右键点击以添加一篇。",
+    "noMatches": "没有匹配此搜索的笔记",
+    "noDrafts": "没有草稿笔记",
+    "noShared": "没有共享笔记",
+    "showAll": "显示全部笔记",
+    "emptyTitle": "暂无笔记",
+    "emptyDescription": "右键点击“公司”以添加第一篇笔记。智能体在了解你的工作方式时也会在此写下笔记。",
+    "allNotes": "全部笔记",
+    "editorPlaceholder": "在此写下一条可复用的规则、SOP 或指令……",
+    "selectOrCreate": "选择或创建一篇笔记。",
+    "expandGraph": "展开图谱",
+    "stats": {
+      "incoming": "<n>{count}</n> 条入链",
+      "outgoing": "<n>{count}</n> 条出链",
+      "words": "<n>{count}</n> 字"
+    },
+    "properties": "属性",
+    "folderLabel": "文件夹",
+    "folderPlaceholder": "公司/融资",
+    "folderHint": "以斜杠分隔，如同仓库路径。留空可将笔记保留在根目录。保存时文件夹会自动创建。",
+    "publicationStatus": "发布状态",
+    "statusDraft": "草稿 / 待审核",
+    "statusPublished": "已发布",
+    "publishNote": "发布笔记",
+    "moveBackToDraft": "移回草稿",
+    "publishedHint": "已发布意味着该笔记是可信的准则。智能体上下文是独立的：它控制智能体是否会收到该笔记。",
+    "scopeLabel": "作用域",
+    "chooseScope": "选择 {scope}",
+    "agentContext": "智能体上下文",
+    "injectionMode": "知识注入模式",
+    "alwaysBudget": "始终预算",
+    "budgetUsage": "{used, number} / {budget, number} 个字符",
+    "overBudget": "超出预算：最后一篇始终笔记在智能体上下文中被截断。",
+    "summaryLabel": "摘要",
+    "summaryPlaceholder": "智能体在索引中看到的一行文字；留空则从笔记自动提取。",
+    "summaryHint": "显示为该笔记的索引行。留空则自动提取第一句（{length}/200）。",
+    "linkedMentions": "关联提及",
+    "outgoing": "出链",
+    "noOutgoing": "没有出链。",
+    "incoming": "入链",
+    "noIncoming": "暂无入链。",
+    "newFolderTitle": "新建文件夹",
+    "newFolderDescription": "在你选择的位置内创建文件夹。",
+    "location": "位置",
+    "folderName": "文件夹名称",
+    "folderNamePlaceholder": "例如：融资",
+    "newFolderHint": "工作时文件夹保持可见，当有笔记归档其中后即变为持久。",
+    "cancel": "取消",
+    "createFolder": "创建文件夹",
+    "renameTitle": "重命名或移动文件夹",
+    "renameDescription": "<hl>{path}</hl> 下的每篇笔记都会被重新归档。为其指定新路径即可移动整个文件夹。",
+    "deleteFolderTitle": "删除文件夹“{path}”？",
+    "deleteFolderDescription": "这将永久删除该文件夹及<hl>其中所有笔记和子文件夹</hl>。此操作无法撤销。",
+    "deleteNoteTitle": "删除“{name}”？",
+    "deleteNoteDescription": "此操作无法撤销。指向该笔记的任何链接都将变为未解析。",
+    "deleting": "删除中……",
+    "delete": "删除",
+    "unresolved": "未解析",
+    "currentNote": "当前笔记",
+    "noGraph": "暂无图谱连接",
+    "graphHint": "图谱连接：{count}。局部图谱由 [[links]] 和推断的标题提及生成。琥珀色节点是未解析的链接。"
+  },
+  "rich": {
+    "interactiveWidget": "交互式组件",
+    "actionsUnavailable": "此处无法使用组件操作",
+    "sent": "已发送：{text}",
+    "fullScreen": "全屏打开",
+    "widgetDescription": "智能体发送的交互式组件，在沙盒中运行。",
+    "chart": "图表",
+    "overview": "概览",
+    "hideSource": "隐藏源码",
+    "viewSource": "查看源码",
+    "copySource": "复制源码",
+    "sections": "章节",
+    "nothingHere": "这里没有内容。",
+    "choices": "选项",
+    "replyInChat": "在聊天中回复以作答。",
+    "ofTotal": "占总数的 {percent}%",
+    "total": "总计"
+  },
+  "entities": {
+    "inTime": "在 {time} 内",
+    "timeAgo": "{time} 前",
+    "notAvailableLabel": "{label}（不可用）",
+    "notAvailable": "不可用：已删除，或超出你的访问权限。",
+    "openTitle": "打开 {title}",
+    "knowledgeMeta": "知识库 · {scope} · {status}",
+    "open": "打开",
+    "download": "下载",
+    "task": "任务",
+    "lead": "负责人：{name}",
+    "project": "项目",
+    "agent": "智能体",
+    "unassigned": "未分配",
+    "due": "截止 {time}",
+    "updated": "更新于 {time}",
+    "doneOf": "已完成 {done}/{total}",
+    "openTasks": "{count, plural, other {# 个未完成任务}}",
+    "load": "加载 {load}",
+    "seen": "已读于 {time}"
+  },
+  "markdown": {
+    "callouts": {
+      "note": "注意",
+      "tip": "提示",
+      "important": "重要",
+      "warning": "警告",
+      "caution": "谨慎"
+    },
+    "done": "已完成",
+    "notDone": "未完成",
+    "file": "文件",
+    "imageUnavailable": "图片不可用",
+    "imageUnavailableAlt": "图片不可用：{alt}",
+    "plainText": "纯文本"
+  },
+  "mentions": {
+    "mentionQuery": "提及“{query}”",
+    "mentionAgent": "提及智能体",
+    "everyone": "群组中的所有人"
+  },
+  "richText": {
+    "showLess": "收起",
+    "showMore": "展开"
+  },
+  "reasoning": {
+    "hide": "隐藏推理过程",
+    "show": "显示推理过程",
+    "loading": "正在加载推理过程…",
+    "loadFailed": "无法加载推理过程",
+    "none": "此消息未记录推理过程。"
+  },
+  "modelSelect": {
+    "notSet": "未设置——使用服务商默认值",
+    "unavailable": "（不可用）",
+    "search": "搜索模型……",
+    "currentUnavailable": "当前：{label}——已停用或未包含在定价中",
+    "noMatches": "没有匹配的活跃模型"
+  },
+  "updatePanel": {
+    "checkFailed": "检查更新失败",
+    "confirm": "将 EmperorClaw 从 v{current} 更新到 v{latest}？这将重启服务器。",
+    "failed": "更新失败。请检查以下步骤。",
+    "requestFailed": "更新请求失败。服务器可能正在重启。",
+    "steps": {
+      "git-fetch": "拉取最新代码",
+      "npm-install": "安装依赖",
+      "db-migrate": "运行数据库迁移",
+      "npm-build": "构建应用",
+      "copy-static": "复制静态资源",
+      "pm2-restart": "重启服务器",
+      "find-container": "定位容器",
+      "inspect-container": "捕获配置",
+      "pull-image": "拉取最新镜像",
+      "create-container": "创建替换容器",
+      "stop-old": "停止旧容器",
+      "start-new": "启动新容器",
+      "docker-socket": "Docker 套接字检查"
+    },
+    "title": "EmperorClaw 更新",
+    "available": "v{current} → v{latest} 可用",
+    "upToDate": "v{current} — 已是最新",
+    "checking": "正在检查……",
+    "check": "检查",
+    "update": "更新"
+  },
+  "runTimeline": {
+    "noSteps": "未记录任何步骤。",
+    "steps": "运行步骤",
+    "failed": "失败",
+    "usage": {
+      "in": "输入 {tokens}",
+      "out": "输出 {tokens}",
+      "cached": "缓存 {tokens}",
+      "cachedHit": "缓存 {tokens}（{hit}%）",
+      "context": "{percent}% 上下文"
+    },
+    "timing": {
+      "queued": "排队等待 {duration}",
+      "firstToken": "首 token {duration}",
+      "exit": "退出：{reason}"
+    },
+    "notFound": "未找到运行",
+    "loadFailed": "无法加载步骤",
+    "loading": "正在加载步骤…",
+    "private": "步骤仅对此聊天的参与者可见。",
+    "noStepsBridge": "未记录任何步骤。Bridge 0.9 及更高版本会流式传输步骤。",
+    "dropped": "{count} 个次要步骤未保留。",
+    "openOnTask": "在其任务上打开此运行",
+    "hideSteps": "隐藏步骤",
+    "stepsToggle": "步骤",
+    "stepsCount": "步骤（{count}）",
+    "noStepsYet": "暂无步骤。",
+    "thinkingLine": "思考中 · {summary}",
+    "rows": {
+      "thinking": "思考中",
+      "note": "备注",
+      "tidyingMemory": "整理记忆中",
+      "memoryTidied": "记忆已整理",
+      "delegating": "委派中",
+      "subagentFinished": "子智能体已完成",
+      "autoApproved": "自动批准",
+      "bestJudgment": "已按最佳判断继续",
+      "failed": "失败",
+      "stopped": "已停止"
+    }
+  },
+  "teamChat": {
+    "today": "今天",
+    "yesterday": "昨天",
+    "sendFailed": "消息发送失败——已保留草稿，请重试。",
+    "unknownAgent": "未知智能体",
+    "title": "团队频道",
+    "typingOne": "{name} 正在输入…",
+    "online": "{count, plural, other {# 个智能体在线}}",
+    "thread": "团队话题",
+    "close": "关闭",
+    "you": "你",
+    "typing": "{count, plural, other {{names} 正在输入…}}",
+    "mention": "提及智能体",
+    "placeholder": "发消息到团队频道…",
+    "teamPlaceholder": "向团队发消息…（@ 提及）",
+    "uploadFailed": "上传失败",
+    "system": "系统",
+    "namesAnd": "{names} 和 {last}",
+    "groupChat": "群聊",
+    "agentTeamChat": "智能体团队聊天",
+    "newCount": "{count} 条新消息",
+    "offline": "{count, plural, other {# 个智能体离线}}",
+    "liveFeed": "实时动态",
+    "jumpToLatest": "{count, plural, other {# 条新消息}} · 跳到最新",
+    "emptyGroup": "还没有消息。@提及成员以获得回复。",
+    "emptyTeam": "还没有任何沟通。",
+    "loading": "加载中…",
+    "loadOlder": "加载更早的消息",
+    "member": "成员",
+    "resume": "继续",
+    "readBy": "{name} 已读",
+    "readByCount": "{count} 个智能体已读",
+    "queued": "智能体离线——消息已排队",
+    "waiting": "等待智能体…",
+    "areWorking": "正在工作",
+    "isWorking": "正在工作",
+    "workingOnMessage": "正在处理你的消息",
+    "attachFiles": "添加文件",
+    "send": "发送消息",
+    "sendHint": "回车发送 · Shift+Enter 换行",
+    "readOnly": "只读预览——打开团队频道参与聊天",
+    "sections": {
+      "update": "更新",
+      "evidence": "证据",
+      "next": "下一步"
+    }
+  },
+  "failures": {
+    "headlines": {
+      "provider_credits": "LLM 提供商积分不足",
+      "provider_auth": "模型提供商拒绝了 API 密钥",
+      "rate_limited": "被模型提供商限流",
+      "model_unavailable": "此模型不可用",
+      "provider_unreachable": "无法连接模型提供商",
+      "budget": "已达到预算上限",
+      "runtime_offline": "智能体运行主机已离线",
+      "scope_denied": "智能体需要此项目的访问权限",
+      "unknown": "运行失败",
+      "stalledTimedOut": "超时前没有任何进展",
+      "stalledMinutes": "已 {count} 分钟无进展",
+      "stalledHours": "已 {count} 小时无进展"
+    },
+    "fixes": {
+      "openProviderSettings": "打开提供商设置",
+      "updateKey": "更新密钥",
+      "raiseBudget": "提高预算",
+      "openAgentScope": "打开智能体权限范围",
+      "chooseModel": "选择模型",
+      "checkProviderSettings": "检查提供商设置",
+      "reconnectRuntime": "重新连接运行主机",
+      "retry": "重试",
+      "nudge": "催促"
+    },
+    "trouble": {
+      "provider_unreachable": "模型不可达",
+      "provider_auth": "模型密钥被拒绝",
+      "provider_credits": "提供商积分不足",
+      "model_unavailable": "模型不可用",
+      "rate_limited": "被限流",
+      "other": "模型故障"
+    }
+  },
+  "runStatus": {
+    "succeeded": "成功",
+    "failed": "失败",
+    "timeout": "超时",
+    "cancelled": "已取消",
+    "blocked": "已阻止",
+    "lost": "丢失",
+    "running": "运行中"
+  },
+  "apiErrors": {
+    "internal": "服务器出现问题，请重试。",
+    "unauthorized": "你尚未登录。",
+    "signInRequired": "请登录以继续。",
+    "forbidden": "你没有执行此操作的权限。",
+    "noMembership": "你不是此工作区的成员。",
+    "notFound": "未找到。",
+    "jsonBodyRequired": "请求为空或格式错误。",
+    "validationFailed": "部分字段无效。",
+    "rateLimited": "请求过于频繁，请稍候再试。",
+    "agentNotFound": "未找到智能体。",
+    "taskNotFound": "未找到任务。",
+    "projectNotFound": "未找到项目。",
+    "folderNotFound": "未找到文件夹。",
+    "artifactNotFound": "未找到文件。",
+    "customerNotFound": "未找到客户。",
+    "viewNotFound": "未找到视图。",
+    "resourceNotFound": "未找到。",
+    "memberNotFound": "未找到成员。",
+    "companyNotFound": "未找到工作区。",
+    "approvalNotFound": "未找到审批。",
+    "authFieldsRequired": "请输入你的邮箱和密码。",
+    "missingFields": "缺少一些必填字段。",
+    "emailRequired": "请输入你的邮箱地址。",
+    "invalidEmail": "请输入有效的邮箱地址。",
+    "emailInUse": "该邮箱已被注册。",
+    "passwordLength": "密码长度须为 8 到 128 个字符。",
+    "passwordTooShort": "密码至少需要 8 个字符。",
+    "companyNameRequired": "请输入公司名称。",
+    "companyNameLength": "公司名称长度须为 2 到 120 个字符。",
+    "betaDisclaimerRequired": "请确认 Beta 数据免责声明以创建工作区。",
+    "inviteOnly": "此实例仅限邀请使用。请向管理员索取邀请。",
+    "noCompany": "未找到工作区。请联系你的管理员。",
+    "inviteExpired": "此邀请已过期。请向管理员索取新的邀请。",
+    "inviteConsumed": "此邀请已被使用。",
+    "inviteInvalid": "此邀请无效或已过期。",
+    "inviteEmailMismatch": "此邀请适用于其他邮箱地址。",
+    "verificationIncomplete": "此验证链接不完整。",
+    "verificationInvalid": "此验证链接无效或已过期。",
+    "resetInvalid": "此重置请求无效。",
+    "resetLinkExpired": "此重置链接已过期或无效。"
+  },
+  "email": {
+    "greeting": "你好，{email}：",
+    "linkFallback": "如果按钮无法使用，请复制此链接并粘贴到浏览器中：",
+    "welcome": {
+      "preheader": "你的 Emperor Claw 工作区已就绪。",
+      "eyebrow": "工作区已就绪",
+      "title": "欢迎使用 Emperor Claw",
+      "intro": "你的控制平面已就绪。现在你可以登录并开始在工作区内运行智能体。",
+      "thanks": "感谢加入 Emperor Claw。此工作区让你的 OpenClaw 智能体在共享的公司环境中获得持久的协调、受限的资源和运行状态。",
+      "start": "在将工作区用于生产关键操作之前，请先登录、连接你的首批智能体，并查看设置指南。",
+      "footnote": "Beta 软件。Emperor Claw 按“原样”提供，不附带任何关于安全、保留、恢复、可用性或适合任何用途的保证。你仍需对在工作区内存储和运行的内容负责。"
+    },
+    "verification": {
+      "subject": "验证你的 Emperor Claw 电子邮件",
+      "preheader": "验证你的电子邮件以激活你的 Emperor Claw 工作区。",
+      "eyebrow": "电子邮件验证",
+      "title": "确认你的电子邮件地址",
+      "intro": "验证此地址以激活你的工作区并完成注册。",
+      "created": "已为 {company} 创建新的 Emperor Claw 工作区。请确认此电子邮件地址以激活访问权限。",
+      "beforeTitle": "继续之前",
+      "beforeBody": "Emperor Claw 目前处于 beta 阶段。我们不保证安全、保留、恢复、不间断可用性，或适用于受监管或业务关键型工作负载。",
+      "noSecrets": "请勿存储密钥、受监管数据、仅限生产的凭据，或任何你无法承受暴露、丢失或重建的信息。",
+      "expiry": "此验证链接将在 24 小时后过期。如果你未发起此注册，可以忽略此电子邮件。",
+      "cta": "验证电子邮件",
+      "footnote": "激活工作区即表示你确认 Emperor Claw 是按“原样”提供的 beta 软件，并且你仍对其使用方式及其中存储的数据负责。",
+      "yourCompany": "你的公司"
+    },
+    "passwordReset": {
+      "subject": "重置你的 Emperor Claw 密码",
+      "preheader": "重置你的 Emperor Claw 密码。",
+      "eyebrow": "账户安全",
+      "title": "重置你的密码",
+      "intro": "使用下方安全链接为你的 Emperor Claw 账户设置新密码。",
+      "received": "我们收到了一条重置此账户密码的请求。如果这是你本人操作，请使用下方链接设置新密码。",
+      "ignore": "如果你未请求重置，可以忽略此消息。你现有的密码将保持不变。",
+      "cta": "重置密码",
+      "footnote": "为保护你的账户安全，密码重置链接会自动过期，成功修改密码后已激活的浏览器会话将被注销。"
+    },
+    "invitation": {
+      "subject": "你受邀加入 Emperor Claw 上的 {company}",
+      "invited": "你已被邀请以 {role} 身份加入 {company}。",
+      "accept": "点击此处接受邀请",
+      "expires": "此邀请将于 {date, date, long} 过期。",
+      "theWorkspace": "该工作区"
+    },
+    "notification": {
+      "open": "在 EmperorClaw 中打开",
+      "footer": "你可以在“设置 → 通知”中更改通过电子邮件接收哪些通知。"
     }
   }
 }

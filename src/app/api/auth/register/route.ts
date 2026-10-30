@@ -3,7 +3,8 @@ import { db } from "@/db";
 import { users, companies, companyMembers, instanceSettings, invitations } from "@/db/schema";
 import { hash } from "argon2";
 import { eq, isNull, sql, and } from "drizzle-orm";
-import { sendEmail, getEmailVerificationEmailHtml, isEmailConfigured } from "@/lib/email";
+import { sendEmail, getEmailVerificationEmailHtml, emailVerificationSubject, isEmailConfigured } from "@/lib/email";
+import { emailLocale } from "@/i18n/server-translator";
 import { consumeRateLimit, getClientIp } from "@/lib/rate-limit";
 import { issueEmailVerificationToken } from "@/lib/email-verification";
 import { getAppUrl } from "@/lib/env";
@@ -257,8 +258,8 @@ export async function POST(req: NextRequest) {
 
                     await sendEmail({
                         to: email,
-                        subject: "Verify your Emperor Claw email",
-                        html: getEmailVerificationEmailHtml(email, verificationUrl, invitedCompanyName),
+                        subject: emailVerificationSubject(emailLocale(req)),
+                        html: getEmailVerificationEmailHtml(email, verificationUrl, invitedCompanyName, emailLocale(req)),
                     });
                 }
 
@@ -317,8 +318,8 @@ export async function POST(req: NextRequest) {
 
                 await sendEmail({
                     to: email,
-                    subject: "Verify your Emperor Claw email",
-                    html: getEmailVerificationEmailHtml(email, openVerifyUrl, openResult.company.name),
+                    subject: emailVerificationSubject(emailLocale(req)),
+                    html: getEmailVerificationEmailHtml(email, openVerifyUrl, openResult.company.name, emailLocale(req)),
                 });
             }
 
@@ -383,8 +384,8 @@ export async function POST(req: NextRequest) {
 
         await sendEmail({
             to: email,
-            subject: "Verify your Emperor Claw email",
-            html: getEmailVerificationEmailHtml(email, verificationUrl, result.company.name),
+            subject: emailVerificationSubject(emailLocale(req)),
+            html: getEmailVerificationEmailHtml(email, verificationUrl, result.company.name, emailLocale(req)),
         });
 
         return NextResponse.json({

@@ -2,6 +2,7 @@
 
 import React, { useState } from "react";
 import { Tabs as TabsPrimitive } from "radix-ui";
+import { useTranslations } from "next-intl";
 import type { TabSection } from "@/lib/rich-blocks";
 
 /**
@@ -10,11 +11,12 @@ import type { TabSection } from "@/lib/rich-blocks";
  * pipeline the caller passes in, so tabs can hold anything a message can.
  */
 export function TabsBlock({ tabs, renderMarkdown }: { tabs: TabSection[]; renderMarkdown: (content: string) => React.ReactNode }) {
+    const t = useTranslations("rich");
     const [active, setActive] = useState("0");
     return (
         <TabsPrimitive.Root value={active} onValueChange={setActive} className="not-prose my-3 w-full min-w-0 overflow-hidden rounded-xl border border-zinc-800 bg-zinc-900/40">
             <TabsPrimitive.List
-                aria-label="Sections"
+                aria-label={t("sections")}
                 className="flex min-w-0 gap-1 overflow-x-auto border-b border-zinc-800/80 bg-zinc-900/60 px-2 pt-1.5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
             >
                 {tabs.map((tab, i) => (
@@ -29,7 +31,7 @@ export function TabsBlock({ tabs, renderMarkdown }: { tabs: TabSection[]; render
             </TabsPrimitive.List>
             {tabs.map((tab, i) => (
                 <TabsPrimitive.Content key={i} value={String(i)} className="ec-rich-fade min-w-0 px-4 py-3 outline-none">
-                    {tab.content ? renderMarkdown(tab.content) : <p className="text-sm text-zinc-500">Nothing here.</p>}
+                    {tab.content ? renderMarkdown(tab.content) : <p className="text-sm text-zinc-500">{t("nothingHere")}</p>}
                 </TabsPrimitive.Content>
             ))}
         </TabsPrimitive.Root>

@@ -7,10 +7,12 @@ import i18next from "eslint-plugin-i18next";
  * Screens whose copy lives in messages/*.json (i18n phase 1). A user-visible
  * literal (JSX text, placeholder, title, aria-label, alt, label) in these files
  * fails lint; the list grows as later phases translate more screens (phase 2:
- * agents, projects and tasks, views, settings, runtime hosts and access).
+ * agents, projects and tasks, views, settings, runtime hosts and access;
+ * phase 3a: sign-in, onboarding, the remaining app pages and chat; phase 3b:
+ * server-built copy rendered from codes, see src/lib/coded-copy.ts).
  */
-// Copy that is never translated: brand names, keyboard keys, all-caps pixel signage, the "z" sleep cue.
-const UNTRANSLATED_WORDS = ["[0-9!-/:-@[-`{-~\s·↑↓↵⌘→—–…]+", "[A-Z_ ·-]+", "Emperor Claw", "EmperorClaw", "Esc", "Ctrl", "Enter", "v", "z( z)*"];
+// Copy that is never translated: brand names, keyboard keys, symbols, all-caps pixel signage, the "z" sleep cue.
+const UNTRANSLATED_WORDS = ["[0-9!-/:-@[-`{-~\s·↑↓↵⌘→—–…∞✓✕×⏸⚠©]+", "[A-Z_ ·-]+", "Emperor Claw", "EmperorClaw", "Esc", "Ctrl", "Enter", "v", "z( z)*"];
 // Two or more letters, except a bare domain name ("emperorclaw.com").
 const LETTERS = /^(?![a-z0-9.-]+\.[a-z]{2,}$)[\s\S]*[A-Za-z]{2,}/;
 const USER_FACING_ATTRIBUTE = "JSXAttribute[name.name=/^(placeholder|title|aria-label|alt|label)$/]";
@@ -67,6 +69,55 @@ const TRANSLATED_FILES = [
   "src/components/views/*.tsx",
   "src/components/access/*.tsx",
   "src/components/runtime-hosts/*.tsx",
+  // Phase 3a: sign-in and sign-up, onboarding and tours, the remaining app pages, chat and shared components.
+  "src/app/[(]auth[)]/**/*.tsx",
+  "src/app/authorize/page.tsx",
+  "src/app/[(]app[)]/artifacts/**/*.tsx",
+  "src/app/[(]app[)]/resources/**/*.tsx",
+  "src/app/[(]app[)]/timeline/**/*.tsx",
+  "src/app/[(]app[)]/pipelines/**/*.tsx",
+  "src/app/[(]app[)]/customers/**/*.tsx",
+  "src/app/[(]app[)]/approvals/**/*.tsx",
+  "src/app/[(]app[)]/activity/**/*.tsx",
+  "src/app/[(]app[)]/costs/**/*.tsx",
+  "src/app/[(]app[)]/search/**/*.tsx",
+  "src/app/[(]app[)]/messages/**/*.tsx",
+  "src/app/[(]app[)]/ops/**/*.tsx",
+  "src/components/setup-wizard.tsx",
+  "src/components/workspace-tour.tsx",
+  "src/components/interactive-tour.tsx",
+  "src/components/sample-client.tsx",
+  "src/components/agent-direct-chat.tsx",
+  "src/components/messaging-hub.tsx",
+  "src/components/agent-team-chat.tsx",
+  "src/components/openclaw-chat.tsx",
+  "src/components/group-dialog.tsx",
+  "src/components/artifact-editor/*.tsx",
+  "src/components/organization-editor.tsx",
+  "src/components/budget-client.tsx",
+  "src/components/update-panel.tsx",
+  "src/components/goal-hub.tsx",
+  "src/components/avatar-picker.tsx",
+  "src/components/run-timeline.tsx",
+  "src/components/delivery-inspector.tsx",
+  "src/components/docs-viewer.tsx",
+  "src/components/agent-goal-controls.tsx",
+  "src/components/failure-fix.tsx",
+  "src/components/message-reasoning-disclosure.tsx",
+  "src/components/model-search-select.tsx",
+  "src/components/rich/*.tsx",
+  "src/components/theme-toggle.tsx",
+  "src/components/mention-textarea.tsx",
+  "src/components/live-status-row.tsx",
+  "src/components/hermes-image-progress.tsx",
+  "src/components/module-gate.tsx",
+  "src/components/rich-text.tsx",
+  "src/components/markdown-renderer.tsx",
+  "src/components/markdown-live-editor.tsx",
+  "src/components/docs-markdown-renderer.tsx",
+  "src/components/custom-logo.tsx",
+  // Phase 3b: server-built copy (failures, inbox entries, task story, run timeline, delivery, hire reasons) rendered from codes.
+  "src/components/run-status-chip.tsx",
 ];
 
 const eslintConfig = defineConfig([

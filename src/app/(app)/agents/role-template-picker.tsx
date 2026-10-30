@@ -3,6 +3,8 @@
 import { useTranslations } from "next-intl";
 import { agentRoleTemplates, getPinnedAgentTemplates, type AgentRoleTemplate } from "@/lib/agent-templates";
 import { cn } from "@/lib/utils";
+import { copy } from "@/lib/coded-copy";
+import { useCopy } from "@/lib/i18n/use-copy";
 
 /**
  * One role card, shared by the pinned lead slot and the specialist grid so the
@@ -17,6 +19,8 @@ function RoleCard({
     selected: boolean;
     onSelect: () => void;
 }) {
+    // Display copy only: the English title still prefills the agent name and the English description goes into the setup prompt.
+    const render = useCopy();
     return (
         <button
             type="button"
@@ -32,10 +36,10 @@ function RoleCard({
             <span className="text-2xl shrink-0">{template.emoji}</span>
             <div className="min-w-0">
                 <span className="block text-sm font-medium text-foreground group-hover:text-primary transition-colors">
-                    {template.title}
+                    {render(copy(`agents.roles.templates.${template.id}.title`), template.title)}
                 </span>
                 <span className="block text-xs leading-tight text-muted-foreground mt-0.5 line-clamp-2">
-                    {template.description}
+                    {render(copy(`agents.roles.templates.${template.id}.description`), template.description)}
                 </span>
             </div>
         </button>

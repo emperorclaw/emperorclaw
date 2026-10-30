@@ -2,6 +2,7 @@
 
 import { useEffect, useId, useRef, useState } from "react";
 import { IconChevronDown } from "@tabler/icons-react";
+import { useTranslations } from "next-intl";
 import { MarkdownRenderer } from "@/components/markdown-renderer";
 import { tidyAgentMarkdown } from "@/lib/project-board-model";
 import { cn } from "@/lib/utils";
@@ -30,6 +31,7 @@ export function RichText({
     density?: "default" | "compact";
 }) {
     const bodyRef = useRef<HTMLDivElement>(null);
+    const t = useTranslations("richText");
     const [overflows, setOverflows] = useState(false);
     const [expanded, setExpanded] = useState(false);
     const id = useId();
@@ -65,7 +67,7 @@ export function RichText({
                     onClick={() => setExpanded((value) => !value)}
                     className="mt-1.5 inline-flex min-h-8 items-center gap-1 rounded-md px-1.5 text-xs font-medium text-cyan-300 transition-colors hover:bg-cyan-400/10 hover:text-cyan-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400/60"
                 >
-                    {expanded ? "Show less" : "Show more"}
+                    {expanded ? t("showLess") : t("showMore")}
                     <IconChevronDown className={cn("h-3.5 w-3.5 transition-transform duration-200", expanded && "rotate-180")} aria-hidden="true" />
                 </button>
             )}

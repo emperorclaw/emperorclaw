@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { IconTarget, IconSparkles, IconArrowRight, IconLoader2, IconCircleCheck, IconListCheck, IconRobot, IconUser, IconBrain } from "@tabler/icons-react";
+import { useTranslations } from "next-intl";
 import { cn } from "@/lib/utils";
 
 type TaskSuggestion = {
@@ -17,6 +18,7 @@ type MissionSuggestion = {
 };
 
 export function GoalHub() {
+    const t = useTranslations("goalHub");
     const [goal, setGoal] = useState("");
     const [isThinking, setIsThinking] = useState(false);
     const [suggestion, setSuggestion] = useState<MissionSuggestion | null>(null);
@@ -82,7 +84,7 @@ export function GoalHub() {
                 <div className="p-1 px-4 bg-muted/50 border-b border-border flex items-center justify-between">
                     <div className="flex items-center gap-2">
                         <IconSparkles className="w-3 h-3 text-amber-500 animate-pulse" />
-                        <span className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Autonomous Mission Control</span>
+                        <span className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">{t("eyebrow")}</span>
                     </div>
                 </div>
 
@@ -90,8 +92,8 @@ export function GoalHub() {
                     {!suggestion ? (
                         <div className="space-y-6">
                             <div className="space-y-2">
-                                <h2 className="text-xl font-semibold text-foreground tracking-tight">What is the mission for today?</h2>
-                                <p className="text-sm text-muted-foreground">Describe your high-level goal. The Emperor Claw Orchestrator will break it down into projects, tasks, and assign them to the best-suited agents.</p>
+                                <h2 className="text-xl font-semibold text-foreground tracking-tight">{t("title")}</h2>
+                                <p className="text-sm text-muted-foreground">{t("description")}</p>
                             </div>
 
                             <form onSubmit={handleBrainstorm} className="relative">
@@ -99,7 +101,7 @@ export function GoalHub() {
                                     type="text"
                                     value={goal}
                                     onChange={(e) => setGoal(e.target.value)}
-                                    placeholder="e.g. Audit our main landing page for SEO and launch a basic Twitter campaign"
+                                    placeholder={t("placeholder")}
                                     className="w-full bg-muted border border-border rounded-xl px-4 py-4 pr-32 text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-indigo-500/50 transition-all font-medium"
                                 />
                                 <div className="absolute right-2 top-2 bottom-2">
@@ -111,11 +113,11 @@ export function GoalHub() {
                                         {isThinking ? (
                                             <>
                                                 <IconLoader2 className="w-4 h-4 animate-spin" />
-                                                Thinking
+                                                {t("thinking")}
                                             </>
                                         ) : (
                                             <>
-                                                Break Down
+                                                {t("breakDown")}
                                                 <IconArrowRight className="w-4 h-4" />
                                             </>
                                         )}
@@ -139,7 +141,7 @@ export function GoalHub() {
                                     onClick={() => setSuggestion(null)}
                                     className="text-xs font-bold text-zinc-500 hover:text-zinc-300 transition-colors uppercase tracking-widest"
                                 >
-                                    Cancel
+                                    {t("cancel")}
                                 </button>
                             </div>
 
@@ -172,17 +174,17 @@ export function GoalHub() {
                                     {isExecuting ? (
                                         <>
                                             <IconLoader2 className="w-5 h-5 animate-spin" />
-                                            Provisioning Infrastructure...
+                                            {t("provisioning")}
                                         </>
                                     ) : isDone ? (
                                         <>
                                             <IconCircleCheck className="w-5 h-5" />
-                                            Mission Initiated
+                                            {t("initiated")}
                                         </>
                                     ) : (
                                         <>
                                             <IconSparkles className="w-5 h-5" />
-                                            Execute Mission Plan
+                                            {t("execute")}
                                         </>
                                     )}
                                 </button>
@@ -195,11 +197,11 @@ export function GoalHub() {
                     <div className="flex items-center gap-4">
                         <div className="flex items-center gap-1.5">
                             <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.5)]" />
-                            <span className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest">Orchestrator Online</span>
+                            <span className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest">{t("online")}</span>
                         </div>
                     </div>
                     <div className="text-[10px] text-zinc-600 font-medium italic">
-                        Powered by OpenClaw Autonomous Logic
+                        {t("poweredBy")}
                     </div>
                 </div>
             </div>

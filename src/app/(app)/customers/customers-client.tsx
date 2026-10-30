@@ -6,6 +6,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { IconBuilding, IconDeviceFloppy, IconSearch } from "@tabler/icons-react";
 import { toast } from "sonner";
+import { useTranslations } from "next-intl";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { PageHeader } from "@/components/page-header";
 import { EmptyState } from "@/components/ui/empty-state";
@@ -16,7 +17,8 @@ import { ResourceAccessButton } from "@/components/access/resource-access-dialog
 
 type CustomerSummary = any;
 
-const ATTENTION_LABEL: Record<string, string> = { approval: "Approval", blocked: "Blocked", incident: "Incident", review: "In review" };
+const ATTENTION_KINDS = ["approval", "blocked", "incident", "review"] as const;
+const PROJECT_STATUSES = ["active", "paused", "completed", "killed"] as const;
 const ATTENTION_STYLE: Record<string, string> = {
     approval: "bg-amber-500/15 text-amber-200",
     blocked: "bg-rose-500/15 text-rose-200",
@@ -25,6 +27,16 @@ const ATTENTION_STYLE: Record<string, string> = {
 };
 
 export default function CustomersClient({ initialData: customerData }: { initialData: CustomerSummary[] }) {
+    const t = useTranslations("customers");
+    const tStatus = useTranslations("projects.statuses");
+    const attentionLabel = (kind: string) => {
+        const known = ATTENTION_KINDS.find((k) => k === kind);
+        return known ? t(`attention.kinds.${known}`) : kind;
+    };
+    const statusLabel = (status: string) => {
+        const known = PROJECT_STATUSES.find((s) => s === status);
+        return known ? tStatus(known) : status;
+    };
     const router = useRouter();
     const [isAddClientOpen, setIsAddClientOpen] = useState(false);
     const [newClientName, setNewClientName] = useState("");
@@ -54,11 +66,11 @@ export default function CustomersClient({ initialData: customerData }: { initial
             setNewClientName("");
             setNewClientNotes("");
             setIsAddClientOpen(false);
-            toast.success("Customer created.");
+            toast.success(t("created"));
             router.refresh();
         } catch (error) {
             console.error("Failed to create customer", error);
-            toast.error("Failed to create customer.");
+            toast.error(t("createFailed"));
         } finally {
             setSending(false);
         }
@@ -75,11 +87,11 @@ export default function CustomersClient({ initialData: customerData }: { initial
                 body: JSON.stringify({ notes }),
             });
             if (!res.ok) throw new Error("Failed to save customer notes");
-            toast.success("Notes saved.");
+            toast.success(t("notesSaved"));
             router.refresh();
         } catch (error) {
             console.error("Failed to save customer notes", error);
-            toast.error("Failed to save notes.");
+            toast.error(t("notesFailed"));
         } finally {
             setSending(false);
         }
@@ -100,38 +112,38 @@ export default function CustomersClient({ initialData: customerData }: { initial
     return (
         <div className="mx-auto max-w-[1800px] space-y-6 animate-in fade-in duration-500">
             <PageHeader
-                eyebrow="Customers"
-                title="Customer Directory"
-                description="Find a customer, inspect its portfolio health, and maintain the customer description agents should follow."
+                eyebrow={t("eyebrow")}
+                title={t("title")}
+                description={t("description")}
                 actions={
                     <Dialog open={isAddClientOpen} onOpenChange={setIsAddClientOpen}>
                         <DialogTrigger asChild>
                             <button className="cursor-pointer rounded-full border border-cyan-400/40 bg-cyan-400/10 px-4 py-2 text-sm font-semibold text-cyan-100 transition-colors hover:bg-cyan-400/15">
-                                Add Customer
+                                {t("add")}
                             </button>
                         </DialogTrigger>
                         <DialogContent className="border-zinc-800 bg-zinc-950 text-zinc-200 sm:max-w-[500px]">
                             <DialogHeader>
-                                <DialogTitle className="mb-2 text-xl font-medium tracking-tight">Create Customer</DialogTitle>
+                                <DialogTitle className="mb-2 text-xl font-medium tracking-tight">{t("createTitle")}</DialogTitle>
                             </DialogHeader>
                             <div className="grid gap-4 py-4">
-                                <p className="text-sm text-zinc-400">Create a durable customer record and attach initial portfolio context.</p>
+                                <p className="text-sm text-zinc-400">{t("createIntro")}</p>
                                 <input
                                     value={newClientName}
                                     onChange={(event) => setNewClientName(event.target.value)}
                                     className="w-full rounded-xl border border-zinc-800 bg-zinc-950/80 p-3 text-sm text-zinc-100 outline-none focus:border-cyan-400 focus:ring-1 focus:ring-cyan-400/60"
-                                    placeholder="Customer name"
+                                    placeholder={t("namePlaceholder")}
                                 />
                                 <textarea
                                     value={newClientNotes}
                                     onChange={(event) => setNewClientNotes(event.target.value)}
                                     className="h-32 w-full resize-none rounded-xl border border-zinc-800 bg-zinc-950/80 p-3 text-sm text-zinc-100 outline-none focus:border-cyan-400 focus:ring-1 focus:ring-cyan-400/60"
-                                    placeholder="ICP details, project context, operational notes..."
+                                    placeholder={t("notesPlaceholder")}
                                 />
                             </div>
                             <div className="flex justify-end border-t border-zinc-900 pt-2">
-                                <button title={!newClientName.trim() ? "Enter the customer's name first" : undefined} onClick={() => void handleCreateCustomer()} disabled={!newClientName.trim() || sending} className="flex cursor-pointer items-center rounded-full border border-cyan-400/40 bg-cyan-400/10 px-4 py-2 text-sm font-medium text-cyan-100 disabled:opacity-50 disabled:cursor-not-allowed hover:bg-cyan-400/15">
-                                    {sending ? "Creating..." : "Create Customer"}
+                                <button title={!newClientName.trim() ? t("nameFirst") : undefined} onClick={() => void handleCreateCustomer()} disabled={!newClientName.trim() || sending} className="flex cursor-pointer items-center rounded-full border border-cyan-400/40 bg-cyan-400/10 px-4 py-2 text-sm font-medium text-cyan-100 disabled:opacity-50 disabled:cursor-not-allowed hover:bg-cyan-400/15">
+                                    {sending ? t("creating") : t("createTitle")}
                                 </button>
                             </div>
                         </DialogContent>
@@ -140,26 +152,26 @@ export default function CustomersClient({ initialData: customerData }: { initial
             />
 
             <div className="grid gap-2 sm:gap-3 grid-cols-2 sm:grid-cols-3 lg:grid-cols-5">
-                <SummaryCard label="Customers" value={customerData.length} hint="Portfolio records" />
-                <SummaryCard label="Projects" value={totals.projects} hint="Projects across customers" accent="cyan" />
-                <SummaryCard label="Tasks" value={totals.tasks} hint="Open and closed work" accent="emerald" />
-                <SummaryCard label="Blocked" value={totals.blocked} hint="Tasks waiting on dependencies" accent="rose" />
-                <SummaryCard label="Approvals" value={totals.approvals} hint="Pending human decisions" accent="amber" />
+                <SummaryCard label={t("summary.customers")} value={customerData.length} hint={t("summary.customersHint")} />
+                <SummaryCard label={t("summary.projects")} value={totals.projects} hint={t("summary.projectsHint")} accent="cyan" />
+                <SummaryCard label={t("summary.tasks")} value={totals.tasks} hint={t("summary.tasksHint")} accent="emerald" />
+                <SummaryCard label={t("summary.blocked")} value={totals.blocked} hint={t("summary.blockedHint")} accent="rose" />
+                <SummaryCard label={t("summary.approvals")} value={totals.approvals} hint={t("summary.approvalsHint")} accent="amber" />
             </div>
 
             {customerData.length === 0 ? (
                 <EmptyState
                     icon={IconBuilding}
-                    title="No customers yet"
-                    description="Add a customer to group its projects, files and notes, and to record the context your agents should follow when they work for it."
-                    action={<button type="button" onClick={() => setIsAddClientOpen(true)} className="cursor-pointer rounded-full border border-cyan-400/40 bg-cyan-400/10 px-4 py-2 text-sm font-semibold text-cyan-100 transition-colors hover:bg-cyan-400/15">Add Customer</button>}
+                    title={t("emptyTitle")}
+                    description={t("emptyDescription")}
+                    action={<button type="button" onClick={() => setIsAddClientOpen(true)} className="cursor-pointer rounded-full border border-cyan-400/40 bg-cyan-400/10 px-4 py-2 text-sm font-semibold text-cyan-100 transition-colors hover:bg-cyan-400/15">{t("add")}</button>}
                 />
             ) : (
                 <div className="grid gap-6 lg:grid-cols-[320px_minmax(0,1fr)]">
                     <aside className="emperor-panel rounded-2xl p-3 sm:p-4">
                         <label className="flex items-center gap-2 rounded-xl border border-zinc-800 bg-zinc-950/80 px-3 py-2 text-sm text-zinc-400">
                             <IconSearch className="h-4 w-4" />
-                            <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search customers" className="w-full bg-transparent text-zinc-100 outline-none placeholder:text-zinc-500" />
+                            <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder={t("searchPlaceholder")} className="w-full bg-transparent text-zinc-100 outline-none placeholder:text-zinc-500" />
                         </label>
                         <div className="mt-4 space-y-2">
                             {filteredCustomers.map((customer) => (
@@ -167,17 +179,17 @@ export default function CustomersClient({ initialData: customerData }: { initial
                                     <div className="flex items-start justify-between gap-3">
                                         <div className="min-w-0">
                                             <div className="truncate font-medium text-zinc-100">{customer.name}</div>
-                                            <div className="mt-1 text-xs text-zinc-500">{customer.projectCount || 0} projects · {customer.taskCount || 0} tasks</div>
+                                            <div className="mt-1 text-xs text-zinc-500">{t("rowCounts", { projects: customer.projectCount || 0, tasks: customer.taskCount || 0 })}</div>
                                         </div>
                                         {customer.attention?.length ? (
-                                            <span title="Approvals, blocked tasks, incidents, or tasks in review; open the customer to see them" className="shrink-0 rounded-full border border-amber-400/30 bg-amber-400/10 px-2 py-0.5 text-[10px] font-bold text-amber-200">
-                                                {customer.attention.length} to check
+                                            <span title={t("toCheckTitle")} className="shrink-0 rounded-full border border-amber-400/30 bg-amber-400/10 px-2 py-0.5 text-[10px] font-bold text-amber-200">
+                                                {t("toCheck", { count: customer.attention.length })}
                                             </span>
                                         ) : null}
                                     </div>
                                 </button>
                             ))}
-                            {filteredCustomers.length === 0 ? <EmptyState compact icon={IconSearch} title="No customers match that search" description={<button type="button" onClick={() => setQuery("")} className="text-primary hover:underline">Clear the search</button>} /> : null}
+                            {filteredCustomers.length === 0 ? <EmptyState compact icon={IconSearch} title={t("noMatches")} description={<button type="button" onClick={() => setQuery("")} className="text-primary hover:underline">{t("clearSearch")}</button>} /> : null}
                         </div>
                     </aside>
 
@@ -187,29 +199,29 @@ export default function CustomersClient({ initialData: customerData }: { initial
                                 <div>
                                     <div className="flex items-center gap-2">
                                         <h2 className="text-xl sm:text-2xl font-semibold text-zinc-100">{selectedCustomer.name}</h2>
-                                        <span className="rounded border border-zinc-800 bg-zinc-950 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-zinc-400">ID: {selectedCustomer.id.substring(0, 8)}</span>
+                                        <span className="rounded border border-zinc-800 bg-zinc-950 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-zinc-400">{t("id", { id: selectedCustomer.id.substring(0, 8) })}</span>
                                     </div>
                                     <div className="mt-2 sm:mt-3 flex flex-wrap gap-1.5 sm:gap-2 text-[10px] font-semibold uppercase tracking-[0.16em]">
-                                        <Tag label={`${selectedCustomer.projectCount || 0} projects`} />
-                                        <Tag label={`${selectedCustomer.taskCount || 0} tasks`} />
-                                        <Tag label={`${selectedCustomer.reviewCount || 0} in review`} />
-                                        <Tag label={`${selectedCustomer.blockedCount || 0} blocked`} tone="rose" />
-                                        <Tag label={`${selectedCustomer.pendingApprovalCount || 0} approvals`} tone="amber" />
-                                        <Tag label={`${selectedCustomer.incidentCount || 0} incidents`} tone="slate" />
-                                        <Tag label={`${selectedCustomer.pipelineCount || 0} pipelines`} tone="cyan" />
+                                        <Tag label={t("tags.projects", { count: selectedCustomer.projectCount || 0 })} />
+                                        <Tag label={t("tags.tasks", { count: selectedCustomer.taskCount || 0 })} />
+                                        <Tag label={t("tags.inReview", { count: selectedCustomer.reviewCount || 0 })} />
+                                        <Tag label={t("tags.blocked", { count: selectedCustomer.blockedCount || 0 })} tone="rose" />
+                                        <Tag label={t("tags.approvals", { count: selectedCustomer.pendingApprovalCount || 0 })} tone="amber" />
+                                        <Tag label={t("tags.incidents", { count: selectedCustomer.incidentCount || 0 })} tone="slate" />
+                                        <Tag label={t("tags.pipelines", { count: selectedCustomer.pipelineCount || 0 })} tone="cyan" />
                                     </div>
                                 </div>
                                 <ResourceAccessButton type="customer" id={selectedCustomer.id} />
                             </div>
                             {selectedCustomer.attention?.length > 0 && (
-                                <section className="mt-4 rounded-xl border border-amber-400/20 bg-amber-400/[0.04] p-3 sm:p-4" aria-label="Needs attention">
-                                    <h3 className="text-sm font-medium text-amber-100">Needs attention</h3>
-                                    <p className="mt-0.5 text-xs text-zinc-500">Work for this customer that is waiting on someone. Open an item to resolve it.</p>
+                                <section className="mt-4 rounded-xl border border-amber-400/20 bg-amber-400/[0.04] p-3 sm:p-4" aria-label={t("attention.title")}>
+                                    <h3 className="text-sm font-medium text-amber-100">{t("attention.title")}</h3>
+                                    <p className="mt-0.5 text-xs text-zinc-500">{t("attention.hint")}</p>
                                     <ul className="mt-3 space-y-1.5">
                                         {selectedCustomer.attention.map((item: { kind: string; label: string; href: string }, index: number) => (
                                             <li key={`${item.kind}-${index}`}>
                                                 <Link href={item.href} className="flex items-center gap-2 rounded-lg px-2 py-1.5 text-sm text-zinc-200 hover:bg-black/[0.04] dark:hover:bg-white/[0.04]">
-                                                    <span className={cn("shrink-0 rounded px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wider", ATTENTION_STYLE[item.kind] ?? ATTENTION_STYLE.review)}>{ATTENTION_LABEL[item.kind] ?? item.kind}</span>
+                                                    <span className={cn("shrink-0 rounded px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wider", ATTENTION_STYLE[item.kind] ?? ATTENTION_STYLE.review)}>{attentionLabel(item.kind)}</span>
                                                     <span className="truncate">{item.label}</span>
                                                 </Link>
                                             </li>
@@ -218,13 +230,13 @@ export default function CustomersClient({ initialData: customerData }: { initial
                                 </section>
                             )}
                             {selectedCustomer.projects?.length > 0 && (
-                                <section className="mt-4" aria-label="Projects">
-                                    <h3 className="mb-2 text-sm font-medium text-zinc-300">Projects</h3>
+                                <section className="mt-4" aria-label={t("projects")}>
+                                    <h3 className="mb-2 text-sm font-medium text-zinc-300">{t("projects")}</h3>
                                     <div className="grid gap-2 sm:grid-cols-2">
                                         {selectedCustomer.projects.map((project: { id: string; goal: string; status: string; openTasks: number }) => (
                                             <Link key={project.id} href={`/projects?project=${project.id}`} className="rounded-xl border border-zinc-800 bg-zinc-950/60 p-3 hover:border-cyan-400/30">
                                                 <span className="block truncate text-sm text-zinc-100" title={project.goal}>{splitProjectTitle(project.goal).name}</span>
-                                                <span className="text-xs text-zinc-500">{project.status} · {project.openTasks} open task{project.openTasks === 1 ? "" : "s"}</span>
+                                                <span className="text-xs text-zinc-500">{t("projectRow", { status: statusLabel(project.status), count: project.openTasks })}</span>
                                             </Link>
                                         ))}
                                     </div>
@@ -233,19 +245,19 @@ export default function CustomersClient({ initialData: customerData }: { initial
                             <ScopeViewsSection key={selectedCustomer.id} customerId={selectedCustomer.id} className="mt-4" />
                             <div className="pt-4 sm:pt-5">
                                 <div className="mb-2 flex items-center justify-between">
-                                    <label className="text-sm font-medium text-zinc-300">Description</label>
+                                    <label className="text-sm font-medium text-zinc-300">{t("descriptionLabel")}</label>
                                     <button onClick={() => void handleSaveNotes(selectedCustomer.id)} disabled={sending || localNotes[selectedCustomer.id] === undefined} className="flex cursor-pointer items-center text-xs font-semibold text-cyan-300 transition-colors hover:text-cyan-200 disabled:opacity-50 disabled:cursor-not-allowed">
                                         <IconDeviceFloppy className="mr-1 h-3 w-3" />
-                                        Save
+                                        {t("save")}
                                     </button>
                                 </div>
                                 <textarea
                                     className="h-[280px] sm:h-[420px] w-full resize-y rounded-xl border border-zinc-800 bg-zinc-950/80 p-3 sm:p-4 font-mono text-sm leading-6 text-zinc-100 outline-none focus:border-cyan-400 focus:ring-1 focus:ring-cyan-400/60"
-                                    placeholder={"# Target Audience\nDescribe who the team should optimize for..."}
+                                    placeholder={t("descriptionPlaceholder")}
                                     value={localNotes[selectedCustomer.id] ?? selectedCustomer.notes ?? ""}
                                     onChange={(event) => setLocalNotes((prev) => ({ ...prev, [selectedCustomer.id]: event.target.value }))}
                                 />
-                                <p className="mt-2 text-xs text-zinc-500">Brief description and notes about this customer. For reusable rules and SOPs, use the Knowledge Base instead.</p>
+                                <p className="mt-2 text-xs text-zinc-500">{t("descriptionHint")}</p>
                             </div>
                         </main>
                     ) : null}

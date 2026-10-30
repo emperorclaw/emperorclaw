@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { useTranslations } from "next-intl";
+import { useApiError } from "@/lib/i18n/use-api-error";
 import {
     IconArchive, IconArrowBackUp, IconChevronLeft, IconHistory, IconLock, IconPencil, IconPin, IconPinnedOff, IconRefresh, IconTrash, IconUserShare,
 } from "@tabler/icons-react";
@@ -56,6 +57,7 @@ export function ViewDetailClient({ view, canEdit, canManage, isOwner, agents, ow
     transferTo: Named[];
 }) {
     const t = useTranslations("views.detail");
+    const apiError = useApiError();
     const tc = useTranslations("common");
     const formatAgo = useFormatAgo();
     const scopeText = useScopeText();
@@ -76,7 +78,7 @@ export function ViewDetailClient({ view, canEdit, canManage, isOwner, agents, ow
             router.refresh();
             return true;
         } catch (error) {
-            toast.error(error instanceof Error ? error.message : fallback);
+            toast.error(apiError(error instanceof Error ? error.message : null, fallback));
             return false;
         } finally {
             setBusy(null);
@@ -98,7 +100,7 @@ export function ViewDetailClient({ view, canEdit, canManage, isOwner, agents, ow
             const name = agents.find((a) => a.id === refreshAgent)?.name ?? t("theAgent");
             toast.success(t("refreshAsked", { name }));
         } catch (error) {
-            toast.error(error instanceof Error ? error.message : t("reachFailed"));
+            toast.error(apiError(error instanceof Error ? error.message : null, t("reachFailed")));
         } finally {
             setBusy(null);
         }
@@ -252,6 +254,7 @@ export function ViewMetadataClient({ view, transferTo }: { view: ViewDetail; tra
 /** Transfer ownership and delete: owners/admins (with or without access to the content) and the view's owner. */
 function ManageButtons({ view, transferTo, afterDelete = "/views" }: { view: ViewDetail; transferTo: Named[]; afterDelete?: string }) {
     const t = useTranslations("views.detail");
+    const apiError = useApiError();
     const tc = useTranslations("common");
     const router = useRouter();
     const [transferOpen, setTransferOpen] = useState(false);
@@ -265,7 +268,7 @@ function ManageButtons({ view, transferTo, afterDelete = "/views" }: { view: Vie
             toast.success(t("deleted"));
             router.push(afterDelete);
         } catch (error) {
-            toast.error(error instanceof Error ? error.message : t("deleteFailed"));
+            toast.error(apiError(error instanceof Error ? error.message : null, t("deleteFailed")));
             setDeleting(false);
         }
     };
@@ -280,6 +283,7 @@ function ManageButtons({ view, transferTo, afterDelete = "/views" }: { view: Vie
 
 function TransferDialog({ view, people, onClose }: { view: ViewDetail; people: Named[]; onClose: () => void }) {
     const t = useTranslations("views.detail");
+    const apiError = useApiError();
     const tc = useTranslations("common");
     const router = useRouter();
     // The server already leaves out the owner and, when it cannot be opened, the caller.
@@ -301,7 +305,7 @@ function TransferDialog({ view, people, onClose }: { view: ViewDetail; people: N
                         onClose();
                         router.refresh();
                     } catch (error) {
-                        toast.error(error instanceof Error ? error.message : t("transferFailed"));
+                        toast.error(apiError(error instanceof Error ? error.message : null, t("transferFailed")));
                     } finally {
                         setSaving(false);
                     }
@@ -338,6 +342,7 @@ const VISIBILITY_OPTIONS = [
 /** The owner's control: Private / Shared (with a people picker) / Everyone in scope. */
 function VisibilityControl({ view }: { view: ViewDetail }) {
     const t = useTranslations("views.detail");
+    const apiError = useApiError();
     const tVisibility = useTranslations("views.visibility");
     const router = useRouter();
     const [saving, setSaving] = useState(false);
@@ -353,7 +358,7 @@ function VisibilityControl({ view }: { view: ViewDetail }) {
             router.refresh();
             return true;
         } catch (error) {
-            toast.error(error instanceof Error ? error.message : t("visibilityFailed"));
+            toast.error(apiError(error instanceof Error ? error.message : null, t("visibilityFailed")));
             return false;
         } finally {
             setSaving(false);
@@ -388,6 +393,7 @@ function VisibilityControl({ view }: { view: ViewDetail }) {
 
 function SharePicker({ view, onClose, onSave }: { view: ViewDetail; onClose: () => void; onSave: (ids: string[]) => Promise<boolean> }) {
     const t = useTranslations("views.detail");
+    const apiError = useApiError();
     const tc = useTranslations("common");
     const [people, setPeople] = useState<Named[] | null>(null);
     const [chosen, setChosen] = useState<Set<string>>(() => new Set((view.sharedWith ?? []).map((p) => p.id)));
@@ -399,9 +405,9 @@ function SharePicker({ view, onClose, onSave }: { view: ViewDetail; onClose: () 
             if (!res.ok) throw new Error(await errorOf(res, t("peopleFailed")));
             const data = await res.json() as { people: Named[] };
             if (alive) setPeople(data.people);
-        }).catch((error) => { toast.error(error instanceof Error ? error.message : t("peopleFailed")); if (alive) setPeople([]); });
+        }).catch((error) => { toast.error(apiError(error instanceof Error ? error.message : null, t("peopleFailed"))); if (alive) setPeople([]); });
         return () => { alive = false; };
-    }, [view.id, t]);
+    }, [view.id, t, apiError]);
     const shown = (people ?? []).filter((p) => (p.name ?? "").toLowerCase().includes(filter.trim().toLowerCase()));
     return (
         <Dialog open onOpenChange={(open) => { if (!open) onClose(); }}>
@@ -510,6 +516,7 @@ function HistoryDrawer({ viewId, open, onOpenChange, canRevert, onReverted }: {
     onReverted: () => void;
 }) {
     const t = useTranslations("views.detail");
+    const apiError = useApiError();
     const formatAgo = useFormatAgo();
     const now = useNowMs();
     const [versions, setVersions] = useState<VersionRow[] | null>(null);
@@ -523,7 +530,7 @@ function HistoryDrawer({ viewId, open, onOpenChange, canRevert, onReverted }: {
             if (!res.ok) throw new Error(await errorOf(res, t("historyFailed")));
             setVersions(((await res.json()) as { versions: VersionRow[] }).versions);
         } catch (error) {
-            toast.error(error instanceof Error ? error.message : t("historyFailed"));
+            toast.error(apiError(error instanceof Error ? error.message : null, t("historyFailed")));
         } finally {
             setLoading(false);
         }
@@ -545,7 +552,7 @@ function HistoryDrawer({ viewId, open, onOpenChange, canRevert, onReverted }: {
             onReverted();
             await load();
         } catch (error) {
-            toast.error(error instanceof Error ? error.message : t("revertFailed"));
+            toast.error(apiError(error instanceof Error ? error.message : null, t("revertFailed")));
         } finally {
             setReverting(null);
         }

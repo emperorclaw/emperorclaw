@@ -4,6 +4,7 @@ import { getAppUrl } from "@/lib/env";
 import { db } from "@/db";
 import { companies } from "@/db/schema";
 import { eq } from "drizzle-orm";
+import { getTranslations } from "next-intl/server";
 import { CustomLogo } from "@/components/custom-logo";
 
 // Protected automatically by src/proxy.ts's default withAuth gate (not in
@@ -15,6 +16,7 @@ export default async function AuthorizePage({
     searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
     const params = await searchParams;
+    const t = await getTranslations("auth.authorize");
     const clientId = typeof params.client_id === "string" ? params.client_id : "";
     const redirectUri = typeof params.redirect_uri === "string" ? params.redirect_uri : "";
     const codeChallenge = typeof params.code_challenge === "string" ? params.code_challenge : "";
@@ -23,14 +25,14 @@ export default async function AuthorizePage({
     const responseType = typeof params.response_type === "string" ? params.response_type : "";
 
     const errors: string[] = [];
-    if (responseType !== "code") errors.push("response_type must be 'code'.");
-    if (codeChallengeMethod !== "S256") errors.push("code_challenge_method must be 'S256'.");
-    if (!codeChallenge) errors.push("code_challenge is required.");
+    if (responseType !== "code") errors.push(t("errors.responseType"));
+    if (codeChallengeMethod !== "S256") errors.push(t("errors.challengeMethod"));
+    if (!codeChallenge) errors.push(t("errors.challengeRequired"));
 
     const client = clientId ? await getOAuthClient(clientId) : null;
-    if (!client) errors.push("Unknown client_id — this app hasn't registered with EmperorClaw.");
+    if (!client) errors.push(t("errors.unknownClient"));
     if (client && !validateRedirectUri(client, redirectUri)) {
-        errors.push("redirect_uri does not match what this client registered.");
+        errors.push(t("errors.redirectMismatch"));
     }
 
     // Non-blocking, not a hard error: a reverse proxy terminating TLS in
@@ -54,13 +56,13 @@ export default async function AuthorizePage({
 
                 {!isHttps && (
                     <div className="mb-4 rounded-xl border border-amber-500/30 bg-amber-500/10 p-3 text-xs leading-5 text-amber-200">
-                        This instance isn&apos;t served over HTTPS. OAuth requires TLS on every step — claude.ai will likely fail to complete this even if you approve below. Put a reverse proxy (Caddy, nginx, Cloudflare Tunnel) in front with a real certificate, or use a manually-created Bearer token instead (Settings → Tokens) — that works over plain HTTP fine.
+                        {t("noHttps")}
                     </div>
                 )}
 
                 {errors.length > 0 ? (
                     <div className="space-y-3">
-                        <h1 className="text-center text-lg font-semibold text-rose-300">Can&apos;t connect this app</h1>
+                        <h1 className="text-center text-lg font-semibold text-rose-300">{t("cantConnect")}</h1>
                         <ul className="list-inside list-disc space-y-1 text-sm text-zinc-400">
                             {errors.map((e) => <li key={e}>{e}</li>)}
                         </ul>
@@ -68,13 +70,13 @@ export default async function AuthorizePage({
                 ) : (
                     <>
                         <h1 className="text-center text-lg font-semibold text-zinc-100">
-                            {client?.clientName || "An app"} wants to connect
+                            {client?.clientName ? t("wantsToConnect", { app: client.clientName }) : t("anAppWantsToConnect")}
                         </h1>
                         <p className="mt-2 text-center text-sm text-zinc-400">
-                            {session?.user?.email} · <span className="text-zinc-300">{company?.name || "your company"}</span>
+                            {session?.user?.email} · <span className="text-zinc-300">{company?.name || t("yourCompany")}</span>
                         </p>
                         <div className="mt-6 rounded-2xl border border-white/10 bg-black/25 p-4 text-sm text-zinc-400">
-                            This grants access to agents, tasks, projects, Knowledge &amp; Rules, and messaging for this company — the same access a manually-created Agent access token has. You can revoke it any time from Settings → Tokens.
+                            {t("grants")}
                         </div>
                         <form method="POST" action="/api/oauth/authorize" className="mt-6 space-y-3">
                             <input type="hidden" name="client_id" value={clientId} />
@@ -88,7 +90,7 @@ export default async function AuthorizePage({
                                 value="approve"
                                 className="w-full rounded-xl bg-cyan-600 px-4 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-cyan-500"
                             >
-                                Approve
+                                {t("approve")}
                             </button>
                             <button
                                 type="submit"
@@ -96,7 +98,7 @@ export default async function AuthorizePage({
                                 value="deny"
                                 className="w-full rounded-xl border border-white/10 px-4 py-2.5 text-sm font-medium text-zinc-300 transition-colors hover:bg-white/5"
                             >
-                                Deny
+                                {t("deny")}
                             </button>
                         </form>
                     </>

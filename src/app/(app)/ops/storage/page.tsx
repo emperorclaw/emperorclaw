@@ -1,7 +1,8 @@
 import { sql } from "drizzle-orm";
 import { db } from "@/db";
 import { getRecentRetentionRuns } from "@/lib/retention";
-import { OpsCard, OpsSection, OpsTable, formatDateTime } from "../ui";
+import { getTranslations } from "next-intl/server";
+import { OpsCard, OpsSection, OpsTable, getOpsFormat } from "../ui";
 
 export const dynamic = "force-dynamic";
 
@@ -51,6 +52,8 @@ export default async function OpsStoragePage() {
     const totalDbBytes = Number(
         (dbSizeResult.rows[0] as unknown as { db_bytes: string | number } | undefined)?.db_bytes ?? 0,
     );
+    const [t, format] = await Promise.all([getTranslations("ops.storage"), getOpsFormat()]);
+    const formatDateTime = format.dateTime;
     const largest = tables[0];
     const lastRun = retentionRuns[0];
     const lastRunDeleted = lastRun
@@ -61,60 +64,60 @@ export default async function OpsStoragePage() {
         <div className="space-y-8 pb-12">
             <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
                 <OpsCard
-                    title="Database size"
+                    title={t("databaseSize")}
                     value={formatBytes(totalDbBytes)}
-                    detail="On-disk size of the current database (pg_database_size)"
+                    detail={t("databaseSizeDetail")}
                 />
                 <OpsCard
-                    title="Tables sized"
+                    title={t("tablesSized")}
                     value={String(tables.length)}
-                    detail={`Largest ${TOP_TABLES} tables by total relation size`}
+                    detail={t("tablesSizedDetail", { count: TOP_TABLES })}
                 />
                 <OpsCard
-                    title="Largest table"
+                    title={t("largestTable")}
                     value={largest ? formatBytes(largest.totalBytes) : "—"}
-                    detail={largest ? largest.table : "No tables found"}
+                    detail={largest ? largest.table : t("noTables")}
                 />
                 <OpsCard
-                    title="Last retention"
+                    title={t("lastRetention")}
                     value={lastRun ? String(lastRunDeleted) : "—"}
-                    detail={lastRun ? `Rows deleted ${formatDateTime(lastRun.startedAt)}` : "No retention run recorded yet"}
+                    detail={lastRun ? t("rowsDeletedAt", { when: formatDateTime(lastRun.startedAt) }) : t("noRetention")}
                 />
             </div>
 
             <OpsSection
-                title="Top Tables by Size"
-                description="Total relation size (table + indexes + TOAST) with the planner's estimated row count."
+                title={t("topTables")}
+                description={t("topTablesDescription")}
             >
-                <OpsTable headers={["Table", "Total size", "Estimated rows"]} empty="No tables found.">
+                <OpsTable headers={[t("columns.table"), t("columns.totalSize"), t("columns.estimatedRows")]} empty={t("noTablesPeriod")}>
                     {tables.map((row) => (
                         <tr key={row.table}>
                             <td className="px-4 py-3 font-mono text-zinc-200">{row.table}</td>
                             <td className="px-4 py-3 text-zinc-300">{formatBytes(row.totalBytes)}</td>
-                            <td className="px-4 py-3 text-zinc-400">{row.estRows.toLocaleString()}</td>
+                            <td className="px-4 py-3 text-zinc-400">{format.number(row.estRows)}</td>
                         </tr>
                     ))}
                 </OpsTable>
             </OpsSection>
 
             <OpsSection
-                title="Recent Retention Runs"
-                description="The last few cleanup passes: when they ran, how long they took, and what each step deleted."
+                title={t("recentRuns")}
+                description={t("recentRunsDescription")}
             >
                 <OpsTable
-                    headers={["Started", "Duration", "Rows deleted", "Per step"]}
-                    empty="No retention run recorded yet."
+                    headers={[t("columns.started"), t("columns.duration"), t("columns.rowsDeleted"), t("columns.perStep")]}
+                    empty={t("noRetentionPeriod")}
                 >
                     {retentionRuns.slice(0, 10).map((run) => {
                         const total = run.steps.reduce((sum, step) => sum + step.deleted, 0);
                         const detail = run.steps
-                            .map((step) => `${step.table}: ${step.deleted.toLocaleString()}${step.exhausted ? " (budget)" : ""}${step.error ? " (error)" : ""}`)
+                            .map((step) => `${step.table}: ${format.number(step.deleted)}${step.exhausted ? ` ${t("budget")}` : ""}${step.error ? ` ${t("error")}` : ""}`)
                             .join(" · ");
                         return (
                             <tr key={`${run.startedAt}-${total}`} className="align-top">
                                 <td className="px-4 py-3 text-zinc-300">{formatDateTime(run.startedAt)}</td>
                                 <td className="px-4 py-3 text-zinc-400">{formatDuration(run.durationMs)}</td>
-                                <td className="px-4 py-3 text-zinc-200">{total.toLocaleString()}</td>
+                                <td className="px-4 py-3 text-zinc-200">{format.number(total)}</td>
                                 <td className="px-4 py-3 text-zinc-500">{detail || "—"}</td>
                             </tr>
                         );

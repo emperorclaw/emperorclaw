@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
+import { useTranslations } from "next-intl";
 import { IconArrowsMaximize, IconSend } from "@tabler/icons-react";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
 import { buildWidgetDocument, WIDGET_THEME_TOKENS, widgetTitle } from "@/lib/rich-blocks";
@@ -123,12 +124,17 @@ function WidgetFrame({
     );
 }
 
+/** widgetTitle's English fallback when the HTML names no title. */
+const UNTITLED_WIDGET = "Interactive widget";
+
 export function HtmlWidget({ html }: { html: string }) {
+    const t = useTranslations("rich");
     const { sendPrompt } = useRichMessageActions();
     const [expanded, setExpanded] = useState(false);
     const [notice, setNotice] = useState<string | null>(null);
     const lastSendRef = useRef(0);
-    const title = useMemo(() => widgetTitle(html), [html]);
+    const rawTitle = useMemo(() => widgetTitle(html), [html]);
+    const title = rawTitle === UNTITLED_WIDGET ? t("interactiveWidget") : rawTitle;
 
     const flash = useCallback((text: string) => {
         setNotice(text);
@@ -142,7 +148,7 @@ export function HtmlWidget({ html }: { html: string }) {
         const text = prompt.trim().slice(0, 500);
         if (!text) return;
         if (!sendPrompt) {
-            flash("Widget actions aren't available here");
+            flash(t("actionsUnavailable"));
             return;
         }
         const activation = (navigator as Navigator & { userActivation?: { isActive: boolean } }).userActivation;
@@ -150,9 +156,9 @@ export function HtmlWidget({ html }: { html: string }) {
         const now = Date.now();
         if (now - lastSendRef.current < SEND_COOLDOWN_MS) return;
         lastSendRef.current = now;
-        flash(`Sent: ${text.length > 60 ? `${text.slice(0, 57)}…` : text}`);
+        flash(t("sent", { text: text.length > 60 ? `${text.slice(0, 57)}…` : text }));
         void sendPrompt(text);
-    }, [flash, sendPrompt]);
+    }, [flash, sendPrompt, t]);
 
     return (
         <>
@@ -166,8 +172,8 @@ export function HtmlWidget({ html }: { html: string }) {
                     <button
                         type="button"
                         onClick={() => setExpanded(true)}
-                        aria-label="Open full screen"
-                        title="Open full screen"
+                        aria-label={t("fullScreen")}
+                        title={t("fullScreen")}
                         className="inline-flex h-7 w-7 items-center justify-center rounded-md text-zinc-500 transition-colors hover:bg-zinc-800 hover:text-zinc-200"
                     >
                         <IconArrowsMaximize className="h-3.5 w-3.5" />
@@ -187,7 +193,7 @@ export function HtmlWidget({ html }: { html: string }) {
             <Dialog open={expanded} onOpenChange={setExpanded}>
                 <DialogContent className="flex h-[88vh] max-w-[min(1200px,calc(100%-2rem))] flex-col gap-3 p-4 sm:max-w-[min(1200px,calc(100%-2rem))]">
                     <DialogTitle className="pr-8 text-base">{title}</DialogTitle>
-                    <DialogDescription className="sr-only">Interactive widget sent by an agent, running in a sandbox.</DialogDescription>
+                    <DialogDescription className="sr-only">{t("widgetDescription")}</DialogDescription>
                     <div className="min-h-0 flex-1 overflow-hidden rounded-xl border border-zinc-800 bg-zinc-900/40 p-3">
                         {expanded && <WidgetFrame html={html} title={title} fill onSend={onSend} />}
                     </div>

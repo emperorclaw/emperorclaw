@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 import { useRouter, usePathname } from "next/navigation";
+import { useTranslations } from "next-intl";
 import { IconArrowLeft, IconArrowRight, IconRosetteDiscountCheck, IconBook, IconRobot, IconFolder, IconGitBranch, IconDeviceSdCard, IconKey, IconLayoutDashboard, IconMessage, IconFileText, IconShieldCheck, IconX } from "@tabler/icons-react";
 
 import { pathEnabled, type ModuleState } from "@/lib/modules";
@@ -10,82 +11,28 @@ import { pathEnabled, type ModuleState } from "@/lib/modules";
 const TOUR_DONE_KEY = "emperor:interactive-tour:v1";
 
 interface TourStep {
-    title: string;
-    body: string;
+    /** Title and body: onboarding.interactiveTour.steps.{id} in messages/*.json. */
+    id: "dashboard" | "projects" | "automations" | "knowledge" | "messages" | "approvals" | "agents" | "customers" | "files" | "settings" | "docs";
     href: string;
     icon: typeof IconLayoutDashboard;
 }
 
 const TOUR_STEPS: TourStep[] = [
-    {
-        title: "Dashboard — your command center",
-        body: "Your home base. See agent status, recent activity, team chat, and open issues at a glance. The sidebar on the left takes you everywhere.",
-        href: "/",
-        icon: IconLayoutDashboard,
-    },
-    {
-        title: "Projects — where work lives",
-        body: "Create projects for each business goal. Inside, break work into tasks that agents claim, execute, and submit for review. Drag tasks across the Kanban as they progress.",
-        href: "/projects",
-        icon: IconFolder,
-    },
-    {
-        title: "Automations — recurring work on autopilot",
-        body: "Set up pipelines and recurring task definitions. Agents register their automations here so you always know what's running.",
-        href: "/pipelines",
-        icon: IconGitBranch,
-    },
-    {
-        title: "Knowledge Base — durable context",
-        body: "Store SOPs, customer rules, templates, and operating doctrine. Agents read from here before executing tasks — this is their long-term memory.",
-        href: "/resources",
-        icon: IconFileText,
-    },
-    {
-        title: "Messages — team coordination",
-        body: "Live conversations between you and your agents. Direct threads for human-to-agent control, team channel for broadcast visibility.",
-        href: "/messages",
-        icon: IconMessage,
-    },
-    {
-        title: "Approvals — human-in-the-loop",
-        body: "Tasks needing your sign-off land here. Review agent output, approve or request changes, and keep quality gates enforced.",
-        href: "/approvals",
-        icon: IconRosetteDiscountCheck,
-    },
-    {
-        title: "Agents — your AI workforce",
-        body: "Register and manage your connected OpenClaw workers. Each agent has a profile, capabilities, and runtime config.",
-        href: "/agents",
-        icon: IconRobot,
-    },
-    {
-        title: "Customers — client context",
-        body: "Organize work by customer. Link projects, tasks, and knowledge to specific clients for clear separation.",
-        href: "/customers",
-        icon: IconShieldCheck,
-    },
-    {
-        title: "Files — persistent storage",
-        body: "Deliverables, proofs, reports, and uploads that survive beyond chat. Agents store output here for you to review.",
-        href: "/artifacts",
-        icon: IconDeviceSdCard,
-    },
-    {
-        title: "Settings — workspace config",
-        body: "Manage API tokens for agent connections, configure instance settings, and control workspace access. The Members tab lets you invite your team and manage roles.",
-        href: "/settings",
-        icon: IconKey,
-    },
-    {
-        title: "Docs — learn more anytime",
-        body: "Full guides for OpenClaw agents, Hermes bridges, pipelines, webhooks, and advanced config. Available anytime from the sidebar.",
-        href: "/docs",
-        icon: IconBook,
-    },
+    { id: "dashboard", href: "/", icon: IconLayoutDashboard },
+    { id: "projects", href: "/projects", icon: IconFolder },
+    { id: "automations", href: "/pipelines", icon: IconGitBranch },
+    { id: "knowledge", href: "/resources", icon: IconFileText },
+    { id: "messages", href: "/messages", icon: IconMessage },
+    { id: "approvals", href: "/approvals", icon: IconRosetteDiscountCheck },
+    { id: "agents", href: "/agents", icon: IconRobot },
+    { id: "customers", href: "/customers", icon: IconShieldCheck },
+    { id: "files", href: "/artifacts", icon: IconDeviceSdCard },
+    { id: "settings", href: "/settings", icon: IconKey },
+    { id: "docs", href: "/docs", icon: IconBook },
 ];
 
 export function InteractiveTour({ modules }: { modules?: ModuleState | null }) {
+    const t = useTranslations("onboarding.interactiveTour");
     const steps = useMemo(() => TOUR_STEPS.filter((s) => pathEnabled(s.href, modules)), [modules]);
     const router = useRouter();
     const pathname = usePathname();
@@ -138,12 +85,12 @@ export function InteractiveTour({ modules }: { modules?: ModuleState | null }) {
                         </div>
                         <div className="flex-1 min-w-0">
                             <div className="flex items-center justify-between gap-2">
-                                <h2 className="text-base font-semibold text-foreground">{s.title}</h2>
-                                <button onClick={close} className="shrink-0 cursor-pointer rounded-lg p-1 text-muted-foreground hover:bg-accent hover:text-foreground" aria-label="Close tour">
+                                <h2 className="text-base font-semibold text-foreground">{t(`steps.${s.id}.title`)}</h2>
+                                <button onClick={close} className="shrink-0 cursor-pointer rounded-lg p-1 text-muted-foreground hover:bg-accent hover:text-foreground" aria-label={t("close")}>
                                     <IconX className="h-4 w-4" />
                                 </button>
                             </div>
-                            <p className="mt-1.5 text-sm leading-relaxed text-muted-foreground">{s.body}</p>
+                            <p className="mt-1.5 text-sm leading-relaxed text-muted-foreground">{t(`steps.${s.id}.body`)}</p>
                         </div>
                     </div>
 
@@ -152,12 +99,12 @@ export function InteractiveTour({ modules }: { modules?: ModuleState | null }) {
                         <div className="flex items-center gap-2">
                             {!first && (
                                 <button onClick={() => goTo(step - 1)} className="flex cursor-pointer items-center gap-1.5 rounded-xl border border-border px-3 py-2 text-sm font-medium text-foreground hover:border-ring hover:bg-accent">
-                                    <IconArrowLeft className="h-3.5 w-3.5" /> Back
+                                    <IconArrowLeft className="h-3.5 w-3.5" /> {t("back")}
                                 </button>
                             )}
-                            <button onClick={close} className="cursor-pointer rounded-xl px-3 py-2 text-sm font-medium text-muted-foreground hover:text-foreground">Skip</button>
+                            <button onClick={close} className="cursor-pointer rounded-xl px-3 py-2 text-sm font-medium text-muted-foreground hover:text-foreground">{t("skip")}</button>
                             <button onClick={() => last ? close() : goTo(step + 1)} className="flex cursor-pointer items-center gap-1.5 rounded-xl bg-cyan-400/10 border border-cyan-400/25 px-4 py-2 text-sm font-semibold text-cyan-100 hover:bg-cyan-400/15">
-                                {last ? "Done" : "Next"}
+                                {last ? t("done") : t("next")}
                                 {!last && <IconArrowRight className="h-3.5 w-3.5" />}
                             </button>
                         </div>

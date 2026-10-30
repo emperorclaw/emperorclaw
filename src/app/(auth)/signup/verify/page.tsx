@@ -5,14 +5,20 @@ import { useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { IconAlertTriangle, IconCircleCheck, IconLoader2, IconMailCheck } from "@tabler/icons-react";
 import { AuthBackground } from "@/components/auth-background";
+import { useTranslations } from "next-intl";
 import { CustomLogo } from "@/components/custom-logo";
+import { useApiError } from "@/lib/i18n/use-api-error";
 
 function VerifyEmailContent() {
+    const t = useTranslations("auth.verify");
+    const apiError = useApiError();
     const searchParams = useSearchParams();
     const email = searchParams?.get("email")?.trim().toLowerCase() || "";
     const token = searchParams?.get("token")?.trim() || "";
     const [status, setStatus] = useState<"loading" | "success" | "error">("loading");
-    const [message, setMessage] = useState("Verifying your email...");
+    // A server message, or one of ours (kept as a key so a language switch re-renders it).
+    const [message, setMessage] = useState<{ text: string } | { key: "incomplete" | "invalid" | "verified" | "networkError" } | null>(null);
+    const messageText = message === null ? t("verifying") : "text" in message ? apiError(message.text, message.text) : t(message.key);
 
     useEffect(() => {
         let cancelled = false;
@@ -21,7 +27,7 @@ function VerifyEmailContent() {
             if (!email || !token) {
                 if (!cancelled) {
                     setStatus("error");
-                    setMessage("This verification link is incomplete or malformed.");
+                    setMessage({ key: "incomplete" });
                 }
                 return;
             }
@@ -37,17 +43,17 @@ function VerifyEmailContent() {
                 if (!cancelled) {
                     if (!res.ok) {
                         setStatus("error");
-                        setMessage(data.error || "This verification link is invalid or expired.");
+                        setMessage(data.error ? { text: data.error } : { key: "invalid" });
                         return;
                     }
 
                     setStatus("success");
-                    setMessage(data.message || "Email verified. You can now log in.");
+                    setMessage(data.message ? { text: data.message } : { key: "verified" });
                 }
             } catch {
                 if (!cancelled) {
                     setStatus("error");
-                    setMessage("Network error while verifying your email. Try the link again.");
+                    setMessage({ key: "networkError" });
                 }
             }
         }
@@ -63,8 +69,8 @@ function VerifyEmailContent() {
         return (
             <div className="text-center space-y-4">
                 <IconLoader2 className="mx-auto h-8 w-8 animate-spin text-indigo-400" />
-                <h1 className="text-2xl font-semibold text-zinc-100 tracking-tight">Verifying your email</h1>
-                <p className="text-sm text-zinc-500">{message}</p>
+                <h1 className="text-2xl font-semibold text-zinc-100 tracking-tight">{t("verifyingTitle")}</h1>
+                <p className="text-sm text-zinc-500">{messageText}</p>
             </div>
         );
     }
@@ -75,16 +81,16 @@ function VerifyEmailContent() {
                 <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl border border-emerald-500/20 bg-emerald-500/10 text-emerald-300">
                     <IconCircleCheck className="h-7 w-7" />
                 </div>
-                <h1 className="text-2xl font-semibold text-zinc-100 tracking-tight">Workspace activated</h1>
-                <p className="text-sm text-zinc-400">{message}</p>
+                <h1 className="text-2xl font-semibold text-zinc-100 tracking-tight">{t("activatedTitle")}</h1>
+                <p className="text-sm text-zinc-400">{messageText}</p>
                 <div className="rounded-2xl border border-zinc-800 bg-zinc-950/50 p-4 text-left text-sm text-zinc-400">
-                    <p className="font-medium text-zinc-200">Before you continue</p>
+                    <p className="font-medium text-zinc-200">{t("beforeContinue")}</p>
                     <p className="mt-2">
-                        Emperor Claw remains beta software. Use the workspace carefully and keep critical or regulated data out of it.
+                        {t("betaBody")}
                     </p>
                 </div>
                 <Link href="/login" className="inline-flex items-center justify-center rounded-lg bg-indigo-600 px-5 py-3 font-medium text-white transition-colors hover:bg-indigo-500">
-                    Log in
+                    {t("logIn")}
                 </Link>
             </div>
         );
@@ -95,16 +101,26 @@ function VerifyEmailContent() {
             <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl border border-rose-500/20 bg-rose-500/10 text-rose-300">
                 <IconAlertTriangle className="h-7 w-7" />
             </div>
-            <h1 className="text-2xl font-semibold text-zinc-100 tracking-tight">Verification failed</h1>
-            <p className="text-sm text-zinc-400">{message}</p>
+            <h1 className="text-2xl font-semibold text-zinc-100 tracking-tight">{t("failedTitle")}</h1>
+            <p className="text-sm text-zinc-400">{messageText}</p>
             <div className="flex flex-col gap-3 sm:flex-row sm:justify-center">
                 <Link href={`/signup/check-email?email=${encodeURIComponent(email)}`} className="inline-flex items-center justify-center rounded-lg border border-zinc-700 px-5 py-3 font-medium text-zinc-200 transition-colors hover:border-zinc-500 hover:bg-zinc-900">
-                    Resend activation
+                    {t("resendActivation")}
                 </Link>
                 <Link href="/signup" className="inline-flex items-center justify-center rounded-lg bg-indigo-600 px-5 py-3 font-medium text-white transition-colors hover:bg-indigo-500">
-                    Create account again
+                    {t("createAgain")}
                 </Link>
             </div>
+        </div>
+    );
+}
+
+function VerifyLoading() {
+    const t = useTranslations("auth.verify");
+    return (
+        <div className="text-center space-y-4">
+            <IconMailCheck className="mx-auto h-8 w-8 text-indigo-400" />
+            <p className="text-sm text-zinc-500">{t("loading")}</p>
         </div>
     );
 }
@@ -122,12 +138,7 @@ export default function SignupVerifyPage() {
                 </div>
 
                 <div className="bg-zinc-900/60 backdrop-blur-2xl border border-zinc-800/80 p-8 rounded-3xl shadow-[0_8px_40px_rgba(0,0,0,0.4)]">
-                    <Suspense fallback={
-                        <div className="text-center space-y-4">
-                            <IconMailCheck className="mx-auto h-8 w-8 text-indigo-400" />
-                            <p className="text-sm text-zinc-500">Loading verification link...</p>
-                        </div>
-                    }>
+                    <Suspense fallback={<VerifyLoading />}>
                         <VerifyEmailContent />
                     </Suspense>
                 </div>

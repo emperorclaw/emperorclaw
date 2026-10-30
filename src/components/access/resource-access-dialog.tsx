@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";
 import { useTranslations } from "next-intl";
+import { useApiError } from "@/lib/i18n/use-api-error";
 import { IconLock, IconTrash, IconUserPlus } from "@tabler/icons-react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -69,6 +70,7 @@ export function ResourceAccessButton({ type, id, className }: { type: ResourceTy
 
 function ResourceAccessDialog({ type, id, onClose }: { type: ResourceType; id: string; onClose: () => void }) {
     const t = useTranslations("access.resource");
+    const apiError = useApiError();
     const tRole = useTranslations("access.roles");
     const tc = useTranslations("common");
     const [data, setData] = useState<AccessData | null>(null);
@@ -83,8 +85,8 @@ function ResourceAccessDialog({ type, id, onClose }: { type: ResourceType; id: s
     }, [url, t]);
 
     useEffect(() => {
-        load().catch((error) => { toast.error(error instanceof Error ? error.message : t("loadFailed")); onClose(); });
-    }, [load, onClose, t]);
+        load().catch((error) => { toast.error(apiError(error instanceof Error ? error.message : null, t("loadFailed"))); onClose(); });
+    }, [load, onClose, t, apiError]);
 
     const send = async (method: "POST" | "PATCH" | "DELETE", body: Record<string, unknown>, success: string) => {
         setBusy(true);
@@ -101,7 +103,7 @@ function ResourceAccessDialog({ type, id, onClose }: { type: ResourceType; id: s
             await load();
             return true;
         } catch (error) {
-            toast.error(error instanceof Error ? error.message : t("changeFailed"));
+            toast.error(apiError(error instanceof Error ? error.message : null, t("changeFailed")));
             return false;
         } finally {
             setBusy(false);

@@ -6,6 +6,7 @@ import { requireCompanyAccess } from "@/lib/company-access";
 import { getPlatformAdminSession } from "@/lib/platform-admin";
 import { canWrite } from "@/lib/role-matrix";
 import { getScopedAgentIds, type MemberScope } from "@/lib/member-scope";
+import { getTranslations } from "next-intl/server";
 import { PageHeader } from "@/components/page-header";
 import { BudgetClient } from "@/components/budget-client";
 import { costsSearch, drillDown, isoDay, parseCostsQuery, DAY_MS } from "@/lib/costs";
@@ -55,12 +56,11 @@ export default async function CostsPage({ searchParams }: { searchParams: Promis
         );
     }
 
+    const t = await getTranslations("costs");
     return (
         <div className="mx-auto max-w-[1400px] space-y-6 animate-in fade-in duration-500">
-            <PageHeader eyebrow="Finance" title="Costs"
-                description={query.tab === "budgets"
-                    ? "Click limit or model to edit inline. Toggle ✓ to disable models. Estimated usage: 80% warning; 100% blocks subsequent Codex/Hermes turns. Running turns can exceed the limit."
-                    : "What agent runs cost, by client, project, model and agent. Reported costs come from the runtime; estimated ones are priced from your model pricing table."} />
+            <PageHeader eyebrow={t("eyebrow")} title={t("title")}
+                description={query.tab === "budgets" ? t("budgetsDescription") : t("description")} />
             <CostsTabs active={query.tab} range={rangeView} />
             {body}
         </div>

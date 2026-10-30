@@ -9,6 +9,7 @@ import { IconArrowUpRight, IconMessage, IconRefresh } from "@tabler/icons-react"
 import { queuePromptPreview } from "@/lib/queue-prompt-preview";
 import { requiresHumanAction, type DashboardTeam, type SceneAgent, type SceneCommunication } from "@/lib/team-scene";
 import { useTimeAgo } from "@/lib/i18n/format";
+import { useCopy } from "@/lib/i18n/use-copy";
 import { useSceneCopy } from "./use-scene-copy";
 import { AgentAvatar, STATUS_COLOR } from "./agent-character";
 
@@ -25,6 +26,7 @@ export function SelectedAgent({ agent, canAct, now, onMessage, teams = [], commu
 }) {
     const t = useTranslations("home.selected");
     const tCommon = useTranslations("common");
+    const render = useCopy();
     const timeAgo = useTimeAgo();
     const scene = useSceneCopy();
     const router = useRouter();
@@ -69,8 +71,8 @@ export function SelectedAgent({ agent, canAct, now, onMessage, teams = [], commu
             <div className="min-h-0 flex-1 space-y-6 overflow-y-auto px-5 py-5 sm:px-6">
                 {decisions.length > 0 && <section aria-label={t("yourDecisions")} className="rounded-xl border border-amber-500/30 bg-amber-500/5 p-3">
                     <h3 className="mb-2 text-xs font-semibold text-amber-200">{t("needsDecision", { count: decisions.length })}</h3>
-                    <div className="space-y-2">{decisions.slice(0, 3).map((entry) => <Link key={entry.id} href={entry.href} className={LINK}><div className="min-w-0 flex-1"><p className="line-clamp-2 break-words text-sm font-medium">{entry.title}</p><p className="mt-1 text-xs text-amber-200">{entry.actionLabel || t("review")}</p></div><IconArrowUpRight className="h-4 w-4 shrink-0" /></Link>)}</div>
-                    {decisions.length > 3 && <details className="mt-2"><summary className="min-h-11 cursor-pointer py-3 text-xs text-amber-200">{t("moreDecisions", { count: decisions.length - 3 })}</summary><div className="space-y-2">{decisions.slice(3).map((entry) => <Link key={entry.id} href={entry.href} className={LINK}><span className="min-w-0 flex-1 break-words text-sm">{entry.title}</span><IconArrowUpRight className="h-4 w-4 shrink-0" /></Link>)}</div></details>}
+                    <div className="space-y-2">{decisions.slice(0, 3).map((entry) => <Link key={entry.id} href={entry.href} className={LINK}><div className="min-w-0 flex-1"><p className="line-clamp-2 break-words text-sm font-medium">{render(entry.titleCopy, entry.title)}</p><p className="mt-1 text-xs text-amber-200">{entry.actionLabel ? render(entry.actionCopy, entry.actionLabel) : t("review")}</p></div><IconArrowUpRight className="h-4 w-4 shrink-0" /></Link>)}</div>
+                    {decisions.length > 3 && <details className="mt-2"><summary className="min-h-11 cursor-pointer py-3 text-xs text-amber-200">{t("moreDecisions", { count: decisions.length - 3 })}</summary><div className="space-y-2">{decisions.slice(3).map((entry) => <Link key={entry.id} href={entry.href} className={LINK}><span className="min-w-0 flex-1 break-words text-sm">{render(entry.titleCopy, entry.title)}</span><IconArrowUpRight className="h-4 w-4 shrink-0" /></Link>)}</div></details>}
                 </section>}
 
                 <section aria-label={t("currentWork")}>
@@ -85,7 +87,7 @@ export function SelectedAgent({ agent, canAct, now, onMessage, teams = [], commu
                 {memberships.length > 0 && <section aria-label={t("teams")}><h3 className="mb-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">{t("teams")}</h3><div className="flex flex-wrap gap-2">{memberships.map((team) => <Link key={team.id} href={`/messages?group=${team.id}`} className="inline-flex min-h-11 max-w-full items-center rounded-lg border border-border px-3 text-sm transition hover:bg-black/[0.04] dark:hover:bg-white/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400"><span className="truncate">{team.name}{team.coordinator?.key === member.key ? ` · ${tCommon("coordinator")}` : ""}</span></Link>)}</div></section>}
 
                 {disconnected && <section className="rounded-xl border border-border p-3"><p className="text-sm font-medium">{t("runtimeUnavailable")}</p><p className="mt-1 text-xs leading-5 text-muted-foreground">{t("queuedHint")}</p>{canAct && member.canRestartRuntime && <button type="button" disabled={restarting} onClick={restart} className="mt-2 inline-flex min-h-11 items-center gap-2 rounded-lg border border-border px-3 text-sm hover:bg-muted disabled:opacity-50"><IconRefresh className="h-4 w-4" />{restarting ? t("restartingButton") : t("restartRuntime")}</button>}</section>}
-                {(observations.length > 0 || member.lastActivityAt) && <details className="border-t border-border"><summary className="min-h-11 cursor-pointer py-3 text-xs text-muted-foreground">{t("observations")}</summary><div className="space-y-2 pb-1">{member.lastActivityAt && <p className="text-xs text-muted-foreground">{t("lastSeen", { ago: timeAgo(member.lastActivityAt, now) })}</p>}{observations.map((entry) => <Link key={entry.id} href={entry.href} className={LINK}><span className="break-words text-sm text-muted-foreground">{entry.title}</span></Link>)}</div></details>}
+                {(observations.length > 0 || member.lastActivityAt) && <details className="border-t border-border"><summary className="min-h-11 cursor-pointer py-3 text-xs text-muted-foreground">{t("observations")}</summary><div className="space-y-2 pb-1">{member.lastActivityAt && <p className="text-xs text-muted-foreground">{t("lastSeen", { ago: timeAgo(member.lastActivityAt, now) })}</p>}{observations.map((entry) => <Link key={entry.id} href={entry.href} className={LINK}><span className="break-words text-sm text-muted-foreground">{render(entry.titleCopy, entry.title)}</span></Link>)}</div></details>}
             </div>
 
             <footer className="shrink-0 border-t border-border bg-background/90 px-5 pt-4 pb-[max(1rem,env(safe-area-inset-bottom))] sm:px-6">

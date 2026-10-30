@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { useTranslations } from "next-intl";
+import { useApiError } from "@/lib/i18n/use-api-error";
 import { IconLock } from "@tabler/icons-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -149,6 +150,7 @@ type AccessInfo = {
 /** The agent settings' "Who can use it" (its owner, owners and admins change it; others read it). */
 export function AgentAccessSettings({ agentId, onChanged }: { agentId: string; onChanged?: () => void }) {
     const t = useTranslations("access.agent");
+    const apiError = useApiError();
     const tc = useTranslations("common");
     const summarize = useAgentAccessSummary();
     const [info, setInfo] = useState<AccessInfo | null>(null);
@@ -187,7 +189,7 @@ export function AgentAccessSettings({ agentId, onChanged }: { agentId: string; o
             await load();
             onChanged?.();
         } catch (error) {
-            toast.error(error instanceof Error ? error.message : t("saveFailed"));
+            toast.error(apiError(error instanceof Error ? error.message : null, t("saveFailed")));
         } finally {
             setSaving(false);
         }

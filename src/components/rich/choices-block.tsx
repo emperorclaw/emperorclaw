@@ -2,6 +2,7 @@
 
 import React, { useState } from "react";
 import { IconCheck, IconLoader2 } from "@tabler/icons-react";
+import { useTranslations } from "next-intl";
 import type { ChoicesSpec } from "@/lib/rich-blocks";
 import { cn } from "@/lib/utils";
 import { useRichMessageActions } from "./rich-message-actions";
@@ -23,6 +24,7 @@ function normalize(text: string): string {
  * answer and locks, so a decision can't be sent twice after a reload.
  */
 export function ChoicesBlock({ spec }: { spec: ChoicesSpec }) {
+    const t = useTranslations("rich");
     const { sendPrompt, laterReplies } = useRichMessageActions();
     const [sending, setSending] = useState<number | null>(null);
     const [picked, setPicked] = useState<number | null>(null);
@@ -47,7 +49,7 @@ export function ChoicesBlock({ spec }: { spec: ChoicesSpec }) {
     return (
         <div className="not-prose my-3 w-full min-w-0 rounded-xl border border-zinc-800 bg-zinc-900/60 p-3">
             {spec.question && <div className="mb-2.5 text-sm font-medium text-zinc-100">{spec.question}</div>}
-            <div className="flex flex-wrap gap-2" role="group" aria-label={spec.question || "Choices"}>
+            <div className="flex flex-wrap gap-2" role="group" aria-label={spec.question || t("choices")}>
                 {spec.options.map((option, i) => {
                     const isChosen = chosen === i;
                     return (
@@ -75,7 +77,7 @@ export function ChoicesBlock({ spec }: { spec: ChoicesSpec }) {
                     );
                 })}
             </div>
-            {inert && <div className="mt-2 text-xs text-zinc-500">Reply in the chat to answer.</div>}
+            {inert && <div className="mt-2 text-xs text-zinc-500">{t("replyInChat")}</div>}
         </div>
     );
 }

@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { IconChevronDown, IconChevronUp, IconLoader2 } from "@tabler/icons-react";
+import { useTranslations } from "next-intl";
 import { cn } from "@/lib/utils";
 
 export type ModelOption = {
@@ -28,7 +29,7 @@ export function ModelSearchSelect({
     value,
     provider = "",
     onChange,
-    placeholder = "Not set — uses provider default",
+    placeholder: placeholderProp,
     disabled = false,
     saving = false,
     error,
@@ -44,6 +45,8 @@ export function ModelSearchSelect({
     error?: string | null;
     compact?: boolean;
 }) {
+    const t = useTranslations("modelSelect");
+    const placeholder = placeholderProp ?? t("notSet");
     const [open, setOpen] = useState(false);
     const [search, setSearch] = useState("");
     const ref = useRef<HTMLDivElement>(null);
@@ -100,7 +103,7 @@ export function ModelSearchSelect({
             >
                 <span className={cn("min-w-0 truncate", value ? "text-zinc-200" : "text-zinc-500")}>
                     {currentLabel}
-                    {currentUnavailable && <span className="ml-1.5 text-amber-400">(unavailable)</span>}
+                    {currentUnavailable && <span className="ml-1.5 text-amber-400">{t("unavailable")}</span>}
                 </span>
                 <span className="ml-2 shrink-0 text-zinc-500">
                     {saving
@@ -117,7 +120,7 @@ export function ModelSearchSelect({
                         <input
                             ref={inputRef}
                             type="search"
-                            placeholder="Search models…"
+                            placeholder={t("search")}
                             value={search}
                             onChange={(event) => setSearch(event.target.value)}
                             onKeyDown={(event) => {
@@ -145,7 +148,7 @@ export function ModelSearchSelect({
                         </button>
                         {currentUnavailable && (
                             <div className="border-y border-amber-500/10 bg-amber-500/5 px-3 py-2 text-xs text-amber-300">
-                                Current: {currentLabel} — disabled or missing from pricing
+                                {t("currentUnavailable", { label: currentLabel })}
                             </div>
                         )}
                         {filtered.map((option) => {
@@ -168,13 +171,13 @@ export function ModelSearchSelect({
                                         {option.label}
                                     </span>
                                     <span className="shrink-0 font-mono text-[10px] text-zinc-600">
-                                        ${(option.inputPricePer1k / 100).toFixed(2)}/1M
+                                        {`$${(option.inputPricePer1k / 100).toFixed(2)}/1M`}
                                     </span>
                                 </button>
                             );
                         })}
                         {filtered.length === 0 && (
-                            <div className="px-3 py-3 text-center text-xs text-zinc-500">No active models match</div>
+                            <div className="px-3 py-3 text-center text-xs text-zinc-500">{t("noMatches")}</div>
                         )}
                     </div>
                 </div>

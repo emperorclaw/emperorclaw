@@ -20,7 +20,8 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { runtimeSetupOf } from "@/lib/runtime-setup";
-import { providerTroubleLabel, type ProviderTrouble } from "@/lib/provider-trouble";
+import { providerTroubleHeadlineCopy, providerTroubleLabel, providerTroubleLabelCopy, type ProviderTrouble } from "@/lib/provider-trouble";
+import { useCopy } from "@/lib/i18n/use-copy";
 import { AgentDirectChat } from "@/components/agent-direct-chat";
 import { AgentInstructionsTab } from "./agent-instructions-tab";
 import { AgentMemoryTab } from "./agent-memory-tab";
@@ -150,6 +151,7 @@ export function AgentDetailPanel({ agentId, agentName, runtime = null }: {
     const t = useTranslations("agents.detail");
     const tc = useTranslations("common");
     const tStatus = useTranslations("agents.status");
+    const render = useCopy();
     const format = useFormatter();
     const llmLabel = (value: string) => value === CUSTOM_LLM_PROVIDER ? t("customEndpoint") : LLM_PROVIDER_LABELS[value] || value;
     // `?tab=scope` (a failure's "Open agent scope" fix) opens that tab.
@@ -389,7 +391,7 @@ export function AgentDetailPanel({ agentId, agentName, runtime = null }: {
                             <StatusDot status={agent.status} />
                             <span className="capitalize">{AGENT_STATUSES.has(agent.status) ? tStatus(agent.status as "online") : agent.status}</span>
                             {data.providerTrouble && agent.status !== "offline" && (
-                                <span className="text-rose-300" title={data.providerTrouble.headline}>· {providerTroubleLabel(data.providerTrouble.cause)}</span>
+                                <span className="text-rose-300" title={render(providerTroubleHeadlineCopy(data.providerTrouble.cause), data.providerTrouble.headline)}>· {render(providerTroubleLabelCopy(data.providerTrouble.cause), providerTroubleLabel(data.providerTrouble.cause))}</span>
                             )}
                             {agent.deploymentMode === "local" && (
                                 <span className="rounded bg-emerald-500/10 px-1.5 py-0.5 text-[10px] text-emerald-300 font-medium">{t("local")}</span>

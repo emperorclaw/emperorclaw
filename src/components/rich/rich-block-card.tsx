@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState } from "react";
+import { useTranslations } from "next-intl";
 import { IconChartBar, IconCheck, IconCode, IconCopy, IconLayoutGrid, IconSparkles } from "@tabler/icons-react";
 import { cn } from "@/lib/utils";
 
@@ -35,6 +36,7 @@ export function RichBlockCard({
     bleed?: boolean;
     children: React.ReactNode;
 }) {
+    const t = useTranslations("rich");
     const [showSource, setShowSource] = useState(false);
     const [copied, setCopied] = useState(false);
     const Icon = KIND_ICON[kind];
@@ -57,7 +59,7 @@ export function RichBlockCard({
                 </span>
                 <span className="min-w-0 flex-1">
                     <span className="block truncate text-[13px] font-semibold leading-6 text-zinc-100">
-                        {title || (kind === "chart" ? "Chart" : kind === "stats" ? "Overview" : "Interactive widget")}
+                        {title || (kind === "chart" ? t("chart") : kind === "stats" ? t("overview") : t("interactiveWidget"))}
                     </span>
                     {subtitle && <span className="-mt-0.5 block text-xs leading-snug text-zinc-500">{subtitle}</span>}
                 </span>
@@ -67,8 +69,8 @@ export function RichBlockCard({
                         type="button"
                         onClick={() => setShowSource((v) => !v)}
                         aria-pressed={showSource}
-                        aria-label={showSource ? "Hide source" : "View source"}
-                        title={showSource ? "Hide source" : "View source"}
+                        aria-label={showSource ? t("hideSource") : t("viewSource")}
+                        title={showSource ? t("hideSource") : t("viewSource")}
                         className={cn(
                             "inline-flex h-7 w-7 items-center justify-center rounded-md text-zinc-500 transition-colors hover:bg-zinc-800 hover:text-zinc-200",
                             showSource && "bg-zinc-800 text-zinc-200",
@@ -79,8 +81,8 @@ export function RichBlockCard({
                     <button
                         type="button"
                         onClick={copy}
-                        aria-label="Copy source"
-                        title="Copy source"
+                        aria-label={t("copySource")}
+                        title={t("copySource")}
                         className="inline-flex h-7 w-7 items-center justify-center rounded-md text-zinc-500 transition-colors hover:bg-zinc-800 hover:text-zinc-200"
                     >
                         {copied ? <IconCheck className="h-3.5 w-3.5 text-emerald-400" /> : <IconCopy className="h-3.5 w-3.5" />}

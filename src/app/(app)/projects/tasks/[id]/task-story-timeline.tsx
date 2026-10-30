@@ -24,9 +24,11 @@ import { cn } from "@/lib/utils";
 import { RunTimeline } from "@/components/run-timeline";
 import { RichText } from "@/components/rich-text";
 import { FailureFixButton } from "@/components/failure-fix";
+import { useCopy } from "@/lib/i18n/use-copy";
 import { describeFailure, type FixAudience } from "@/lib/failure-cause";
 import { formatRunDuration, formatTokenCount } from "@/lib/run-ledger-copy";
 import {
+    dayHeading,
     formatCost,
     groupStoryByDay,
     type RunOutcome,
@@ -135,13 +137,14 @@ function actorLabel(entry: StoryEventEntry, t: ReturnType<typeof useTranslations
 
 function EventRow({ entry, timeZone }: { entry: StoryEventEntry; timeZone: string }) {
     const t = useTranslations("tasks.timeline");
+    const render = useCopy();
     const fullTime = useFullTime();
     const { icon: Icon, className } = EVENT_ICON[entry.tone];
     const actor = actorLabel(entry, t);
     return (
         <Row time={timeLabel(entry.at, timeZone)} title={fullTime(entry.at, timeZone)} marker={<Icon className={cn("h-3 w-3", className)} aria-hidden="true" />}>
             <p className="text-sm leading-6 text-zinc-200">
-                {entry.text}
+                {render(entry.textCopy, entry.text)}
                 {actor && <span className="text-zinc-500"> · {actor}</span>}
             </p>
             {entry.note && (
@@ -245,6 +248,7 @@ const FIX_BUTTON = "inline-flex h-8 shrink-0 items-center gap-1.5 rounded-lg bg-
 
 /** A failed run's one plain cause and, on the task's latest run, its one fix. */
 function RunFailure({ run, fixContext }: { run: StoryRun; fixContext: RunFixContext | null }) {
+    const render = useCopy();
     const failure = describeFailure(
         { texts: [run.error, run.exitReason], runStatus: run.status },
         {
@@ -256,7 +260,7 @@ function RunFailure({ run, fixContext }: { run: StoryRun; fixContext: RunFixCont
         <div className="flex min-w-0 flex-col gap-2 border-t border-rose-500/15 bg-rose-500/[0.04] px-3 py-2 sm:flex-row sm:items-center">
             <p className="min-w-0 flex-1 text-xs leading-relaxed text-rose-200">
                 <IconAlertTriangle className="mr-1.5 inline h-3.5 w-3.5 -translate-y-px text-rose-300" aria-hidden="true" />
-                {failure.headline}
+                {render(failure.headlineCopy, failure.headline)}
                 {failure.detail && <span className="text-rose-200/70">: {failure.detail}</span>}
             </p>
             {failure.fix && <FailureFixButton fix={failure.fix} className={FIX_BUTTON} />}
@@ -375,10 +379,20 @@ function useFocusRunId(): string | null {
 
 export function TaskStoryTimeline({ entries, timeZone, nowIso, fixContext = null }: { entries: readonly StoryEntry[]; timeZone: string; nowIso: string; fixContext?: RunFixContext | null }) {
     const t = useTranslations("tasks.timeline");
+    const format = useFormatter();
     const focusRunId = useFocusRunId();
     const days = useMemo(() => groupStoryByDay(entries, { now: new Date(nowIso), timeZone }), [entries, nowIso, timeZone]);
     // Only the newest run can still be fixed; older failures keep their cause line without a button.
     const latestRunId = useMemo(() => entries.find((entry) => entry.kind === "run")?.id ?? null, [entries]);
+    const headingLabel = (key: string): string => {
+        const heading = dayHeading(key, new Date(nowIso), timeZone);
+        if (heading.kind === "today") return t("today");
+        if (heading.kind === "yesterday") return t("yesterday");
+        if (heading.kind === "raw") return key;
+        return format.dateTime(heading.date, heading.sameYear
+            ? { weekday: "short", month: "short", day: "numeric", timeZone: "UTC" }
+            : { month: "short", day: "numeric", year: "numeric", timeZone: "UTC" });
+    };
     if (entries.length === 0) {
         return (
             <div className="rounded-2xl border border-dashed border-zinc-800 px-5 py-10 text-center">
@@ -392,7 +406,7 @@ export function TaskStoryTimeline({ entries, timeZone, nowIso, fixContext = null
             {days.map((day) => (
                 <section key={day.key} aria-labelledby={`day-${day.key}`}>
                     <h3 id={`day-${day.key}`} className="mb-3 flex items-center gap-3">
-                        <span className="text-xs font-semibold text-zinc-300">{day.label}</span>
+                        <span className="text-xs font-semibold text-zinc-300">{headingLabel(day.key)}</span>
                         <span className="h-px flex-1 bg-zinc-800" aria-hidden="true" />
                     </h3>
                     <ol className="space-y-0">

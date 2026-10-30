@@ -1,7 +1,8 @@
 import { desc, isNull, sql } from "drizzle-orm";
 import { db } from "@/db";
 import { runtimeNodes } from "@/db/schema";
-import { OpsSection, OpsTable, formatDateTime } from "../ui";
+import { getTranslations } from "next-intl/server";
+import { OpsSection, OpsTable, getOpsFormat } from "../ui";
 
 export const dynamic = "force-dynamic";
 
@@ -37,22 +38,24 @@ export default async function OpsRuntimesPage() {
             limit 1
         )`,
     }).from(runtimeNodes).where(isNull(runtimeNodes.deletedAt)).orderBy(desc(runtimeNodes.lastSeenAt));
+    const [t, format] = await Promise.all([getTranslations("ops"), getOpsFormat()]);
+    const formatDateTime = format.dateTime;
 
     return (
         <OpsSection
-            title="Runtimes"
-            description="Runtime nodes, heartbeat freshness, recent session volume, and latest provisioning failures."
+            title={t("runtimes.title")}
+            description={t("runtimes.description")}
         >
-            <OpsTable headers={["Runtime", "Company", "Status", "Last Seen", "Started", "Sessions (7d)", "Last Provision Error"]} empty="No runtimes found.">
+            <OpsTable headers={[t("columns.runtime"), t("columns.company"), t("columns.status"), t("columns.lastSeen"), t("columns.started"), t("columns.sessions7d"), t("columns.lastProvisionError")]} empty={t("runtimes.empty")}>
                 {rows.map((runtime) => (
                     <tr key={runtime.id} className="align-top">
                         <td className="px-4 py-3">
                             <div className="font-medium text-zinc-200">{runtime.name}</div>
                             <div className="text-xs text-zinc-500">{runtime.runtimeId}</div>
-                            <div className="text-xs text-zinc-600">{runtime.hostname || "no hostname"}</div>
+                            <div className="text-xs text-zinc-600">{runtime.hostname || t("runtimes.noHostname")}</div>
                         </td>
                         <td className="px-4 py-3 text-zinc-400">
-                            <div>{runtime.companyName || "Unknown"}</div>
+                            <div>{runtime.companyName || t("unknown")}</div>
                             <div className="text-xs text-zinc-600">{runtime.companyId}</div>
                         </td>
                         <td className="px-4 py-3">
@@ -71,7 +74,7 @@ export default async function OpsRuntimesPage() {
                             {runtime.lastProvisionError ? (
                                 <div className="max-w-sm text-amber-300">{runtime.lastProvisionError}</div>
                             ) : (
-                                "None"
+                                t("none")
                             )}
                         </td>
                     </tr>

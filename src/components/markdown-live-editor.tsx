@@ -25,6 +25,7 @@ import {
   type MDXEditorMethods,
 } from "@mdxeditor/editor";
 import { forwardRef } from "react";
+import { useTranslations } from "next-intl";
 
 /**
  * A single live-preview markdown surface (Obsidian-style: edit and read are
@@ -37,6 +38,7 @@ export const MarkdownLiveEditor = forwardRef<MDXEditorMethods, {
   placeholder?: string;
   className?: string;
 }>(function MarkdownLiveEditor({ markdown, onChange, placeholder, className }, ref) {
+  const t = useTranslations("markdown");
   return (
     <MDXEditor
       ref={ref}
@@ -57,7 +59,7 @@ export const MarkdownLiveEditor = forwardRef<MDXEditorMethods, {
         codeBlockPlugin({ defaultCodeBlockLanguage: "" }),
         codeMirrorPlugin({
           codeBlockLanguages: {
-            "": "Plain text",
+            "": t("plainText"),
             js: "JavaScript",
             ts: "TypeScript",
             tsx: "TypeScript (React)",

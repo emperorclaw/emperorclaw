@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useMemo } from 'react';
+import { useTranslations } from 'next-intl';
 import ReactMarkdown, { defaultUrlTransform, type Components } from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import {
@@ -109,12 +110,13 @@ function wrapUnifiedDiffHunks(content: string): string {
 
 type CalloutType = 'note' | 'tip' | 'important' | 'warning' | 'caution';
 
-const CALLOUTS: Record<CalloutType, { label: string; icon: typeof IconInfoCircle; className: string; iconClass: string }> = {
-  note: { label: 'Note', icon: IconInfoCircle, className: 'border-sky-500/40 bg-sky-500/[0.06]', iconClass: 'text-sky-400' },
-  tip: { label: 'Tip', icon: IconBulb, className: 'border-emerald-500/40 bg-emerald-500/[0.06]', iconClass: 'text-emerald-400' },
-  important: { label: 'Important', icon: IconMessageReport, className: 'border-violet-500/40 bg-violet-500/[0.07]', iconClass: 'text-violet-400' },
-  warning: { label: 'Warning', icon: IconAlertTriangle, className: 'border-amber-500/40 bg-amber-500/[0.07]', iconClass: 'text-amber-400' },
-  caution: { label: 'Caution', icon: IconExclamationCircle, className: 'border-rose-500/40 bg-rose-500/[0.07]', iconClass: 'text-rose-400' },
+// Titles: markdown.callouts.{type} in messages/*.json.
+const CALLOUTS: Record<CalloutType, { icon: typeof IconInfoCircle; className: string; iconClass: string }> = {
+  note: { icon: IconInfoCircle, className: 'border-sky-500/40 bg-sky-500/[0.06]', iconClass: 'text-sky-400' },
+  tip: { icon: IconBulb, className: 'border-emerald-500/40 bg-emerald-500/[0.06]', iconClass: 'text-emerald-400' },
+  important: { icon: IconMessageReport, className: 'border-violet-500/40 bg-violet-500/[0.07]', iconClass: 'text-violet-400' },
+  warning: { icon: IconAlertTriangle, className: 'border-amber-500/40 bg-amber-500/[0.07]', iconClass: 'text-amber-400' },
+  caution: { icon: IconExclamationCircle, className: 'border-rose-500/40 bg-rose-500/[0.07]', iconClass: 'text-rose-400' },
 };
 
 interface MdNode {
@@ -241,6 +243,7 @@ function entityOnlyParagraph(node: HastNode | undefined): { entityRef: EntityRef
 export function MarkdownRenderer({ content, className = "", depth = 0, density = 'default', allowWidgets = true, allowImages = true, isLinkAllowed }: MarkdownRendererProps) {
   const normalizedContent = ensureBlankBeforeFences(repairMarkdownTables(wrapUnifiedDiffHunks(content)));
   const compact = density === 'compact';
+  const t = useTranslations('markdown');
 
   const components = useMemo<Components>(() => ({
     h1: styled('h1', compact ? 'mb-2 mt-4 text-base font-semibold text-zinc-100 first:mt-0' : 'text-2xl font-bold mb-4 mt-6 text-zinc-100 border-b border-zinc-800 pb-2'),
@@ -280,7 +283,7 @@ export function MarkdownRenderer({ content, className = "", depth = 0, density =
       return (
         <span
           role="img"
-          aria-label={checked ? 'Done' : 'Not done'}
+          aria-label={checked ? t('done') : t('notDone')}
           className={cn(
             'mt-[0.3em] inline-flex h-3.5 w-3.5 shrink-0 items-center justify-center rounded-[4px] border',
             checked ? 'border-emerald-500/60 bg-emerald-500/20 text-emerald-300' : 'border-zinc-600 bg-zinc-900',
@@ -309,7 +312,7 @@ export function MarkdownRenderer({ content, className = "", depth = 0, density =
           <div role="note" className={`not-prose mb-4 rounded-lg border-l-[3px] px-4 py-2.5 text-sm text-zinc-300 [&>div:last-child]:mb-0 ${callout.className}`}>
             <div className={`mb-1 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider ${callout.iconClass}`}>
               <Icon className="h-4 w-4" />
-              {title || callout.label}
+              {title || t(`callouts.${type!}`)}
             </div>
             {children}
           </div>
@@ -342,19 +345,19 @@ export function MarkdownRenderer({ content, className = "", depth = 0, density =
       if (!allowImages) return alt ? <span>{alt}</span> : null;
       const url = typeof src === 'string' ? src : '';
       const entityRef = parseEntityUrl(url);
-      if (entityRef?.kind === 'artifact') return <EntityCard entityRef={entityRef} label={alt || 'File'} />;
+      if (entityRef?.kind === 'artifact') return <EntityCard entityRef={entityRef} label={alt || t('file')} />;
       const loadable = /^(https?:|data:image\/|blob:)/i.test(url) || (url.startsWith('/') && !url.startsWith('//') && /^\/(api|_next|icon)/.test(url));
       if (!loadable) {
         return (
           <span className="not-prose inline-flex items-center gap-1.5 rounded-md border border-dashed border-zinc-700 px-2 py-1 text-xs text-zinc-500" title={url}>
-            Image unavailable{alt ? `: ${alt}` : ''}
+            {alt ? t('imageUnavailableAlt', { alt }) : t('imageUnavailable')}
           </span>
         );
       }
       // eslint-disable-next-line @next/next/no-img-element
       return <img src={url} alt={alt ?? ''} loading="lazy" className="my-2 max-w-full rounded-lg border border-zinc-800" {...props} />;
     },
-  }), [depth, compact, allowWidgets, density, allowImages, isLinkAllowed]);
+  }), [depth, compact, allowWidgets, density, allowImages, isLinkAllowed, t]);
 
   return (
     // Nested renderers (tab bodies) skip the `prose` hook class so chat

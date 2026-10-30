@@ -7,7 +7,8 @@ const root = path.resolve(__dirname, "../..");
 const read = (file) => fs.readFileSync(path.join(root, file), "utf8");
 
 test("direct chat exposes a per-message queue instead of only a global stop", () => {
-    const ui = read("src/components/agent-direct-chat.tsx");
+    // The component's copy lives in messages/en.json (i18n).
+    const ui = `${read("src/components/agent-direct-chat.tsx")}\n${read("messages/en.json")}`;
     assert.match(ui, /Message queue/);
     assert.match(ui, /Handling now/);
     assert.match(ui, /onCancel/);

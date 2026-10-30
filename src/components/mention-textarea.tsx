@@ -1,6 +1,7 @@
 "use client";
 
 import { forwardRef, useImperativeHandle, useMemo, useRef, useState, type KeyboardEvent } from "react";
+import { useTranslations } from "next-intl";
 import { agentAvatarSrc } from "@/lib/avatar";
 import { cn } from "@/lib/utils";
 
@@ -38,6 +39,7 @@ export const MentionTextarea = forwardRef<HTMLTextAreaElement, MentionTextareaPr
     { value, onValueChange, agents, onSubmit, placeholder, className, rows = 1, style, disabled },
     forwardedRef
 ) {
+    const t = useTranslations("mentions");
     const innerRef = useRef<HTMLTextAreaElement>(null);
     useImperativeHandle(forwardedRef, () => innerRef.current as HTMLTextAreaElement);
 
@@ -135,7 +137,7 @@ export const MentionTextarea = forwardRef<HTMLTextAreaElement, MentionTextareaPr
             {mentionOpen && (
                 <div className="absolute bottom-full left-0 z-20 mb-2 w-56 overflow-hidden rounded-xl border border-zinc-700 bg-zinc-900 shadow-2xl">
                     <div className="border-b border-zinc-800 px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider text-zinc-500">
-                        {mentionQuery ? `Mention "${mentionQuery}"` : "Mention agent"}
+                        {mentionQuery ? t("mentionQuery", { query: mentionQuery }) : t("mentionAgent")}
                     </div>
                     <div className="max-h-48 overflow-y-auto p-1">
                         {filteredAgents.map((agent, index) => (
@@ -169,7 +171,7 @@ export const MentionTextarea = forwardRef<HTMLTextAreaElement, MentionTextareaPr
                                 </div>
                                 <span className="min-w-0">
                                     <span className="block truncate text-sm text-zinc-300">{agent.name}</span>
-                                    {agent.hint && <span className="block truncate text-[11px] text-zinc-500">{agent.hint}</span>}
+                                    {agent.hint && <span className="block truncate text-[11px] text-zinc-500">{agent.id === EVERYONE_MENTION.id ? t("everyone") : agent.hint}</span>}
                                 </span>
                             </button>
                         ))}

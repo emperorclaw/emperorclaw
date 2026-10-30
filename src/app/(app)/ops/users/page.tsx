@@ -1,7 +1,8 @@
 import { desc, isNull, sql } from "drizzle-orm";
 import { db } from "@/db";
 import { users } from "@/db/schema";
-import { OpsSection, OpsTable, formatDateOnly, formatDateTime } from "../ui";
+import { getTranslations } from "next-intl/server";
+import { OpsSection, OpsTable, getOpsFormat } from "../ui";
 
 export const dynamic = "force-dynamic";
 
@@ -22,13 +23,15 @@ export default async function OpsUsersPage() {
             where sessions.user_id = ${users.id}
         )`,
     }).from(users).where(isNull(users.deletedAt)).orderBy(desc(users.createdAt));
+    const [t, format] = await Promise.all([getTranslations("ops"), getOpsFormat()]);
+    const { dateTime: formatDateTime, dateOnly: formatDateOnly } = format;
 
     return (
         <OpsSection
-            title="Users"
-            description="Platform-wide account list with verification and recent activity."
+            title={t("users.title")}
+            description={t("users.description")}
         >
-            <OpsTable headers={["Email", "Created", "Verified", "Companies", "Last Session"]} empty="No users found.">
+            <OpsTable headers={[t("columns.email"), t("columns.created"), t("columns.verified"), t("columns.companies"), t("columns.lastSession")]} empty={t("noUsers")}>
                 {rows.map((user) => (
                     <tr key={user.id}>
                         <td className="px-4 py-3">
@@ -40,7 +43,7 @@ export default async function OpsUsersPage() {
                             {user.emailVerifiedAt ? (
                                 <span className="text-emerald-300">{formatDateTime(user.emailVerifiedAt)}</span>
                             ) : (
-                                <span className="text-amber-300">Pending</span>
+                                <span className="text-amber-300">{t("pending")}</span>
                             )}
                         </td>
                         <td className="px-4 py-3 text-zinc-400">{user.companyCount}</td>

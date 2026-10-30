@@ -7,7 +7,8 @@
 
 import { clipForRedaction, redactSensitive } from "@/lib/redact-sensitive";
 import { taskHref } from "@/lib/task-story";
-import { actionLabel } from "@/lib/action-policy";
+import { actionCatalogEntry, actionLabel } from "@/lib/action-policy";
+import { copy, type CodedCopy, type CopyValue } from "@/lib/coded-copy";
 
 export type AuditActorType = "human" | "agent" | "system";
 
@@ -290,6 +291,9 @@ const VERBS: Record<string, string> = {
     "company.direct_chat_mode_changed": "changed company settings",
 };
 
+/** Every action with its own sentence template at activity.sentences.<action> in en.json. */
+export const AUDIT_SENTENCE_ACTIONS: readonly string[] = Object.keys(VERBS);
+
 const SETTING_LABELS: Record<string, string> = {
     directChatMode: "direct chat mode", contextNotes: "company context", agentRoutine: "daily agent routine", instance: "instance settings", modules: "modules",
 };
@@ -315,6 +319,17 @@ export type AuditSentence = {
     noun: string;
     label: string | null;
     detail: string | null;
+    /**
+     * Coded copy for the UI (lib/coded-copy.ts), so the sentence reads in the
+     * viewer's language with its own word order. The English fields above stay
+     * as they are for API readers. sentenceKey is null for an unknown action
+     * (the UI then shows the English parts); the other copies are null when the
+     * English field is a plain name or empty.
+     */
+    sentenceKey: string | null;
+    actorCopy: CodedCopy | null;
+    labelCopy: CodedCopy | null;
+    detailCopy: CodedCopy | null;
 };
 
 /** Words for anything not on the verb list, e.g. "create_incident" → "create incident". */
@@ -333,6 +348,74 @@ function permissionWord(value: unknown): string {
 
 export function formatCents(cents: number): string {
     return `$${(cents / 100).toFixed(2)}`;
+}
+
+/** A coded word when the message knows `value`, else the raw value. */
+function word(key: string, known: Readonly<Record<string, unknown>>, value: string): CopyValue {
+    return Object.prototype.hasOwnProperty.call(known, value) ? copy(`${key}.${value}`) : value;
+}
+
+const ROLE_WORDS: Record<string, true> = { owner: true, admin: true, member: true, viewer: true };
+
+/** detailFor as coded copy (activity.details.*); keep the two in step. */
+function detailCopyFor(action: string, payload: AuditPayload, names: Readonly<Record<string, string>>): CodedCopy | null {
+    const after = payload.after ?? {};
+    const meta = payload.meta ?? {};
+    const d = (key: string, values?: Record<string, CopyValue>) => copy(`activity.details.${key}`, values);
+    const resourceRole = (role: string) => word("access.roles", RESOURCE_ROLE_WORDS, role);
+    switch (action) {
+        case "task.state_changed":
+            return typeof after.state === "string" ? d("toState", { state: word("tasks.states", STATE_LABELS, after.state) }) : null;
+        case "task.assigned": {
+            const id = typeof after.assigneeId === "string" ? after.assigneeId : null;
+            if (!id) return d("toNobody");
+            return d("toName", { name: names[id] ?? copy(after.assigneeType === "member" ? "activity.words.aPerson" : "activity.words.anAgent") });
+        }
+        case "member.role_changed":
+            return typeof after.role === "string" ? d("toRole", { role: word("activity.words.roles", ROLE_WORDS, after.role) }) : null;
+        case "member.invited":
+            if (typeof meta.resourceName === "string" && typeof after.resourceRole === "string") return d("invitedTo", { resource: meta.resourceName, role: resourceRole(after.resourceRole) });
+            return typeof after.role === "string" ? d("asRole", { role: word("activity.words.roles", ROLE_WORDS, after.role) }) : null;
+        case "member.access_granted":
+        case "member.access_changed": {
+            const resource: CopyValue = typeof meta.resourceName === "string" ? meta.resourceName : copy("activity.words.someResource");
+            const role = typeof after.resourceRole === "string" ? resourceRole(after.resourceRole) : null;
+            if (action === "member.access_granted") return role ? d("accessToAs", { resource, role }) : d("accessTo", { resource });
+            return role ? d("onResourceTo", { resource, role }) : d("onResource", { resource });
+        }
+        case "member.access_removed":
+            return typeof meta.resourceName === "string" ? d("onResource", { resource: meta.resourceName }) : null;
+        case "agent.access_changed":
+            return after.access === "everyone" || after.access === "people" || after.access === "owner" ? d(`agentAccess.${after.access}`) : null;
+        case "agent.owner_transferred":
+        case "view.owner_transferred":
+            return typeof meta.toName === "string" && meta.toName ? d("toName", { name: meta.toName }) : null;
+        case "company.settings_changed":
+            return typeof meta.setting === "string" && SETTING_LABELS[meta.setting] ? d("setting", { setting: copy(`activity.words.settings.${meta.setting}`) }) : null;
+        case "agent.permission_changed":
+        case "company.permission_changed": {
+            const key = typeof after.actionKey === "string" ? after.actionKey : null;
+            if (!key) return null;
+            const permission = typeof after.permission === "string" ? word("activity.words.permissions", PERMISSION_WORDS, after.permission) : copy("activity.words.permissions.default");
+            return d("permission", { action: actionCatalogEntry(key) ? copy(`agents.actions.catalog.${key}`) : actionLabel(key), permission });
+        }
+        case "agent.budget_changed":
+            return typeof after.monthlyBudgetCents === "number"
+                ? after.monthlyBudgetCents > 0 ? d("budgetMonthly", { amount: formatCents(after.monthlyBudgetCents) }) : d("budgetNoLimit")
+                : null;
+        case "view.reverted":
+            return typeof meta.fromVersion === "number" ? d("toVersion", { version: String(meta.fromVersion) }) : null;
+        case "view.visibility_changed":
+            return after.visibility === "private" || after.visibility === "shared" || after.visibility === "scope" ? d(`viewVisibility.${after.visibility}`) : null;
+        case "knowledge_note.moved":
+            return typeof after.path === "string" ? d("toPath", { path: after.path }) : d("toTopLevel");
+        case "approval.approved":
+        case "approval.rejected":
+        case "approval.dismissed":
+            return typeof meta.count === "number" && meta.count > 1 ? d("taskCount", { count: String(meta.count) }) : null;
+        default:
+            return null;
+    }
 }
 
 function detailFor(action: string, payload: AuditPayload, names: Readonly<Record<string, string>>): string | null {
@@ -410,7 +493,15 @@ export function describeAuditEntry(entry: AuditEntryInput, names: Readonly<Recor
     const sentenceNamesTarget = entry.targetType === "company" || entry.targetType === "organization";
     const label = sentenceNamesTarget ? null : pickLabel(meta, after, before);
     const noun = sentenceNamesTarget ? "" : TARGET_NOUNS[entry.targetType] ?? entry.targetType.replace(/_/g, " ");
-    return { actor, verb, noun, label: label ?? (sentenceNamesTarget ? null : "(untitled)"), detail: detailFor(entry.action, entry.payload, names) };
+    const untitled = !sentenceNamesTarget && label === null;
+    const unnamedActor = entry.actorType === "agent" ? "agent" : entry.actorType === "human" ? "human" : "system";
+    return {
+        actor, verb, noun, label: label ?? (untitled ? "(untitled)" : null), detail: detailFor(entry.action, entry.payload, names),
+        sentenceKey: Object.prototype.hasOwnProperty.call(VERBS, entry.action) ? `activity.sentences.${entry.action}` : null,
+        actorCopy: entry.actorName ? null : copy(`activity.unnamedActors.${unnamedActor}`),
+        labelCopy: untitled ? copy("activity.untitled") : null,
+        detailCopy: detailCopyFor(entry.action, entry.payload, names),
+    };
 }
 
 /** A label that redaction emptied ("[email]"); an older member row stored one. */

@@ -28,7 +28,8 @@ import { isMissingSchemaError } from "@/lib/schema-compat";
 import { TASK_STATES } from "@/lib/task-state";
 import { classifyIncident, filterPausedNotices, isIncidentStale, type AttentionEntry, type PausedNotice } from "@/lib/team-scene";
 import { loadStallSignals } from "@/lib/stall-signal-reads";
-import { stallLabel } from "@/lib/stall-signal";
+import { stallLabel, stallLabelCopy } from "@/lib/stall-signal";
+import { copy, type CodedCopy } from "@/lib/coded-copy";
 import { taskHref as taskPageHref } from "@/lib/task-story";
 import { describeFailure, fixAudience, type FailureView } from "@/lib/failure-cause";
 import { applyAttentionScope, attentionCounts, latestFailedRuns, plainText, workingNowAgentIds, sortAttention, type AttentionCounts, type AttentionScope } from "@/lib/attention-rules";
@@ -121,6 +122,15 @@ const humanize = (value: string) => value.replace(/_/g, " ");
 function failureReason(failure: FailureView): string {
     return failure.detail ? `${failure.headline}: ${failure.detail}` : failure.headline;
 }
+
+/** failureReason as coded copy (inbox.entries.*), for the viewer's language. */
+function failureReasonCopy(failure: FailureView): CodedCopy {
+    return failure.detail ? copy("inbox.entries.reasons.causeWithDetail", { cause: failure.headlineCopy, detail: failure.detail }) : failure.headlineCopy;
+}
+
+const entryTitle = (key: string, values?: Record<string, string | CodedCopy>) => copy(`inbox.entries.titles.${key}`, values);
+const entryAction = (key: string) => copy(`inbox.entries.actions.${key}`);
+const entryArea = (key: string) => copy(`inbox.entries.areas.${key}`);
 
 function blockedReasonOf(inputJson: unknown): string | null {
     const input = inputJson && typeof inputJson === "object" ? inputJson as Record<string, unknown> : {};
@@ -303,14 +313,14 @@ export async function buildAttention(companyId: string, access: AttentionAccess,
         const key = assigneeKey({ assignedAgentId: i.assignedAgentId ?? null, assignedMemberId: i.assignedMemberId ?? null });
         const base = {
             id: `incident:${i.id}`, title, memberKey: key, memberName: memberName(key), at: i.createdAt.toISOString(),
-            actionLabel: "Open task", href: taskHref(i.projectId, i.taskId), taskId: i.taskId, ...context(i.projectId),
+            actionLabel: "Open task", actionCopy: entryAction("openTask"), href: taskHref(i.projectId, i.taskId), taskId: i.taskId, ...context(i.projectId),
         };
         if (cls === "problem") {
             // A known cause (credits, key, scope...) replaces the watchdog's code; an unknown one keeps it (and Reassign).
             const failure = describeFailure({ texts: [i.summary, i.reasonCode] }, { audience, agentId: i.assignedAgentId ?? null, taskId: i.taskId });
             entries.push(failure.cause === "unknown"
-                ? { ...base, kind: "incident", reason: shortReason(i.reasonCode) }
-                : { ...base, kind: "incident", reason: failure.headline, failure, agentId: i.assignedAgentId ?? null });
+                ? { ...base, kind: "incident", reason: shortReason(i.reasonCode), ...(shortReason(i.reasonCode) === "task exceeded retries" ? { reasonCopy: copy("inbox.entries.reasons.exceededRetries") } : {}) }
+                : { ...base, kind: "incident", reason: failure.headline, reasonCopy: failure.headlineCopy, failure, agentId: i.assignedAgentId ?? null });
         }
         else if (cls === "late") entries.push({ ...base, kind: "late" });
         else entries.push({ ...base, kind: "not_started", actionRequired: !key });
@@ -331,9 +341,10 @@ export async function buildAttention(companyId: string, access: AttentionAccess,
         entries.push({
             id: `agent:${a.id}`, kind: "agent",
             title: failure.cause !== "runtime_offline" ? `${a.name} is blocked` : a.status === "down" ? `${a.name} has no recent connection with work waiting` : `${a.name} is offline with work in progress`,
-            reason: failure.headline, failure,
+            titleCopy: entryTitle(failure.cause !== "runtime_offline" ? "agentBlocked" : a.status === "down" ? "agentNoConnection" : "agentOfflineWithWork", { name: a.name }),
+            reason: failure.headline, reasonCopy: failure.headlineCopy, failure,
             memberKey: `agent:${a.id}`, memberName: a.name, area: a.role, at: a.lastSeenAt ?? now.toISOString(),
-            actionLabel: "Inspect connection", href: `/agents?agent=${a.id}`, agentId: a.id, canRestartRuntime: canRestart(a.id),
+            actionLabel: "Inspect connection", actionCopy: entryAction("inspectConnection"), href: `/agents?agent=${a.id}`, agentId: a.id, canRestartRuntime: canRestart(a.id),
             // A connected but blocked agent's lastSeenAt moves every heartbeat: only a new offline spell is a new item.
             fingerprintSeed: offline ? `offline:${a.lastSeenAt ?? "never"}` : "connected",
         });
@@ -351,8 +362,10 @@ export async function buildAttention(companyId: string, access: AttentionAccess,
             id: `approval:${approval.id}`, kind: "approval",
             title: askFirst ? `Allow once: ${actionLabel(approval.actionType)}`
                 : approval.actionType === "task_done" ? `Approve ${excerpt(what, 52)}` : `Approve ${humanize(approval.actionType)}: ${excerpt(what, 40)}`,
+            titleCopy: askFirst ? entryTitle("allowOnce", { action: copy(`agents.actions.catalog.${approval.actionType}`) })
+                : approval.actionType === "task_done" ? entryTitle("approve", { what: excerpt(what, 52) }) : entryTitle("approveAction", { action: humanize(approval.actionType), what: excerpt(what, 40) }),
             memberKey: key, memberName: memberName(key), at: approval.requestedAt.toISOString(),
-            actionLabel: approval.actionType === "task_done" ? "Review work" : "Review request", href: "/approvals",
+            actionLabel: approval.actionType === "task_done" ? "Review work" : "Review request", actionCopy: entryAction(approval.actionType === "task_done" ? "reviewWork" : "reviewRequest"), href: "/approvals",
             approvalId: approval.id, taskId: first?.id ?? null, taskCount: linked.length,
             detail: askFirst ? null : approval.rationale ? excerpt(approval.rationale, 180) : null,
             ...(askFirst ? { actionArgs: storedActionArgs(approval.metadataJson) } : {}),
@@ -365,7 +378,8 @@ export async function buildAttention(companyId: string, access: AttentionAccess,
         coveredTasks.add(t.id);
         entries.push({
             id: `approval:task:${t.id}`, kind: "approval", title: `Approve ${excerpt(taskTitle(t.inputJson, t.taskType), 52)}`,
-            memberKey: key, memberName: memberName(key), at: t.updatedAt.toISOString(), actionLabel: "Review work", href: "/approvals",
+            titleCopy: entryTitle("approve", { what: excerpt(taskTitle(t.inputJson, t.taskType), 52) }),
+            memberKey: key, memberName: memberName(key), at: t.updatedAt.toISOString(), actionLabel: "Review work", actionCopy: entryAction("reviewWork"), href: "/approvals",
             taskId: t.id, taskCount: 1, ...context(t.projectId),
         });
     }
@@ -390,18 +404,19 @@ export async function buildAttention(companyId: string, access: AttentionAccess,
         entries.push({
             id: `message:${item.messageId}`, kind: "message",
             title: item.kind === "failed" ? `Message failed: “${excerpt(item.text, 40)}”` : `Awaiting agent response: “${excerpt(item.text, 36)}”`,
-            ...(failure ? { reason: failureReason(failure), failure } : {}),
-            memberKey: `agent:${item.agentId}`, memberName: item.agentName, area: "Messages", at: item.since,
-            actionLabel: item.kind === "failed" ? "Inspect delivery" : "Open chat", href, threadId: thread?.threadId ?? null,
+            titleCopy: item.kind === "failed" ? entryTitle("messageFailed", { text: excerpt(item.text, 40) }) : entryTitle("awaitingResponse", { text: excerpt(item.text, 36) }),
+            ...(failure ? { reason: failureReason(failure), reasonCopy: failureReasonCopy(failure), failure } : {}),
+            memberKey: `agent:${item.agentId}`, memberName: item.agentName, area: "Messages", areaCopy: entryArea("messages"), at: item.since,
+            actionLabel: item.kind === "failed" ? "Inspect delivery" : "Open chat", actionCopy: entryAction(item.kind === "failed" ? "inspectDelivery" : "openChat"), href, threadId: thread?.threadId ?? null,
             actionRequired: item.kind === "failed",
         });
     }
 
     for (const n of pausedNotices) {
         entries.push({
-            id: `paused:${n.id}`, kind: "paused", title: "Agents were going back and forth without progress",
-            memberKey: null, memberName: null, area: "Team chat", at: n.createdAt,
-            actionLabel: "Resume", href: "/messages", threadId: n.threadId,
+            id: `paused:${n.id}`, kind: "paused", title: "Agents were going back and forth without progress", titleCopy: entryTitle("paused"),
+            memberKey: null, memberName: null, area: "Team chat", areaCopy: entryArea("teamChat"), at: n.createdAt,
+            actionLabel: "Resume", actionCopy: entryAction("resume"), href: "/messages", threadId: n.threadId,
         });
     }
 
@@ -429,8 +444,9 @@ export async function buildAttention(companyId: string, access: AttentionAccess,
         );
         entries.push({
             id: `run:${run.id}`, kind: "run_failed", title: `${name}'s last run ${run.status === "timeout" ? "timed out" : run.status === "lost" ? "was lost" : "failed"}`,
-            reason: failureReason(failure), failure, memberKey: `agent:${run.agentId}`, memberName: name, area: healthById.get(run.agentId)?.role ?? null,
-            at: (run.endedAt ?? run.startedAt).toISOString(), actionLabel: "Open runs", href: `/agents?agent=${run.agentId}`,
+            titleCopy: entryTitle(run.status === "timeout" ? "runTimedOut" : run.status === "lost" ? "runLost" : "runFailed", { name }),
+            reason: failureReason(failure), reasonCopy: failureReasonCopy(failure), failure, memberKey: `agent:${run.agentId}`, memberName: name, area: healthById.get(run.agentId)?.role ?? null,
+            at: (run.endedAt ?? run.startedAt).toISOString(), actionLabel: "Open runs", actionCopy: entryAction("openRuns"), href: `/agents?agent=${run.agentId}`,
             agentId: run.agentId, runId: run.id, canRestartRuntime: canRestart(run.agentId),
         });
     }
@@ -449,13 +465,18 @@ export async function buildAttention(companyId: string, access: AttentionAccess,
         const failure = blockedReason ? describeFailure({ texts: [blockedReason] }, { audience, agentId: t.assignedAgentId, taskId: t.id }) : null;
         const known = failure && failure.cause !== "unknown" ? failure : null;
         const stateLine = known ? `${state}: ${known.headline}` : state;
+        const stateCopy = copy(`inbox.entries.reasons.${t.state === TASK_STATES.blocked ? "stateBlocked" : t.state === TASK_STATES.deadLetter ? "stateGaveUp" : "stateFailed"}`);
+        const stateLineCopy = known ? copy("inbox.entries.reasons.stateWithCause", { state: stateCopy, cause: known.headlineCopy }) : stateCopy;
         entries.push({
             id: request ? `request:${request.id}` : `task:${t.id}`, kind: request ? "request" : "task_blocked",
             title: taskTitle(t.inputJson, t.taskType),
             reason: request ? `${stateLine}. Requested from ${request.requestedBy ? `${request.requestedBy} via ` : ""}${request.source}` : stateLine,
+            reasonCopy: !request ? stateLineCopy : request.requestedBy
+                ? copy("inbox.entries.reasons.requestedFromVia", { state: stateLineCopy, by: request.requestedBy, source: request.source })
+                : copy("inbox.entries.reasons.requestedFrom", { state: stateLineCopy, source: request.source }),
             ...(known ? { failure: known } : {}),
             memberKey: key, memberName: memberName(key), at: t.updatedAt.toISOString(),
-            actionLabel: "Open task", href: taskHref(t.projectId, t.id), taskId: t.id, ...context(t.projectId),
+            actionLabel: "Open task", actionCopy: entryAction("openTask"), href: taskHref(t.projectId, t.id), taskId: t.id, ...context(t.projectId),
         });
     }
 
@@ -478,8 +499,10 @@ export async function buildAttention(companyId: string, access: AttentionAccess,
         entries.push({
             id: `stall:${stall.runId}`, kind: "stalled",
             title: task ? taskTitle(task.inputJson, task.taskType) : `${name} is running with no progress`,
-            reason: stallLabel(stall), failure: { ...stallFailure, headline: stallLabel(stall) }, memberKey: `agent:${stall.agentId}`, memberName: name,
-            at: stall.lastUsefulAt, actionLabel: task ? "Open task" : "Open agent",
+            ...(task ? {} : { titleCopy: entryTitle("stalledAgent", { name }) }),
+            reason: stallLabel(stall), reasonCopy: stallLabelCopy(stall),
+            failure: { ...stallFailure, headline: stallLabel(stall), headlineCopy: stallLabelCopy(stall) }, memberKey: `agent:${stall.agentId}`, memberName: name,
+            at: stall.lastUsefulAt, actionLabel: task ? "Open task" : "Open agent", actionCopy: entryAction(task ? "openTask" : "openAgent"),
             href: task ? taskPageHref(task.id, stall.runId) : `/agents?agent=${stall.agentId}`,
             agentId: stall.agentId, runId: stall.runId, taskId: task?.id ?? null, canRestartRuntime: canRestart(stall.agentId),
             ...(task ? context(task.projectId) : { area: healthById.get(stall.agentId)?.role ?? null }),
@@ -492,8 +515,8 @@ export async function buildAttention(companyId: string, access: AttentionAccess,
         entries.push({
             id: `notification:${n.id}`, kind: n.kind === "decision" ? "decision" : "mention",
             title: n.title, detail: n.body ? excerpt(plainText(n.body), 180) || null : null,
-            memberKey: null, memberName: null, area: "Messages", at: n.createdAt.toISOString(),
-            actionLabel: "Open conversation", href: n.link || "/messages", notificationId: n.id,
+            memberKey: null, memberName: null, area: "Messages", areaCopy: entryArea("messages"), at: n.createdAt.toISOString(),
+            actionLabel: "Open conversation", actionCopy: entryAction("openConversation"), href: n.link || "/messages", notificationId: n.id,
         });
     }
 

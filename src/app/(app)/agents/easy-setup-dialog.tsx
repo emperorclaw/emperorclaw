@@ -3,6 +3,8 @@
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { useTranslations } from "next-intl";
+import { copy } from "@/lib/coded-copy";
+import { useCopy } from "@/lib/i18n/use-copy";
 import { createClientRequestId } from "@/lib/client-request-id";
 import { useRouter } from "next/navigation";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter, DialogTrigger } from "@/components/ui/dialog";
@@ -16,7 +18,7 @@ import { getAgentTemplate } from "@/lib/agent-templates";
 import { TEAM_TEMPLATES, DEFAULT_AGENT_NAMES, type TeamTemplateId } from "@/lib/onboarding-shared";
 import { cn } from "@/lib/utils";
 import { CUSTOM_LLM_PROVIDER, normalizeLlmBaseUrl } from "@/lib/llm-endpoint";
-import { useHireHosts, type HostChoice } from "@/components/runtime-hosts/host-picker";
+import { useHireHosts, useHireReasonLabel, type HostChoice } from "@/components/runtime-hosts/host-picker";
 import { JobProgress } from "@/components/runtime-hosts/job-progress";
 import { DEFAULT_HOST_MODEL, isHostLlmProvider, isValidHostModel } from "@/lib/runtime-hosts/commands";
 
@@ -95,6 +97,8 @@ export function EasySetupDialog({
 }) {
     const t = useTranslations("agents.easySetup");
     const tc = useTranslations("common");
+    const render = useCopy();
+    const hireReason = useHireReasonLabel();
     const router = useRouter();
     const [open, setOpen] = useState(defaultOpen);
     const [step, setStep] = useState<EasyStep>("count-and-roles");
@@ -140,12 +144,12 @@ export function EasySetupDialog({
             // Hiring next to an agent that already works: reuse its connection by default.
             setSourceAgentId((current) => current || data.configurations?.[0]?.id || "");
             setAvailable(Boolean(data.available));
-            setAvailabilityReason(data.reason || t("unavailable"));
+            setAvailabilityReason(render(data.reasonCode ? copy(`agents.easySetup.availability.${data.reasonCode}`) : null, data.reason || t("unavailable")));
         } catch (e) {
             setAvailable(false);
             setAvailabilityReason(e instanceof Error ? e.message : t("checkFailed"));
         }
-    }, [t]);
+    }, [t, render]);
     useEffect(() => { if (open) void checkAvailability(); }, [open, checkAvailability]);
     // Without Docker here, a connected host that can take agents is chosen for you (once).
     useEffect(() => {
@@ -429,7 +433,7 @@ export function EasySetupDialog({
                                                 className={cn("min-h-14 rounded-lg border p-3 text-left text-sm", !h.hire.ok ? "cursor-not-allowed border-border opacity-60"
                                                     : active ? "border-primary bg-primary/10" : "border-border hover:bg-muted")}>
                                                 <span className="block font-medium">{h.name}</span>
-                                                <span className="block text-xs text-muted-foreground">{h.hire.ok ? t("hostSummary", { count: h.agents.length, providers: h.hire.providers.join(", ") }) : h.hire.reason}</span>
+                                                <span className="block text-xs text-muted-foreground">{h.hire.ok ? t("hostSummary", { count: h.agents.length, providers: h.hire.providers.join(", ") }) : hireReason(h.hire)}</span>
                                             </button>
                                         );
                                     })}

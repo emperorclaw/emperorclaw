@@ -1,5 +1,10 @@
 import nodemailer from "nodemailer";
 import { recordOpsError } from "@/lib/ops-events";
+import { DEFAULT_LOCALE, type Locale } from "@/i18n/config";
+import { serverTranslator, type ServerTranslator } from "@/i18n/server-translator";
+
+// Emails are read by people, so they render in the recipient's language
+// (src/i18n/server-translator.ts); the default and fallback is English.
 
 const SMTP_HOST = process.env.SMTP_HOST;
 const SMTP_PORT = parseInt(process.env.SMTP_PORT || "587", 10);
@@ -44,7 +49,7 @@ const transporter = nodemailer.createTransport({
     },
 });
 
-function renderEmailShell({
+function renderEmailShell(t: ServerTranslator, {
     preheader,
     title,
     eyebrow,
@@ -95,7 +100,7 @@ function renderEmailShell({
                         </a>
                     </div>
                     <div style="margin:0 0 24px;font-size:13px;line-height:1.7;color:#64748b;">
-                        If the button does not work, copy and paste this link into your browser:<br/>
+                        ${escapeHtml(t("email.linkFallback"))}<br/>
                         <a href="${safeCtaUrl}" style="color:#2563eb;word-break:break-all;">${safeCtaUrl}</a>
                     </div>` : ""}
                     ${safeFootnote ? `
@@ -147,61 +152,105 @@ export async function sendEmail({ to, subject, html }: { to: string; subject: st
     }
 }
 
-export function getWelcomeEmailHtml(email: string) {
-    const safeEmail = escapeHtml(email);
-    return renderEmailShell({
-        preheader: "Your Emperor Claw workspace is ready.",
-        eyebrow: "Workspace Ready",
-        title: "Welcome to Emperor Claw",
-        intro: "Your control plane is ready. You can now log in and start operating agents inside your workspace.",
+/**
+ * A message as HTML: the translated text is escaped, then each value (already
+ * safe HTML, such as `<strong>escaped name</strong>`) is put in its place, so
+ * neither a translation nor a user-supplied value can inject markup.
+ */
+function messageHtml(t: ServerTranslator, key: string, values: Record<string, string> = {}): string {
+    const tokens: Record<string, string> = {};
+    Object.keys(values).forEach((name, index) => { tokens[name] = `\u0000${index}\u0000`; });
+    let out = escapeHtml((t as unknown as (key: string, values?: Record<string, string>) => string)(key, tokens));
+    Object.entries(values).forEach(([name, value]) => { out = out.split(tokens[name]).join(value); });
+    return out;
+}
+
+const text = (t: ServerTranslator, key: string, values?: Record<string, string | number | Date>) =>
+    (t as unknown as (key: string, values?: Record<string, string | number | Date>) => string)(key, values);
+
+const strong = (value: string) => `<strong>${escapeHtml(value)}</strong>`;
+const paragraph = (html: string, last = false) => `<p style="margin:0${last ? "" : " 0 16px"};">${html}</p>`;
+
+export function getWelcomeEmailHtml(email: string, locale: Locale | string = DEFAULT_LOCALE) {
+    const t = serverTranslator(locale);
+    return renderEmailShell(t, {
+        preheader: text(t, "email.welcome.preheader"),
+        eyebrow: text(t, "email.welcome.eyebrow"),
+        title: text(t, "email.welcome.title"),
+        intro: text(t, "email.welcome.intro"),
         bodyHtml: `
-            <p style="margin:0 0 16px;">Hello <strong>${safeEmail}</strong>,</p>
-            <p style="margin:0 0 16px;">Thanks for joining Emperor Claw. This workspace gives your OpenClaw agents durable coordination, scoped resources, and operational state inside a shared company environment.</p>
-            <p style="margin:0;">Start by logging in, connecting your first agents, and reviewing the setup guide before you rely on the workspace for production-critical operations.</p>
+            ${paragraph(messageHtml(t, "email.greeting", { email: strong(email) }))}
+            ${paragraph(messageHtml(t, "email.welcome.thanks"))}
+            ${paragraph(messageHtml(t, "email.welcome.start"), true)}
         `,
-        footnote: "Beta software. Emperor Claw is provided as-is without warranties or guarantees of safety, retention, recovery, availability, or fitness for any purpose. You remain responsible for what you store and operate in the workspace.",
+        footnote: text(t, "email.welcome.footnote"),
     });
 }
 
-export function getEmailVerificationEmailHtml(email: string, verificationUrl: string, companyName: string) {
-    const safeEmail = escapeHtml(email);
-    const safeCompanyName = escapeHtml(companyName);
+/** The verification email's subject, in the recipient's language. */
+export function emailVerificationSubject(locale: Locale | string = DEFAULT_LOCALE): string {
+    return text(serverTranslator(locale), "email.verification.subject");
+}
 
-    return renderEmailShell({
-        preheader: "Verify your email to activate your Emperor Claw workspace.",
-        eyebrow: "Email Verification",
-        title: "Confirm your email address",
-        intro: "Verify this address to activate your workspace and finish signup.",
+/** "your company" when a verification email has no company name to show. */
+export function yourCompanyLabel(locale: Locale | string = DEFAULT_LOCALE): string {
+    return text(serverTranslator(locale), "email.verification.yourCompany");
+}
+
+export function getEmailVerificationEmailHtml(email: string, verificationUrl: string, companyName: string, locale: Locale | string = DEFAULT_LOCALE) {
+    const t = serverTranslator(locale);
+    return renderEmailShell(t, {
+        preheader: text(t, "email.verification.preheader"),
+        eyebrow: text(t, "email.verification.eyebrow"),
+        title: text(t, "email.verification.title"),
+        intro: text(t, "email.verification.intro"),
         bodyHtml: `
-            <p style="margin:0 0 16px;">Hello <strong>${safeEmail}</strong>,</p>
-            <p style="margin:0 0 16px;">A new Emperor Claw workspace was created for <strong>${safeCompanyName}</strong>. Confirm this email address to activate access.</p>
+            ${paragraph(messageHtml(t, "email.greeting", { email: strong(email) }))}
+            ${paragraph(messageHtml(t, "email.verification.created", { company: strong(companyName) }))}
             <div style="margin:20px 0;padding:18px;border-radius:16px;background:#eff6ff;border:1px solid #bfdbfe;">
-                <p style="margin:0 0 8px;font-weight:600;color:#1d4ed8;">Before you continue</p>
-                <p style="margin:0;color:#334155;">Emperor Claw is in beta. We do not guarantee safety, retention, recovery, uninterrupted availability, or suitability for regulated or business-critical workloads.</p>
+                <p style="margin:0 0 8px;font-weight:600;color:#1d4ed8;">${messageHtml(t, "email.verification.beforeTitle")}</p>
+                <p style="margin:0;color:#334155;">${messageHtml(t, "email.verification.beforeBody")}</p>
             </div>
-            <p style="margin:0 0 16px;">Do not store secrets, regulated data, production-only credentials, or any information you cannot afford to expose, lose, or recreate.</p>
-            <p style="margin:0;">This verification link expires in 24 hours. If you did not initiate this signup, you can ignore this email.</p>
+            ${paragraph(messageHtml(t, "email.verification.noSecrets"))}
+            ${paragraph(messageHtml(t, "email.verification.expiry"), true)}
         `,
-        ctaLabel: "Verify Email",
+        ctaLabel: text(t, "email.verification.cta"),
         ctaUrl: verificationUrl,
-        footnote: "By activating the workspace, you acknowledge that Emperor Claw is beta software provided as-is and that you remain responsible for how it is used and what data is stored inside it.",
+        footnote: text(t, "email.verification.footnote"),
     });
 }
 
-export function getPasswordResetEmailHtml(email: string, resetUrl: string) {
-    const safeEmail = escapeHtml(email);
-    return renderEmailShell({
-        preheader: "Reset your Emperor Claw password.",
-        eyebrow: "Account Security",
-        title: "Reset your password",
-        intro: "Use the secure link below to choose a new password for your Emperor Claw account.",
+/** The password reset email's subject, in the recipient's language. */
+export function passwordResetSubject(locale: Locale | string = DEFAULT_LOCALE): string {
+    return text(serverTranslator(locale), "email.passwordReset.subject");
+}
+
+export function getPasswordResetEmailHtml(email: string, resetUrl: string, locale: Locale | string = DEFAULT_LOCALE) {
+    const t = serverTranslator(locale);
+    return renderEmailShell(t, {
+        preheader: text(t, "email.passwordReset.preheader"),
+        eyebrow: text(t, "email.passwordReset.eyebrow"),
+        title: text(t, "email.passwordReset.title"),
+        intro: text(t, "email.passwordReset.intro"),
         bodyHtml: `
-            <p style="margin:0 0 16px;">Hello <strong>${safeEmail}</strong>,</p>
-            <p style="margin:0 0 16px;">We received a request to reset the password for this account. If that was you, use the link below to set a new password.</p>
-            <p style="margin:0;">If you did not request a reset, you can ignore this message. Your existing password will remain unchanged.</p>
+            ${paragraph(messageHtml(t, "email.greeting", { email: strong(email) }))}
+            ${paragraph(messageHtml(t, "email.passwordReset.received"))}
+            ${paragraph(messageHtml(t, "email.passwordReset.ignore"), true)}
         `,
-        ctaLabel: "Reset Password",
+        ctaLabel: text(t, "email.passwordReset.cta"),
         ctaUrl: resetUrl,
-        footnote: "For your protection, password reset links expire automatically and active browser sessions are revoked after a successful password change.",
+        footnote: text(t, "email.passwordReset.footnote"),
     });
+}
+
+/** An instance invitation (subject and body) in the inviter's language. */
+export function getInvitationEmail(input: { companyName: string | null; role: string; inviteUrl: string; expiresAt: Date; locale?: Locale | string }): { subject: string; html: string } {
+    const t = serverTranslator(input.locale ?? DEFAULT_LOCALE);
+    const company = input.companyName || text(t, "email.invitation.theWorkspace");
+    return {
+        subject: text(t, "email.invitation.subject", { company }),
+        html: `<p>${messageHtml(t, "email.invitation.invited", { company: strong(company), role: strong(input.role) })}</p>`
+            + `<p><a href="${escapeHtml(input.inviteUrl)}">${messageHtml(t, "email.invitation.accept")}</a></p>`
+            + `<p>${escapeHtml(text(t, "email.invitation.expires", { date: input.expiresAt }))}</p>`,
+    };
 }
