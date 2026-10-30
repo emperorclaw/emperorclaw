@@ -9,6 +9,16 @@ tagged (e.g. `## [1.2.0] — 2026-07-22`). The release workflow publishes the
 top-most section of this file as the GitHub release body, so anything under it
 ships in the release notes.
 
+## [0.25.0] — 2026-10-30
+
+### Added
+- **Simplified Chinese (简体中文), third part.** Sign-up, login and password pages, the setup wizard and tours, Storage, Knowledge & Rules, Timeline, Pipelines, Customers, Approvals, Activity, Costs, Search, chats and the remaining dialogs are now translated.
+- Text the server builds for people now follows your language too: failure headlines and fixes, Inbox entries, task history, run timelines, Activity sentences, the role catalogue, provider descriptions, the hire dialog's notices and host reasons, and common error messages.
+- Account emails (welcome, verification, password reset, invitations) are sent in the recipient's language.
+
+### Unchanged
+- Agents still receive the same English text, and everything stored (task titles, notification titles, names) stays as written.
+
 ## [0.24.0] — 2026-10-29
 
 ### Added
