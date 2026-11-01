@@ -1829,7 +1829,12 @@
       "claimHint": "This view has no owner. Making it private or shared makes you its owner.",
       "changeWhoCanSee": "Who can see it: {current}. Change",
       "confirmPrivate": "Only you will see this view. {scope, select, company {Everyone else in the company} other {Everyone else who can see it now}} loses access.",
-      "confirmShared": "Only you and the people you pick will see this view. {scope, select, company {Everyone else in the company} other {Everyone else who can see it now}} loses access."
+      "confirmShared": "Only you and the people you pick will see this view. {scope, select, company {Everyone else in the company} other {Everyone else who can see it now}} loses access.",
+      "narrowTitle": "Change who can see this view?",
+      "makePrivate": "Make private",
+      "choosePeople": "Choose people",
+      "archiveTitle": "Archive this view?",
+      "deleteTitle": "Delete this view?"
     }
   },
   "projects": {

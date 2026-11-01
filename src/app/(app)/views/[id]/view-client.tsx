@@ -10,6 +10,7 @@ import {
     IconArchive, IconArrowBackUp, IconChevronLeft, IconHistory, IconLock, IconPencil, IconPin, IconPinnedOff, IconRefresh, IconTrash, IconUserShare,
 } from "@tabler/icons-react";
 import { Button } from "@/components/ui/button";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -68,6 +69,7 @@ export function ViewDetailClient({ view, canEdit, canManage, canChangeVisibility
     const [busy, setBusy] = useState<string | null>(null);
     const [editing, setEditing] = useState(false);
     const [historyOpen, setHistoryOpen] = useState(false);
+    const [confirmArchive, setConfirmArchive] = useState(false);
     const [refreshAgent, setRefreshAgent] = useState(ownerAgentId ?? agents[0]?.id ?? "");
 
     const send = async (url: string, init: RequestInit, done: string, key: string, fallback = t("updateFailed")) => {
@@ -178,14 +180,18 @@ export function ViewDetailClient({ view, canEdit, canManage, canChangeVisibility
                             </Button>
                         ) : (
                             <Button size="sm" variant="ghost" disabled={busy === "archive"}
-                                onClick={async () => {
-                                    if (!window.confirm(t("archiveConfirm", { title: view.title }))) return;
-                                    if (await patch({ archived: true }, t("archived"), "archive")) router.push("/views");
-                                }}>
+                                onClick={() => setConfirmArchive(true)}>
                                 <IconArchive aria-hidden />{t("archive")}
                             </Button>
                         ))}
                         {canManage && <ManageButtons view={view} transferTo={transferTo} />}
+                        <ConfirmDialog open={confirmArchive} title={t("archiveTitle")} description={t("archiveConfirm", { title: view.title })}
+                            confirmLabel={t("archive")}
+                            onConfirm={async () => {
+                                setConfirmArchive(false);
+                                if (await patch({ archived: true }, t("archived"), "archive")) router.push("/views");
+                            }}
+                            onCancel={() => setConfirmArchive(false)} />
                     </div>
                 </div>
                 {view.archived && (
@@ -263,8 +269,9 @@ function ManageButtons({ view, transferTo, afterDelete = "/views" }: { view: Vie
     const router = useRouter();
     const [transferOpen, setTransferOpen] = useState(false);
     const [deleting, setDeleting] = useState(false);
+    const [confirmDelete, setConfirmDelete] = useState(false);
     const remove = async () => {
-        if (!window.confirm(t("deleteConfirm", { title: view.title }))) return;
+        setConfirmDelete(false);
         setDeleting(true);
         try {
             const res = await fetch(`/api/views/${encodeURIComponent(view.id)}`, { method: "DELETE" });
@@ -279,7 +286,9 @@ function ManageButtons({ view, transferTo, afterDelete = "/views" }: { view: Vie
     return (
         <>
             <Button size="sm" variant="outline" onClick={() => setTransferOpen(true)}><IconUserShare aria-hidden />{t("transfer")}</Button>
-            <Button size="sm" variant="ghost" disabled={deleting} onClick={remove} className="text-destructive hover:text-destructive"><IconTrash aria-hidden />{tc("delete")}</Button>
+            <Button size="sm" variant="ghost" disabled={deleting} onClick={() => setConfirmDelete(true)} className="text-destructive hover:text-destructive"><IconTrash aria-hidden />{tc("delete")}</Button>
+            <ConfirmDialog open={confirmDelete} title={t("deleteTitle")} description={t("deleteConfirm", { title: view.title })}
+                confirmLabel={tc("delete")} destructive onConfirm={() => void remove()} onCancel={() => setConfirmDelete(false)} />
             {transferOpen && <TransferDialog view={view} people={transferTo} onClose={() => setTransferOpen(false)} />}
         </>
     );

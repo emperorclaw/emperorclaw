@@ -6,6 +6,7 @@ import { toast } from "sonner";
 import { useTranslations } from "next-intl";
 import { IconChevronDown } from "@tabler/icons-react";
 import { Button } from "@/components/ui/button";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import {
     DropdownMenu, DropdownMenuContent, DropdownMenuLabel, DropdownMenuRadioGroup, DropdownMenuRadioItem, DropdownMenuSeparator, DropdownMenuTrigger,
@@ -91,6 +92,8 @@ export function VisibilityMenu({ view, canChange, description, className }: {
     const audienceText = useAudienceText();
     const { save, saving } = useSaveVisibility(view);
     const [picking, setPicking] = useState(false);
+    // A narrowing choice waiting for the confirm dialog.
+    const [pending, setPending] = useState<string | null>(null);
     if (!canChange) return <VisibilityBadge view={view} className={className} />;
     const label = visibilityText(view);
     const options = [
@@ -98,15 +101,16 @@ export function VisibilityMenu({ view, canChange, description, className }: {
         { value: "shared", text: tVisibility("sharedPick") },
         { value: "scope", text: audienceText(view) },
     ];
-    const choose = (value: string) => {
-        // Taking it away from everyone in scope says who loses access first (window.confirm, as archive and delete do).
-        if (visibilityChangeNarrows(view.visibility, value)) {
-            const scope = view.scopeType === "company" ? "company" : "other";
-            if (!window.confirm(value === "private" ? t("confirmPrivate", { scope }) : t("confirmShared", { scope }))) return;
-        }
+    const scope = view.scopeType === "company" ? "company" : "other";
+    const apply = (value: string) => {
         // Shared asks who (also while shared: it reopens the people picker).
         if (value === "shared") setPicking(true);
         else if (value !== view.visibility) void save(value);
+    };
+    const choose = (value: string) => {
+        // Taking it away from everyone in scope says who loses access first.
+        if (visibilityChangeNarrows(view.visibility, value)) setPending(value);
+        else apply(value);
     };
     return (
         <>
@@ -130,7 +134,7 @@ export function VisibilityMenu({ view, canChange, description, className }: {
                             // Each item acts on its own select (its click, or Enter/Space), not on the
                             // group's value change: re-picking the current value still runs (Shared
                             // reopens the picker). It runs once the menu has closed, so the confirm
-                            // or the picker dialog opens on a settled page.
+                            // dialog or the picker opens on a settled page.
                             <DropdownMenuRadioItem key={option.value} value={option.value}
                                 onSelect={() => { window.setTimeout(() => choose(option.value), 0); }}>
                                 {option.text}
@@ -139,6 +143,13 @@ export function VisibilityMenu({ view, canChange, description, className }: {
                     </DropdownMenuRadioGroup>
                 </DropdownMenuContent>
             </DropdownMenu>
+            {pending !== null && (
+                <ConfirmDialog open title={t("narrowTitle")}
+                    description={pending === "private" ? t("confirmPrivate", { scope }) : t("confirmShared", { scope })}
+                    confirmLabel={pending === "private" ? t("makePrivate") : t("choosePeople")}
+                    onConfirm={() => { const value = pending; setPending(null); apply(value); }}
+                    onCancel={() => setPending(null)} />
+            )}
             {picking && <SharePicker viewId={view.id} onClose={() => setPicking(false)} onSave={(ids) => save("shared", ids)} />}
         </>
     );

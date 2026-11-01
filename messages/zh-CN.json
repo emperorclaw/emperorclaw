@@ -1829,7 +1829,12 @@
       "claimHint": "此视图没有所有者。将其设为私有或共享后，你将成为其所有者。",
       "changeWhoCanSee": "谁可以看到它：{current}。更改",
       "confirmPrivate": "此视图将仅你可见。{scope, select, company {公司中的其他所有人} other {目前可以看到它的其他所有人}}将失去访问权限。",
-      "confirmShared": "此视图将仅你和你选择的人可见。{scope, select, company {公司中的其他所有人} other {目前可以看到它的其他所有人}}将失去访问权限。"
+      "confirmShared": "此视图将仅你和你选择的人可见。{scope, select, company {公司中的其他所有人} other {目前可以看到它的其他所有人}}将失去访问权限。",
+      "narrowTitle": "更改谁可以查看此视图？",
+      "makePrivate": "设为私有",
+      "choosePeople": "选择人员",
+      "archiveTitle": "归档此视图？",
+      "deleteTitle": "删除此视图？"
     }
   },
   "projects": {
