@@ -119,4 +119,4 @@ Reject old timestamps to stop replays. Answer with any `2xx`. Failed deliveries 
 
 ## From an MCP client
 
-Operator MCP connections (a company token, not an agent's) get two tools: `send_agent_request` (same fields, with `source` required) and `get_agent_request` (by `requestId` or `externalRef`). Use them to hand work to an agent from Claude, Codex, or your own MCP client.
+Operator MCP connections (a company token, not an agent's) get two tools: `send_agent_request` (same fields, with `source` required) and `get_agent_request` (by `requestId`, or the newest requests filtered by `externalRef` and `status`, up to 50). Use them to hand work to an agent from Claude, Codex, or your own MCP client.

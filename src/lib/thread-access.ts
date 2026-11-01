@@ -1,9 +1,10 @@
-import { and, eq, isNull, sql } from "drizzle-orm";
+import { and, eq, inArray, isNull, sql } from "drizzle-orm";
 import { db } from "@/db";
 import { agents, messageThreads, threadMessages, threadParticipants } from "@/db/schema";
 import { agentTokenMayUseThread } from "@/lib/direct-chat-mode";
 import { resolveAgentId } from "@/lib/mcp";
-import { isAgentPairThread } from "@/lib/groups";
+import { GROUP_THREAD_TYPE, isAgentPairThread } from "@/lib/groups";
+import { mcpAccessForAgent, mcpMayUseThread } from "@/lib/mcp-access";
 import { mentionedAgentIds, unreachableMentionsOf } from "@/lib/message-routing";
 
 /**
@@ -127,4 +128,87 @@ export async function isVerifiedReplyBy(companyId: string, agentId: string | nul
     const roster = await db.select({ id: agents.id, name: agents.name }).from(agents)
         .where(and(eq(agents.companyId, companyId), isNull(agents.deletedAt)));
     return mentionedAgentIds(source.text ?? "", roster).has(agentId);
+}
+
+export type McpThreadReadVerdict =
+    | { ok: true; thread: typeof messageThreads.$inferSelect }
+    | { ok: false; status: 403 | 404; error: string };
+
+type ThreadReadFields = {
+    id: string;
+    type: string;
+    ownerUserId?: string | null;
+    isPrivate?: boolean | null;
+    directAgentId?: string | null;
+    projectId?: string | null;
+    taskId?: string | null;
+    description: string | null;
+    createdByType: string | null;
+};
+
+const THREAD_NOT_FOUND = { status: 404 as const, error: "Thread not found" };
+const NOT_A_GROUP_MEMBER = { status: 403 as const, error: "Access denied: this agent is not a member of that group" };
+
+/**
+ * Why an MCP request may not read each of these threads (absent = readable).
+ * One rule for GET /api/mcp/threads/[id]/messages, read_thread,
+ * wait_for_reply and list_threads:
+ * - a person's private direct thread only when acting as its agent
+ *   (`actingAgentId`; MCP tools pass the token's bound agent only, so an
+ *   operator connection never reads one);
+ * - a project/task thread only inside the bound agent's data scope;
+ * - a two-agent pair thread only when acting as one of its two agents (an
+ *   operator never lists or reads one);
+ * - another group, for a token bound to an agent, only when it is a member.
+ * Batched: one membership query for the whole list.
+ */
+export async function mcpThreadReadRefusals(
+    companyId: string,
+    threads: readonly ThreadReadFields[],
+    actingAgentId: string | null,
+    boundAgentId: string | null,
+): Promise<Map<string, { status: 403 | 404; error: string }>> {
+    const refusals = new Map<string, { status: 403 | 404; error: string }>();
+    const access = await mcpAccessForAgent(companyId, boundAgentId);
+    await Promise.all(threads.map(async (thread) => {
+        if (!agentTokenMayUseThread(thread, actingAgentId) || !(await mcpMayUseThread(companyId, access, thread))) {
+            refusals.set(thread.id, THREAD_NOT_FOUND);
+        }
+    }));
+    const groups = threads.filter((t) => t.type === GROUP_THREAD_TYPE && !refusals.has(t.id));
+    const agentIds = [...new Set([actingAgentId, boundAgentId].filter((id): id is string => Boolean(id)))];
+    const memberships = new Set<string>();
+    if (groups.length > 0 && agentIds.length > 0) {
+        const rows = await db.select({ threadId: threadParticipants.threadId, agentId: threadParticipants.participantId })
+            .from(threadParticipants).where(and(
+                eq(threadParticipants.companyId, companyId),
+                eq(threadParticipants.participantType, "agent"),
+                inArray(threadParticipants.threadId, groups.map((g) => g.id)),
+                inArray(threadParticipants.participantId, agentIds),
+            ));
+        for (const row of rows) memberships.add(`${row.threadId}:${row.agentId}`);
+    }
+    for (const group of groups) {
+        if (isAgentPairThread(group)) {
+            if (!actingAgentId || !memberships.has(`${group.id}:${actingAgentId}`)) refusals.set(group.id, THREAD_NOT_FOUND);
+        } else if (boundAgentId && !memberships.has(`${group.id}:${boundAgentId}`)) {
+            refusals.set(group.id, NOT_A_GROUP_MEMBER);
+        }
+    }
+    return refusals;
+}
+
+/** mcpThreadReadRefusals for one thread id, loading the thread. */
+export async function mcpThreadReadVerdict(
+    companyId: string,
+    threadId: string,
+    actingAgentId: string | null,
+    boundAgentId: string | null,
+): Promise<McpThreadReadVerdict> {
+    if (!UUID_RE.test(threadId)) return { ok: false, ...THREAD_NOT_FOUND };
+    const [thread] = await db.select().from(messageThreads)
+        .where(and(eq(messageThreads.id, threadId), eq(messageThreads.companyId, companyId))).limit(1);
+    if (!thread) return { ok: false, ...THREAD_NOT_FOUND };
+    const refusal = (await mcpThreadReadRefusals(companyId, [thread], actingAgentId, boundAgentId)).get(thread.id);
+    return refusal ? { ok: false, ...refusal } : { ok: true, thread };
 }

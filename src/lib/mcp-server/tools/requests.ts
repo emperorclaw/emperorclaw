@@ -1,6 +1,6 @@
 import { z } from "zod";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import { createAgentRequest, getAgentRequest, listAgentRequests } from "@/lib/agent-requests";
+import { createAgentRequest, getAgentRequest, listAgentRequests, REQUEST_STATUSES } from "@/lib/agent-requests";
 import { jsonResult, errorResult } from "../result";
 
 /**
@@ -33,18 +33,20 @@ export function registerRequestTools(server: McpServer, companyId: string, token
 
     server.registerTool("get_agent_request", {
         title: "Get Agent Request",
-        description: "Status of requests sent with send_agent_request: queued, in_progress, waiting_approval, in_review, done, failed, or cancelled, with the agent's replies and the task's output. Pass requestId for one, or externalRef to find them by the other system's id.",
+        description: "Status of requests sent with send_agent_request: queued, in_progress, waiting_approval, in_review, done, failed, or cancelled, with the agent's replies and the task's output. Pass requestId for one; otherwise you get the newest requests, optionally filtered by externalRef (the other system's id) and status.",
         inputSchema: {
             requestId: z.string().optional(),
             externalRef: z.string().optional(),
+            status: z.enum(REQUEST_STATUSES).optional(),
+            limit: z.number().int().min(1).max(50).optional().describe("Default 20"),
         },
-    }, async ({ requestId, externalRef }) => {
+    }, async ({ requestId, externalRef, status, limit }) => {
         try {
             if (requestId) {
                 const request = await getAgentRequest(companyId, requestId);
                 return request ? jsonResult({ request }) : errorResult(new Error("Request not found"));
             }
-            return jsonResult({ requests: await listAgentRequests(companyId, { externalRef: externalRef ?? null, limit: 20 }) });
+            return jsonResult({ requests: await listAgentRequests(companyId, { externalRef: externalRef ?? null, status: status ?? null, limit: limit ?? 20 }) });
         } catch (e) {
             return errorResult(e);
         }

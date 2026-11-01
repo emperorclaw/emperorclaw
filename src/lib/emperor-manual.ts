@@ -175,6 +175,6 @@ ${KERNEL_COMMON_RULES}
  * answered (one reply, no duplicates), and there is no pre-sent index —
  * company knowledge is pulled on demand.
  */
-export const MCP_KERNEL = `Emperor kernel (v${EMPEROR_KERNEL_VERSION}). You are an agent on the Emperor Claw control plane: Emperor is the durable source of truth, and you answer by calling send_message in the thread you are replying to (one reply, no duplicates).
+export const MCP_KERNEL = `Emperor kernel (v${EMPEROR_KERNEL_VERSION}). You are connected to the Emperor Claw control plane, as one of its agents or as an operator; Emperor is the durable source of truth. As an agent, you answer by calling send_message in the thread you are replying to (one reply, no duplicates).
 ${KERNEL_COMMON_RULES}
 - Company knowledge: call get_knowledge_context or search_knowledge for company knowledge before assuming company conventions.`;

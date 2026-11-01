@@ -545,5 +545,16 @@
       "confirmPrivate": "Only you will see this view. {scope, select, company {Everyone else in the company} other {Everyone else who can see it now}} loses access.",
       "confirmShared": "Only you and the people you pick will see this view. {scope, select, company {Everyone else in the company} other {Everyone else who can see it now}} loses access."
     }
+  },
+  "settings": {
+    "tokens": {
+      "claudeCode": "Claude Code",
+      "claudeCodeHint": "Run this once in a terminal. Add --scope user to use it in every project; /mcp inside Claude Code shows whether it connected.",
+      "codex": "Codex (CLI and IDE extension)",
+      "codexHint": "Add this to ~/.codex/config.toml and set EMPEROR_CLAW_TOKEN to your token in the environment Codex starts from. Or run the command below, which writes the same entry.",
+      "claudeWebToken": "To use a token instead, choose No sign in and add a request header named Authorization with the value Bearer followed by your token.",
+      "talkTitle": "Talking to an agent",
+      "talkBody": "The same tools work in every client. Ask Claude or Codex to message an agent: it calls send_message, then wait_for_reply until the answer arrives, and read_thread for the whole conversation. Use send_agent_request for work you want tracked as a task."
+    }
   }
 }

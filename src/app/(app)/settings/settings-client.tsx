@@ -110,14 +110,26 @@ const OPENCLAW_COMMANDS = [
     "EMPEROR_CLAW_API_TOKEN=your_token_here openclaw emperor status",
 ];
 
-const mcpUrl = () => `${typeof window !== "undefined" ? window.location.origin : ""}/mcp`;
+const mcpOrigin = () => (typeof window !== "undefined" ? window.location.origin : "https://your-emperorclaw-host");
+const mcpUrl = () => `${mcpOrigin()}/mcp`;
 const authHeader = (token: string) => `Authorization: Bearer <${token}>`;
+/** Client setup snippets, never translated (only the token placeholder is). */
+const claudeCodeCommand = (token: string) => `claude mcp add --transport http emperorclaw ${mcpUrl()} --header "Authorization: Bearer <${token}>"`;
+const CODEX_TOKEN_ENV = "EMPEROR_CLAW_TOKEN";
+const codexConfig = () => `[mcp_servers.emperorclaw]
+url = "${mcpUrl()}"
+bearer_token_env_var = "${CODEX_TOKEN_ENV}"`;
+const codexCommand = () => `codex mcp add emperorclaw --url ${mcpUrl()} --bearer-token-env-var ${CODEX_TOKEN_ENV}`;
+// Claude Desktop's config file only launches local (stdio) servers: mcp-remote
+// bridges to the remote endpoint. The header value goes through env because
+// Claude Desktop on Windows does not escape spaces in args.
 const claudeDesktopConfig = (token: string) => `{
   "mcpServers": {
     "emperorclaw": {
-      "url": "${typeof window !== "undefined" ? window.location.origin : "https://your-emperorclaw-host"}/mcp",
-      "headers": {
-        "Authorization": "Bearer <${token}>"
+      "command": "npx",
+      "args": ["-y", "mcp-remote", "${mcpUrl()}", "--header", "Authorization:\${EMPEROR_AUTH}"${mcpUrl().startsWith("http://") ? ', "--allow-http"' : ""}],
+      "env": {
+        "EMPEROR_AUTH": "Bearer <${token}>"
       }
     }
   }
@@ -577,21 +589,43 @@ export default function SettingsClient({
                             <code className="block whitespace-pre-wrap font-mono text-sm text-foreground">{authHeader(t("tokens.yourToken"))}</code>
                         </div>
                         <details className="mt-3 rounded-2xl border border-border bg-muted/30 p-4">
-                            <summary className="cursor-pointer text-sm font-semibold text-foreground">{t("tokens.claudeDesktop")}</summary>
-                            <pre className="mt-3 overflow-x-auto rounded-xl border border-border bg-background p-4 font-mono text-xs leading-6 text-foreground">{claudeDesktopConfig(t("tokens.yourToken"))}</pre>
+                            <summary className="cursor-pointer text-sm font-semibold text-foreground">{t("tokens.claudeCode")}</summary>
+                            <pre className="mt-3 overflow-x-auto rounded-xl border border-border bg-background p-4 font-mono text-xs leading-6 text-foreground">{claudeCodeCommand(t("tokens.yourToken"))}</pre>
                             <p className="mt-3 text-xs leading-5 text-muted-foreground">
-                                {t("tokens.claudeDesktopHint")}
+                                {t("tokens.claudeCodeHint")}
                             </p>
+                        </details>
+                        <details className="mt-3 rounded-2xl border border-border bg-muted/30 p-4">
+                            <summary className="cursor-pointer text-sm font-semibold text-foreground">{t("tokens.codex")}</summary>
+                            <pre className="mt-3 overflow-x-auto rounded-xl border border-border bg-background p-4 font-mono text-xs leading-6 text-foreground">{codexConfig()}</pre>
+                            <p className="mt-3 text-xs leading-5 text-muted-foreground">
+                                {t("tokens.codexHint")}
+                            </p>
+                            <pre className="mt-3 overflow-x-auto rounded-xl border border-border bg-background p-4 font-mono text-xs leading-6 text-foreground">{codexCommand()}</pre>
                         </details>
                         <details className="mt-3 rounded-2xl border border-border bg-muted/30 p-4">
                             <summary className="cursor-pointer text-sm font-semibold text-foreground">{t("tokens.claudeWeb")}</summary>
                             <p className="mt-3 text-xs leading-5 text-muted-foreground">
                                 {t("tokens.claudeWebBody")}
                             </p>
+                            <p className="mt-2 text-xs leading-5 text-muted-foreground">
+                                {t("tokens.claudeWebToken")}
+                            </p>
                             <p className="mt-2 text-xs leading-5 text-amber-300/80">
                                 {t("tokens.claudeWebHttps")}
                             </p>
                         </details>
+                        <details className="mt-3 rounded-2xl border border-border bg-muted/30 p-4">
+                            <summary className="cursor-pointer text-sm font-semibold text-foreground">{t("tokens.claudeDesktop")}</summary>
+                            <pre className="mt-3 overflow-x-auto rounded-xl border border-border bg-background p-4 font-mono text-xs leading-6 text-foreground">{claudeDesktopConfig(t("tokens.yourToken"))}</pre>
+                            <p className="mt-3 text-xs leading-5 text-muted-foreground">
+                                {t("tokens.claudeDesktopHint")}
+                            </p>
+                        </details>
+                        <div className="mt-4 rounded-xl border border-border bg-background p-4">
+                            <p className="text-sm font-semibold text-foreground">{t("tokens.talkTitle")}</p>
+                            <p className="mt-1 text-xs leading-5 text-muted-foreground">{t("tokens.talkBody")}</p>
+                        </div>
                     </div>
                 </section>
             )}

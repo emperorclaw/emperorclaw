@@ -5,6 +5,7 @@ import { registerTaskTools } from "./tools/tasks";
 import { registerProjectTools } from "./tools/projects";
 import { registerKnowledgeTools } from "./tools/knowledge";
 import { registerMessagingTools } from "./tools/messaging";
+import { registerConversationTools } from "./tools/conversations";
 import { registerStorageTools } from "./tools/storage";
 import { registerRequestTools } from "./tools/requests";
 import { registerObjectiveTools } from "./tools/objectives";
@@ -78,7 +79,7 @@ function refusal(decision: Exclude<ActionDecision, { outcome: "allowed" }>) {
 }
 
 export async function buildMcpServer(companyId: string, callerAgentId?: string | null, tokenId?: string | null): Promise<McpServer> {
-    const instructions = await buildMcpInstructions(companyId);
+    const instructions = await buildMcpInstructions(companyId, callerAgentId ?? null);
 
     const server = new McpServer(
         { name: "emperorclaw", version: "1.0.0" },
@@ -93,6 +94,7 @@ export async function buildMcpServer(companyId: string, callerAgentId?: string |
     registerKnowledgeTools(server, companyId, callerAgentId, tokenId ?? null);
     registerStorageTools(server, companyId, callerAgentId);
     registerMessagingTools(server, companyId, callerAgentId);
+    registerConversationTools(server, companyId, callerAgentId, tokenId ?? null);
     registerObjectiveTools(server, companyId, callerAgentId);
     registerViewTools(server, companyId, callerAgentId, tokenId ?? null);
     registerActionPolicyTools(server, companyId, callerAgentId, tokenId ?? null);

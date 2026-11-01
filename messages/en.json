@@ -1294,11 +1294,18 @@
       "mcpBody": "Emperor exposes a real Model Context Protocol server at <code>/mcp</code> — point any MCP-capable client at it with an <strong>Agent access</strong> token from above to get every agent/task/project/Knowledge & Rules/messaging tool, plus your company's operating doctrine, automatically.",
       "header": "Header",
       "yourToken": "your token",
-      "claudeDesktop": "Claude Desktop config example",
-      "claudeDesktopHint": "Edit this in Claude Desktop's config file directly.",
-      "claudeWeb": "Connect via claude.ai web (Connectors)",
-      "claudeWebBody": "Add a custom connector and paste just the URL above — no manual Client ID/Secret needed. Emperor registers Claude automatically and you'll be asked to approve the connection while logged in here; no separate token is required for this path.",
-      "claudeWebHttps": "Requires this instance to be served over HTTPS (a reverse proxy with a real certificate — Caddy, nginx, Cloudflare Tunnel). Self-hosted installs on plain HTTP (e.g. a LAN IP with no proxy) should use the manual token method above instead."
+      "claudeCode": "Claude Code",
+      "claudeCodeHint": "Run this once in a terminal. Add --scope user to use it in every project; /mcp inside Claude Code shows whether it connected.",
+      "codex": "Codex (CLI and IDE extension)",
+      "codexHint": "Add this to ~/.codex/config.toml and set EMPEROR_CLAW_TOKEN to your token in the environment Codex starts from. Or run the command below, which writes the same entry.",
+      "claudeWeb": "Claude Desktop and claude.ai (Connectors)",
+      "claudeWebBody": "In Claude, open Customize → Connectors, choose + Add → Add custom connector, and paste the URL above. Leave sign-in on: Emperor registers Claude automatically and you approve the connection while logged in here, with no Client ID, Secret or token to copy.",
+      "claudeWebToken": "To use a token instead, choose No sign in and add a request header named Authorization with the value Bearer followed by your token.",
+      "claudeWebHttps": "Claude connects from Anthropic's cloud, not from your computer, so this instance must be reachable from the internet over HTTPS with a real certificate (Caddy, nginx, Cloudflare Tunnel). For an instance on a private network or plain HTTP, use the Claude Desktop config below.",
+      "claudeDesktop": "Claude Desktop with a private or plain-HTTP instance",
+      "claudeDesktopHint": "Claude Desktop's config file runs local servers only, so this starts mcp-remote (needs Node.js) to forward to Emperor. Quit Claude Desktop, add this to claude_desktop_config.json (Settings → Developer → Edit Config), then start it again. When the URL starts with http://, the --allow-http flag is included: use it only on a network you trust.",
+      "talkTitle": "Talking to an agent",
+      "talkBody": "The same tools work in every client. Ask Claude or Codex to message an agent: it calls send_message, then wait_for_reply until the answer arrives, and read_thread for the whole conversation. Use send_agent_request for work you want tracked as a task."
     },
     "advanced": {
       "title": "Advanced runtime setup",

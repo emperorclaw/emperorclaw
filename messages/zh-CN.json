@@ -1294,11 +1294,18 @@
       "mcpBody": "Emperor 在 <code>/mcp</code> 提供了一个真正的 Model Context Protocol 服务器——使用上面的 <strong>智能体访问</strong> 令牌将任何支持 MCP 的客户端指向它，即可自动获得所有智能体/任务/项目/知识库与规则/消息工具，以及你公司的运营准则。",
       "header": "标头",
       "yourToken": "你的令牌",
-      "claudeDesktop": "Claude Desktop 配置示例",
-      "claudeDesktopHint": "直接在 Claude Desktop 的配置文件中编辑此项。",
-      "claudeWeb": "通过 claude.ai 网页版连接（连接器）",
-      "claudeWebBody": "添加一个自定义连接器，只需粘贴上方的 URL——无需手动填写 Client ID/Secret。Emperor 会自动注册 Claude，你登录后会在这里被要求批准连接；此方式无需单独的令牌。",
-      "claudeWebHttps": "要求此实例通过 HTTPS 提供服务（使用具有真实证书的反向代理——Caddy、nginx、Cloudflare Tunnel）。通过纯 HTTP 部署的自托管实例（例如无反向代理的局域网 IP）应改用上方的手动令牌方式。"
+      "claudeCode": "Claude Code",
+      "claudeCodeHint": "在终端中运行一次即可。加上 --scope user 可在所有项目中使用；在 Claude Code 中输入 /mcp 可查看是否已连接。",
+      "codex": "Codex（CLI 和 IDE 扩展）",
+      "codexHint": "将此内容添加到 ~/.codex/config.toml，并在启动 Codex 的环境中把 EMPEROR_CLAW_TOKEN 设为你的令牌。也可以运行下面的命令，它会写入相同的条目。",
+      "claudeWeb": "Claude Desktop 和 claude.ai（连接器）",
+      "claudeWebBody": "在 Claude 中打开 Customize → Connectors，选择 + Add → Add custom connector，然后粘贴上方的 URL。保持登录选项开启：Emperor 会自动注册 Claude，你在此处登录后批准连接即可，无需复制 Client ID、Secret 或令牌。",
+      "claudeWebToken": "如果想改用令牌，请选择 No sign in，并添加一个名为 Authorization 的请求标头，值为 Bearer 加上你的令牌。",
+      "claudeWebHttps": "Claude 从 Anthropic 的云端连接，而不是从你的电脑连接，因此此实例必须能通过 HTTPS（使用真实证书：Caddy、nginx、Cloudflare Tunnel）从互联网访问。如果实例位于私有网络或使用纯 HTTP，请使用下方的 Claude Desktop 配置。",
+      "claudeDesktop": "在私有网络或纯 HTTP 实例上使用 Claude Desktop",
+      "claudeDesktopHint": "Claude Desktop 的配置文件只能运行本地服务器，因此这里会启动 mcp-remote（需要 Node.js）将请求转发到 Emperor。先退出 Claude Desktop，将此内容添加到 claude_desktop_config.json（Settings → Developer → Edit Config），然后重新启动。URL 以 http:// 开头时会带上 --allow-http 参数：请只在你信任的网络中使用。",
+      "talkTitle": "与智能体对话",
+      "talkBody": "所有客户端使用相同的工具。让 Claude 或 Codex 给智能体发消息：它会调用 send_message，再调用 wait_for_reply 直到收到回答，并用 read_thread 查看完整对话。需要作为任务跟踪的工作请使用 send_agent_request。"
     },
     "advanced": {
       "title": "高级运行时设置",

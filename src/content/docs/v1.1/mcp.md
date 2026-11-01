@@ -6,29 +6,62 @@ Emperor exposes two different things under the "MCP" name — read this section 
 
 Emperor runs a real, spec-compliant Model Context Protocol server at `/mcp` (not under `/api/mcp` — that's the legacy REST API documented below). Point any MCP-capable client at it and it discovers agent, task, project, Knowledge & Rules, messaging, and group-chat tools automatically, plus a company-specific `instructions` block with your operating doctrine — no per-client setup needed beyond the token.
 
-**Claude.ai web (Connectors)** — add a custom connector and paste just the server URL (`https://<your-emperorclaw-host>/mcp`). Emperor implements OAuth 2.1 + PKCE with dynamic client registration (RFC 7591/8414/9728), so Claude registers itself automatically and you approve the connection while logged in — no manual Client ID/Secret, no separate token.
+Every client gets the same tools: the server does not tell Claude and Codex apart. Generate an **Agent access** token from **Settings → Access Tokens** for the token-based setups below (Settings → Access Tokens → "Connect Claude, Codex, or another MCP client" shows them with your host filled in).
+
+**Claude Code**
+
+```bash
+claude mcp add --transport http emperorclaw https://your-emperorclaw-host/mcp --header "Authorization: Bearer <your token>"
+```
+
+Add `--scope user` to use it in every project. Run `/mcp` inside Claude Code to check that it connected.
+
+**Codex (CLI and IDE extension)** — add this to `~/.codex/config.toml` and set `EMPEROR_CLAW_TOKEN` to your token in the environment Codex starts from:
+
+```toml
+[mcp_servers.emperorclaw]
+url = "https://your-emperorclaw-host/mcp"
+bearer_token_env_var = "EMPEROR_CLAW_TOKEN"
+```
+
+Or let Codex write the same entry: `codex mcp add emperorclaw --url https://your-emperorclaw-host/mcp --bearer-token-env-var EMPEROR_CLAW_TOKEN`.
+
+**Claude Desktop and claude.ai (Connectors)** — open **Customize → Connectors**, choose **+ Add → Add custom connector**, and paste the server URL (`https://<your-emperorclaw-host>/mcp`). Leave sign-in on: Emperor implements OAuth 2.1 + PKCE with dynamic client registration (RFC 7591/8414/9728), so Claude registers itself automatically and you approve the connection while logged in — no Client ID/Secret, no token to copy. To use a token instead, choose **No sign in** and add a request header `Authorization` with the value `Bearer <your token>`.
 
 > [!IMPORTANT]
-> This requires your EmperorClaw instance to actually be served over **HTTPS** — a reverse proxy with a real certificate (Caddy, nginx, Cloudflare Tunnel, etc.) in front of it. OAuth 2.1 requires TLS on every authorization-server endpoint; a plain-HTTP install (the self-hosted default — `docker-compose.yml` ships `APP_URL=http://localhost:3000`) will very likely fail partway through, even if the consent screen itself loads and you approve. The `/authorize` page will show a warning if it detects this. **If you're self-hosting on plain HTTP (e.g. a LAN IP with no reverse proxy), skip OAuth entirely and use the manual Bearer token method below instead — it works over plain HTTP fine.**
+> Claude connects to custom connectors from **Anthropic's cloud**, not from your computer, so your instance must be reachable from the internet over **HTTPS** with a real certificate (Caddy, nginx, Cloudflare Tunnel, etc.). OAuth 2.1 also requires TLS on every authorization-server endpoint; a plain-HTTP install (the self-hosted default — `docker-compose.yml` ships `APP_URL=http://localhost:3000`) will very likely fail partway through, even if the consent screen itself loads. The `/authorize` page shows a warning if it detects this. For an instance on a private network or plain HTTP, use Claude Code, Codex, or the Claude Desktop config below — they connect from your machine.
 
-**Claude Desktop, Codex CLI, or any other MCP client without a UI-driven OAuth flow** — use a static Bearer token instead:
-1. Generate an **Agent access** token from **Settings → Access Tokens**.
-2. Point the client at `https://<your-emperorclaw-host>/mcp` with `Authorization: Bearer <token>`.
+**Claude Desktop with a private or plain-HTTP instance** — Claude Desktop's `claude_desktop_config.json` only starts local servers (a `url`/`headers` entry there does nothing), so start [`mcp-remote`](https://github.com/geelen/mcp-remote) (needs Node.js) to forward to Emperor. Quit Claude Desktop, open **Settings → Developer → Edit Config**, add:
 
 ```json
 {
   "mcpServers": {
     "emperorclaw": {
-      "url": "https://your-emperorclaw-host/mcp",
-      "headers": {
-        "Authorization": "Bearer <your token>"
+      "command": "npx",
+      "args": ["-y", "mcp-remote", "http://192.168.1.20:3000/mcp", "--header", "Authorization:${EMPEROR_AUTH}", "--allow-http"],
+      "env": {
+        "EMPEROR_AUTH": "Bearer <your token>"
       }
     }
   }
 }
 ```
 
-Both paths produce the exact same token type (visible and revocable from Settings → Access Tokens either way) — OAuth is just an automated way to get one without copy-pasting.
+The header value goes through `env` because Claude Desktop on Windows does not escape spaces in `args`. Keep `--allow-http` only for a plain-HTTP URL on a network you trust; drop it for an `https://` URL.
+
+### Talking to an agent from Claude or Codex
+
+A connection with no agent bound (an operator connection) talks to the agents:
+
+1. `send_message` with `targetAgentId` posts in that agent's direct thread and returns `threadId` and `messageId`.
+2. `wait_for_reply` with `threadId` and `afterMessageId` waits up to 25 seconds (default 20) and returns the new messages the caller did not send, oldest first. On `timedOut: true`, call it again. Agents often post a short acknowledgement (`ack: true`) first; keep waiting with `afterMessageId` set to `nextAfterMessageId` for the answer.
+3. `read_thread` (by `threadId`, or by `agentId` for that agent's direct thread) returns the conversation, oldest first, with `since`, `before` and `limit` (default 30, max 100). `list_threads` shows each thread's last message.
+
+For work you want tracked to done (a task with status and output), use `send_agent_request` and poll `get_agent_request` (filter by `status` or `externalRef`, up to 50 results).
+
+A person's private chat with an agent (private direct-chat mode) is never readable from an operator connection, and an agent-bound connection reads only what its agent may read: the same rules as `GET /api/mcp/threads/{id}/messages`. Agent-bound connections get `read_thread` and `wait_for_reply` too, for their own direct and pair threads, groups they belong to, and the team chat.
+
+OAuth and a copied token produce the exact same token type (visible and revocable from Settings → Access Tokens either way) — OAuth is just an automated way to get one without copy-pasting.
 
 **Hermes agents** connect to this same server automatically during provisioning — see [Hermes Agent Runtime](/docs/v1.1/hermes-runtime) — so this section is mainly for external clients like Claude or Codex.
 

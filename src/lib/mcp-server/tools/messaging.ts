@@ -1,7 +1,7 @@
 import { z } from "zod";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { db } from "@/db";
-import { messageThreads, threadParticipants } from "@/db/schema";
+import { messageThreads } from "@/db/schema";
 import { and, desc, eq, isNull } from "drizzle-orm";
 import { sendThreadMessageFromMcp } from "@/lib/openclaw/messaging";
 import { jsonResult, errorResult } from "../result";
@@ -12,39 +12,15 @@ import {
     getGroup,
     GroupError,
     isAgentGroupMember,
-    isAgentPairThread,
     listGroups,
     removeGroupMember,
     updateGroup,
     type GroupActor,
 } from "@/lib/groups";
 import { resolveAgentId } from "@/lib/mcp";
-import { agentTokenMayUseThread } from "@/lib/direct-chat-mode";
+import { mcpThreadReadRefusals } from "@/lib/thread-access";
 import { assertMcpMayAddAgents, mcpAccessForAgent } from "@/lib/mcp-access";
-
-/**
- * Private agent pair threads are a two-agent handoff. They must not leak into
- * an unscoped thread listing: keep one only when the caller agent is one of its
- * two participants. Operator tokens (no bound agent) see none.
- */
-async function excludePrivatePairThreads(
-    companyId: string,
-    threads: (typeof messageThreads.$inferSelect)[],
-    callerAgentId: string | null,
-): Promise<(typeof messageThreads.$inferSelect)[]> {
-    const pairs = threads.filter((t) => isAgentPairThread(t));
-    if (pairs.length === 0) return threads;
-    const allowed = new Set<string>();
-    if (callerAgentId) {
-        const membership = await db.select({ threadId: threadParticipants.threadId }).from(threadParticipants).where(and(
-            eq(threadParticipants.companyId, companyId),
-            eq(threadParticipants.participantType, "agent"),
-            eq(threadParticipants.participantId, callerAgentId),
-        ));
-        for (const row of membership) allowed.add(row.threadId);
-    }
-    return threads.filter((t) => !isAgentPairThread(t) || allowed.has(t.id));
-}
+import { lastMessagePreviews } from "./conversations";
 
 export function registerMessagingTools(server: McpServer, companyId: string, callerAgentId?: string | null) {
     server.registerTool("send_message", {
@@ -61,7 +37,10 @@ export function registerMessagingTools(server: McpServer, companyId: string, cal
     }, async ({ text, threadId, agentId, targetAgentId, threadType, private: isPrivate }) => {
         try {
             const result = await sendThreadMessageFromMcp({ companyId, text, threadId, agentId, callerAgentId: callerAgentId ?? null, targetAgentId, threadType, private: isPrivate === true });
-            return jsonResult(result);
+            return jsonResult({
+                ...result,
+                hint: `To see the answer, call wait_for_reply with threadId=${result.threadId} and afterMessageId=${result.messageId}; read_thread shows the whole conversation.`,
+            });
         } catch (e) {
             return errorResult(e);
         }
@@ -69,7 +48,7 @@ export function registerMessagingTools(server: McpServer, companyId: string, cal
 
     server.registerTool("list_threads", {
         title: "List Threads",
-        description: "List message threads for this company (team chat, direct threads, and group chats), most recently created first.",
+        description: "List the message threads this connection can read (team chat, direct threads, and group chats), most recently created first, each with its last message (lastMessage: sender, first 140 characters, createdAt). Read one with read_thread.",
         inputSchema: {
             type: z.enum(["team", "direct", "group"]).optional(),
             limit: z.number().int().min(1).max(200).optional(),
@@ -82,12 +61,14 @@ export function registerMessagingTools(server: McpServer, companyId: string, cal
                 .where(and(...conditions))
                 .orderBy(desc(messageThreads.createdAt))
                 .limit(limit || 50);
-            // Private agent pair threads are never listed except to the caller
-            // agent that is one of their two participants.
-            threads = await excludePrivatePairThreads(companyId, threads, callerAgentId ?? null);
-            // A person's private direct thread only for a connection bound to its agent.
-            threads = threads.filter((thread) => agentTokenMayUseThread(thread, callerAgentId ?? null));
-            return jsonResult({ threads });
+            // Only threads this connection could open with read_thread: a pair
+            // thread only for one of its two agents, a person's private chat
+            // only for its agent, project/task threads only inside the agent's
+            // scope, other groups only for members (thread-access.ts).
+            const refused = await mcpThreadReadRefusals(companyId, threads, callerAgentId ?? null, callerAgentId ?? null);
+            threads = threads.filter((thread) => !refused.has(thread.id));
+            const previews = await lastMessagePreviews(companyId, threads.map((thread) => thread.id));
+            return jsonResult({ threads: threads.map((thread) => ({ ...thread, lastMessage: previews.get(thread.id) ?? null })) });
         } catch (e) {
             return errorResult(e);
         }

@@ -9,7 +9,7 @@ import { GROUP_THREAD_TYPE, isAgentGroupMember, isAgentPairThread, pairThreadCou
 import { agentLoopHardCap, agentPairLoopHardCap, stripReservedMetadata, unreachableMentionsOf } from "@/lib/message-routing";
 import { applyStoredObjectiveStatus } from "@/lib/objective-status";
 import { agentTokenMayUseThread, isPrivateDirectThread } from "@/lib/direct-chat-mode";
-import { mcpActingAgentId } from "@/lib/thread-access";
+import { mcpActingAgentId, mcpThreadReadVerdict } from "@/lib/thread-access";
 import { mcpAccessForAgent, mcpMayReachAgent, mcpMayUseThread } from "@/lib/mcp-access";
 
 export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
@@ -27,27 +27,14 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
     const since = sinceParam ? new Date(sinceParam) : null;
     const before = beforeParam ? new Date(beforeParam) : null;
 
-    const [thread] = await db.select().from(messageThreads).where(
-        and(eq(messageThreads.id, threadId), eq(messageThreads.companyId, companyId))
-    ).limit(1);
-
-    // A person's private direct thread: only a request acting as its agent
-    // (bound token, or ?agentId= on a company-wide token). A project/task
-    // thread: only when that project is in the bound agent's scope.
+    // A person's private direct thread, or a two-agent pair thread: only a
+    // request acting as one of its agents (bound token, or ?agentId= on a
+    // company-wide token). A project/task thread: only when that project is in
+    // the bound agent's scope. Other groups are members-only for a bound token.
     const actingAgentId = await mcpActingAgentId(companyId, auth.companyToken!, searchParams.get("agentId"));
-    if (!thread || !agentTokenMayUseThread(thread, actingAgentId)
-        || !(await mcpMayUseThread(companyId, await mcpAccessForAgent(companyId, auth.companyToken!.agentId), thread))) {
-        return NextResponse.json({ error: "Thread not found" }, { status: 404 });
-    }
-
-    // Groups (and agent pair threads) are members-only: a bound agent token may
-    // read messages only of the groups it participates in, never snoop another's.
-    if (thread.type === GROUP_THREAD_TYPE) {
-        const boundAgentId = auth.companyToken!.agentId || null;
-        if (boundAgentId && !(await isAgentGroupMember(companyId, thread.id, boundAgentId))) {
-            return NextResponse.json({ error: "Access denied: this agent is not a member of that group" }, { status: 403 });
-        }
-    }
+    const verdict = await mcpThreadReadVerdict(companyId, threadId, actingAgentId, auth.companyToken!.agentId || null);
+    if (!verdict.ok) return NextResponse.json({ error: verdict.error }, { status: verdict.status });
+    const thread = verdict.thread;
 
     const messages = await getThreadMessages(
         companyId,

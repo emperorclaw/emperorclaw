@@ -9,6 +9,24 @@ tagged (e.g. `## [1.2.0] — 2026-07-22`). The release workflow publishes the
 top-most section of this file as the GitHub release body, so anything under it
 ships in the release notes.
 
+## [Unreleased]
+
+### Added
+- **Hold a real conversation with an agent from Claude or Codex.** Over MCP, after `send_message` your client can now call `wait_for_reply` to get the agent's answer as soon as it arrives (it waits up to 25 seconds per call, then you call it again), and `read_thread` to read a whole conversation. `send_message` now says how to get the answer.
+- `list_threads` shows each thread's last message (who wrote it, its first 140 characters, and when).
+- `get_agent_request` can filter by status and return up to 50 requests, like the REST API.
+- Agents connected over MCP can read their own conversations with `read_thread` and `wait_for_reply` too.
+- Settings → Access Tokens shows ready-to-paste setup for Claude Code and Codex, with your host filled in.
+
+### Changed
+- Connections not bound to an agent get short instructions on how to talk to an agent, and the instructions no longer tell every client "you are an agent".
+- The Claude Desktop setup is corrected: on a public HTTPS instance, add Emperor in Claude as a custom connector (sign in, or a request header with your token); on a private or plain-HTTP instance, use the `mcp-remote` config shown in Settings. The old config example with a `url` did not work.
+- `list_threads` lists only the threads the connection can read: an agent limited to some projects no longer sees other projects' threads, and an agent no longer sees groups it is not in.
+- A conversation between two agents can be read over the API only by one of those two agents, not by a connection that names no agent.
+
+### Unchanged
+- A person's private chat with an agent is still never readable from a connection that is not bound to that agent.
+
 ## [0.25.1] — 2026-11-01
 
 ### Changed
