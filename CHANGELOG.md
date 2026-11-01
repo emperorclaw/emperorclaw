@@ -9,6 +9,14 @@ tagged (e.g. `## [1.2.0] — 2026-07-22`). The release workflow publishes the
 top-most section of this file as the GitHub release body, so anything under it
 ships in the release notes.
 
+## [0.25.1] — 2026-11-01
+
+### Changed
+- **Who can see a view is now one click away.** The view's audience badge, on the view and in the Views list, opens a menu: Private, Shared with…, or Everyone. Audiences are named plainly ("Everyone in the company", "Everyone on Fifus") instead of "Everyone in scope".
+- Views created by the system or by an agent in a shared conversation have no owner. Company owners and admins can now change who sees them; making one private or shared makes you its owner.
+- Narrowing a view that everyone could see asks first, and says who loses access.
+- Agent health names the cause when an agent's LLM provider is out of credits: the agent shows as down with that reason until it answers again. Health reasons are translated.
+
 ## [0.25.0] — 2026-10-30
 
 ### Added
