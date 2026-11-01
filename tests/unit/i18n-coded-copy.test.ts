@@ -18,6 +18,7 @@ import { hireReadiness, hireReasonCopy, type HireHostFacts } from "../../src/lib
 import { EASY_SETUP_REASONS } from "../../src/lib/easy-setup-reasons";
 import { requestSourceCopy, requestSourceLabel } from "../../src/lib/request-label";
 import { API_ERROR_KEYS, apiErrorCopy, apiErrorKey } from "../../src/lib/api-error-copy";
+import { providerIssueFromReason, scoreAgent } from "../../src/lib/agent-health";
 
 const ROOT = path.join(__dirname, "..", "..");
 type Tree = { [key: string]: string | Tree };
@@ -218,4 +219,27 @@ test("every inbox entry key the attention builder uses exists", () => {
         if (key.startsWith("inbox.entries.")) assert.ok(flat.has(key), `en.json has no ${key}`);
         else assert.ok(entries.has(key), `inbox.entries has no ${key}`);
     }
+});
+
+test("agent health reasons: reasonCopies align 1:1 with the English reasons and render to them", () => {
+    const base = { online: true, unanswered: 0, failed: 0, overdueTasks: 0, budgetStatus: "active", requests: 3, replies: 2 };
+    const cases = [
+        base,
+        { ...base, unanswered: 1 }, { ...base, unanswered: 4 },
+        { ...base, failed: 1 }, { ...base, failed: 2 },
+        { ...base, overdueTasks: 1 }, { ...base, overdueTasks: 3 },
+        { ...base, budgetStatus: "warning" }, { ...base, budgetStatus: "paused" }, { ...base, budgetStatus: "paused_budget" }, { ...base, budgetStatus: "some_new_state" },
+        { ...base, online: false }, { ...base, online: false, unanswered: 2, failed: 1, overdueTasks: 1, budgetStatus: "paused" },
+        { ...base, failed: 1, unanswered: 1, providerIssue: providerIssueFromReason("HTTP 402: Insufficient credits") },
+        { ...base, providerIssue: "Some other provider issue" },
+    ];
+    for (const input of cases) {
+        const { reasons, reasonCopies } = scoreAgent(input);
+        assert.equal(reasonCopies.length, reasons.length, JSON.stringify(input));
+        reasons.forEach((reason, i) => assert.equal(english(reasonCopies[i]), reason, JSON.stringify(input)));
+        // Chinese renders every reason (untranslated keys fall back to English, never to a key path).
+        for (const item of reasonCopies) assert.doesNotMatch(translateCopy(tZh, item, "\u0000missing"), /\u0000missing|agents\.health/);
+    }
+    const provider = scoreAgent({ ...base, failed: 1, providerIssue: providerIssueFromReason("LLM provider out of credits (HTTP 402)") });
+    assert.deepEqual(provider.reasonCopies[0], copy("agents.health.reasons.providerCredits"));
 });

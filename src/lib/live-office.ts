@@ -1,3 +1,4 @@
+import type { CodedCopy } from "@/lib/coded-copy";
 import type { CompanyLeader, DashboardTeam, SceneAgent, SceneLiveEvent, SceneThought } from "@/lib/team-scene";
 
 /**
@@ -111,6 +112,8 @@ function clip(text: string, max: number): string {
 export interface DeskStatus {
     /** The full line, e.g. "Answering 47 emails · 12m". */
     text: string;
+    /** `text` as coded copy when it is the agent's health-reason activity line. */
+    textCopy?: CodedCopy | null;
     /** The real task title when there is one. */
     task: string | null;
     elapsed: string | null;
@@ -133,7 +136,7 @@ export function deskStatusLine(agent: SceneAgent, now: Date): DeskStatus {
         const title = clip(task.title, TITLE_MAX);
         return { text: elapsed ? `${title} · ${elapsed}` : title, task: title, elapsed };
     }
-    return { text: clip(agent.activity || agent.behavior.caption, TITLE_MAX), task: null, elapsed: null };
+    return { text: clip(agent.activity || agent.behavior.caption, TITLE_MAX), ...(agent.activity && agent.activityCopy ? { textCopy: agent.activityCopy } : {}), task: null, elapsed: null };
 }
 
 /** The small text label that carries the state (never color alone). */

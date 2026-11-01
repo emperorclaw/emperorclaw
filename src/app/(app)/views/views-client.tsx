@@ -13,9 +13,11 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { useNowMs } from "@/components/views/view-panels";
-import { ViewRow } from "@/components/views/view-meta";
+import { ViewRow, useAudienceText } from "@/components/views/view-meta";
+import { VisibilityMenu } from "@/components/views/visibility-menu";
 import type { ViewSummary } from "@/lib/views";
 import { VIEW_DESCRIPTION_MAX, VIEW_TITLE_MAX } from "@/lib/view-spec";
+import { mayChangeVisibility } from "@/lib/view-access";
 import { cn } from "@/lib/utils";
 
 export { useScopeText } from "@/components/views/view-meta";
@@ -88,13 +90,18 @@ function matches(view: ViewSummary, filter: FilterKey, query: string, userId: st
         .some((text) => text?.toLowerCase().includes(query));
 }
 
-export function ViewsBrowser({ views, showArchived, userId }: { views: ViewSummary[]; showArchived: boolean; userId: string }) {
+export function ViewsBrowser({ views, showArchived, userId, isAdmin }: { views: ViewSummary[]; showArchived: boolean; userId: string; isAdmin: boolean }) {
     const t = useTranslations("views.list");
     const tScope = useTranslations("views.scope");
     const now = useNowMs();
     const [filter, setFilter] = useState<FilterKey>("all");
     const [query, setQuery] = useState("");
     const shown = useMemo(() => views.filter((v) => matches(v, filter, query.trim().toLowerCase(), userId)), [views, filter, query, userId]);
+    // The badge is a menu for whoever may change who sees the view (never from metadata alone).
+    const row = (view: ViewSummary) => (
+        <ViewRow key={view.id} view={view} now={now} showScope={false}
+            visibility={<VisibilityMenu view={view} canChange={view.access === "full" && mayChangeVisibility(view.owner?.id ?? null, { kind: "member", userId, isAdmin })} />} />
+    );
     const groups = useMemo(() => groupViews(shown, { company: tScope("company"), internal: t("noClientProjects"), client: tScope("client"), project: tScope("project") }), [shown, t, tScope]);
 
     if (views.length === 0) {
@@ -132,12 +139,12 @@ export function ViewsBrowser({ views, showArchived, userId }: { views: ViewSumma
                     <h2 id={`views-${group.key}`} className="px-1 text-sm font-semibold text-foreground">{group.title}</h2>
                     <div className="overflow-hidden rounded-2xl border border-border bg-card">
                         {group.views.length > 0 && (
-                            <ul className="divide-y divide-border">{group.views.map((view) => <ViewRow key={view.id} view={view} now={now} showScope={false} />)}</ul>
+                            <ul className="divide-y divide-border">{group.views.map(row)}</ul>
                         )}
                         {group.projects.map((project, index) => (
                             <div key={project.key} className={cn((index > 0 || group.views.length > 0) && "border-t border-border")}>
                                 <h3 className="bg-muted/40 px-4 py-1.5 text-xs font-medium text-muted-foreground">{tScope("labelled", { noun: tScope("project"), label: project.title })}</h3>
-                                <ul className="divide-y divide-border">{project.views.map((view) => <ViewRow key={view.id} view={view} now={now} showScope={false} />)}</ul>
+                                <ul className="divide-y divide-border">{project.views.map(row)}</ul>
                             </div>
                         ))}
                     </div>
@@ -152,11 +159,19 @@ export function ViewsBrowser({ views, showArchived, userId }: { views: ViewSumma
 
 type ScopeOption = { id: string; name: string };
 
+/** The picked scope ("company", "customer:<id>", "project:<id>") as the facts lib/view-access.ts viewAudience reads. */
+function scopeAudience(scope: string, customers: ScopeOption[], projects: ScopeOption[]): { scopeType: string; scopeLabel: string | null } {
+    const [scopeType, scopeId] = scope === "company" ? ["company", null] : scope.split(":");
+    const options = scopeType === "customer" ? customers : scopeType === "project" ? projects : [];
+    return { scopeType, scopeLabel: options.find((o) => o.id === scopeId)?.name ?? null };
+}
+
 /** Members and up start a view (title, description, scope, who sees it); an agent fills in the panels. */
 export function NewViewButton({ customers, projects }: { customers: ScopeOption[]; projects: ScopeOption[] }) {
     const t = useTranslations("views.new");
     const tScope = useTranslations("views.scope");
     const tc = useTranslations("common");
+    const audienceText = useAudienceText();
     const router = useRouter();
     const [open, setOpen] = useState(false);
     const [busy, setBusy] = useState(false);
@@ -224,7 +239,7 @@ export function NewViewButton({ customers, projects }: { customers: ScopeOption[
                         <fieldset className="grid gap-1.5">
                             <legend className="mb-1.5 text-sm font-medium text-foreground">{t("whoCanSee")}</legend>
                             <div className="grid grid-cols-2 gap-1 rounded-xl border border-border bg-card p-1">
-                                {([["private", t("onlyMe")], ["scope", t("everyoneInScope")]] as const).map(([value, label]) => (
+                                {([["private", t("onlyMe")], ["scope", audienceText(scopeAudience(scope, customers, projects))]] as const).map(([value, label]) => (
                                     <label key={value} className={cn("cursor-pointer rounded-lg px-3 py-1.5 text-center text-sm transition-colors",
                                         visibility === value ? "bg-accent font-medium text-foreground" : "text-muted-foreground hover:text-foreground")}>
                                         <input type="radio" name="view-visibility" value={value} checked={visibility === value} onChange={() => setVisibility(value)} className="sr-only" />

@@ -1,6 +1,8 @@
 import { and, eq, gte, inArray, isNull } from "drizzle-orm";
 import { db } from "@/db";
 import { agents, messageThreads, tasks, threadMessages, threadParticipants } from "@/db/schema";
+import { copy, type CodedCopy } from "@/lib/coded-copy";
+import { isCreditsFailureText } from "@/lib/failure-cause";
 import { mentionedAgentIds } from "@/lib/message-routing";
 import { SLA_TRACKED_TASK_STATES } from "@/lib/task-state";
 
@@ -35,7 +37,10 @@ export interface AgentHealth {
     lastSeenAt: string | null;
     load: number;
     status: HealthStatus;
+    /** English reasons (agents read them through MCP; attention.ts matches on them). */
     reasons: string[];
+    /** reasons as coded copy (agents.health.reasons.*), 1:1 with `reasons`, for the viewer's language. */
+    reasonCopies: CodedCopy[];
     requests: number;
     replies: number;
     unanswered: number;
@@ -48,6 +53,8 @@ export interface AgentHealth {
     monthlyCostCents: number;
     monthlyTokens: number;
     budgetStatus: string;
+    /** A runtime-reported failure only an operator can fix (e.g. the LLM provider is out of credits), or null. */
+    providerIssue: string | null;
     /** Requests answered per day, oldest first (sparkline). */
     repliesByDay: number[];
 }
@@ -77,7 +84,42 @@ function median(values: number[]): number | null {
     return sorted.length % 2 ? sorted[mid] : Math.round((sorted[mid - 1] + sorted[mid]) / 2);
 }
 
-/** Pure scoring, unit-tested: what state is an agent in, and why. */
+const PROVIDER_CREDITS = "LLM provider out of credits";
+const REASON = "agents.health.reasons";
+/** Budget states with their own words; any other state is shown as is. */
+const BUDGET_STATUS_COPY = new Set(["warning", "paused", "paused_budget"]);
+
+/**
+ * Classify a runtime failure reason (threadMessages.metadataJson.runtimeFailure.reason)
+ * into a provider issue an operator must fix. Retrying never helps these, so
+ * they must not hide behind a generic "message failed".
+ */
+export function providerIssueFromReason(reason: unknown): string | null {
+    // The same credits test as failure-cause.ts, so a failure the run view calls
+    // "out of credits" is the same one that marks the agent down.
+    return isCreditsFailureText(reason) ? PROVIDER_CREDITS : null;
+}
+
+/** A provider issue (providerIssueFromReason) as coded copy; any other issue is shown as reported. */
+function providerIssueCopy(issue: string): CodedCopy {
+    return issue === PROVIDER_CREDITS ? copy(`${REASON}.providerCredits`) : copy(`${REASON}.issue`, { issue });
+}
+
+type Reason = { text: string; copy: CodedCopy };
+const unansweredReason = (n: number): Reason => ({ text: `${n} unanswered message${n === 1 ? "" : "s"}`, copy: copy(`${REASON}.unanswered`, { count: n }) });
+const failedReason = (n: number): Reason => ({ text: `${n} message${n === 1 ? "" : "s"} failed`, copy: copy(`${REASON}.failed`, { count: n }) });
+const overdueReason = (n: number): Reason => ({ text: `${n} overdue task${n === 1 ? "" : "s"}`, copy: copy(`${REASON}.overdue`, { count: n }) });
+function budgetReason(budgetStatus: string): Reason {
+    const words = budgetStatus.replace(/_/g, " ");
+    const status = BUDGET_STATUS_COPY.has(budgetStatus) ? copy(`${REASON}.budgetStatuses.${budgetStatus}`) : words;
+    return { text: `budget ${words}`, copy: copy(`${REASON}.budget`, { status }) };
+}
+
+function result(status: HealthStatus, list: Reason[]): { status: HealthStatus; reasons: string[]; reasonCopies: CodedCopy[] } {
+    return { status, reasons: list.map((r) => r.text), reasonCopies: list.map((r) => r.copy) };
+}
+
+/** Pure scoring, unit-tested: what state is an agent in, and why (English reasons plus their coded copy, 1:1). */
 export function scoreAgent(input: {
     online: boolean;
     unanswered: number;
@@ -86,16 +128,23 @@ export function scoreAgent(input: {
     budgetStatus: string;
     requests: number;
     replies: number;
-}): { status: HealthStatus; reasons: string[] } {
-    const reasons: string[] = [];
-    if (input.unanswered > 0) reasons.push(`${input.unanswered} unanswered message${input.unanswered === 1 ? "" : "s"}`);
-    if (input.failed > 0) reasons.push(`${input.failed} message${input.failed === 1 ? "" : "s"} failed`);
-    if (input.overdueTasks > 0) reasons.push(`${input.overdueTasks} overdue task${input.overdueTasks === 1 ? "" : "s"}`);
-    if (input.budgetStatus && input.budgetStatus !== "active") reasons.push(`budget ${input.budgetStatus.replace(/_/g, " ")}`);
-    if (!input.online && input.unanswered > 0) return { status: "down", reasons: ["offline with work waiting", ...reasons] };
-    if (reasons.length > 0) return { status: "attention", reasons };
-    if (!input.online) return { status: "idle", reasons: [] };
-    return { status: "healthy", reasons: [] };
+    providerIssue?: string | null;
+}): { status: HealthStatus; reasons: string[]; reasonCopies: CodedCopy[] } {
+    const reasons: Reason[] = [];
+    // The agent cannot answer anything until an operator fixes the provider.
+    if (input.providerIssue) {
+        if (input.failed > 0) reasons.push(failedReason(input.failed));
+        if (input.unanswered > 0) reasons.push(unansweredReason(input.unanswered));
+        return result("down", [{ text: input.providerIssue, copy: providerIssueCopy(input.providerIssue) }, ...reasons]);
+    }
+    if (input.unanswered > 0) reasons.push(unansweredReason(input.unanswered));
+    if (input.failed > 0) reasons.push(failedReason(input.failed));
+    if (input.overdueTasks > 0) reasons.push(overdueReason(input.overdueTasks));
+    if (input.budgetStatus && input.budgetStatus !== "active") reasons.push(budgetReason(input.budgetStatus));
+    if (!input.online && input.unanswered > 0) return result("down", [{ text: "offline with work waiting", copy: copy(`${REASON}.offlineWithWork`) }, ...reasons]);
+    if (reasons.length > 0) return result("attention", reasons);
+    if (!input.online) return result("idle", []);
+    return result("healthy", []);
 }
 
 export async function computeCompanyHealth(companyId: string, options: { agentIds?: string[]; now?: Date } = {}): Promise<CompanyHealth> {
@@ -142,12 +191,12 @@ export async function computeCompanyHealth(companyId: string, options: { agentId
         if (p.agentId && threadType.get(p.threadId) === "direct") directOwner.set(p.threadId, p.agentId);
     }
 
-    type Stats = { requests: number; replies: number; unanswered: number; failed: number; retries: number; responses: number[]; repliesByDay: number[] };
+    type Stats = { requests: number; replies: number; unanswered: number; failed: number; retries: number; responses: number[]; repliesByDay: number[]; lastReplyAt: number; lastFailure: { at: number; reason: unknown } | null };
     const stats = new Map<string, Stats>();
-    for (const id of agentIds) stats.set(id, { requests: 0, replies: 0, unanswered: 0, failed: 0, retries: 0, responses: [], repliesByDay: Array(HEALTH_WINDOW_DAYS).fill(0) });
+    for (const id of agentIds) stats.set(id, { requests: 0, replies: 0, unanswered: 0, failed: 0, retries: 0, responses: [], repliesByDay: Array(HEALTH_WINDOW_DAYS).fill(0), lastReplyAt: 0, lastFailure: null });
     const agentName = new Map(agentRows.map((a) => [a.id, a.name]));
 
-    type Request = { agentId: string; messageId: string; threadId: string; at: number; deliveryState: string; failed: boolean; text: string; link: string };
+    type Request = { agentId: string; messageId: string; threadId: string; at: number; deliveryState: string; failed: boolean; failedAt: number; failureReason: unknown; text: string; link: string };
     const requests: Request[] = [];
     const answered = new Set<Request>();
     // Requests still waiting for a reply, per (thread, agent).
@@ -160,6 +209,7 @@ export async function computeCompanyHealth(companyId: string, options: { agentId
         if (m.senderType === "agent" && m.senderId && stats.has(m.senderId)) {
             const s = stats.get(m.senderId)!;
             s.replies += 1;
+            s.lastReplyAt = Math.max(s.lastReplyAt, at);
             const day = Math.min(HEALTH_WINDOW_DAYS - 1, Math.max(0, Math.floor((at - since.getTime()) / 86_400_000)));
             s.repliesByDay[day] += 1;
             const key = `${m.threadId}:${m.senderId}`;
@@ -187,7 +237,7 @@ export async function computeCompanyHealth(companyId: string, options: { agentId
         }
 
         const metadata = (m.metadataJson as Record<string, unknown>) || {};
-        const failure = metadata.runtimeFailure as { agentId?: string } | undefined;
+        const failure = metadata.runtimeFailure as { agentId?: string; at?: string; reason?: unknown } | undefined;
         for (const agentId of addressed) {
             const s = stats.get(agentId);
             if (!s) continue;
@@ -200,6 +250,8 @@ export async function computeCompanyHealth(companyId: string, options: { agentId
                 at,
                 deliveryState: m.deliveryState,
                 failed: m.deliveryState === "cancelled" && Boolean(failure) && (!failure!.agentId || failure!.agentId === agentId),
+                failedAt: (failure?.at && Date.parse(failure.at)) || at,
+                failureReason: failure?.reason,
                 text: type === "direct" ? "Private message" : (m.text || "").slice(0, 160),
                 link: type === "group" ? `/messages?group=${m.threadId}` : type === "direct" ? `/messages?agent=${agentId}` : "/messages",
             };
@@ -219,6 +271,7 @@ export async function computeCompanyHealth(companyId: string, options: { agentId
         const item = { agentId: req.agentId, agentName: agentName.get(req.agentId) ?? "Agent", messageId: req.messageId, text: req.text, since: new Date(req.at).toISOString(), link: req.link };
         if (req.failed && !answered.has(req)) {
             s.failed += 1;
+            if (!s.lastFailure || req.failedAt >= s.lastFailure.at) s.lastFailure = { at: req.failedAt, reason: req.failureReason };
             attention.push({ ...item, kind: "failed" });
         } else if (!answered.has(req) && ["queued", "seen", "acting"].includes(req.deliveryState) && now.getTime() - req.at > UNANSWERED_AFTER_MS) {
             s.unanswered += 1;
@@ -234,7 +287,10 @@ export async function computeCompanyHealth(companyId: string, options: { agentId
         const overdueTasks = open.filter((t) => t.slaDueAt && t.slaDueAt.getTime() < now.getTime()).length;
         const doneTasks = own.filter((t) => t.state === "done" && t.updatedAt.getTime() >= since.getTime()).length;
         const online = Boolean(a.lastSeenAt && now.getTime() - a.lastSeenAt.getTime() < OFFLINE_AFTER_MS);
-        const { status, reasons } = scoreAgent({
+        // Only the latest failure counts, and only until the agent answers again
+        // (credits topped up): a stale 402 must not pin a recovered agent down.
+        const providerIssue = s.lastFailure && s.lastFailure.at > s.lastReplyAt ? providerIssueFromReason(s.lastFailure.reason) : null;
+        const { status, reasons, reasonCopies } = scoreAgent({
             online,
             unanswered: s.unanswered,
             failed: s.failed,
@@ -242,6 +298,7 @@ export async function computeCompanyHealth(companyId: string, options: { agentId
             budgetStatus: a.budgetStatus,
             requests: s.requests,
             replies: s.replies,
+            providerIssue,
         });
         return {
             id: a.id,
@@ -254,6 +311,7 @@ export async function computeCompanyHealth(companyId: string, options: { agentId
             load: a.currentLoad,
             status,
             reasons,
+            reasonCopies,
             requests: s.requests,
             replies: s.replies,
             unanswered: s.unanswered,
@@ -266,6 +324,7 @@ export async function computeCompanyHealth(companyId: string, options: { agentId
             monthlyCostCents: Number(a.monthlyCostCents) || 0,
             monthlyTokens: a.monthlyTokenUsage,
             budgetStatus: a.budgetStatus,
+            providerIssue,
             repliesByDay: s.repliesByDay,
         };
     });

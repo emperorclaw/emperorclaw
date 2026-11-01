@@ -35,7 +35,7 @@ test("an incident in one task does not stop unrelated assigned work", () => {
 });
 
 test("offline history without outstanding issues is not an attention warning", () => {
-    assert.deepEqual(scoreAgent({ online: false, unanswered: 0, failed: 0, overdueTasks: 0, budgetStatus: "active", requests: 99, replies: 99 }), { status: "idle", reasons: [] });
+    assert.deepEqual(scoreAgent({ online: false, unanswered: 0, failed: 0, overdueTasks: 0, budgetStatus: "active", requests: 99, replies: 99 }), { status: "idle", reasons: [], reasonCopies: [] });
 });
 
 test("board filters choose task states and include human and unassigned work", () => {

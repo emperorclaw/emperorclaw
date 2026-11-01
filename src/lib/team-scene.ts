@@ -45,6 +45,8 @@ export interface DashboardMember {
     skills: string[];
     health: HealthStatus | null;
     healthReasons: string[];
+    /** healthReasons as coded copy (agents.health.reasons.*), 1:1, for the viewer's language. */
+    healthReasonCopies?: CodedCopy[];
     /** Live "typing" activity reported by the runtime, if any. */
     activity: string | null;
     href: string;
@@ -466,6 +468,15 @@ const BLOCKED_COPY: Record<AttentionKind, string> = {
 function sentence(text: string): string {
     const trimmed = text.trim().replace(/[.…]+$/, "");
     return trimmed ? trimmed[0].toUpperCase() + trimmed.slice(1) : trimmed;
+}
+
+/**
+ * activityText as coded copy when the line is a health reason (the only part
+ * of it built from server English the scene captions cannot map), else null.
+ */
+export function activityCopy(member: DashboardMember, status: SceneStatus, attention?: AttentionEntry | null): CodedCopy | null {
+    if (status !== "blocked" || attention || !member.healthReasons[0]) return null;
+    return member.healthReasonCopies?.[0] ?? null;
 }
 
 /** The one-line "what is this agent doing" shown on the floating label. */
@@ -891,6 +902,8 @@ export interface SceneAgent {
     member: DashboardMember;
     status: SceneStatus;
     activity: string;
+    /** `activity` as coded copy when it is a health reason (render it capitalized), else absent. */
+    activityCopy?: CodedCopy | null;
     zone: ZoneId;
     /** The animation + caption derived from this agent's real state. */
     behavior: Behavior;
@@ -1392,7 +1405,7 @@ export function deriveSceneAgents(data: Pick<DashboardData, "members" | "attenti
             checkIn: member.health === "attention" && !blocking,
             checkInReason: member.healthReasons[0] ?? null,
         });
-        return { member, status, activity: activityText(member, status, attention), zone: zoneFor(member, status), behavior, isNew: isNewAgent(member.createdAt, now), notices: attentionForMember(data.attention, member.key) };
+        return { member, status, activity: activityText(member, status, attention), activityCopy: activityCopy(member, status, attention), zone: zoneFor(member, status), behavior, isNew: isNewAgent(member.createdAt, now), notices: attentionForMember(data.attention, member.key) };
     });
 }
 

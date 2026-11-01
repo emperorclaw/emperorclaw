@@ -5,7 +5,7 @@ import { agents } from "@/db/schema";
 import { requireCompanyAccess } from "@/lib/company-access";
 import { canAdmin, canWrite } from "@/lib/role-matrix";
 import { memberAgentCondition } from "@/lib/member-scope";
-import { getView, listViewTransferPeople, memberViewCaller, owningAgentId, ViewNotFoundError } from "@/lib/views";
+import { getView, listViewTransferPeople, mayChangeViewVisibility, memberViewCaller, owningAgentId, ViewNotFoundError } from "@/lib/views";
 import { RealtimeRefresh } from "@/lib/use-realtime";
 import { getDirectChatMode } from "@/lib/control-plane";
 import { ViewDetailClient, ViewMetadataClient } from "./view-client";
@@ -16,7 +16,9 @@ export const dynamic = "force-dynamic";
  * One view: its panels on a 12-column grid (stacked on a phone), each with
  * "Updated … by …" and "Ask about this panel". Members can rename, archive,
  * revert and ask the maintaining agent to refresh; everyone who can open it
- * can pin it to their own Home; its owner decides who sees it. An owner/admin
+ * can pin it to their own Home; its owner decides who sees it (on a view with
+ * no owner, an owner/admin does, and making it private or shared makes them
+ * its owner). An owner/admin
  * outside a private view sees its metadata only (and may delete or transfer
  * it). Not visible reads as not found.
  */
@@ -46,6 +48,7 @@ export default async function ViewPage({ params }: { params: Promise<{ id: strin
     }
 
     const canEdit = canWrite(access.role);
+    const canChangeVisibility = mayChangeViewVisibility(view.owner?.id ?? null, memberViewCaller(access));
     // Agents this person may message: the Refresh picker and "Ask about this panel".
     const agentRows = canEdit ? await db.select({ id: agents.id, name: agents.name }).from(agents).where(and(
         eq(agents.companyId, access.companyId), isNull(agents.deletedAt), memberAgentCondition(access.scope, agents.id),
@@ -63,7 +66,7 @@ export default async function ViewPage({ params }: { params: Promise<{ id: strin
                 view={view}
                 canEdit={canEdit}
                 canManage={isAdmin || isOwner}
-                isOwner={isOwner}
+                canChangeVisibility={canChangeVisibility}
                 agents={agentRows}
                 ownerAgentId={maintainer && agentRows.some((a) => a.id === maintainer) ? maintainer : null}
                 askAgentId={askAgentId}

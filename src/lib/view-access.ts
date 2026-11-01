@@ -63,6 +63,38 @@ export function viewAccess(subject: ViewAccessSubject, view: ViewAccessFacts, in
 }
 
 /**
+ * Who may change who sees a view: its owner, or an owner/admin when the view
+ * has no owner (made by the system or by an agent in a group conversation).
+ * Agents never do: they set visibility only when they create a view.
+ */
+export function mayChangeVisibility(ownerUserId: string | null, subject: ViewAccessSubject): boolean {
+    if (subject.kind !== "member") return false;
+    return ownerUserId === null ? subject.isAdmin : ownerUserId === subject.userId;
+}
+
+/**
+ * Does going from one visibility to another take the view away from everyone
+ * in its scope (Everyone -> Private or Shared)? The menu asks first, naming
+ * who loses access.
+ */
+export function visibilityChangeNarrows(from: string, to: string): boolean {
+    return from === "scope" && (to === "private" || to === "shared");
+}
+
+/**
+ * Who "everyone in scope" really is, as a views.visibility.<key> message:
+ * "Everyone in the company", "Everyone on <project>", "Everyone at <client>"
+ * (or "this project" / "this client" when the name is not known).
+ */
+export function viewAudience(view: { scopeType: string; scopeLabel: string | null }):
+    | { key: "everyoneCompany" | "everyoneProject" | "everyoneClient" }
+    | { key: "everyoneOn" | "everyoneAt"; name: string } {
+    if (view.scopeType === "customer") return view.scopeLabel ? { key: "everyoneAt", name: view.scopeLabel } : { key: "everyoneClient" };
+    if (view.scopeType === "project") return view.scopeLabel ? { key: "everyoneOn", name: view.scopeLabel } : { key: "everyoneProject" };
+    return { key: "everyoneCompany" };
+}
+
+/**
  * Visibility when the creator does not choose: a view made for one person in
  * their private chat is private; one made in team or project context, or with
  * nobody it is for, is open to the scope. A person creating one in Emperor

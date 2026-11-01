@@ -1,5 +1,6 @@
 import { useMemo } from "react";
 import { useTranslations } from "next-intl";
+import { translateCopy, type CodedCopy, type CopyTranslator } from "@/lib/coded-copy";
 import type { AttentionKind, SceneStatus, ZoneId } from "@/lib/team-scene";
 import { TASK_STATES } from "@/lib/task-state";
 import { SCENE_CAPTION_KEYS, SCENE_CAPTION_PREFIXES } from "./scene-copy-keys";
@@ -11,6 +12,7 @@ import { SCENE_CAPTION_KEYS, SCENE_CAPTION_PREFIXES } from "./scene-copy-keys";
  */
 export function useSceneCopy() {
     const t = useTranslations("scene");
+    const root = useTranslations() as unknown as CopyTranslator;
     return useMemo(() => ({
         status: (status: SceneStatus) => t(`status.${status}`),
         zone: (zone: ZoneId) => t(`zones.${zone}`),
@@ -19,7 +21,12 @@ export function useSceneCopy() {
         taskState: (state: string) => (Object.values(TASK_STATES) as string[]).includes(state)
             ? t(`taskState.${state as (typeof TASK_STATES)[keyof typeof TASK_STATES]}`)
             : state.replaceAll("_", " "),
-        caption: (text: string): string => {
+        /** `copy`, when given, is the line as coded copy (a health reason): rendered as a sentence, English text as fallback. */
+        caption: (text: string, copy?: CodedCopy | null): string => {
+            if (copy) {
+                const translated = translateCopy(root, copy, "");
+                if (translated) return translated[0].toUpperCase() + translated.slice(1);
+            }
             const key = (SCENE_CAPTION_KEYS as Record<string, (typeof SCENE_CAPTION_KEYS)[keyof typeof SCENE_CAPTION_KEYS]>)[text];
             if (key) return t(`caption.${key}`);
             for (const { prefix, key: prefixKey } of SCENE_CAPTION_PREFIXES) {
@@ -31,5 +38,5 @@ export function useSceneCopy() {
             }
             return text;
         },
-    }), [t]);
+    }), [t, root]);
 }

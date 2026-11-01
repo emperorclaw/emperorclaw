@@ -2,19 +2,23 @@ import { NextRequest, NextResponse } from "next/server";
 import { companyRouteAccess } from "@/lib/company-access";
 import { listViewSharePeople, memberViewCaller, setViewVisibility, viewErrorResponse } from "@/lib/views";
 
-/** The people the owner may share the view with (members who can see its scope). Empty for anyone but the owner. */
+/**
+ * The people the owner may share the view with (members who can see its
+ * scope) and the current share list. Empty for anyone who may not change who
+ * sees it (lib/view-access.ts mayChangeVisibility).
+ */
 export async function GET(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
     const access = await companyRouteAccess("viewer", { module: "views" });
     if (access.response) return access.response;
     try {
         const { id } = await params;
-        return NextResponse.json({ people: await listViewSharePeople(access.ctx.companyId, memberViewCaller(access.ctx), id) });
+        return NextResponse.json(await listViewSharePeople(access.ctx.companyId, memberViewCaller(access.ctx), id));
     } catch (error) {
         return viewErrorResponse(error);
     }
 }
 
-/** The owner sets who sees the view: {visibility: "private" | "shared" | "scope", shareUserIds?: string[]}. */
+/** The owner (or an owner/admin on an ownerless view, who becomes its owner unless it stays open to the scope) sets who sees the view: {visibility: "private" | "shared" | "scope", shareUserIds?: string[]}. */
 export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
     const access = await companyRouteAccess("viewer", { module: "views" });
     if (access.response) return access.response;

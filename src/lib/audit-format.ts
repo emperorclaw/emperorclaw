@@ -270,6 +270,7 @@ const VERBS: Record<string, string> = {
     "view.reverted": "reverted",
     "view.visibility_changed": "changed who can see",
     "view.owner_transferred": "transferred",
+    "view.owner_claimed": "took ownership of",
     "view.deleted": "deleted",
     "view.read_unbound_token": "opened with a company-wide token",
     "agent.runtime_host_changed": "changed the host of",
@@ -406,6 +407,7 @@ function detailCopyFor(action: string, payload: AuditPayload, names: Readonly<Re
         case "view.reverted":
             return typeof meta.fromVersion === "number" ? d("toVersion", { version: String(meta.fromVersion) }) : null;
         case "view.visibility_changed":
+        case "view.owner_claimed":
             return after.visibility === "private" || after.visibility === "shared" || after.visibility === "scope" ? d(`viewVisibility.${after.visibility}`) : null;
         case "knowledge_note.moved":
             return typeof after.path === "string" ? d("toPath", { path: after.path }) : d("toTopLevel");
@@ -462,7 +464,8 @@ function detailFor(action: string, payload: AuditPayload, names: Readonly<Record
                 : null;
         case "view.reverted":
             return typeof meta.fromVersion === "number" ? `to version ${meta.fromVersion}` : null;
-        case "view.visibility_changed": {
+        case "view.visibility_changed":
+        case "view.owner_claimed": {
             const word = after.visibility === "private" ? "only its owner" : after.visibility === "shared" ? "shared people" : after.visibility === "scope" ? "everyone in scope" : null;
             return word ? `(${word})` : null;
         }

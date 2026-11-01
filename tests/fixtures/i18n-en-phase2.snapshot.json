@@ -805,8 +805,7 @@
     "visibility": {
       "private": "Private",
       "shared": "Shared",
-      "sharedWith": "Shared with {count}",
-      "everyone": "Everyone in scope"
+      "sharedWith": "Shared with {count}"
     },
     "cadence": {
       "hourly": "hourly",
@@ -890,7 +889,6 @@
       "whereItLives": "Where it lives",
       "whoCanSee": "Who can see it",
       "onlyMe": "Only me",
-      "everyoneInScope": "Everyone in scope",
       "shareLater": "You can share it with specific people later.",
       "create": "Create view"
     },
@@ -957,12 +955,10 @@
       "visibilityFailed": "Couldn't change who sees this view",
       "nowPrivate": "Only you can see this view",
       "sharingUpdated": "Sharing updated",
-      "nowEveryone": "Everyone in scope can see this view",
       "whoCanSee": "Who can see it",
       "visibilityPrivate": "Only you (and the agent that keeps it up to date).",
       "visibilityShared": "You and {people}.",
       "thePeopleYouPicked": "the people you picked",
-      "visibilityScope": "Everyone who can see {scope, select, company {the company} customer {this client} other {this project}}.",
       "peopleFailed": "Couldn't load people",
       "shareTitle": "Share with people",
       "shareDescription": "Only members who can see this view’s scope are listed.",

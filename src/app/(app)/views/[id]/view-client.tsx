@@ -15,11 +15,11 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { ViewGrid, useFormatAgo, useNowMs, type ViewPanelView } from "@/components/views/view-panels";
-import { PersonChip, StaleNote, VisibilityBadge, useRefreshCadenceText, useScopeText } from "@/components/views/view-meta";
+import { PersonChip, StaleNote, VisibilityBadge, useAudienceText, useRefreshCadenceText, useScopeText } from "@/components/views/view-meta";
+import { VisibilityMenu } from "@/components/views/visibility-menu";
 import { VIEW_DESCRIPTION_MAX, VIEW_TITLE_MAX, viewRefreshDirective } from "@/lib/view-spec";
 import { chatDraftKey } from "@/lib/chat-draft";
 import type { ViewDetail } from "@/lib/views";
-import { cn } from "@/lib/utils";
 
 type Person = { type: string; id: string | null; name: string | null };
 type Named = { id: string; name: string | null };
@@ -40,14 +40,14 @@ const REFRESH_CHOICES = [
     { value: 10080, key: "weekly" },
 ] as const;
 
-export function ViewDetailClient({ view, canEdit, canManage, isOwner, agents, ownerAgentId, askAgentId, transferTo }: {
+export function ViewDetailClient({ view, canEdit, canManage, canChangeVisibility, agents, ownerAgentId, askAgentId, transferTo }: {
     view: ViewDetail;
     /** Member or above: rename, archive, revert, refresh. */
     canEdit: boolean;
     /** Owner/admin or the view's owner: transfer and delete. */
     canManage: boolean;
-    /** The view's owner: decides who sees it. */
-    isOwner: boolean;
+    /** The view's owner, or an owner/admin when it has no owner: decides who sees it (the visibility badge is a menu). */
+    canChangeVisibility: boolean;
     /** Agents this person may message (Refresh picker). */
     agents: { id: string; name: string }[];
     /** The maintaining agent, when this person may message it. */
@@ -62,6 +62,7 @@ export function ViewDetailClient({ view, canEdit, canManage, isOwner, agents, ow
     const formatAgo = useFormatAgo();
     const scopeText = useScopeText();
     const cadence = useRefreshCadenceText();
+    const audienceText = useAudienceText();
     const router = useRouter();
     const now = useNowMs();
     const [busy, setBusy] = useState<string | null>(null);
@@ -116,6 +117,10 @@ export function ViewDetailClient({ view, canEdit, canManage, isOwner, agents, ow
     };
 
     const maintainer = view.createdBy.type === "agent" ? view.createdBy.name : null;
+    // Who sees it now, at the top of the visibility menu.
+    const visibilitySentence = view.visibility === "private" ? t("visibilityPrivate")
+        : view.visibility === "shared" ? t("visibilityShared", { people: view.sharedWith && view.sharedWith.length > 0 ? view.sharedWith.map((p) => p.name ?? t("someoneLower")).join(", ") : t("thePeopleYouPicked") })
+        : t("nowVisibleTo", { audience: audienceText(view) });
     const lastData = view.panels.reduce<string | null>((max, p) => (p.updatedAt && (!max || p.updatedAt > max) ? p.updatedAt : max), null);
 
     return (
@@ -130,7 +135,7 @@ export function ViewDetailClient({ view, canEdit, canManage, isOwner, agents, ow
                         <h1 className="break-words text-2xl font-semibold tracking-tight text-foreground sm:text-3xl">{view.title}</h1>
                         {view.description && <p className="whitespace-pre-line text-sm leading-6 text-muted-foreground">{view.description}</p>}
                         <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
-                            <VisibilityBadge view={view} />
+                            <VisibilityMenu view={view} canChange={canChangeVisibility} description={visibilitySentence} />
                             {view.owner && <PersonChip name={view.owner.name} label={t("ownerLabel")} />}
                         </div>
                         <p className="text-xs text-muted-foreground" suppressHydrationWarning>
@@ -183,7 +188,6 @@ export function ViewDetailClient({ view, canEdit, canManage, isOwner, agents, ow
                         {canManage && <ManageButtons view={view} transferTo={transferTo} />}
                     </div>
                 </div>
-                {isOwner && <VisibilityControl view={view} />}
                 {view.archived && (
                     <p className="rounded-xl border border-border bg-card px-3 py-2 text-sm text-muted-foreground">{t("archivedNote")}</p>
                 )}
@@ -325,127 +329,6 @@ function TransferDialog({ view, people, onClose }: { view: ViewDetail; people: N
                     <DialogFooter>
                         <Button type="button" variant="ghost" onClick={onClose}>{tc("cancel")}</Button>
                         <Button type="submit" disabled={saving || !to}>{saving ? t("transferring") : t("transfer")}</Button>
-                    </DialogFooter>
-                </form>
-            </DialogContent>
-        </Dialog>
-    );
-}
-
-/** Labelled by views.visibility.<key>. */
-const VISIBILITY_OPTIONS = [
-    { value: "private", key: "private" },
-    { value: "shared", key: "shared" },
-    { value: "scope", key: "everyone" },
-] as const;
-
-/** The owner's control: Private / Shared (with a people picker) / Everyone in scope. */
-function VisibilityControl({ view }: { view: ViewDetail }) {
-    const t = useTranslations("views.detail");
-    const apiError = useApiError();
-    const tVisibility = useTranslations("views.visibility");
-    const router = useRouter();
-    const [saving, setSaving] = useState(false);
-    const [picking, setPicking] = useState(false);
-    const save = async (visibility: string, shareUserIds?: string[]) => {
-        setSaving(true);
-        try {
-            const res = await fetch(`/api/views/${encodeURIComponent(view.id)}/access`, {
-                method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ visibility, shareUserIds }),
-            });
-            if (!res.ok) throw new Error(await errorOf(res, t("visibilityFailed")));
-            toast.success(visibility === "private" ? t("nowPrivate") : visibility === "shared" ? t("sharingUpdated") : t("nowEveryone"));
-            router.refresh();
-            return true;
-        } catch (error) {
-            toast.error(apiError(error instanceof Error ? error.message : null, t("visibilityFailed")));
-            return false;
-        } finally {
-            setSaving(false);
-        }
-    };
-    return (
-        <section aria-labelledby="view-visibility-heading" className="flex flex-col gap-2 rounded-2xl border border-border bg-card p-3 sm:flex-row sm:items-center sm:justify-between">
-            <div className="min-w-0">
-                <h2 id="view-visibility-heading" className="text-sm font-medium text-foreground">{t("whoCanSee")}</h2>
-                <p className="text-xs text-muted-foreground">
-                    {view.visibility === "private" && t("visibilityPrivate")}
-                    {view.visibility === "shared" && t("visibilityShared", { people: view.sharedWith && view.sharedWith.length > 0 ? view.sharedWith.map((p) => p.name ?? t("someoneLower")).join(", ") : t("thePeopleYouPicked") })}
-                    {view.visibility === "scope" && t("visibilityScope", { scope: view.scopeType })}
-                </p>
-            </div>
-            <div className="flex flex-wrap items-center gap-2">
-                <div role="radiogroup" aria-label={t("whoCanSee")} className="grid grid-cols-3 gap-1 rounded-xl border border-border bg-background p-1">
-                    {VISIBILITY_OPTIONS.map((option) => (
-                        <button key={option.value} type="button" role="radio" aria-checked={view.visibility === option.value} disabled={saving}
-                            onClick={() => option.value === "shared" ? setPicking(true) : view.visibility !== option.value && void save(option.value)}
-                            className={cn("whitespace-nowrap rounded-lg px-2.5 py-1.5 text-xs transition-colors sm:text-sm",
-                                view.visibility === option.value ? "bg-accent font-medium text-foreground" : "text-muted-foreground hover:text-foreground")}>
-                            {tVisibility(option.key)}
-                        </button>
-                    ))}
-                </div>
-            </div>
-            {picking && <SharePicker view={view} onClose={() => setPicking(false)} onSave={(ids) => save("shared", ids)} />}
-        </section>
-    );
-}
-
-function SharePicker({ view, onClose, onSave }: { view: ViewDetail; onClose: () => void; onSave: (ids: string[]) => Promise<boolean> }) {
-    const t = useTranslations("views.detail");
-    const apiError = useApiError();
-    const tc = useTranslations("common");
-    const [people, setPeople] = useState<Named[] | null>(null);
-    const [chosen, setChosen] = useState<Set<string>>(() => new Set((view.sharedWith ?? []).map((p) => p.id)));
-    const [filter, setFilter] = useState("");
-    const [saving, setSaving] = useState(false);
-    useEffect(() => {
-        let alive = true;
-        fetch(`/api/views/${encodeURIComponent(view.id)}/access`).then(async (res) => {
-            if (!res.ok) throw new Error(await errorOf(res, t("peopleFailed")));
-            const data = await res.json() as { people: Named[] };
-            if (alive) setPeople(data.people);
-        }).catch((error) => { toast.error(apiError(error instanceof Error ? error.message : null, t("peopleFailed"))); if (alive) setPeople([]); });
-        return () => { alive = false; };
-    }, [view.id, t, apiError]);
-    const shown = (people ?? []).filter((p) => (p.name ?? "").toLowerCase().includes(filter.trim().toLowerCase()));
-    return (
-        <Dialog open onOpenChange={(open) => { if (!open) onClose(); }}>
-            <DialogContent>
-                <form className="grid gap-4" onSubmit={async (event) => {
-                    event.preventDefault();
-                    setSaving(true);
-                    const ok = await onSave([...chosen]);
-                    setSaving(false);
-                    if (ok) onClose();
-                }}>
-                    <DialogHeader>
-                        <DialogTitle>{t("shareTitle")}</DialogTitle>
-                        <DialogDescription>{t("shareDescription")}</DialogDescription>
-                    </DialogHeader>
-                    <Input value={filter} onChange={(e) => setFilter(e.target.value)} placeholder={t("findPerson")} aria-label={t("findPerson")} />
-                    <div className="max-h-72 overflow-y-auto rounded-xl border border-border">
-                        {people === null && <p className="p-3 text-sm text-muted-foreground">{t("loading")}</p>}
-                        {people !== null && shown.length === 0 && <p className="p-3 text-sm text-muted-foreground">{t("nobodyElseScope")}</p>}
-                        <ul className="divide-y divide-border">
-                            {shown.map((person) => (
-                                <li key={person.id}>
-                                    <label className="flex cursor-pointer items-center gap-3 px-3 py-2 text-sm text-foreground hover:bg-accent/60">
-                                        <input type="checkbox" checked={chosen.has(person.id)} className="h-4 w-4 accent-current"
-                                            onChange={(e) => setChosen((prev) => {
-                                                const next = new Set(prev);
-                                                if (e.target.checked) next.add(person.id); else next.delete(person.id);
-                                                return next;
-                                            })} />
-                                        <PersonChip name={person.name} className="text-sm text-foreground" />
-                                    </label>
-                                </li>
-                            ))}
-                        </ul>
-                    </div>
-                    <DialogFooter>
-                        <Button type="button" variant="ghost" onClick={onClose}>{tc("cancel")}</Button>
-                        <Button type="submit" disabled={saving || chosen.size === 0}>{saving ? tc("saving") : t("shareWith", { count: chosen.size })}</Button>
                     </DialogFooter>
                 </form>
             </DialogContent>

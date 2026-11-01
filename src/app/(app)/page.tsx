@@ -261,7 +261,7 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
         const h = healthById.get(a.id);
         dashboardMembers.push({
             key: `agent:${a.id}`, kind: "agent", id: a.id, name: a.name, role: a.role, avatarUrl: a.avatarUrl, avatarAppearance: a.avatarAppearance, skills: skillNames(a.skillsJson),
-            health: h?.status ?? null, healthReasons: h?.reasons ?? [], activity: activityByAgent.get(a.id) ?? null, href: `/agents?agent=${a.id}`,
+            health: h?.status ?? null, healthReasons: h?.reasons ?? [], healthReasonCopies: h?.reasonCopies ?? [], activity: activityByAgent.get(a.id) ?? null, href: `/agents?agent=${a.id}`,
             createdAt: a.createdAt.toISOString(),
             spendTodayCents: spendTodayByAgent.get(a.id) ?? 0,
             monthlyCostCents: monthSpend(a),

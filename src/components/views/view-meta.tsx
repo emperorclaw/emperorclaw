@@ -1,10 +1,11 @@
 "use client";
 
 import Link from "next/link";
+import type { ReactNode } from "react";
 import { IconAlertTriangle, IconArchive, IconLock, IconPin, IconUsers, IconWorld } from "@tabler/icons-react";
 import { useTranslations } from "next-intl";
 import { formatChartValue } from "@/lib/rich-blocks";
-import { viewStaleness } from "@/lib/view-access";
+import { viewAudience, viewStaleness } from "@/lib/view-access";
 import type { MetricPanelData } from "@/lib/view-spec";
 import type { ViewSummary } from "@/lib/views";
 import { cn } from "@/lib/utils";
@@ -20,13 +21,25 @@ export function useScopeText() {
     };
 }
 
-/** "Private", "Shared with N", "Everyone in scope". */
+/** Who "everyone" is: "Everyone in the company", "Everyone on Launch", "Everyone at Acme" (lib/view-access.ts viewAudience). */
+export function useAudienceText() {
+    const t = useTranslations("views.visibility");
+    return (view: { scopeType: string; scopeLabel: string | null }): string => {
+        const audience = viewAudience(view);
+        return "name" in audience ? t(audience.key, { name: audience.name }) : t(audience.key);
+    };
+}
+
+type VisibilityFacts = { visibility: string; sharedCount: number | null; scopeType: string; scopeLabel: string | null };
+
+/** "Private", "Shared with N", "Everyone in the company". */
 export function useVisibilityText() {
     const t = useTranslations("views.visibility");
-    return (view: { visibility: string; sharedCount: number | null }): string => {
+    const audienceText = useAudienceText();
+    return (view: VisibilityFacts): string => {
         if (view.visibility === "private") return t("private");
         if (view.visibility === "shared") return view.sharedCount === null ? t("shared") : t("sharedWith", { count: view.sharedCount });
-        return t("everyone");
+        return audienceText(view);
     };
 }
 
@@ -44,13 +57,21 @@ export function useRefreshCadenceText() {
     };
 }
 
-/** Private / Shared with N / Everyone in scope. */
-export function VisibilityBadge({ view, className }: { view: { visibility: string; sharedCount: number | null }; className?: string }) {
+/** Lock, people or globe. */
+export function VisibilityIcon({ visibility }: { visibility: string }) {
+    if (visibility === "private") return <IconLock className="h-3 w-3" aria-hidden />;
+    if (visibility === "shared") return <IconUsers className="h-3 w-3" aria-hidden />;
+    return <IconWorld className="h-3 w-3" aria-hidden />;
+}
+
+export const VISIBILITY_BADGE_CLASS = "inline-flex shrink-0 items-center gap-1 rounded-full border border-border bg-background px-2 py-0.5 text-[11px] font-medium text-muted-foreground";
+
+/** Private / Shared with N / Everyone in the company (read-only; components/views/visibility-menu.tsx is the changeable one). */
+export function VisibilityBadge({ view, className }: { view: VisibilityFacts; className?: string }) {
     const visibilityText = useVisibilityText();
-    const Icon = view.visibility === "private" ? IconLock : view.visibility === "shared" ? IconUsers : IconWorld;
     return (
-        <span className={cn("inline-flex shrink-0 items-center gap-1 rounded-full border border-border bg-background px-2 py-0.5 text-[11px] font-medium text-muted-foreground", className)}>
-            <Icon className="h-3 w-3" aria-hidden />{visibilityText(view)}
+        <span className={cn(VISIBILITY_BADGE_CLASS, className)}>
+            <VisibilityIcon visibility={view.visibility} />{visibilityText(view)}
         </span>
     );
 }
@@ -94,8 +115,12 @@ export function StaleNote({ lastAt, since, refreshEveryMinutes, now, className, 
     );
 }
 
-/** One view in a list: title, key metric, freshness, visibility and owner. */
-export function ViewRow({ view, now, showScope = true }: { view: ViewSummary; now: number; showScope?: boolean }) {
+/**
+ * One view in a list: title, key metric, freshness, visibility and owner. The
+ * title is a stretched link (the whole row opens the view) so `visibility`, a
+ * control in place of the plain badge, sits above it and never navigates.
+ */
+export function ViewRow({ view, now, showScope = true, visibility }: { view: ViewSummary; now: number; showScope?: boolean; visibility?: ReactNode }) {
     const t = useTranslations("views.row");
     const formatAgo = useFormatAgo();
     const scopeText = useScopeText();
@@ -104,45 +129,43 @@ export function ViewRow({ view, now, showScope = true }: { view: ViewSummary; no
     const maintainer = view.createdBy.type === "agent" ? view.createdBy.name : null;
     const overdue = !metadata && viewStaleness({ lastAt: view.dataUpdatedAt, since: view.createdAt, refreshEveryMinutes: view.refreshEveryMinutes }, now).overdue;
     return (
-        <li>
-            <Link href={`/views/${view.id}`} className="flex flex-col gap-1.5 px-4 py-3 transition-colors hover:bg-accent/60 sm:flex-row sm:items-center sm:gap-4">
-                <span className="min-w-0 flex-1">
-                    <span className="flex min-w-0 items-center gap-1.5 text-sm font-medium text-foreground">
-                        {view.archived && <IconArchive className="h-3.5 w-3.5 shrink-0 text-muted-foreground" aria-label={t("archived")} />}
-                        {view.pinned && <IconPin className="h-3.5 w-3.5 shrink-0 text-primary" aria-label={t("pinned")} />}
-                        <span className="truncate">{view.title}</span>
-                    </span>
-                    <span className="mt-1 flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1">
-                        <VisibilityBadge view={view} />
-                        {view.owner && <PersonChip name={view.owner.name} />}
-                        {showScope && <span className="truncate text-xs text-muted-foreground">{scopeText(view)}</span>}
-                        {metadata && maintainer && <span className="truncate text-xs text-muted-foreground">{t("keptUpBy", { name: maintainer })}</span>}
-                    </span>
+        <li className="relative flex flex-col gap-1.5 px-4 py-3 transition-colors focus-within:bg-accent/60 hover:bg-accent/60 sm:flex-row sm:items-center sm:gap-4">
+            <span className="min-w-0 flex-1">
+                <span className="flex min-w-0 items-center gap-1.5 text-sm font-medium text-foreground">
+                    {view.archived && <IconArchive className="h-3.5 w-3.5 shrink-0 text-muted-foreground" aria-label={t("archived")} />}
+                    {view.pinned && <IconPin className="h-3.5 w-3.5 shrink-0 text-primary" aria-label={t("pinned")} />}
+                    <Link href={`/views/${view.id}`} className="truncate outline-none after:absolute after:inset-0 after:content-[''] focus-visible:after:ring-2 focus-visible:after:ring-inset focus-visible:after:ring-ring">{view.title}</Link>
                 </span>
-                {metadata ? (
-                    <span className="text-xs text-muted-foreground sm:w-64 sm:text-right" suppressHydrationWarning>
-                        {t("metadataLine", { who: view.visibility === "shared" ? t("ownerAndShared") : t("ownerOnly"), ago: formatAgo(view.updatedAt, now) })}
-                    </span>
-                ) : (
-                    <span className="flex min-w-0 flex-col gap-0.5 sm:w-64 sm:items-end">
-                        {view.keyMetric ? (
-                            <span className="flex min-w-0 max-w-full items-baseline gap-1.5 sm:justify-end">
-                                <span className="truncate text-xs text-muted-foreground">{view.keyMetric.title}</span>
-                                <span className="shrink-0 text-base font-semibold text-foreground tabular-nums">{metricText(view.keyMetric.data)}</span>
-                            </span>
-                        ) : (
-                            <span className="text-xs text-muted-foreground">{t("panels", { count: view.panelCount })}</span>
-                        )}
-                        {overdue ? (
-                            <StaleNote lastAt={view.dataUpdatedAt} since={view.createdAt} refreshEveryMinutes={view.refreshEveryMinutes} now={now} wrap className="sm:justify-end sm:text-right" />
-                        ) : (
-                            <span className="truncate text-xs text-muted-foreground" suppressHydrationWarning>
-                                {t("updated", { ago: formatAgo(updated, now) })}{maintainer ? ` · ${maintainer}` : ""}
-                            </span>
-                        )}
-                    </span>
-                )}
-            </Link>
+                <span className="mt-1 flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1">
+                    {visibility ? <span className="relative z-10">{visibility}</span> : <VisibilityBadge view={view} />}
+                    {view.owner && <PersonChip name={view.owner.name} />}
+                    {showScope && <span className="truncate text-xs text-muted-foreground">{scopeText(view)}</span>}
+                    {metadata && maintainer && <span className="truncate text-xs text-muted-foreground">{t("keptUpBy", { name: maintainer })}</span>}
+                </span>
+            </span>
+            {metadata ? (
+                <span className="text-xs text-muted-foreground sm:w-64 sm:text-right" suppressHydrationWarning>
+                    {t("metadataLine", { who: view.visibility === "shared" ? t("ownerAndShared") : t("ownerOnly"), ago: formatAgo(view.updatedAt, now) })}
+                </span>
+            ) : (
+                <span className="flex min-w-0 flex-col gap-0.5 sm:w-64 sm:items-end">
+                    {view.keyMetric ? (
+                        <span className="flex min-w-0 max-w-full items-baseline gap-1.5 sm:justify-end">
+                            <span className="truncate text-xs text-muted-foreground">{view.keyMetric.title}</span>
+                            <span className="shrink-0 text-base font-semibold text-foreground tabular-nums">{metricText(view.keyMetric.data)}</span>
+                        </span>
+                    ) : (
+                        <span className="text-xs text-muted-foreground">{t("panels", { count: view.panelCount })}</span>
+                    )}
+                    {overdue ? (
+                        <StaleNote lastAt={view.dataUpdatedAt} since={view.createdAt} refreshEveryMinutes={view.refreshEveryMinutes} now={now} wrap className="sm:justify-end sm:text-right" />
+                    ) : (
+                        <span className="truncate text-xs text-muted-foreground" suppressHydrationWarning>
+                            {t("updated", { ago: formatAgo(updated, now) })}{maintainer ? ` · ${maintainer}` : ""}
+                        </span>
+                    )}
+                </span>
+            )}
         </li>
     );
 }

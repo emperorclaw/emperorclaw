@@ -1,7 +1,8 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import en from "../../messages/en.json";
 import {
-    defaultViewVisibility, parseRefreshEveryMinutes, pickViewOwner, refreshCadenceText, viewAccess, viewStaleness,
+    defaultViewVisibility, mayChangeVisibility, parseRefreshEveryMinutes, pickViewOwner, refreshCadenceText, viewAccess, viewAudience, viewStaleness, visibilityChangeNarrows,
     type ViewAccessFacts, type ViewAccessSubject,
 } from "../../src/lib/view-access";
 
@@ -105,4 +106,35 @@ test("parseRefreshEveryMinutes and refreshCadenceText", () => {
     assert.equal(refreshCadenceText(360), "every 6 h");
     assert.equal(refreshCadenceText(1440), "daily");
     assert.equal(refreshCadenceText(10080), "weekly");
+});
+
+test("who may change who sees a view: its owner, or an owner/admin when it has no owner; never an agent", () => {
+    assert.equal(mayChangeVisibility(OWNER, member(OWNER)), true);
+    assert.equal(mayChangeVisibility(OWNER, member(OTHER)), false);
+    assert.equal(mayChangeVisibility(OWNER, member(ADMIN, true)), false, "an admin does not override a real owner");
+    assert.equal(mayChangeVisibility(null, member(ADMIN, true)), true);
+    assert.equal(mayChangeVisibility(null, member(OTHER)), false, "a plain member never claims an ownerless view");
+    assert.equal(mayChangeVisibility(null, agent(BUILDER)), false);
+    assert.equal(mayChangeVisibility(OWNER, agent(null)), false);
+});
+
+test("taking a view away from everyone in scope asks first; widening it or re-picking does not", () => {
+    assert.equal(visibilityChangeNarrows("scope", "private"), true);
+    assert.equal(visibilityChangeNarrows("scope", "shared"), true);
+    assert.equal(visibilityChangeNarrows("scope", "scope"), false);
+    assert.equal(visibilityChangeNarrows("private", "scope"), false);
+    assert.equal(visibilityChangeNarrows("shared", "private"), false);
+    assert.equal(visibilityChangeNarrows("private", "shared"), false);
+});
+
+test("everyone in scope reads as the real audience", () => {
+    assert.deepEqual(viewAudience({ scopeType: "company", scopeLabel: null }), { key: "everyoneCompany" });
+    assert.deepEqual(viewAudience({ scopeType: "project", scopeLabel: "Launch" }), { key: "everyoneOn", name: "Launch" });
+    assert.deepEqual(viewAudience({ scopeType: "customer", scopeLabel: "Acme" }), { key: "everyoneAt", name: "Acme" });
+    assert.deepEqual(viewAudience({ scopeType: "project", scopeLabel: null }), { key: "everyoneProject" });
+    assert.deepEqual(viewAudience({ scopeType: "customer", scopeLabel: null }), { key: "everyoneClient" });
+    // Every key it names is a views.visibility message.
+    const messages = (en as { views: { visibility: Record<string, string> } }).views.visibility;
+    for (const key of ["everyoneCompany", "everyoneOn", "everyoneAt", "everyoneProject", "everyoneClient"]) assert.equal(typeof messages[key], "string", key);
+    assert.equal(messages.everyoneOn.replace("{name}", "Launch"), "Everyone on Launch");
 });

@@ -88,6 +88,9 @@ const MODEL_RE = /model[ _]not[ _]found|unknown model|unsupported model|model .{
 const RATE_RE = /rate[ _-]?limit|too many requests|\b(?:HTTP|error code:?|status(?:=| |: ?))\s*429\b|ratelimiterror|overloaded/i;
 const BUDGET_RE = /budget (?:exhausted|exceeded|unavailable|check denied|limit)|budget_(?:exhausted|exceeded|paused)|over budget|budget is paused/i;
 const SCOPE_RE = /outside (?:this agent's|your|the agent's) scope|out[ _]of[ _]scope|not in (?:the agent's |this agent's )?scope|bound to a different agent/i;
+/** A failure text that is nothing but the status code ("402", "402: ..."), as some runtimes report it. */
+const BARE_402_RE = /^\s*402\b/;
+
 /** How much of each failure text the patterns see (the bridge caps the same way, ledger.py FAILURE_TEXT_MAX). */
 export const FAILURE_TEXT_MAX = 4000;
 
@@ -116,6 +119,17 @@ export interface FailureSignal {
     offline?: boolean;
     /** The run is still open but has made no progress (stall signal). */
     stalled?: boolean;
+}
+
+/**
+ * Is this one failure text a provider out-of-credits error? The credits test
+ * classifyFailure runs, plus a bare "402": agent-health uses it on a single
+ * failure reason, so both say "out of credits" for the same text.
+ */
+export function isCreditsFailureText(text: unknown): boolean {
+    if (typeof text !== "string" || !text.trim()) return false;
+    const capped = text.slice(0, FAILURE_TEXT_MAX);
+    return CREDITS_RE.test(capped) || BARE_402_RE.test(capped);
 }
 
 /**

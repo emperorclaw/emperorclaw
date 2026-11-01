@@ -1634,7 +1634,12 @@
       "private": "私密",
       "shared": "已共享",
       "sharedWith": "已与 {count} 人共享",
-      "everyone": "范围内所有人"
+      "sharedPick": "共享给…",
+      "everyoneCompany": "公司中的所有人",
+      "everyoneOn": "{name} 项目中的所有人",
+      "everyoneAt": "客户 {name} 的所有人",
+      "everyoneProject": "此项目中的所有人",
+      "everyoneClient": "此客户的所有人"
     },
     "cadence": {
       "hourly": "每小时",
@@ -1718,7 +1723,6 @@
       "whereItLives": "所在位置",
       "whoCanSee": "谁可以查看",
       "onlyMe": "仅我自己",
-      "everyoneInScope": "范围内所有人",
       "shareLater": "你可以稍后与特定人员共享。",
       "create": "创建视图"
     },
@@ -1785,12 +1789,10 @@
       "visibilityFailed": "无法更改此视图的可见范围",
       "nowPrivate": "只有你可以看到此视图",
       "sharingUpdated": "共享已更新",
-      "nowEveryone": "范围内所有人都能看到此视图",
       "whoCanSee": "谁可以看到它",
       "visibilityPrivate": "仅你（以及负责更新它的智能体）。",
       "visibilityShared": "你和 {people}。",
       "thePeopleYouPicked": "你所选择的人员",
-      "visibilityScope": "所有能看到{scope, select, company {公司} customer {该客户} other {该项目}}的人。",
       "peopleFailed": "无法加载人员",
       "shareTitle": "与他人共享",
       "shareDescription": "仅列出可以看到此视图范围的成员。",
@@ -1815,7 +1817,12 @@
       "panels": "{count, plural, other {# 个面板}}",
       "anAgent": "一个智能体",
       "reverting": "还原中…",
-      "revert": "还原"
+      "revert": "还原",
+      "nowVisibleTo": "{audience} 可以查看此视图",
+      "claimHint": "此视图没有所有者。将其设为私有或共享后，你将成为其所有者。",
+      "changeWhoCanSee": "谁可以看到它：{current}。更改",
+      "confirmPrivate": "此视图将仅你可见。{scope, select, company {公司中的其他所有人} other {目前可以看到它的其他所有人}}将失去访问权限。",
+      "confirmShared": "此视图将仅你和你选择的人可见。{scope, select, company {公司中的其他所有人} other {目前可以看到它的其他所有人}}将失去访问权限。"
     }
   },
   "projects": {
@@ -2554,7 +2561,21 @@
       "failed": "失败",
       "unanswered": "未回复",
       "attachment": "（附件）",
-      "empty": "还没有智能体。"
+      "empty": "还没有智能体。",
+      "reasons": {
+        "unanswered": "{count, plural, other {# 条未回复的消息}}",
+        "failed": "{count, plural, other {# 条消息失败}}",
+        "overdue": "{count, plural, other {# 个逾期任务}}",
+        "budget": "{status}",
+        "budgetStatuses": {
+          "warning": "预算预警",
+          "paused": "预算已暂停",
+          "paused_budget": "超出预算，已暂停"
+        },
+        "offlineWithWork": "离线，有待处理的任务",
+        "providerCredits": "LLM 提供商额度用尽",
+        "issue": "{issue}"
+      }
     },
     "scope": {
       "effects": {
@@ -3126,6 +3147,7 @@
         "reverted": "<who>{actor}</who> 还原了 <target>视图 {label}</target> {detail}",
         "visibility_changed": "<who>{actor}</who> 更改了可查看 <target>视图 {label}</target> 的人员 {detail}",
         "owner_transferred": "<who>{actor}</who> 转移了 <target>视图 {label}</target> {detail}",
+        "owner_claimed": "<who>{actor}</who> 接管了 <target>视图 {label}</target> {detail}",
         "deleted": "<who>{actor}</who> 删除了 <target>视图 {label}</target> {detail}",
         "read_unbound_token": "<who>{actor}</who> 使用全公司令牌打开了 <target>视图 {label}</target> {detail}"
       },

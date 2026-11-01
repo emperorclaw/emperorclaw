@@ -254,6 +254,22 @@
         "docker_unresponsive": "Docker is not responding. Restart Docker and retry.",
         "docker_access": "The app cannot access Docker. Rerun the installer to repair socket permissions, then retry."
       }
+    },
+    "health": {
+      "reasons": {
+        "unanswered": "{count, plural, one {# unanswered message} other {# unanswered messages}}",
+        "failed": "{count, plural, one {# message failed} other {# messages failed}}",
+        "overdue": "{count, plural, one {# overdue task} other {# overdue tasks}}",
+        "budget": "budget {status}",
+        "budgetStatuses": {
+          "warning": "warning",
+          "paused": "paused",
+          "paused_budget": "paused budget"
+        },
+        "offlineWithWork": "offline with work waiting",
+        "providerCredits": "LLM provider out of credits",
+        "issue": "{issue}"
+      }
     }
   },
   "runtimeHosts": {
@@ -432,6 +448,7 @@
         "reverted": "<who>{actor}</who> reverted <target>view {label}</target> {detail}",
         "visibility_changed": "<who>{actor}</who> changed who can see <target>view {label}</target> {detail}",
         "owner_transferred": "<who>{actor}</who> transferred <target>view {label}</target> {detail}",
+        "owner_claimed": "<who>{actor}</who> took ownership of <target>view {label}</target> {detail}",
         "deleted": "<who>{actor}</who> deleted <target>view {label}</target> {detail}",
         "read_unbound_token": "<who>{actor}</who> opened with a company-wide token <target>view {label}</target> {detail}"
       },
@@ -510,6 +527,23 @@
         "allowed": "allowed",
         "default": "default"
       }
+    }
+  },
+  "views": {
+    "visibility": {
+      "sharedPick": "Shared with…",
+      "everyoneCompany": "Everyone in the company",
+      "everyoneOn": "Everyone on {name}",
+      "everyoneAt": "Everyone at {name}",
+      "everyoneProject": "Everyone on this project",
+      "everyoneClient": "Everyone at this client"
+    },
+    "detail": {
+      "nowVisibleTo": "{audience} can see this view",
+      "claimHint": "This view has no owner. Making it private or shared makes you its owner.",
+      "changeWhoCanSee": "Who can see it: {current}. Change",
+      "confirmPrivate": "Only you will see this view. {scope, select, company {Everyone else in the company} other {Everyone else who can see it now}} loses access.",
+      "confirmShared": "Only you and the people you pick will see this view. {scope, select, company {Everyone else in the company} other {Everyone else who can see it now}} loses access."
     }
   }
 }

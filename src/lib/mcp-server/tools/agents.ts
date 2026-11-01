@@ -11,7 +11,7 @@ import { NAME_MAX } from "@/lib/input-limits";
 export function registerAgentTools(server: McpServer, companyId: string, callerAgentId?: string | null, tokenId: string | null = null) {
     server.registerTool("get_agent_health", {
         title: "Get Agent Health",
-        description: "Health of every agent over the last 7 days: unanswered and failed messages, median response time, retries, open/overdue/done tasks, cost, and a status (healthy, attention, down, idle) with reasons. Includes the messages that need attention. Use it to check on the team before reporting status or reassigning work.",
+        description: "Health of every agent over the last 7 days: unanswered and failed messages, median response time, retries, open/overdue/done tasks, cost, and a status (healthy, attention, down, idle) with reasons. Read the reasons before acting: an agent is `down` when it is offline, but also when its LLM provider is out of credits (reason first: 'LLM provider out of credits'), which only an owner/admin topping up the provider fixes; messaging or reassigning to it will not. Includes the messages that need attention. Use it to check on the team before reporting status or reassigning work.",
         inputSchema: {
             agentId: z.string().optional().describe("Limit to one agent (id)"),
         },

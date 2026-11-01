@@ -7,6 +7,7 @@ import { IconAlertTriangle, IconArrowLeft, IconClockHour4, IconHeartbeat, IconMe
 import { StatsBlock } from "@/components/rich/stats-block";
 import type { AgentHealth, CompanyHealth, HealthStatus } from "@/lib/agent-health";
 import { agentAvatarSrc } from "@/lib/avatar";
+import { useCopy } from "@/lib/i18n/use-copy";
 import { cn } from "@/lib/utils";
 
 /** Labelled by agents.health.status.<status>. */
@@ -63,6 +64,7 @@ function Metric({ label, value, warn }: { label: string; value: string | number;
 function AgentCard({ agent }: { agent: AgentHealth }) {
     const t = useTranslations("agents.health");
     const ago = useAgo();
+    const renderCopy = useCopy();
     const status = STATUS[agent.status];
     return (
         <article className="emperor-panel flex min-w-0 flex-col gap-3 rounded-2xl p-4">
@@ -82,7 +84,7 @@ function AgentCard({ agent }: { agent: AgentHealth }) {
             </div>
             {agent.reasons.length > 0 && (
                 <ul className="space-y-0.5 text-xs text-amber-200/90">
-                    {agent.reasons.map((r) => <li key={r} className="flex items-center gap-1.5"><IconAlertTriangle className="h-3 w-3 shrink-0" />{r}</li>)}
+                    {agent.reasons.map((r, i) => <li key={r} className="flex items-center gap-1.5"><IconAlertTriangle className="h-3 w-3 shrink-0" />{renderCopy(agent.reasonCopies?.[i], r)}</li>)}
                 </ul>
             )}
             <div className="grid grid-cols-4 gap-2">

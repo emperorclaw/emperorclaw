@@ -131,8 +131,8 @@ export const LivingDesk = forwardRef<HTMLLIElement, DeskProps>(function LivingDe
                 <Icon className="h-3 w-3 shrink-0" stroke={2} aria-hidden="true" /><span className="truncate">{scene.caption(label)}</span>
             </span>
             {/* The elapsed time never truncates; the title gives way. */}
-            <span id={statusId} className="mt-0.5 flex w-full min-w-0 justify-center text-xs leading-4 text-slate-300" title={status.task ? status.text : scene.caption(status.text)}>
-                <span className="truncate">{status.task ?? scene.caption(status.text)}</span>
+            <span id={statusId} className="mt-0.5 flex w-full min-w-0 justify-center text-xs leading-4 text-slate-300" title={status.task ? status.text : scene.caption(status.text, status.textCopy)}>
+                <span className="truncate">{status.task ?? scene.caption(status.text, status.textCopy)}</span>
                 {status.task && status.elapsed && <span className="shrink-0 whitespace-pre tabular-nums text-slate-400">{` · ${status.elapsed}`}</span>}
             </span>
         </button>

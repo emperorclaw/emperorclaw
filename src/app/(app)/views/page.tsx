@@ -4,7 +4,7 @@ import { and, asc, eq, inArray, isNull } from "drizzle-orm";
 import { db } from "@/db";
 import { customers, projects } from "@/db/schema";
 import { requireCompanyAccess } from "@/lib/company-access";
-import { canWrite } from "@/lib/role-matrix";
+import { canAdmin, canWrite } from "@/lib/role-matrix";
 import { getScopedCustomerIds, memberVisibleProjectIds } from "@/lib/member-scope";
 import { splitProjectTitle } from "@/lib/project-title";
 import { listViews, memberViewCaller } from "@/lib/views";
@@ -39,7 +39,7 @@ export default async function ViewsPage({ searchParams }: { searchParams: Promis
                 description={t("description")}
                 actions={canEdit && !showArchived ? <NewViewButton customers={scopes.customers} projects={scopes.projects} /> : undefined}
             />
-            <ViewsBrowser views={rows} showArchived={showArchived} userId={access.userId} />
+            <ViewsBrowser views={rows} showArchived={showArchived} userId={access.userId} isAdmin={canAdmin(access.role)} />
             <RealtimeRefresh topics={["views"]} />
         </div>
     );

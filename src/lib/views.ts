@@ -34,7 +34,7 @@ import {
     type MetricPanelData, type ViewPanelData, type ViewPanelLayout, type ViewScopeType, type ViewSpec,
 } from "@/lib/view-spec";
 import {
-    AGENT_VIEW_VISIBILITIES, VIEW_VISIBILITIES, defaultViewVisibility, maintainerAgentId, parseRefreshEveryMinutes, pickViewOwner, viewAccess,
+    AGENT_VIEW_VISIBILITIES, VIEW_VISIBILITIES, defaultViewVisibility, maintainerAgentId, mayChangeVisibility, parseRefreshEveryMinutes, pickViewOwner, viewAccess,
     type ViewAccess, type ViewAccessSubject, type ViewVisibility,
 } from "@/lib/view-access";
 
@@ -109,6 +109,15 @@ export function memberViewCaller(ctx: { userId: string; scope: MemberScope | nul
 
 function isAdminRole(role: Role): boolean {
     return role === "owner" || role === "admin" || role === "instance_admin";
+}
+
+/**
+ * Who may change who sees a view: its owner, or an owner/admin when the view
+ * has no owner (made by the system or by an agent in a group conversation).
+ * Agents never do (they set visibility only when they create a view).
+ */
+export function mayChangeViewVisibility(ownerUserId: string | null, caller: ViewCaller): boolean {
+    return mayChangeVisibility(ownerUserId, subjectOf(caller));
 }
 
 function subjectOf(caller: ViewCaller): ViewAccessSubject {
@@ -668,11 +677,17 @@ async function membersInScope(companyId: string, scope: { scopeType: string; sco
     return out;
 }
 
-/** People a view's owner may share it with: company members who can see its scope (owner excluded). */
-export async function listViewSharePeople(companyId: string, caller: ViewCaller, viewId: string): Promise<Named[]> {
+/**
+ * People a view's owner may share it with (company members who can see its
+ * scope, owner excluded) and who it is shared with now. On an ownerless view an owner/admin gets the same
+ * list without themselves, since sharing it makes them its owner.
+ */
+export async function listViewSharePeople(companyId: string, caller: ViewCaller, viewId: string): Promise<{ people: Named[]; sharedWith: string[] }> {
     const { row } = await loadVisibleView(companyId, caller, viewId, { includeArchived: true });
-    if (caller.kind !== "member" || row.ownerUserId !== caller.userId) return [];
-    return membersInScope(companyId, row, [row.ownerUserId]);
+    if (caller.kind !== "member" || !mayChangeViewVisibility(row.ownerUserId, caller)) return { people: [], sharedWith: [] };
+    // The current share list too, so a picker opened from a list row starts from it.
+    const sharedWith = row.visibility === "shared" ? (await sharesOf([row.id])).get(row.id) ?? [] : [];
+    return { people: await membersInScope(companyId, row, [row.ownerUserId ?? caller.userId]), sharedWith };
 }
 
 /**
@@ -1017,20 +1032,25 @@ export async function setViewPinned(companyId: string, caller: ViewCaller, viewI
 /**
  * Who sees a view, set by its owner: private, shared (with `shareUserIds`,
  * each a member who can see the scope) or everyone in scope. Leaving
- * 'shared' drops the share list.
+ * 'shared' drops the share list. On an ownerless view an owner/admin may set
+ * it too: private or shared makes them its owner in the same write (such a
+ * view needs an owner); everyone in scope leaves it ownerless.
  */
 export async function setViewVisibility(
     companyId: string, caller: ViewCaller, viewId: string, input: { visibility: unknown; shareUserIds?: unknown },
 ): Promise<ViewDetail> {
-    if (caller.kind !== "member") throw new ViewRefusedError("Only the view's owner can change who sees it", 403);
+    const refused = "Only the view's owner (or an owner/admin, when the view has no owner) can change who sees it";
+    if (caller.kind !== "member") throw new ViewRefusedError(refused, 403);
     const { row } = await loadVisibleView(companyId, caller, viewId, { includeArchived: true });
-    if (row.ownerUserId !== caller.userId) throw new ViewRefusedError("Only the view's owner can change who sees it", 403);
+    if (!mayChangeViewVisibility(row.ownerUserId, caller)) throw new ViewRefusedError(refused, 403);
     const visibility = parseVisibility(input.visibility, VIEW_VISIBILITIES);
     if (!visibility) throw new ViewInputError(`visibility must be one of: ${VIEW_VISIBILITIES.join(", ")}`);
+    const claim = row.ownerUserId === null && visibility !== "scope";
+    const ownerUserId = claim ? caller.userId : row.ownerUserId;
     let shareIds: string[] = [];
     if (visibility === "shared") {
         if (!Array.isArray(input.shareUserIds)) throw new ViewInputError("shareUserIds (the people to share with) is required for a shared view");
-        shareIds = [...new Set(input.shareUserIds.filter((id): id is string => typeof id === "string"))].filter((id) => id !== row.ownerUserId);
+        shareIds = [...new Set(input.shareUserIds.filter((id): id is string => typeof id === "string"))].filter((id) => id !== ownerUserId);
         if (shareIds.length === 0) throw new ViewInputError("Pick at least one person to share with");
         if (shareIds.length > VIEW_MAX_SHARES) throw new ViewInputError(`A view can be shared with at most ${VIEW_MAX_SHARES} people`);
         for (const id of shareIds) {
@@ -1039,12 +1059,25 @@ export async function setViewVisibility(
     }
     const previousShares = (await sharesOf([row.id])).get(row.id) ?? [];
     await db.transaction(async (tx) => {
-        await tx.update(views).set({ visibility }).where(and(eq(views.id, row.id), eq(views.companyId, companyId)));
+        // The write only lands while the owner is still the one read above (the
+        // permission check was made against it): two admins claiming at once, or
+        // an ownerless view claimed/transferred meanwhile, refuse the second.
+        const updated = await tx.update(views).set(claim ? { visibility, ownerUserId } : { visibility })
+            .where(and(eq(views.id, row.id), eq(views.companyId, companyId),
+                row.ownerUserId === null ? isNull(views.ownerUserId) : eq(views.ownerUserId, row.ownerUserId)))
+            .returning({ id: views.id });
+        if (updated.length === 0) throw new ViewRefusedError("Someone else just changed who owns this view; reload it", 409);
         await tx.delete(viewShares).where(eq(viewShares.viewId, row.id));
         if (shareIds.length) await tx.insert(viewShares).values(shareIds.map((userId) => ({ companyId, viewId: row.id, userId })));
     });
     const sameShares = [...previousShares].sort().join() === [...shareIds].sort().join();
-    if (row.visibility !== visibility || !sameShares) {
+    if (claim) {
+        await recordAudit({
+            companyId, actor: actorOf(caller), action: "view.owner_claimed", target: { type: "view", id: row.id },
+            before: { visibility: row.visibility, ownerUserId: null, sharedCount: previousShares.length },
+            after: { visibility, ownerUserId, sharedCount: shareIds.length }, meta: { label: row.title },
+        });
+    } else if (row.visibility !== visibility || !sameShares) {
         // Who it is shared with stays out of the log: a count only.
         await recordAudit({
             companyId, actor: actorOf(caller), action: "view.visibility_changed", target: { type: "view", id: row.id },

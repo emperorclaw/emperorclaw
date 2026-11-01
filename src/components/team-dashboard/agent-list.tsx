@@ -81,8 +81,8 @@ export function AgentList({ agents, selectedKey, isActive, onSelect, canAct, mem
                     {rows.map((agent) => {
                         const m = agent.member;
                         const selected = m.key === selectedKey;
-                        const currentTask = m.working[0]?.title ?? (agent.status === "working" ? scene.caption(agent.activity) : null) ?? "—";
-                        const waitingOn = m.waiting[0]?.title ?? (agent.status === "blocked" ? scene.caption(agent.activity) : null) ?? "—";
+                        const currentTask = m.working[0]?.title ?? (agent.status === "working" ? scene.caption(agent.activity, agent.activityCopy) : null) ?? "—";
+                        const waitingOn = m.waiting[0]?.title ?? (agent.status === "blocked" ? scene.caption(agent.activity, agent.activityCopy) : null) ?? "—";
                         const caption = scene.caption(agent.behavior.caption);
                         const taskToReassign = m.working[0] ?? m.next[0];
                         return (
@@ -133,8 +133,8 @@ export function AgentList({ agents, selectedKey, isActive, onSelect, canAct, mem
                 {rows.map((agent) => {
                     const m = agent.member;
                     const selected = m.key === selectedKey;
-                    const currentTask = m.working[0]?.title ?? (agent.status === "working" ? scene.caption(agent.activity) : null) ?? "—";
-                    const waitingOn = m.waiting[0]?.title ?? (agent.status === "blocked" ? scene.caption(agent.activity) : null) ?? null;
+                    const currentTask = m.working[0]?.title ?? (agent.status === "working" ? scene.caption(agent.activity, agent.activityCopy) : null) ?? "—";
+                    const waitingOn = m.waiting[0]?.title ?? (agent.status === "blocked" ? scene.caption(agent.activity, agent.activityCopy) : null) ?? null;
                     return (
                         <li key={m.key} className={cn("cursor-pointer px-3 py-3 transition-colors hover:bg-muted/50", selected && "bg-cyan-500/[0.07]")}>
                             <button type="button" aria-pressed={selected} onClick={() => onSelect(m.key)} className="flex min-h-11 w-full items-center gap-3 rounded-lg text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400">

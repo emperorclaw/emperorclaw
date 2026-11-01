@@ -354,6 +354,122 @@ maybe("the owner shares a view with people; the scope still caps every share; ch
     for (const leak of [String(SECRET_VALUE), f.sam.userId, f.ria.userId]) assert.equal(JSON.stringify(audits).includes(leak), false, `audit leaked ${leak}`);
 });
 
+maybe("a view with no owner: owners/admins change who sees it (private or shared makes them its owner); members do not; a real owner keeps the say", async () => {
+    const f = await fixture();
+    const client = await mcpClientFor(f.companyId, f.builder.id);
+    // Built in a group conversation: nobody owns it and it is open to the scope.
+    const make = async (title: string) => json<{ view: ViewOut }>(await client.tool("create_view", { title, panels: PANELS, threadId: f.group.id })).view;
+    const view = await make("Ops board");
+    assert.equal(view.owner, null);
+    assert.equal(view.visibility, "scope");
+    const r = await routes();
+    const params = { id: view.id };
+    const put = (body: Record<string, unknown>, id = view.id) => call(r.access.PUT, `/api/views/${id}/access`, { method: "PUT", body, params: { id } });
+
+    // Members and viewers who can read it still cannot change it.
+    for (const who of [f.olga, f.vic]) {
+        actAs(who);
+        assert.deepEqual((await call(r.access.GET, `/api/views/${view.id}/access`, { params })).json.people, []);
+        for (const body of [{ visibility: "private" }, { visibility: "shared", shareUserIds: [f.sam.userId] }, { visibility: "scope" }]) {
+            const res = await put(body);
+            assert.equal(res.status, 403, res.text);
+        }
+    }
+
+    // An admin: the share picker lists everyone in scope but them (sharing makes them the owner).
+    actAs(f.ada);
+    const people = ((await call(r.access.GET, `/api/views/${view.id}/access`, { params })).json.people as { id: string }[]).map((p) => p.id);
+    assert.ok(people.includes(f.olga.userId) && !people.includes(f.ada.userId));
+    // Everyone in scope again: no owner is made, nothing to audit.
+    const same = await put({ visibility: "scope" });
+    assert.equal(same.status, 200, same.text);
+    assert.equal((same.json.view as ViewOut).owner, null);
+    // Private: the admin becomes the owner in the same write.
+    const claimed = await put({ visibility: "private" });
+    assert.equal(claimed.status, 200, claimed.text);
+    assert.equal((claimed.json.view as ViewOut).owner?.id, f.ada.userId);
+    assert.equal((claimed.json.view as ViewOut).visibility, "private");
+    actAs(f.olga);
+    assert.equal((await call(r.view.GET, `/api/views/${view.id}`, { params })).status, 404, "now private to the admin");
+    // From here on it is the admin's as owner: back to the scope keeps them as owner.
+    actAs(f.ada);
+    const reopened = await put({ visibility: "scope" });
+    assert.equal(reopened.status, 200, reopened.text);
+    assert.equal((reopened.json.view as ViewOut).owner?.id, f.ada.userId);
+
+    // Shared: the admin owns it and is never on their own share list.
+    const second = await make("Ops second");
+    const shared = await put({ visibility: "shared", shareUserIds: [f.sam.userId, f.ada.userId] }, second.id);
+    assert.equal(shared.status, 200, shared.text);
+    assert.equal((shared.json.view as ViewOut).owner?.id, f.ada.userId);
+    assert.equal((shared.json.view as { sharedCount: number }).sharedCount, 1);
+
+    // A view with a real owner: the admin has no say over who sees it.
+    const pats = await privateViewFor(f);
+    actAs(f.pat);
+    assert.equal((await put({ visibility: "scope" }, pats.id)).status, 200);
+    actAs(f.ada);
+    assert.equal((await put({ visibility: "private" }, pats.id)).status, 403);
+    assert.deepEqual((await call(r.access.GET, `/api/views/${pats.id}/access`, { params: { id: pats.id } })).json.people, []);
+    actAs(null);
+
+    const db = await getDb();
+    const { auditLog } = await getSchema();
+    const { and, inArray } = await import("drizzle-orm");
+    const audits = await db.select().from(auditLog).where(and(inArray(auditLog.targetId, [view.id, second.id]), inArray(auditLog.action, ["view.owner_claimed", "view.visibility_changed"])));
+    const claims = audits.filter((a) => a.action === "view.owner_claimed");
+    assert.equal(claims.length, 2);
+    for (const claim of claims) {
+        assert.equal(claim.actorId, f.ada.userId);
+        const payload = claim.payloadJson as { before: { ownerUserId: string | null }; after: { ownerUserId: string; visibility: string } };
+        assert.equal(payload.before.ownerUserId, null);
+        assert.equal(payload.after.ownerUserId, f.ada.userId);
+    }
+    assert.deepEqual(audits.filter((a) => a.action === "view.visibility_changed").map((a) => a.targetId), [view.id], "only the reopen, made as owner");
+    assert.equal(JSON.stringify(audits).includes(f.sam.userId), false, "who it is shared with stays out of the log");
+    const { describeAuditEntry } = await import("@/lib/audit-format");
+    const sentence = describeAuditEntry({ action: "view.owner_claimed", targetType: "view", targetId: view.id, payload: claims[0].payloadJson as never, actorType: "human", actorName: "Ada" });
+    assert.equal(sentence.sentenceKey, "activity.sentences.view.owner_claimed");
+    assert.equal(sentence.verb, "took ownership of");
+});
+
+maybe("a visibility change lands only while the owner it was checked against still owns the view (409 otherwise)", async () => {
+    const f = await fixture();
+    const client = await mcpClientFor(f.companyId, f.builder.id);
+    const view = json<{ view: ViewOut }>(await client.tool("create_view", { title: "Ops board", panels: PANELS, threadId: f.group.id })).view;
+    assert.equal(view.owner, null);
+    const { setViewVisibility } = await import("@/lib/views");
+    const { Pool } = await import("pg");
+    const pool = new Pool({ connectionString: process.env.POSTGRES_CONNECTION_STRING, max: 2 });
+    const lock = await pool.connect();
+    try {
+        // Hold the row so the admin's write waits after its permission check (made against "no owner")...
+        await lock.query("BEGIN");
+        await lock.query("SELECT id FROM views WHERE id = $1 FOR UPDATE", [view.id]);
+        const pending = setViewVisibility(f.companyId, await memberCaller(f, f.ada, "admin"), view.id, { visibility: "scope" }).then(
+            () => null, (error: unknown) => error as { status?: number; message?: string },
+        );
+        for (let i = 0; i < 100; i++) {
+            const { rows } = await pool.query("SELECT 1 FROM pg_stat_activity WHERE wait_event_type = 'Lock' AND query ILIKE 'update \"views\"%'").catch(() => ({ rows: [] }));
+            if (rows.length) break;
+            await new Promise((resolve) => setTimeout(resolve, 20));
+        }
+        // ...while someone else takes the view meanwhile.
+        await lock.query("UPDATE views SET owner_user_id = $1 WHERE id = $2", [f.pat.userId, view.id]);
+        await lock.query("COMMIT");
+        const refused = await pending;
+        assert.equal(refused?.status, 409, String(refused?.message));
+    } finally {
+        lock.release();
+        await pool.end();
+    }
+    const db = await getDb();
+    const { views } = await getSchema();
+    const { eq } = await import("drizzle-orm");
+    const [row] = await db.select({ ownerUserId: views.ownerUserId, visibility: views.visibility }).from(views).where(eq(views.id, view.id));
+    assert.equal(row.ownerUserId, f.pat.userId, "the new owner keeps it");
+});
+
 maybe("admins transfer and delete a private view without reading it; the owner may too; nobody else", async () => {
     const f = await fixture();
     const view = await privateViewFor(f);
@@ -505,9 +621,11 @@ maybe("legacy views (no owner, visibility scope) behave exactly as before", asyn
         const got = await call(r.view.GET, `/api/views/${legacy.id}`, { params: { id: legacy.id } });
         assert.equal((got.json.view as ViewOut).access, "full");
     }
-    // Nobody owns it, so nobody changes who sees it; an admin may give it an owner.
-    actAs(f.ada);
+    // Nobody owns it, so a member does not change who sees it (an owner/admin may:
+    // see "a view with no owner" above); an admin may give it an owner.
+    actAs(f.olga);
     assert.equal((await call(r.access.PUT, `/api/views/${legacy.id}/access`, { method: "PUT", body: { visibility: "private" }, params: { id: legacy.id } })).status, 403);
+    actAs(f.ada);
     assert.equal((await call(r.owner.PUT, `/api/views/${legacy.id}/owner`, { method: "PUT", body: { ownerUserId: f.olga.userId }, params: { id: legacy.id } })).status, 200);
     actAs(null);
     const other = await mcpClientFor(f.companyId, f.other.id);
