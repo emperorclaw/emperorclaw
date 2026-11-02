@@ -62,7 +62,7 @@ test("Customer and pipeline operator copy avoids runtime-specific or internal ja
   assertContains(readUi("src/app/(app)/customers/customers-client.tsx"), "your agents should follow", "customers should use runtime-neutral agent wording");
 
   const pipelines = read("src/app/(app)/pipelines/pipelines-client.tsx");
-  assertContains(readUi("src/app/(app)/pipelines/pipelines-client.tsx"), "visual map, Context Pack, run evidence", "pipelines should explain Context Pack in operator language");
+  assertContains(readUi("src/app/(app)/pipelines/pipelines-client.tsx"), "see which agent runs each one and when it runs next", "pipelines should say who runs an automation and when, in operator language");
   assertNotContains(pipelines, "via MCP", "pipelines UI copy should avoid MCP jargon for normal operators");
 });
 

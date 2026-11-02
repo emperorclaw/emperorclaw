@@ -1,6 +1,6 @@
 # Pipelines Registry
 
-A pipeline is recurring or recursive work that an agent runs on its own: a nightly lead-mining loop, a weekly report generator, or a monitor that fires on an event. Pipelines execute in the agent's runtime. Emperor is the registry that makes them visible, documented, and accountable.
+A pipeline (shown as an **automation** in the app) is recurring or recursive work that an agent runs: a nightly lead-mining loop, a weekly report generator, or a monitor that fires on an event. The steps execute in the agent's runtime. Emperor is the registry that makes them visible, documented, and accountable, and it can start a run by handing the agent a task.
 
 ## The Agent-First Contract
 
@@ -10,17 +10,21 @@ The division of responsibility is strict:
 |---|---|
 | Building the pipeline, cron job, workflow, or loop | The agent, in its own runtime |
 | Executing steps and handling errors | The agent runtime |
+| Starting a run on schedule | The agent by default; Emperor when the automation is set to "Emperor runs it on schedule" (`scheduledBy: "emperor"`) |
+| Starting a run on demand | A person (Run now), or an MCP client (`run_automation`) |
 | Registering what exists and why | Emperor (`POST /pipelines`) |
-| Documentation and visual map | Emperor Pipelines workspace |
+| Documentation and visual map | Emperor Automations workspace |
 | Run history, source usage, and evidence | Emperor (`POST /pipelines/{id}/runs`) |
 
-Emperor never executes a pipeline. It records what agents declare and what they report. This follows the same doctrine as tasks: the durable write is the truth, and unregistered automation is invisible automation.
+Emperor never executes a pipeline's steps itself. When it starts a run (Run now, `run_automation`, or its own schedule), it records the run and creates a task for the runner agent with the steps and the run id; the agent does the work and reports back, and the run closes when the task is done or failed. Otherwise it records what agents declare and what they report. This follows the same doctrine as tasks: the durable write is the truth, and unregistered automation is invisible automation.
 
 ## Operator Workspace
 
-The Pipelines page is a documentation workspace, not a fake execution engine.
+The Automations page (`/pipelines`) shows who runs each automation and when, lets you run it now or pause it, and documents it.
 
-- **Pipeline Explorer**: search and filter pipelines by name, purpose, and status.
+- **Automations list**: search and filter by name, purpose, and status; each row shows the runner agent, the last run, the next run, Run now and an on/off switch.
+- **How it runs**: the runner agent (changeable), the schedule in plain words with its time zone, the next run, who keeps the schedule (the agent or Emperor), and who created it.
+- **Recent runs**: where each run came from (Run now and who pressed it, the agent, the schedule), how long it took, its summary, and links to its tasks.
 - **Visual Map**: an automatic React Flow map of trigger -> Context Pack -> declared steps -> output -> run evidence.
 - **Documentation**: the human-readable contract, context rules, workflow steps, recent runs, and copy-ready markdown.
 - **Delete**: removes the registry entry when a pipeline is obsolete. It does not delete external agent code.
@@ -75,7 +79,7 @@ The response includes `sourceIds`. Agents should cite those IDs in the run repor
 | `paused` | Temporarily stopped; the agent must check status before each cycle |
 | `retired` | Soft-deleted; history is preserved |
 
-The human operator can pause, activate, retire, or delete registry entries from the Pipelines page. A paused pipeline is an instruction to the agent: check the registry status before executing a cycle, and skip while paused.
+The human operator can pause, activate, retire, or delete registry entries from the Automations page. A paused pipeline is an instruction to the agent: check the registry status before executing a cycle, and skip while paused. Emperor's own schedule never starts a paused automation, and it pauses one by itself (with the reason shown) after an invalid schedule or three failed starts in a row.
 
 ## Declaring Steps
 

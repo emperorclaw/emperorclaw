@@ -81,7 +81,7 @@ test("Pipelines UI and docs explain Context Pack without pretending Emperor exec
   ["Context Pack", "GET /resources/context", "contextSourceIds", "Evidence produced"].forEach((needle) => {
     assertContains(docs, needle, `Pipelines docs should teach ${needle}`);
   });
-  assertContains(docs, "Emperor never executes a pipeline", "docs must keep the agent-first execution boundary clear");
+  assertContains(docs, "Emperor never executes a pipeline's steps itself", "docs must keep the agent-first execution boundary clear");
 
   assertFile("src/db/migrations/0021_pipeline_context_pack.sql");
 });
@@ -99,8 +99,7 @@ test("Pipelines page is a documentation workspace with React Flow visual map", (
   [
     "@xyflow/react",
     "PipelineFlowMap",
-    "Pipeline Explorer",
-    "Visual Map",
+    "Run now",
     "Documentation",
     "No steps registered",
     "copyPipelineMarkdown",
