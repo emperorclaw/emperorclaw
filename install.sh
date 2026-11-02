@@ -165,6 +165,10 @@ if [ -z "$("${DOCKER[@]}" compose ps -q 2>/dev/null)" ]; then
     done
 fi
 echo "Starting the app and database. First startup can take a few minutes..."
+# Pull first: `up` reuses any cached :latest image, so a machine that ran an
+# older EmperorClaw would otherwise start that old version. A failed pull
+# (offline) still starts from the cached image.
+"${DOCKER[@]}" compose pull app || echo "Warning: could not download the latest app image; starting the one already on this machine." >&2
 "${DOCKER[@]}" compose up -d
 
 READY=0

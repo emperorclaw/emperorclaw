@@ -112,6 +112,13 @@ if (-not $running) {
     }
 }
 Write-Host 'Starting app and database. First startup can take a few minutes...'
+# Pull first: `up` reuses any cached :latest image, so a machine that ran an
+# older EmperorClaw would otherwise start that old version. A failed pull
+# (offline) still starts from the cached image.
+$ErrorActionPreference = 'Continue'
+& docker compose pull app
+if ($LASTEXITCODE -ne 0) { Write-Host 'Warning: could not download the latest app image; starting the one already on this machine.' -ForegroundColor Yellow }
+$ErrorActionPreference = 'Stop'
 & docker compose up -d
 if ($LASTEXITCODE -ne 0) { throw "Startup failed. Check docker compose logs --tail=100 app postgres. Files and data are preserved." }
 $ready = $false

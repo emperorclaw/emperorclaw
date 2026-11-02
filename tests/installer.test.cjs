@@ -54,6 +54,8 @@ test('piped installer creates secrets and verifies health and app socket access 
   assert.match(env, /^DOCKER_GID=123$/m);
   const log = fs.readFileSync(f.log, 'utf8');
   assert.match(log, /compose exec -T app wget/); assert.match(log, /compose exec -T app node/);
+  // A cached :latest from an older install must not be what starts.
+  assert.match(log, /^compose pull app\ncompose up -d$/m);
   assert.match(result.stdout, /Ready!/);
   assert.equal(fs.statSync(path.join(f.installDir, '.env')).mode & 0o777, 0o600);
 });
