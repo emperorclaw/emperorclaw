@@ -25,8 +25,74 @@ export type PipelineTrigger = "cron" | "event" | "manual";
 export const PIPELINE_STATUSES = ["draft", "active", "paused", "retired"] as const;
 export type PipelineStatus = (typeof PIPELINE_STATUSES)[number];
 
-export const PIPELINE_RUN_STATUSES = ["running", "succeeded", "failed", "partial"] as const;
+export const PIPELINE_RUN_STATUSES = ["running", "succeeded", "failed", "partial", "skipped"] as const;
 export type PipelineRunStatus = (typeof PIPELINE_RUN_STATUSES)[number];
+
+/**
+ * What started a run. `manual` is Run now from the app, `agent` a run the agent
+ * reported from its runtime, `schedule` a scheduled run (the agent's or
+ * Emperor's), `api` an operator or agent calling run_automation. A run stored
+ * before 0.27 has none (null): it was reported by the agent.
+ */
+export const PIPELINE_RUN_SOURCES = ["manual", "agent", "schedule", "api"] as const;
+export type PipelineRunSource = (typeof PIPELINE_RUN_SOURCES)[number];
+
+/** The sources an agent may name when it reports a run through the runs API. */
+export const AGENT_REPORTED_RUN_SOURCES = ["agent", "schedule"] as const;
+
+/** Who fires a cron automation: its agent's runtime (default) or Emperor itself. */
+export const PIPELINE_SCHEDULERS = ["agent", "emperor"] as const;
+export type PipelineScheduler = (typeof PIPELINE_SCHEDULERS)[number];
+
+export function isPipelineScheduler(value: unknown): value is PipelineScheduler {
+    return typeof value === "string" && (PIPELINE_SCHEDULERS as readonly string[]).includes(value);
+}
+
+export type PipelineRunOrigin =
+    | { kind: "manual" | "api" | "agent"; who: { type: "user" | "agent"; id: string } | null }
+    | { kind: "schedule"; who: null }
+    | { kind: "legacy"; agentId: string | null };
+
+/**
+ * How a run's history line names its origin ("Run now · by Alex", "Agent ·
+ * Quill", "Schedule", "Reported by Quill"). Pure: the caller resolves names.
+ */
+export function pipelineRunOrigin(run: {
+    source?: string | null;
+    triggeredByType?: string | null;
+    triggeredById?: string | null;
+    agentId?: string | null;
+}): PipelineRunOrigin {
+    const source = run.source;
+    if (!source || !(PIPELINE_RUN_SOURCES as readonly string[]).includes(source)) {
+        return { kind: "legacy", agentId: run.agentId ?? null };
+    }
+    if (source === "schedule") return { kind: "schedule", who: null };
+    const who = (run.triggeredByType === "user" || run.triggeredByType === "agent") && run.triggeredById
+        ? { type: run.triggeredByType as "user" | "agent", id: run.triggeredById }
+        : source === "agent" && run.agentId ? { type: "agent" as const, id: run.agentId } : null;
+    return { kind: source as "manual" | "api" | "agent", who };
+}
+
+/** A run is finished when it is anything but running. */
+export function isTerminalRunStatus(status: string): boolean {
+    return status !== "running";
+}
+
+/** Milliseconds a run took (or has taken so far, against `now`); null without a start. */
+export function pipelineRunDurationMs(run: { startedAt: string | Date; endedAt?: string | Date | null }, now = new Date()): number | null {
+    const start = new Date(run.startedAt).getTime();
+    if (!Number.isFinite(start)) return null;
+    const end = run.endedAt ? new Date(run.endedAt).getTime() : now.getTime();
+    return Number.isFinite(end) ? Math.max(0, end - start) : null;
+}
+
+/** The run status a linked task's terminal state closes the run with; null while the task is open. */
+export function runStatusForTaskState(state: string): "succeeded" | "failed" | null {
+    if (state === "done") return "succeeded";
+    if (state === "failed" || state === "dead_letter") return "failed";
+    return null;
+}
 
 export function parsePipelineSteps(input: unknown): { steps: PipelineStep[]; error?: string } {
     if (input == null) return { steps: [] };

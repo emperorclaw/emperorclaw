@@ -17,7 +17,7 @@ export type AuditActor = { type: AuditActorType; id: string | null; tokenId?: st
 
 export const AUDIT_TARGET_TYPES = [
     "agent", "task", "approval", "member", "invitation", "company", "organization", "project", "customer", "knowledge_note",
-    "pricing", "view", "runtime_host",
+    "pricing", "view", "runtime_host", "pipeline",
 ] as const;
 export type AuditTargetType = (typeof AUDIT_TARGET_TYPES)[number];
 
@@ -117,6 +117,11 @@ export const AUDIT_FIELD_ALLOWLIST: Record<AuditTargetType, Record<string, Field
         name: "label", os: "enum", arch: "enum", status: "enum", hostdVersion: "enum",
         command: "enum", jobId: "id", agentId: "id", profile: "enum", target: "enum",
         gateway: "enum", llmProvider: "enum", model: "enum", purge: "bool", agentName: "label",
+    },
+    // An automation (0.27): its name, state, runner and who schedules it; a run is its ids and origin.
+    pipeline: {
+        name: "label", status: "enum", ownerAgentId: "id", scheduledBy: "enum",
+        runId: "id", taskId: "id", source: "enum", agentId: "id", reason: "label",
     },
 };
 
@@ -219,7 +224,7 @@ export function scopeAuditFields(scopeJson: unknown): AuditFields {
 const TARGET_NOUNS: Record<string, string> = {
     agent: "agent", task: "task", approval: "approval", member: "", invitation: "an invitation for",
     company: "", organization: "", project: "project", customer: "customer", knowledge_note: "note",
-    pricing: "pricing for", view: "view", runtime_host: "host",
+    pricing: "pricing for", view: "view", runtime_host: "host", pipeline: "automation",
 };
 
 /** "<verb> <noun> <label>"; a verb with "{target}" places the target itself. */
@@ -275,6 +280,10 @@ const VERBS: Record<string, string> = {
     "view.read_unbound_token": "opened with a company-wide token",
     "agent.runtime_host_changed": "changed the host of",
     "company.host_pairing_created": "created a code to connect a host",
+    "pipeline.run_started": "ran",
+    "pipeline.paused": "paused",
+    "pipeline.resumed": "resumed",
+    "pipeline.updated": "updated",
     "runtime_host.paired": "paired",
     "runtime_host.renamed": "renamed",
     "runtime_host.revoked": "revoked",
@@ -545,6 +554,7 @@ export function auditTargetHref(targetType: string, targetId: string, payload: A
         case "pricing": return "/costs?tab=budgets";
         case "view": return `/views/${encodeURIComponent(targetId)}`;
         case "runtime_host": return "/settings?tab=runtime-hosts";
+        case "pipeline": return "/pipelines";
         default: return null;
     }
 }

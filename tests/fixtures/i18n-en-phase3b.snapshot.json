@@ -466,7 +466,13 @@
       },
       "register_agent": "<who>{actor}</who> created <target>agent {label}</target> {detail}",
       "delete_agent": "<who>{actor}</who> deleted <target>agent {label}</target> {detail}",
-      "hire_hermes_agent": "<who>{actor}</who> hired <target>agent {label}</target> {detail}"
+      "hire_hermes_agent": "<who>{actor}</who> hired <target>agent {label}</target> {detail}",
+      "pipeline": {
+        "run_started": "<who>{actor}</who> ran <target>automation {label}</target> {detail}",
+        "paused": "<who>{actor}</who> paused <target>automation {label}</target> {detail}",
+        "resumed": "<who>{actor}</who> resumed <target>automation {label}</target> {detail}",
+        "updated": "<who>{actor}</who> updated <target>automation {label}</target> {detail}"
+      }
     },
     "unnamedActors": {
       "agent": "An agent",
@@ -560,6 +566,112 @@
       "claudeWebToken": "To use a token instead, choose No sign in and add a request header named Authorization with the value Bearer followed by your token.",
       "talkTitle": "Talking to an agent",
       "talkBody": "The same tools work in every client. Ask Claude or Codex to message an agent: it calls send_message, then wait_for_reply until the answer arrives, and read_thread for the whole conversation. Use send_agent_request for work you want tracked as a task."
+    }
+  },
+  "updatePanel": {
+    "confirmTitle": "Update EmperorClaw?"
+  },
+  "pipelines": {
+    "runStatuses": {
+      "skipped": "skipped"
+    },
+    "lastRunAt": "{status} · {time}",
+    "lastRunNever": "Never run",
+    "origin": {
+      "manual": "Run now",
+      "manualBy": "Run now · by {name}",
+      "agent": "Agent",
+      "agentBy": "Agent · {name}",
+      "schedule": "Schedule",
+      "api": "API",
+      "apiBy": "API · {name}",
+      "reportedBy": "Reported by {name}",
+      "reportedByAgent": "Reported by the agent"
+    },
+    "runner": {
+      "label": "Runs it",
+      "none": "No agent assigned",
+      "choose": "Choose an agent",
+      "search": "Find an agent",
+      "noneOption": "No agent",
+      "pausedOption": "{name} (paused)",
+      "changed": "{name} now runs this automation",
+      "cleared": "No agent runs this automation now",
+      "changeFailed": "Could not change the agent"
+    },
+    "created": {
+      "byOn": "Created by {name} on {date}",
+      "on": "Created on {date}"
+    },
+    "schedule": {
+      "title": "How it runs",
+      "when": "When",
+      "next": "Next run {time}",
+      "nextExpected": "Next expected {time}",
+      "agentHint": "The agent runs it on schedule from its runtime.",
+      "emperorHint": "Emperor starts each run on schedule and gives the agent a task.",
+      "paused": "Paused — won't run",
+      "draft": "Draft — not running yet",
+      "noNext": "No upcoming run: the schedule could not be read",
+      "timezone": "Times in {zone}",
+      "cronRaw": "Cron: {cron}",
+      "event": "Runs when: {event}",
+      "eventAny": "Runs when an event the agent watches happens",
+      "manual": "Runs when someone starts it with Run now, or when the agent decides to",
+      "whoFires": "Who keeps the schedule",
+      "agentOption": "The agent runs it from its runtime",
+      "agentExplain": "Pick this if the agent already schedules it itself, so it never runs twice.",
+      "emperorOption": "Emperor runs it on schedule",
+      "emperorExplain": "At each scheduled time Emperor creates a task for the agent. Pick this if the agent does not schedule it itself.",
+      "nowEmperor": "Emperor now runs it on schedule",
+      "nowAgent": "The agent runs it from its runtime now",
+      "changeFailed": "Could not change who keeps the schedule",
+      "pausedBecause": "Paused by Emperor: {reason}"
+    },
+    "toggle": {
+      "on": "On",
+      "off": "Off",
+      "pause": "Pause",
+      "resume": "Resume",
+      "turnOn": "Turn on {name}",
+      "turnOff": "Pause {name}",
+      "paused": "{name} paused",
+      "resumed": "{name} is on again",
+      "failed": "Could not change the automation"
+    },
+    "runNow": {
+      "button": "Run now",
+      "title": "Run {name} now",
+      "agent": "Agent that runs it",
+      "whatHappens": "Creates a task for {agent} with the steps, and asks it to report the run here.",
+      "needsAgent": "Choose an agent to run it.",
+      "run": "Run",
+      "starting": "Starting…",
+      "startAnother": "Start another",
+      "alreadyRunning": "A run that started {time} is still running. Start another anyway?",
+      "started": "Run started: {agent} has a task for it",
+      "openTask": "Open task",
+      "failed": "Could not start the run"
+    },
+    "history": {
+      "took": "took {duration}",
+      "runningFor": "running for {duration}",
+      "openTask": "Open task",
+      "repeated": "{count} times, last {time}"
+    },
+    "duration": {
+      "seconds": "{count}s",
+      "minutes": "{count} min",
+      "hours": "{hours} h {minutes} min"
+    },
+    "empty": {
+      "title": "No automations yet",
+      "what": "An automation is work an agent repeats: a weekly report, a daily lead check, a sync. Agents register them here with their steps and schedule, and report every run.",
+      "howTitle": "To add one, ask an agent, for example:",
+      "example": "Set up an automation that every Monday at 9:00 summarizes last week's leads for our client and reports each run here.",
+      "copy": "Copy prompt",
+      "copied": "Prompt copied",
+      "then": "Then you can see who runs it and when it runs next, run it now, pause it, and open the task of every run."
     }
   }
 }

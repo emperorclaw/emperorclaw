@@ -133,4 +133,25 @@ export async function broadcastMcpEvent(companyId: string, payload: any) {
     } catch (e) {
         console.error("Failed to broadcast MCP event:", e);
     }
+    // Off the request path: the caller does not wait for the run to close.
+    void closeAutomationRunsOnTaskEnd(companyId, payload);
+}
+
+/**
+ * Every task state change (finalize, update, approvals, the watchdog) ends in
+ * this task_updated broadcast, so this is the one place a done or failed task
+ * closes the automation run that handed it out (lib/pipeline-runs.ts).
+ * Imported lazily: the run service itself depends on this module. Never throws.
+ */
+async function closeAutomationRunsOnTaskEnd(companyId: string, payload: unknown) {
+    const event = payload as { type?: unknown; task?: { id?: unknown; state?: unknown; outputJson?: unknown } } | null;
+    const task = event?.type === "task_updated" ? event.task : null;
+    if (!task || typeof task.id !== "string" || typeof task.state !== "string") return;
+    if (task.state !== "done" && task.state !== "failed" && task.state !== "dead_letter") return;
+    try {
+        const { closePipelineRunsForTask } = await import("@/lib/pipeline-runs");
+        await closePipelineRunsForTask(companyId, { id: task.id, state: task.state, outputJson: task.outputJson ?? (task as { output_json?: unknown }).output_json });
+    } catch (error) {
+        console.error("Failed to close automation runs for a finished task:", error);
+    }
 }

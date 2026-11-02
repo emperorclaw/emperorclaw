@@ -42,6 +42,7 @@ export const MODULES: readonly ModuleDefinition[] = [
  */
 export const MODULE_TOOLS: Partial<Record<ModuleKey, readonly string[]>> = {
     views: ["list_views", "get_view", "create_view", "update_view", "update_panel", "archive_view"],
+    automations: ["list_automations", "run_automation"],
 };
 
 export const ALL_MODULES_ON: ModuleState = Object.fromEntries(MODULE_KEYS.map((key) => [key, true])) as ModuleState;

@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import { IconRefresh, IconLoader2, IconCircleCheck, IconAlertTriangle } from "@tabler/icons-react";
 import { useTranslations } from "next-intl";
 import { Button } from "@/components/ui/button";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 
 type VersionInfo = {
     current: string;
@@ -31,6 +32,7 @@ export function UpdatePanel() {
     const [updating, setUpdating] = useState(false);
     const [steps, setSteps] = useState<UpdateStep[]>([]);
     const [error, setError] = useState<string | null>(null);
+    const [confirming, setConfirming] = useState(false);
 
     const checkVersion = async () => {
         setChecking(true);
@@ -51,8 +53,7 @@ export function UpdatePanel() {
     }, []);
 
     const handleUpdate = async () => {
-        if (!confirm(t("confirm", { current: version?.current ?? "", latest: version?.latest ?? "" }))) return;
-
+        setConfirming(false);
         setUpdating(true);
         setSteps([]);
         setError(null);
@@ -111,7 +112,7 @@ export function UpdatePanel() {
                     {version?.updateAvailable && (
                         <Button
                             size="sm"
-                            onClick={handleUpdate}
+                            onClick={() => setConfirming(true)}
                             disabled={updating}
                             className="h-7 text-xs bg-emerald-600 hover:bg-emerald-500 text-white"
                         >
@@ -154,6 +155,10 @@ export function UpdatePanel() {
             {error && (
                 <p className="text-xs text-rose-400 mt-2">{error}</p>
             )}
+
+            <ConfirmDialog open={confirming} title={t("confirmTitle")}
+                description={t("confirm", { current: version?.current ?? "", latest: version?.latest ?? "" })}
+                confirmLabel={t("update")} onConfirm={() => void handleUpdate()} onCancel={() => setConfirming(false)} />
         </div>
     );
 }

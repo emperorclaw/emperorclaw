@@ -2,9 +2,10 @@ import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/db";
 import { pipelines, pipelineRuns } from "@/db/schema";
 import { verifyMcpToken, checkIdempotency, saveIdempotencyResponse } from "@/lib/mcp";
-import { mcpDenyOutOfScope, mcpRecordCondition, mcpRouteAccess } from "@/lib/mcp-access";
+import { mcpDenyOutOfScope, mcpMayReachAgent, mcpRouteAccess } from "@/lib/mcp-access";
 import { and, desc, eq, isNull } from "drizzle-orm";
-import { generateMermaid, parsePipelineContextConfig, parsePipelineSteps, validateForActivation, PIPELINE_STATUSES, PipelineStatus, PipelineStep } from "@/lib/pipelines";
+import { generateMermaid, isPipelineScheduler, parsePipelineContextConfig, parsePipelineSteps, validateForActivation, PIPELINE_SCHEDULERS, PIPELINE_STATUSES, PipelineStatus, PipelineStep } from "@/lib/pipelines";
+import { closeScheduleStreak, emperorScheduleProblemFor, nextRunAtFor } from "@/lib/pipeline-runs";
 import { moduleGuard } from "@/lib/modules-server";
 
 async function findPipeline(companyId: string, id: string) {
@@ -85,7 +86,12 @@ export async function PATCH(
         if (typeof body.docMarkdown === "string") updates.docMarkdown = body.docMarkdown;
         if (typeof body.runtimeRef === "string") updates.runtimeRef = body.runtimeRef;
         if (typeof body.summary === "string") updates.summary = body.summary;
-        if (body.nextRunAt) updates.nextRunAt = new Date(body.nextRunAt);
+        if (body.scheduledBy !== undefined) {
+            if (!isPipelineScheduler(body.scheduledBy)) {
+                return NextResponse.json({ error: `scheduledBy must be one of: ${PIPELINE_SCHEDULERS.join(", ")}` }, { status: 400 });
+            }
+            updates.scheduledBy = body.scheduledBy;
+        }
         if (
             body.contextQuery !== undefined ||
             body.contextResourceIds !== undefined ||
@@ -150,8 +156,52 @@ export async function PATCH(
             updates.status = body.status;
         }
 
+        // nextRunAt follows the cron (server-computed, from now); an agent may
+        // still state it for an event or manual trigger it schedules itself.
+        const nextTrigger = (updates.trigger as string | undefined) ?? pipeline.trigger;
+        const resulting = {
+            trigger: nextTrigger,
+            triggerConfig: updates.triggerConfig !== undefined ? updates.triggerConfig : pipeline.triggerConfig,
+            scheduledBy: (updates.scheduledBy as string | undefined) ?? pipeline.scheduledBy,
+            status: (updates.status as string | undefined) ?? pipeline.status,
+        };
+        // Only a real change moves the next slot: resending the same status or
+        // schedule (agents re-sync often) must not push a pending slot back.
+        const scheduleChanged = resulting.trigger !== pipeline.trigger || resulting.status !== pipeline.status
+            || resulting.scheduledBy !== pipeline.scheduledBy || JSON.stringify(resulting.triggerConfig) !== JSON.stringify(pipeline.triggerConfig);
+        const resumed = resulting.status === "active" && pipeline.status !== "active";
+        // Emperor's schedule hands the owner a task at every slot: the caller
+        // must be allowed to hand that agent work, and the schedule must be one
+        // Emperor keeps (readable, at most every 15 minutes).
+        if (scheduleChanged && resulting.scheduledBy === "emperor" && resulting.trigger === "cron" && resulting.status === "active") {
+            const scoped = await mcpRouteAccess(companyId, auth.companyToken!, null);
+            if (scoped.response) return scoped.response;
+            if (pipeline.ownerAgentId && !mcpMayReachAgent(scoped.access, pipeline.ownerAgentId)) {
+                return NextResponse.json({ error: "Emperor's schedule would hand tasks to an agent outside your scope" }, { status: 403 });
+            }
+            const problem = await emperorScheduleProblemFor(companyId, resulting);
+            if (problem) return NextResponse.json({ error: problem }, { status: 422 });
+        }
+        if (resulting.status !== "paused") updates.pausedReason = null;
+        if (nextTrigger === "cron") {
+            if (scheduleChanged) {
+                updates.nextRunAt = await nextRunAtFor(companyId, {
+                    status: (updates.status as string | undefined) ?? pipeline.status,
+                    trigger: nextTrigger,
+                    triggerConfig: updates.triggerConfig !== undefined ? updates.triggerConfig : pipeline.triggerConfig,
+                });
+            }
+        } else if (body.nextRunAt) {
+            const stated = new Date(body.nextRunAt);
+            if (!Number.isNaN(stated.getTime())) updates.nextRunAt = stated;
+        } else if (body.trigger !== undefined) {
+            updates.nextRunAt = null;
+        }
+
         const [updated] = await db.update(pipelines).set(updates)
             .where(eq(pipelines.id, pipeline.id)).returning();
+
+        if (resumed) await closeScheduleStreak(pipeline.id);
 
         const res = { message: "Pipeline updated", pipeline: updated };
         await saveIdempotencyResponse(companyId, endpoint, requestHash!, res);

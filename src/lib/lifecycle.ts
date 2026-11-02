@@ -14,6 +14,7 @@ import { deliverRequestCallbacks } from "./agent-requests";
 import { runStarterDoctrineUpgrades } from "./starter-knowledge";
 import { SLA_TRACKED_TASK_STATES } from "./task-state";
 import { broadcastMcpEvent } from "./pubsub";
+import { runScheduledPipelines, schedulerDisabledInThisProcess } from "./pipeline-runs";
 
 const CHECKIN_DEADLINE_MS = 30_000;
 const LIFECYCLE_INTERVAL_MS = 15_000;
@@ -43,6 +44,7 @@ let lastStallSweepCheck = 0;
 let lastObjectiveCheck = 0;
 let lastCallbackCheck = 0;
 let lastRetentionCheck = 0;
+let lastPipelineScheduleCheck = 0;
 
 const pool = new Pool({
   connectionString: process.env.POSTGRES_CONNECTION_STRING,
@@ -110,6 +112,13 @@ async function runLifecycleMonitor() {
     if (now.getTime() - lastObjectiveCheck >= 60_000) {
       lastObjectiveCheck = now.getTime();
       await runObjectiveFollowups(now).catch((error) => console.error("Objective followups failed:", error));
+    }
+    // Emperor-scheduled automations: fire the due cron slots. Each slot is
+    // claimed with a compare-and-set on pipelines.next_run_at, so this stays
+    // correct even if two instances ever ran the tick at once.
+    if (!schedulerDisabledInThisProcess() && now.getTime() - lastPipelineScheduleCheck >= 60_000) {
+      lastPipelineScheduleCheck = now.getTime();
+      await runScheduledPipelines(now).catch((error) => console.error("Automation scheduler failed:", error));
     }
     // Requests from other platforms: post status callbacks (cheap when none).
     if (now.getTime() - lastCallbackCheck >= 15_000) {

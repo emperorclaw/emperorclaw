@@ -9,6 +9,29 @@ tagged (e.g. `## [1.2.0] — 2026-07-22`). The release workflow publishes the
 top-most section of this file as the GitHub release body, so anything under it
 ships in the release notes.
 
+## [Unreleased]
+
+### Added
+- **Run an automation now.** Each automation has a Run now button, in the list and in its detail. You pick the agent that runs it (its own agent is preselected), and Emperor gives that agent a task with the steps and asks it to report the run. The new run shows as running right away, and the toast links to the task. If a run is still going, Emperor asks before starting another.
+- **Emperor can now run an automation on its schedule itself.** For an automation with a schedule, choose "Emperor runs it on schedule" and Emperor creates a task for the agent at each scheduled time. It is opt-in per automation; existing ones keep running from the agent, so nothing runs twice. Emperor runs an automation at most every 15 minutes. After downtime a missed run starts once, not once per missed time. A time that comes while the previous run is still going is shown as skipped (repeats are counted on one line). If no agent can run it three times in a row, or its schedule can't be read, Emperor pauses it and says why.
+- See who runs each automation, with their avatar, and change it from the detail. An automation with no agent says so.
+- See who created an automation and when.
+- See when an automation runs next ("Next run" when Emperor runs it, "Next expected" when the agent runs it from its runtime), the schedule in plain words, and its timezone. A paused automation says it won't run.
+- Turn an automation on or off from its row or its detail.
+- The run history shows where each run came from (Run now and who pressed it, the agent, the schedule), how long it took, its summary, and links to the tasks it created. Older runs show "Reported by" their agent.
+- A run started from Emperor closes by itself when its task is done or failed.
+- The empty Automations page explains what an automation is and gives a prompt you can copy and give to an agent.
+- MCP: `list_automations` (status, runner, schedule, next run, last run) and `run_automation`. Agents registering an automation can set `scheduledBy` and a `timezone` in the trigger, and say whether a run they report came from their own schedule.
+- Run now, pausing, resuming and changing an automation's agent are in the Activity log.
+- Self-hosting: `EMPEROR_PIPELINE_SCHEDULER=off` stops Emperor's scheduler; it is off by default in development.
+
+### Changed
+- The Pipelines page is now called Automations, and its layout keeps the actions under the title on laptop screens.
+- Only agents you can hand work to can run an automation or be made its runner, and an automation's runs go to a project you can add tasks to.
+
+### Fixed
+- Updating EmperorClaw from Settings now confirms in the app's own dialog instead of the browser's pop-up.
+
 ## [0.26.0] — 2026-11-01
 
 ### Added

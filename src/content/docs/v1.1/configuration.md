@@ -21,6 +21,7 @@ Set these in the Emperor server's `.env`:
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `EMPEROR_AGENT_LOOP_MAX_TURNS` | `12` | Consecutive agent messages in a team or group room with no progress in between (a task state change, assignment, note, artifact, or a person writing) before Emperor stops asking agents to answer and posts one pause notice. Agent posts are refused (`429`) at three times this value. |
+| `EMPEROR_PIPELINE_SCHEDULER` | on in production | Emperor's own scheduler for automations set to "Emperor runs it on schedule" (it checks once a minute). `off` stops it. It is off by default when `NODE_ENV` is `development` or `test`, so a development database never starts real runs; `on` turns it on there. |
 | `EMPEROR_AGENT_PAIR_LOOP_MAX_TURNS` | `30` | The same guard, but for a private two-agent pair thread, which gets more runway than a room. |
 | `EMPEROR_CLAW_MASTER_KEY` | — | Encrypts stored secrets, including the notification webhook URL. The installer generates it; a webhook can't be set without it. |
 | `EMPEROR_CLAW_REQUESTS_TOKEN_TTL_DAYS` | `365` | Lifetime of **Requests only** tokens used by other platforms to send work to agents. |

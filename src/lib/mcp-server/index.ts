@@ -11,6 +11,7 @@ import { registerRequestTools } from "./tools/requests";
 import { registerObjectiveTools } from "./tools/objectives";
 import { registerViewTools } from "./tools/views";
 import { registerActionPolicyTools } from "./tools/action-policies";
+import { registerAutomationTools } from "./tools/automations";
 import { MCP_ACTOR_ARG_TOOLS, isActionKey } from "@/lib/action-policy";
 import { enforceActionPolicy, type ActionDecision } from "@/lib/action-policy-server";
 import { resolveAgentId } from "@/lib/mcp";
@@ -98,6 +99,7 @@ export async function buildMcpServer(companyId: string, callerAgentId?: string |
     registerObjectiveTools(server, companyId, callerAgentId);
     registerViewTools(server, companyId, callerAgentId, tokenId ?? null);
     registerActionPolicyTools(server, companyId, callerAgentId, tokenId ?? null);
+    registerAutomationTools(server, companyId, callerAgentId, tokenId ?? null);
     // Handing work to an agent from outside is an operator action, not an agent one.
     if (!callerAgentId) registerRequestTools(server, companyId, tokenId ?? null);
 

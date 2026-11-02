@@ -4,8 +4,9 @@ import { pipelines, pipelineRuns } from "@/db/schema";
 import { verifyMcpToken, checkIdempotency, saveIdempotencyResponse, resolveAgentId } from "@/lib/mcp";
 import { mcpDenyOutOfScope, mcpMayReachAgent, mcpRouteAccess } from "@/lib/mcp-access";
 import { and, desc, eq, isNull, sql } from "drizzle-orm";
-import { extractRunContextSourceIds, PIPELINE_RUN_STATUSES, PipelineRunStatus } from "@/lib/pipelines";
+import { AGENT_REPORTED_RUN_SOURCES, extractRunContextSourceIds, PIPELINE_RUN_STATUSES, PipelineRunStatus } from "@/lib/pipelines";
 import { moduleGuard } from "@/lib/modules-server";
+import { broadcastMcpEvent } from "@/lib/pubsub";
 
 // GET /api/mcp/pipelines/[id]/runs — run history.
 export async function GET(
@@ -49,6 +50,8 @@ export async function GET(
 //               summary?, stats? }                                  → closes the run
 //   One-shot: { status: 'succeeded'|'failed'|'partial', ... }        → creates an already-closed run
 // stats may carry { taskIds, artifactIds, counts, contextSourceIds } for traceability.
+// A new run may name its source: 'agent' (default) or 'schedule' (the agent's own
+// cron fired it). Complete also closes a run started with Run now, by its runId.
 export async function POST(
     req: NextRequest,
     { params }: { params: Promise<{ id: string }> }
@@ -84,7 +87,12 @@ export async function POST(
             return NextResponse.json({ error: `status must be one of: ${PIPELINE_RUN_STATUSES.join(", ")}` }, { status: 400 });
         }
 
-        let agentId: string | null = null;
+        const source = body.source === undefined || body.source === null ? "agent" : body.source;
+        if (!body.runId && !(AGENT_REPORTED_RUN_SOURCES as readonly string[]).includes(source)) {
+            return NextResponse.json({ error: `source must be one of: ${AGENT_REPORTED_RUN_SOURCES.join(", ")}` }, { status: 400 });
+        }
+
+        let agentId: string | null = auth.companyToken!.agentId ?? null;
         if (body.agentId) {
             try {
                 agentId = await resolveAgentId(companyId, body.agentId);
@@ -136,6 +144,7 @@ export async function POST(
                 }).where(eq(pipelines.id, pipeline.id));
             }
 
+            await broadcastMcpEvent(companyId, { type: "pipeline_run_updated", pipelineId: pipeline.id, runId: updated.id, status: updated.status });
             const res = { message: "Run updated", run: updated };
             await saveIdempotencyResponse(companyId, endpoint, requestHash!, res);
             return NextResponse.json(res);
@@ -147,6 +156,9 @@ export async function POST(
             pipelineId: pipeline.id,
             agentId,
             status,
+            source,
+            triggeredByType: source === "agent" && agentId ? "agent" : null,
+            triggeredById: source === "agent" ? agentId : null,
             summary: typeof body.summary === "string" ? body.summary : null,
             statsJson: stats !== undefined ? stats : {},
             contextSourceIds,
@@ -160,6 +172,7 @@ export async function POST(
             updatedAt: new Date(),
         }).where(eq(pipelines.id, pipeline.id));
 
+        await broadcastMcpEvent(companyId, { type: "pipeline_run_updated", pipelineId: pipeline.id, runId: run.id, status: run.status });
         const res = { message: isTerminal ? "Run reported" : "Run started", run };
         await saveIdempotencyResponse(companyId, endpoint, requestHash!, res);
         return NextResponse.json(res, { status: 201 });

@@ -3177,7 +3177,13 @@
       },
       "register_agent": "<who>{actor}</who> 创建了 <target>智能体 {label}</target> {detail}",
       "delete_agent": "<who>{actor}</who> 删除了 <target>智能体 {label}</target> {detail}",
-      "hire_hermes_agent": "<who>{actor}</who> 聘用了 <target>智能体 {label}</target> {detail}"
+      "hire_hermes_agent": "<who>{actor}</who> 聘用了 <target>智能体 {label}</target> {detail}",
+      "pipeline": {
+        "run_started": "<who>{actor}</who> 运行了<target>自动化 {label}</target> {detail}",
+        "paused": "<who>{actor}</who> 暂停了<target>自动化 {label}</target> {detail}",
+        "resumed": "<who>{actor}</who> 恢复了<target>自动化 {label}</target> {detail}",
+        "updated": "<who>{actor}</who> 更新了<target>自动化 {label}</target> {detail}"
+      }
     },
     "unnamedActors": {
       "agent": "一个智能体",
@@ -5000,7 +5006,8 @@
       "succeeded": "成功",
       "failed": "失败",
       "partial": "部分成功",
-      "running": "运行中"
+      "running": "运行中",
+      "skipped": "已跳过"
     },
     "trigger": {
       "scheduleAt": "调度：{cron}",
@@ -5036,26 +5043,22 @@
     "contextSources": "{count, plural, other {# 个上下文来源}}",
     "lastRun": "上次运行：{status}",
     "noRunsYet": "尚无运行",
-    "copied": "流水线文档已复制",
+    "copied": "自动化文档已复制",
     "copyFailed": "无法复制文档",
-    "emptyTitle": "尚未注册流水线",
-    "emptyDescription": "流水线是智能体通过 MCP 注册的文档合约。Emperor 存储映射、上下文规则和运行证据；智能体仍在自己的运行时中执行工作。",
-    "deleteFailed": "无法删除流水线",
-    "deleted": "流水线已删除",
-    "eyebrow": "自动化",
-    "title": "流水线",
-    "description": "一个简单的工作区，用于了解智能体做了什么：可视化映射、上下文包、运行证据和可复制的文档。Emperor 负责记录与审计；智能体在各自运行时中执行。",
+    "deleteFailed": "无法删除此自动化",
+    "deleted": "自动化已删除",
+    "eyebrow": "工作",
+    "title": "自动化",
+    "description": "智能体为你反复执行的工作：查看每个自动化由哪个智能体运行、下次何时运行，可以立即运行、暂停，并打开每次运行。",
     "metrics": {
       "active": "活跃",
       "runs": "运行",
       "documented": "已记录"
     },
-    "explorer": "流水线浏览器",
-    "searchPlaceholder": "搜索流水线",
+    "explorer": "自动化",
+    "searchPlaceholder": "搜索自动化",
     "all": "全部",
     "noPurpose": "尚未记录用途。",
-    "noRuns": "无运行",
-    "visualMap": "可视化映射",
     "copyDocs": "复制文档",
     "confirmDelete": "再次点击以确认",
     "delete": "删除",
@@ -5071,13 +5074,111 @@
       "chars": "{count} 字符"
     },
     "workflowSteps": "工作流步骤",
-    "noStepsHint": "尚未注册步骤。请让智能体通过流水线 MCP 端点注册步骤、决策、输出和证据。",
+    "noStepsHint": "尚未注册步骤。请让智能体通过自动化 API 注册步骤、决策、输出和证据。",
     "noStepDescription": "尚未注册描述。",
     "recentRuns": "最近运行",
     "noRunsReported": "尚未上报运行。",
     "sourcesUsed": "已使用的来源：{count}",
     "evidenceProduced": "产生的证据：{tasks} 个任务 / {artifacts} 个文件",
-    "copyReady": "可复制的 Markdown"
+    "copyReady": "可复制的 Markdown",
+    "lastRunAt": "{status} · {time}",
+    "lastRunNever": "从未运行",
+    "origin": {
+      "manual": "立即运行",
+      "manualBy": "立即运行 · {name}",
+      "agent": "智能体",
+      "agentBy": "智能体 · {name}",
+      "schedule": "定时",
+      "api": "API",
+      "apiBy": "API · {name}",
+      "reportedBy": "由 {name} 上报",
+      "reportedByAgent": "由智能体上报"
+    },
+    "runner": {
+      "label": "执行者",
+      "none": "未分配智能体",
+      "choose": "选择智能体",
+      "search": "查找智能体",
+      "noneOption": "无智能体",
+      "pausedOption": "{name}（已暂停）",
+      "changed": "现在由 {name} 运行此自动化",
+      "cleared": "此自动化现在没有智能体运行",
+      "changeFailed": "无法更换智能体"
+    },
+    "created": {
+      "byOn": "由 {name} 于 {date} 创建",
+      "on": "创建于 {date}"
+    },
+    "schedule": {
+      "title": "运行方式",
+      "when": "何时运行",
+      "next": "下次运行 {time}",
+      "nextExpected": "预计下次 {time}",
+      "agentHint": "智能体在自己的运行时中按计划运行。",
+      "emperorHint": "Emperor 按计划启动每次运行，并为智能体创建任务。",
+      "paused": "已暂停——不会运行",
+      "draft": "草稿——尚未运行",
+      "noNext": "没有即将到来的运行：无法读取计划",
+      "timezone": "时区：{zone}",
+      "cronRaw": "Cron：{cron}",
+      "event": "触发条件：{event}",
+      "eventAny": "当智能体关注的事件发生时运行",
+      "manual": "有人点击立即运行，或智能体决定运行时运行",
+      "whoFires": "由谁按计划触发",
+      "agentOption": "智能体在其运行时中运行",
+      "agentExplain": "如果智能体已经自行安排计划，请选择此项，避免重复运行。",
+      "emperorOption": "Emperor 按计划运行",
+      "emperorExplain": "到了计划时间，Emperor 会为智能体创建任务。如果智能体没有自行安排计划，请选择此项。",
+      "nowEmperor": "现在由 Emperor 按计划运行",
+      "nowAgent": "现在由智能体在其运行时中运行",
+      "changeFailed": "无法更改由谁触发计划",
+      "pausedBecause": "已被 Emperor 暂停：{reason}"
+    },
+    "toggle": {
+      "on": "开",
+      "off": "关",
+      "pause": "暂停",
+      "resume": "恢复",
+      "turnOn": "开启 {name}",
+      "turnOff": "暂停 {name}",
+      "paused": "{name} 已暂停",
+      "resumed": "{name} 已重新开启",
+      "failed": "无法更改此自动化"
+    },
+    "runNow": {
+      "button": "立即运行",
+      "title": "立即运行 {name}",
+      "agent": "运行它的智能体",
+      "whatHappens": "为 {agent} 创建一个包含步骤的任务，并请它在这里上报运行结果。",
+      "needsAgent": "请选择一个智能体来运行。",
+      "run": "运行",
+      "starting": "正在启动…",
+      "startAnother": "再启动一次",
+      "alreadyRunning": "{time} 开始的运行仍在进行中。仍要再启动一次吗？",
+      "started": "已开始运行：{agent} 收到了任务",
+      "openTask": "打开任务",
+      "failed": "无法开始运行"
+    },
+    "history": {
+      "took": "用时 {duration}",
+      "runningFor": "已运行 {duration}",
+      "openTask": "打开任务",
+      "repeated": "共 {count} 次，最近一次 {time}"
+    },
+    "duration": {
+      "seconds": "{count} 秒",
+      "minutes": "{count} 分钟",
+      "hours": "{hours} 小时 {minutes} 分钟"
+    },
+    "empty": {
+      "title": "还没有自动化",
+      "what": "自动化是智能体反复执行的工作：每周报告、每日线索检查、数据同步。智能体在这里登记自动化的步骤和计划，并上报每次运行。",
+      "howTitle": "要添加一个，可以这样告诉智能体：",
+      "example": "创建一个自动化：每周一 9:00 汇总我们客户上周的线索，并在这里上报每次运行。",
+      "copy": "复制提示词",
+      "copied": "提示词已复制",
+      "then": "之后你可以看到由谁运行、下次何时运行，可以立即运行、暂停，并打开每次运行的任务。"
+    }
   },
   "resources": {
     "inject": {
@@ -5328,7 +5429,8 @@
     "upToDate": "v{current} — 已是最新",
     "checking": "正在检查……",
     "check": "检查",
-    "update": "更新"
+    "update": "更新",
+    "confirmTitle": "更新 EmperorClaw？"
   },
   "runTimeline": {
     "noSteps": "未记录任何步骤。",

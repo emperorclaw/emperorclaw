@@ -3177,7 +3177,13 @@
       },
       "register_agent": "<who>{actor}</who> created <target>agent {label}</target> {detail}",
       "delete_agent": "<who>{actor}</who> deleted <target>agent {label}</target> {detail}",
-      "hire_hermes_agent": "<who>{actor}</who> hired <target>agent {label}</target> {detail}"
+      "hire_hermes_agent": "<who>{actor}</who> hired <target>agent {label}</target> {detail}",
+      "pipeline": {
+        "run_started": "<who>{actor}</who> ran <target>automation {label}</target> {detail}",
+        "paused": "<who>{actor}</who> paused <target>automation {label}</target> {detail}",
+        "resumed": "<who>{actor}</who> resumed <target>automation {label}</target> {detail}",
+        "updated": "<who>{actor}</who> updated <target>automation {label}</target> {detail}"
+      }
     },
     "unnamedActors": {
       "agent": "An agent",
@@ -5000,7 +5006,8 @@
       "succeeded": "succeeded",
       "failed": "failed",
       "partial": "partial",
-      "running": "running"
+      "running": "running",
+      "skipped": "skipped"
     },
     "trigger": {
       "scheduleAt": "Schedule: {cron}",
@@ -5036,26 +5043,22 @@
     "contextSources": "{count, plural, one {# context source} other {# context sources}}",
     "lastRun": "Last run: {status}",
     "noRunsYet": "No runs yet",
-    "copied": "Pipeline documentation copied",
+    "copied": "Automation documentation copied",
     "copyFailed": "Could not copy documentation",
-    "emptyTitle": "No pipelines registered yet",
-    "emptyDescription": "Pipelines are documentation contracts registered by agents through MCP. Emperor stores the map, context rules, and run evidence; the agent still performs the work in its own runtime.",
-    "deleteFailed": "Could not delete pipeline",
-    "deleted": "Pipeline deleted",
-    "eyebrow": "Automations",
-    "title": "Pipelines",
-    "description": "A simple workspace to understand what agents do: visual map, Context Pack, run evidence, and copy-ready docs. Emperor documents and audits; agents execute in their own runtime.",
+    "deleteFailed": "Could not delete the automation",
+    "deleted": "Automation deleted",
+    "eyebrow": "Work",
+    "title": "Automations",
+    "description": "Work your agents repeat for you: see which agent runs each one and when it runs next, run it now, pause it, and open every run.",
     "metrics": {
       "active": "Active",
       "runs": "Runs",
       "documented": "Documented"
     },
-    "explorer": "Pipeline Explorer",
-    "searchPlaceholder": "Search pipelines",
+    "explorer": "Automations",
+    "searchPlaceholder": "Search automations",
     "all": "all",
     "noPurpose": "No purpose documented yet.",
-    "noRuns": "No runs",
-    "visualMap": "Visual Map",
     "copyDocs": "Copy docs",
     "confirmDelete": "Click again to confirm",
     "delete": "Delete",
@@ -5071,13 +5074,111 @@
       "chars": "{count} chars"
     },
     "workflowSteps": "Workflow steps",
-    "noStepsHint": "No steps registered. Ask the agent to register steps, decisions, outputs, and evidence through the pipeline MCP endpoint.",
+    "noStepsHint": "No steps registered. Ask the agent to register its steps, decisions, outputs and evidence through the automations API.",
     "noStepDescription": "No description registered.",
     "recentRuns": "Recent runs",
     "noRunsReported": "No runs reported yet.",
     "sourcesUsed": "Sources used: {count}",
     "evidenceProduced": "Evidence produced: {tasks} tasks / {artifacts} artifacts",
-    "copyReady": "Copy-ready markdown"
+    "copyReady": "Copy-ready markdown",
+    "lastRunAt": "{status} · {time}",
+    "lastRunNever": "Never run",
+    "origin": {
+      "manual": "Run now",
+      "manualBy": "Run now · by {name}",
+      "agent": "Agent",
+      "agentBy": "Agent · {name}",
+      "schedule": "Schedule",
+      "api": "API",
+      "apiBy": "API · {name}",
+      "reportedBy": "Reported by {name}",
+      "reportedByAgent": "Reported by the agent"
+    },
+    "runner": {
+      "label": "Runs it",
+      "none": "No agent assigned",
+      "choose": "Choose an agent",
+      "search": "Find an agent",
+      "noneOption": "No agent",
+      "pausedOption": "{name} (paused)",
+      "changed": "{name} now runs this automation",
+      "cleared": "No agent runs this automation now",
+      "changeFailed": "Could not change the agent"
+    },
+    "created": {
+      "byOn": "Created by {name} on {date}",
+      "on": "Created on {date}"
+    },
+    "schedule": {
+      "title": "How it runs",
+      "when": "When",
+      "next": "Next run {time}",
+      "nextExpected": "Next expected {time}",
+      "agentHint": "The agent runs it on schedule from its runtime.",
+      "emperorHint": "Emperor starts each run on schedule and gives the agent a task.",
+      "paused": "Paused — won't run",
+      "draft": "Draft — not running yet",
+      "noNext": "No upcoming run: the schedule could not be read",
+      "timezone": "Times in {zone}",
+      "cronRaw": "Cron: {cron}",
+      "event": "Runs when: {event}",
+      "eventAny": "Runs when an event the agent watches happens",
+      "manual": "Runs when someone starts it with Run now, or when the agent decides to",
+      "whoFires": "Who keeps the schedule",
+      "agentOption": "The agent runs it from its runtime",
+      "agentExplain": "Pick this if the agent already schedules it itself, so it never runs twice.",
+      "emperorOption": "Emperor runs it on schedule",
+      "emperorExplain": "At each scheduled time Emperor creates a task for the agent. Pick this if the agent does not schedule it itself.",
+      "nowEmperor": "Emperor now runs it on schedule",
+      "nowAgent": "The agent runs it from its runtime now",
+      "changeFailed": "Could not change who keeps the schedule",
+      "pausedBecause": "Paused by Emperor: {reason}"
+    },
+    "toggle": {
+      "on": "On",
+      "off": "Off",
+      "pause": "Pause",
+      "resume": "Resume",
+      "turnOn": "Turn on {name}",
+      "turnOff": "Pause {name}",
+      "paused": "{name} paused",
+      "resumed": "{name} is on again",
+      "failed": "Could not change the automation"
+    },
+    "runNow": {
+      "button": "Run now",
+      "title": "Run {name} now",
+      "agent": "Agent that runs it",
+      "whatHappens": "Creates a task for {agent} with the steps, and asks it to report the run here.",
+      "needsAgent": "Choose an agent to run it.",
+      "run": "Run",
+      "starting": "Starting…",
+      "startAnother": "Start another",
+      "alreadyRunning": "A run that started {time} is still running. Start another anyway?",
+      "started": "Run started: {agent} has a task for it",
+      "openTask": "Open task",
+      "failed": "Could not start the run"
+    },
+    "history": {
+      "took": "took {duration}",
+      "runningFor": "running for {duration}",
+      "openTask": "Open task",
+      "repeated": "{count} times, last {time}"
+    },
+    "duration": {
+      "seconds": "{count}s",
+      "minutes": "{count} min",
+      "hours": "{hours} h {minutes} min"
+    },
+    "empty": {
+      "title": "No automations yet",
+      "what": "An automation is work an agent repeats: a weekly report, a daily lead check, a sync. Agents register them here with their steps and schedule, and report every run.",
+      "howTitle": "To add one, ask an agent, for example:",
+      "example": "Set up an automation that every Monday at 9:00 summarizes last week's leads for our client and reports each run here.",
+      "copy": "Copy prompt",
+      "copied": "Prompt copied",
+      "then": "Then you can see who runs it and when it runs next, run it now, pause it, and open the task of every run."
+    }
   },
   "resources": {
     "inject": {
@@ -5328,7 +5429,8 @@
     "upToDate": "v{current} — up to date",
     "checking": "Checking...",
     "check": "Check",
-    "update": "Update"
+    "update": "Update",
+    "confirmTitle": "Update EmperorClaw?"
   },
   "runTimeline": {
     "noSteps": "No steps recorded.",

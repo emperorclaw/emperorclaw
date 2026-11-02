@@ -51,6 +51,8 @@
     "argon2": "^0.44.0",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
+    "croner": "10.0.1",
+    "cronstrue": "3.31.0",
     "drizzle-orm": "^0.45.2",
     "elkjs": "^0.11.1",
     "esptool-js": "0.7.0",

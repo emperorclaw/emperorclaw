@@ -454,7 +454,16 @@ export const pipelines = pgTable("pipelines", {
     runCount: integer("run_count").default(0).notNull(),
     lastRunAt: timestamp("last_run_at"),
     lastRunStatus: text("last_run_status"),
+    // When the next run is due, computed by the server from triggerConfig.cron
+    // (lib/pipeline-schedule.ts). For scheduledBy 'emperor' it is also the
+    // scheduler's claim token (lib/pipeline-runs.ts runScheduledPipelines).
     nextRunAt: timestamp("next_run_at"),
+    // Who fires a cron automation: 'agent' (its own runtime, the behaviour
+    // before 0.27) or 'emperor' (the lifecycle monitor starts each run).
+    scheduledBy: text("scheduled_by").default('agent').notNull(),
+    // Why Emperor paused it (an unreadable schedule, no agent able to run it);
+    // cleared when it is turned on again. NULL when a person or agent paused it.
+    pausedReason: text("paused_reason"),
     createdByType: text("created_by_type").default('agent').notNull(), // 'agent' | 'human'
     createdById: uuid("created_by_id"),
     createdAt: timestamp("created_at").defaultNow().notNull(),
@@ -467,7 +476,16 @@ export const pipelineRuns = pgTable("pipeline_runs", {
     companyId: uuid("company_id").notNull().references(() => companies.id, { onDelete: 'cascade' }),
     pipelineId: uuid("pipeline_id").notNull().references(() => pipelines.id, { onDelete: 'cascade' }),
     agentId: uuid("agent_id").references(() => agents.id, { onDelete: 'set null' }),
-    status: text("status").default('running').notNull(), // 'running' | 'succeeded' | 'failed' | 'partial'
+    status: text("status").default('running').notNull(), // 'running' | 'succeeded' | 'failed' | 'partial' | 'skipped'
+    // What started the run: 'manual' (Run now), 'agent' (reported by the agent),
+    // 'schedule' (the agent's or Emperor's schedule), 'api'. NULL = before 0.27.
+    source: text("source"),
+    // Who started it: 'user' | 'agent' with the id; NULL for a schedule or a legacy run.
+    triggeredByType: text("triggered_by_type"),
+    triggeredById: uuid("triggered_by_id"),
+    // The task Emperor handed out for this run (Run now, run_automation, the
+    // scheduler). Its done/failed state closes the run (lib/pipeline-runs.ts).
+    taskId: uuid("task_id").references((): AnyPgColumn => tasks.id, { onDelete: 'set null' }),
     summary: text("summary"),
     statsJson: jsonb("stats_json").default('{}').notNull(), // { taskIds: [], artifactIds: [], counts: {} }
     contextSourceIds: jsonb("context_source_ids").default('[]').notNull(), // Company Brain source IDs used by this run
@@ -475,7 +493,10 @@ export const pipelineRuns = pgTable("pipeline_runs", {
     startedAt: timestamp("started_at").defaultNow().notNull(),
     endedAt: timestamp("ended_at"),
     createdAt: timestamp("created_at").defaultNow().notNull(),
-});
+}, (table) => [
+    index("pipeline_runs_pipeline_status_idx").on(table.pipelineId, table.status),
+    index("pipeline_runs_task_idx").on(table.taskId),
+]);
 
 export const recurringTaskDefinitions = pgTable("recurring_task_definitions", {
     id: uuid("id").primaryKey().defaultRandom(),

@@ -16,10 +16,16 @@ import {
   type NodeProps,
 } from "@xyflow/react";
 import ELK from "elkjs/lib/elk.bundled.js";
-import { IconRobot, IconCircleCheck, IconClock, IconCopy, IconDatabase, IconFileText, IconStack2, IconArrowsMaximize, IconArrowsMinimize, IconPlayerPlay, IconRepeat, IconSearch, IconSparkles, IconTrash, IconArrowsSplit } from "@tabler/icons-react";
+import { IconCircleCheck, IconClock, IconCopy, IconDatabase, IconFileText, IconStack2, IconArrowsMaximize, IconArrowsMinimize, IconPlayerPlay, IconRepeat, IconSearch, IconSparkles, IconTrash, IconArrowsSplit } from "@tabler/icons-react";
 import { toast } from "sonner";
+import { useRouter } from "next/navigation";
 import { useFormatter, useTranslations } from "next-intl";
 import { PageHeader } from "@/components/page-header";
+import { taskHref } from "@/lib/task-story";
+import {
+  AgentChip, EmptyAutomationsState, HowItRuns, nextRunText, PauseResumeButton, RunHistoryItem, RunNowButton, RunNowDialog, RunStatusDot,
+  runStatusText, StatusToggle, type AgentOption, type AutomationRow, type AutomationRun,
+} from "./automation-parts";
 
 type PipelineStep = {
   id?: string;
@@ -31,7 +37,7 @@ type PipelineStep = {
   dependsOn?: string[];
 };
 
-type PipelineRow = {
+type PipelineRow = AutomationRow & {
   id: string;
   name: string;
   purpose: string | null;
@@ -56,7 +62,7 @@ type PipelineRow = {
   updatedAt: string;
 };
 
-type RunRow = {
+type RunRow = AutomationRun & {
   id: string;
   pipelineId: string;
   status: string;
@@ -78,9 +84,13 @@ type PipelineNodeData = {
 type PipelineClientProps = {
   initialPipelines: PipelineRow[];
   initialRuns: RunRow[];
+  agents: AgentOption[];
   agentsMap: Record<string, string>;
   projectsMap: Record<string, string>;
   customersMap: Record<string, string>;
+  peopleMap: Record<string, string>;
+  tasksMap: Record<string, string>;
+  canEdit: boolean;
 };
 
 const STATUS_STYLES: Record<string, string> = {
@@ -88,13 +98,6 @@ const STATUS_STYLES: Record<string, string> = {
   draft: "border-zinc-500/25 bg-zinc-500/10 text-zinc-300",
   paused: "border-amber-500/25 bg-amber-500/10 text-amber-300",
   retired: "border-red-500/25 bg-red-500/10 text-red-300",
-};
-
-const RUN_STATUS_STYLES: Record<string, string> = {
-  succeeded: "text-emerald-400",
-  failed: "text-red-400",
-  partial: "text-amber-400",
-  running: "text-sky-400",
 };
 
 const STATUS_DOT_STYLES: Record<string, string> = {
@@ -153,19 +156,10 @@ function parseSteps(value: unknown): PipelineStep[] {
   return [];
 }
 
-function runEvidence(run: RunRow) {
-  const stats = run.statsJson || {};
-  return {
-    contextSourceIds: stringArray(run.contextSourceIds),
-    artifactIds: stringArray((stats as { artifactIds?: unknown }).artifactIds),
-    taskIds: stringArray((stats as { taskIds?: unknown }).taskIds),
-  };
-}
-
 type Translate = ReturnType<typeof useTranslations<"pipelines">>;
 
 const PIPELINE_STATUSES = new Set(["active", "draft", "paused", "retired"]);
-const RUN_STATUSES = new Set(["succeeded", "failed", "partial", "running"]);
+const RUN_STATUSES = new Set(["succeeded", "failed", "partial", "running", "skipped"]);
 const statusLabel = (t: Translate, status: string) => (PIPELINE_STATUSES.has(status) ? t(`statuses.${status as "active"}`) : status);
 const runStatusLabel = (t: Translate, status: string) => (RUN_STATUSES.has(status) ? t(`runStatuses.${status as "running"}`) : status);
 
@@ -458,7 +452,7 @@ function buildPipelineMarkdown(pipeline: PipelineRow, runs: RunRow[], agentsMap:
     ...(steps.length > 0 ? steps.map((step, index) => `${index + 1}. **${step.name || step.title || `Step ${index + 1}`}** - ${step.description || step.prompt || "Document this step."}`) : ["1. **No steps registered** - Ask the agent to register steps through the pipeline API."]),
     "",
     "## Evidence produced",
-    latestRun ? `- Latest run: ${latestRun.status} at ${new Date(latestRun.startedAt).toLocaleString()}${latestRun.summary ? ` - ${latestRun.summary}` : ""}` : "- No runs reported yet.",
+    latestRun ? `- Latest run: ${latestRun.status} at ${new Date(latestRun.startedAt).toISOString()}${latestRun.summary ? ` - ${latestRun.summary}` : ""}` : "- No runs reported yet.",
   ].join("\n");
 }
 
@@ -480,27 +474,28 @@ function Metric({ label, value, icon: Icon }: { label: string; value: string | n
   );
 }
 
-function EmptyPipelineState() {
-  const t = useTranslations("pipelines");
-  return (
-    <div className="rounded-3xl border border-dashed border-zinc-700 bg-zinc-950/50 p-10 text-center">
-      <IconArrowsSplit className="mx-auto h-10 w-10 text-zinc-500" />
-      <h2 className="mt-4 text-xl font-semibold text-zinc-100">{t("emptyTitle")}</h2>
-      <p className="mx-auto mt-2 max-w-xl text-sm text-zinc-400">
-        {t("emptyDescription")}
-      </p>
-    </div>
-  );
-}
-
-export default function PipelinesClient({ initialPipelines, initialRuns, agentsMap, projectsMap, customersMap }: PipelineClientProps) {
+export default function PipelinesClient({ initialPipelines, initialRuns, agents, agentsMap, projectsMap, customersMap, peopleMap, tasksMap, canEdit }: PipelineClientProps) {
   const t = useTranslations("pipelines");
   const format = useFormatter();
+  const router = useRouter();
   const [pipelines, setPipelines] = useState(initialPipelines);
   const [selectedId, setSelectedId] = useState(initialPipelines[0]?.id || "");
   const [query, setQuery] = useState("");
   const [status, setStatus] = useState("all");
   const [confirmingDelete, setConfirmingDelete] = useState<string | null>(null);
+  const [runDialogFor, setRunDialogFor] = useState<string | null>(null);
+  const [savingId, setSavingId] = useState<string | null>(null);
+  const [now, setNow] = useState(() => Date.now());
+
+  // A server refresh (an action here, or a run that started or closed
+  // elsewhere) brings new rows: take them.
+  useEffect(() => { setPipelines(initialPipelines); }, [initialPipelines]);
+  useEffect(() => {
+    const timer = setInterval(() => setNow(Date.now()), 30_000);
+    return () => clearInterval(timer);
+  }, []);
+
+  const agentById = useMemo(() => new Map(agents.map((agent) => [agent.id, agent])), [agents]);
 
   const filteredPipelines = useMemo(() => {
     return pipelines.filter((pipeline) => {
@@ -514,6 +509,7 @@ export default function PipelinesClient({ initialPipelines, initialRuns, agentsM
   const selectedPipeline = filteredPipelines.find((pipeline) => pipeline.id === selectedId) || filteredPipelines[0] || pipelines[0];
   const selectedRuns = useMemo(() => initialRuns.filter((run) => run.pipelineId === selectedPipeline?.id), [initialRuns, selectedPipeline?.id]);
   const selectedMarkdown = selectedPipeline ? buildPipelineMarkdown(selectedPipeline, selectedRuns, agentsMap, projectsMap, customersMap) : "";
+  const runDialogPipeline = pipelines.find((pipeline) => pipeline.id === runDialogFor) ?? null;
 
   const deletePipeline = useCallback(async (pipeline: PipelineRow) => {
     if (confirmingDelete !== pipeline.id) {
@@ -531,6 +527,53 @@ export default function PipelinesClient({ initialPipelines, initialRuns, agentsM
     setSelectedId((current) => (current === pipeline.id ? "" : current));
     toast.success(t("deleted"));
   }, [confirmingDelete, t]);
+
+  /** PATCH and keep the row in step; the error text comes from the server when it has one. */
+  const patchPipeline = useCallback(async (pipeline: PipelineRow, body: Record<string, unknown>, success: string, failure: string) => {
+    setSavingId(pipeline.id);
+    try {
+      const res = await fetch(`/api/pipelines/${pipeline.id}`, {
+        method: "PATCH",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        toast.error(typeof data?.error === "string" ? data.error : failure);
+        return;
+      }
+      setPipelines((current) => current.map((item) => (item.id === pipeline.id ? { ...item, ...data.pipeline, schedule: item.schedule } : item)));
+      toast.success(success);
+      router.refresh();
+    } catch {
+      toast.error(failure);
+    } finally {
+      setSavingId(null);
+    }
+  }, [router]);
+
+  const toggleStatus = useCallback((pipeline: PipelineRow, next: "active" | "paused") => {
+    void patchPipeline(pipeline, { status: next }, next === "paused" ? t("toggle.paused", { name: pipeline.name }) : t("toggle.resumed", { name: pipeline.name }), t("toggle.failed"));
+  }, [patchPipeline, t]);
+
+  const changeRunner = useCallback((pipeline: PipelineRow, agentId: string | null) => {
+    if (agentId === pipeline.ownerAgentId) return;
+    const name = agentId ? agentsMap[agentId] || t("scope.agent") : null;
+    void patchPipeline(pipeline, { ownerAgentId: agentId }, name ? t("runner.changed", { name }) : t("runner.cleared"), t("runner.changeFailed"));
+  }, [agentsMap, patchPipeline, t]);
+
+  const changeScheduler = useCallback((pipeline: PipelineRow, scheduledBy: "agent" | "emperor") => {
+    if (scheduledBy === pipeline.scheduledBy) return;
+    void patchPipeline(pipeline, { scheduledBy }, scheduledBy === "emperor" ? t("schedule.nowEmperor") : t("schedule.nowAgent"), t("schedule.changeFailed"));
+  }, [patchPipeline, t]);
+
+  const onRunStarted = useCallback((result: { taskId: string }, agentName: string) => {
+    setRunDialogFor(null);
+    toast.success(t("runNow.started", { agent: agentName }), {
+      action: { label: t("runNow.openTask"), onClick: () => router.push(taskHref(result.taskId)) },
+    });
+    router.refresh();
+  }, [router, t]);
 
   const activeCount = pipelines.filter((pipeline) => pipeline.status === "active").length;
   const runCount = pipelines.reduce((sum, pipeline) => sum + (pipeline.runCount || 0), 0);
@@ -551,9 +594,10 @@ export default function PipelinesClient({ initialPipelines, initialRuns, agentsM
           }
         />
 
-        {pipelines.length === 0 ? <EmptyPipelineState /> : (
-          <div className="grid gap-4 sm:gap-6 grid-cols-1 lg:grid-cols-[300px_minmax(0,1fr)] xl:grid-cols-[320px_minmax(0,1fr)_380px]">
-            <aside className="rounded-[1.25rem] sm:rounded-[1.75rem] border border-zinc-800 bg-zinc-950/80 p-3 sm:p-4">
+        {pipelines.length === 0 ? <EmptyAutomationsState /> : (
+          <div className="grid grid-cols-1 gap-4 sm:gap-6 lg:grid-cols-[300px_minmax(0,1fr)] lg:grid-rows-[auto_auto_1fr] lg:[grid-template-areas:'list_head'_'list_side'_'list_map'] 2xl:grid-cols-[320px_minmax(0,1fr)_400px] 2xl:grid-rows-[auto_1fr] 2xl:[grid-template-areas:'list_head_side'_'list_map_side']">
+            {/* Phone: list, header, how it runs, map. Laptop: the list beside the rest. Wide: how it runs gets its own column. */}
+            <aside className="rounded-[1.25rem] sm:rounded-[1.75rem] border border-zinc-800 bg-zinc-950/80 p-3 sm:p-4 lg:[grid-area:list] lg:self-start">
               <div className="flex items-center justify-between">
                 <h2 className="text-sm font-semibold text-zinc-100">{t("explorer")}</h2>
                 <span className="rounded-full border border-zinc-800 px-2 py-0.5 text-xs text-zinc-500">{filteredPipelines.length}</span>
@@ -564,56 +608,101 @@ export default function PipelinesClient({ initialPipelines, initialRuns, agentsM
               </label>
               <div className="mt-3 flex gap-2 overflow-x-auto pb-1">
                 {["all", "active", "draft", "paused", "retired"].map((item) => (
-                  <button key={item} type="button" onClick={() => setStatus(item)} className={`cursor-pointer rounded-full border px-3 py-1 text-xs font-medium transition-colors ${status === item ? "border-cyan-400/50 bg-cyan-400/10 text-cyan-200" : "border-zinc-800 text-zinc-500 hover:border-zinc-700 hover:text-zinc-300"}`}>
+                  <button key={item} type="button" onClick={() => setStatus(item)} className={`shrink-0 cursor-pointer whitespace-nowrap rounded-full border px-3 py-1 text-xs font-medium transition-colors ${status === item ? "border-cyan-400/50 bg-cyan-400/10 text-cyan-200" : "border-zinc-800 text-zinc-500 hover:border-zinc-700 hover:text-zinc-300"}`}>
                     {item === "all" ? t("all") : statusLabel(t, item)}
                   </button>
                 ))}
               </div>
               <div className="mt-4 space-y-2">
-                {filteredPipelines.map((pipeline) => (
-                  <button key={pipeline.id} type="button" onClick={() => setSelectedId(pipeline.id)} className={`w-full cursor-pointer rounded-2xl border p-3 text-left transition-colors ${selectedPipeline?.id === pipeline.id ? "border-cyan-400/40 bg-cyan-400/10" : "border-zinc-800 bg-zinc-900/30 hover:border-zinc-700"}`}>
-                    <div className="flex items-start justify-between gap-3">
-                      <div>
-                        <div className="font-medium text-zinc-100">{pipeline.name}</div>
-                        <div className="mt-1 line-clamp-2 text-xs leading-5 text-zinc-500">{pipeline.purpose || t("noPurpose")}</div>
+                {filteredPipelines.map((pipeline) => {
+                  const next = pipeline.trigger === "cron" || pipeline.status !== "active" ? nextRunText(t, format, pipeline) : null;
+                  return (
+                    <div
+                      key={pipeline.id}
+                      role="button"
+                      tabIndex={0}
+                      onClick={() => setSelectedId(pipeline.id)}
+                      onKeyDown={(event) => { if (event.target === event.currentTarget && (event.key === "Enter" || event.key === " ")) { event.preventDefault(); setSelectedId(pipeline.id); } }}
+                      className={`w-full cursor-pointer rounded-2xl border p-3 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400/50 ${selectedPipeline?.id === pipeline.id ? "border-cyan-400/40 bg-cyan-400/10" : "border-zinc-800 bg-zinc-900/30 hover:border-zinc-700"}`}
+                    >
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0">
+                          <div className="font-medium text-zinc-100">{pipeline.name}</div>
+                          <div className="mt-1 line-clamp-2 text-xs leading-5 text-zinc-500">{pipeline.purpose || t("noPurpose")}</div>
+                        </div>
+                        <span className={`shrink-0 rounded-full border px-2 py-0.5 text-[10px] font-bold uppercase ${STATUS_STYLES[pipeline.status] || STATUS_STYLES.draft}`}>{statusLabel(t, pipeline.status)}</span>
                       </div>
-                      <span className={`shrink-0 rounded-full border px-2 py-0.5 text-[10px] font-bold uppercase ${STATUS_STYLES[pipeline.status] || STATUS_STYLES.draft}`}>{statusLabel(t, pipeline.status)}</span>
+                      <div className="mt-3 flex flex-col gap-1.5 text-[11px] text-zinc-500">
+                        <AgentChip agent={pipeline.ownerAgentId ? agentById.get(pipeline.ownerAgentId) : null} size={18} className="text-zinc-300" />
+                        <span className="inline-flex items-center gap-1.5">
+                          <IconClock className="h-3 w-3 shrink-0" />
+                          {pipeline.lastRunAt ? (
+                            <>
+                              <RunStatusDot status={pipeline.lastRunStatus || ""} />
+                              {t("lastRunAt", { status: runStatusText(t, pipeline.lastRunStatus || ""), time: format.relativeTime(new Date(pipeline.lastRunAt), now) })}
+                            </>
+                          ) : t("lastRunNever")}
+                        </span>
+                        {next ? <span className={pipeline.status === "active" ? "text-zinc-400" : "text-amber-300/80"}>{next}</span> : null}
+                      </div>
+                      {canEdit && (pipeline.status === "active" || pipeline.status === "paused") ? (
+                        <div className="mt-2 flex items-center justify-between gap-2">
+                          <RunNowButton compact disabled={pipeline.status !== "active"} onClick={() => setRunDialogFor(pipeline.id)} />
+                          <StatusToggle pipeline={pipeline} disabled={savingId === pipeline.id} onToggle={(nextStatus) => toggleStatus(pipeline, nextStatus)} />
+                        </div>
+                      ) : null}
                     </div>
-                    <div className="mt-3 flex flex-wrap gap-2 text-[11px] text-zinc-500">
-                      <span className="inline-flex items-center gap-1"><IconRobot className="h-3 w-3" />{pipeline.ownerAgentId ? agentsMap[pipeline.ownerAgentId] || t("scope.agent") : t("anyAgent")}</span>
-                      <span className="inline-flex items-center gap-1"><IconClock className="h-3 w-3" />{pipeline.lastRunAt ? format.dateTime(new Date(pipeline.lastRunAt), { dateStyle: "short" }) : t("noRuns")}</span>
-                    </div>
-                  </button>
-                ))}
+                  );
+                })}
               </div>
             </aside>
 
-            <main className="min-w-0 space-y-4">
               {selectedPipeline && (
-                <>
-                  <div className="flex flex-col gap-3 rounded-[1.25rem] sm:rounded-[1.75rem] border border-zinc-800 bg-zinc-950/80 p-4 sm:p-5 lg:flex-row lg:items-center lg:justify-between">
-                    <div>
-                      <div className="text-xs font-bold uppercase tracking-[0.22em] text-zinc-500">{t("visualMap")}</div>
-                      <h2 className="mt-1 text-2xl font-semibold text-zinc-50">{selectedPipeline.name}</h2>
+                  <div className="flex min-w-0 flex-col gap-3 rounded-[1.25rem] sm:rounded-[1.75rem] border border-zinc-800 bg-zinc-950/80 p-4 sm:p-5 lg:[grid-area:head]">
+                    <div className="min-w-0">
+                      <div className="inline-flex items-center gap-1.5 text-xs font-bold uppercase tracking-[0.22em] text-zinc-500"><span className={`h-1.5 w-1.5 rounded-full ${STATUS_DOT_STYLES[selectedPipeline.status] || "bg-zinc-600"}`} />{statusLabel(t, selectedPipeline.status)}</div>
+                      <h2 className="mt-1 break-words text-2xl font-semibold text-zinc-50">{selectedPipeline.name}</h2>
                       <p className="mt-1 text-sm text-zinc-400">{scopeText(t, selectedPipeline, agentsMap, projectsMap, customersMap)}</p>
                     </div>
                     <div className="flex flex-wrap gap-2">
-                      <button type="button" onClick={() => copyPipelineMarkdown(selectedMarkdown, t)} className="inline-flex cursor-pointer items-center gap-2 rounded-full border border-cyan-400/35 bg-cyan-400/10 px-4 py-2 text-sm font-medium text-cyan-100 transition-colors hover:bg-cyan-400/15">
+                      {canEdit && selectedPipeline.status === "active" ? <RunNowButton onClick={() => setRunDialogFor(selectedPipeline.id)} /> : null}
+                      {canEdit ? <PauseResumeButton pipeline={selectedPipeline} disabled={savingId === selectedPipeline.id} onToggle={(nextStatus) => toggleStatus(selectedPipeline, nextStatus)} /> : null}
+                      <button type="button" onClick={() => copyPipelineMarkdown(selectedMarkdown, t)} className="inline-flex cursor-pointer items-center gap-2 rounded-full border border-zinc-700 bg-zinc-900/60 px-4 py-2 text-sm font-medium text-zinc-200 transition-colors hover:border-zinc-600">
                         <IconCopy className="h-4 w-4" /> {t("copyDocs")}
                       </button>
-                      <button type="button" onClick={() => deletePipeline(selectedPipeline)} className="inline-flex cursor-pointer items-center gap-2 rounded-full border border-red-500/25 bg-red-500/10 px-4 py-2 text-sm font-medium text-red-200 transition-colors hover:bg-red-500/15">
-                        <IconTrash className="h-4 w-4" /> {confirmingDelete === selectedPipeline?.id ? t("confirmDelete") : t("delete")}
-                      </button>
+                      {canEdit ? (
+                        <button type="button" onClick={() => deletePipeline(selectedPipeline)} className="inline-flex cursor-pointer items-center gap-2 rounded-full border border-red-500/25 bg-red-500/10 px-4 py-2 text-sm font-medium text-red-200 transition-colors hover:bg-red-500/15">
+                          <IconTrash className="h-4 w-4" /> {confirmingDelete === selectedPipeline?.id ? t("confirmDelete") : t("delete")}
+                        </button>
+                      ) : null}
                     </div>
                   </div>
-                  <PipelineFlowMap pipeline={selectedPipeline} runs={selectedRuns} agentsMap={agentsMap} />
-                </>
               )}
-            </main>
 
-            <aside className="rounded-[1.25rem] sm:rounded-[1.75rem] border border-zinc-800 bg-zinc-950/80 p-4 sm:p-5">
+            <aside className="min-w-0 rounded-[1.25rem] sm:rounded-[1.75rem] border border-zinc-800 bg-zinc-950/80 p-4 sm:p-5 lg:[grid-area:side] 2xl:self-start">
               {selectedPipeline && (
                 <div className="space-y-6">
+                  <HowItRuns
+                    pipeline={selectedPipeline}
+                    agents={agents}
+                    agentsMap={agentsMap}
+                    peopleMap={peopleMap}
+                    canEdit={canEdit && savingId !== selectedPipeline.id}
+                    onChangeRunner={(agentId) => changeRunner(selectedPipeline, agentId)}
+                    onChangeScheduler={(scheduledBy) => changeScheduler(selectedPipeline, scheduledBy)}
+                  />
+
+                  <section className="space-y-3">
+                    <h3 className="flex items-center gap-2 text-sm font-semibold text-zinc-100"><IconCircleCheck className="h-4 w-4" />{t("recentRuns")}</h3>
+                    {selectedRuns.length === 0 ? <p className="text-sm text-zinc-500">{t("noRunsReported")}</p> : (
+                      <ul className="space-y-2">
+                        {selectedRuns.slice(0, 10).map((run) => (
+                          <RunHistoryItem key={run.id} run={run} agentsMap={agentsMap} peopleMap={peopleMap} tasksMap={tasksMap} now={now} />
+                        ))}
+                      </ul>
+                    )}
+                  </section>
+
                   <section>
                     <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-[0.22em] text-violet-300"><IconFileText className="h-4 w-4" />{t("documentation")}</div>
                     <h2 className="mt-2 text-xl font-semibold text-zinc-50">{t("contract")}</h2>
@@ -645,30 +734,6 @@ export default function PipelinesClient({ initialPipelines, initialRuns, agentsM
                     )}
                   </section>
 
-                  <section className="space-y-3">
-                    <h3 className="flex items-center gap-2 text-sm font-semibold text-zinc-100"><IconCircleCheck className="h-4 w-4" />{t("recentRuns")}</h3>
-                    {selectedRuns.length === 0 ? <p className="text-sm text-zinc-500">{t("noRunsReported")}</p> : (
-                      <ul className="space-y-2">
-                        {selectedRuns.slice(0, 6).map((run) => {
-                          const evidence = runEvidence(run);
-                          return (
-                            <li key={run.id} className="rounded-2xl border border-zinc-800 bg-zinc-900/30 p-3 text-sm">
-                              <div className="flex items-center justify-between gap-3">
-                                <span className={`font-medium ${RUN_STATUS_STYLES[run.status] || "text-zinc-300"}`}>{runStatusLabel(t, run.status)}</span>
-                                <span className="text-xs text-zinc-500">{format.dateTime(new Date(run.startedAt), { dateStyle: "short", timeStyle: "medium" })}</span>
-                              </div>
-                              {run.summary && <p className="mt-2 text-xs leading-5 text-zinc-400">{run.summary}</p>}
-                              <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-[11px] text-zinc-500">
-                                <span>{t("sourcesUsed", { count: evidence.contextSourceIds.length })}</span>
-                                <span>{t("evidenceProduced", { tasks: evidence.taskIds.length, artifacts: evidence.artifactIds.length })}</span>
-                              </div>
-                            </li>
-                          );
-                        })}
-                      </ul>
-                    )}
-                  </section>
-
                   <section className="rounded-2xl border border-zinc-800 bg-zinc-900/30 p-4">
                     <h3 className="flex items-center gap-2 text-sm font-semibold text-zinc-100"><IconSparkles className="h-4 w-4" />{t("copyReady")}</h3>
                     <pre className="mt-3 max-h-72 overflow-auto whitespace-pre-wrap rounded-xl bg-zinc-950/60 p-3 text-xs leading-5 text-zinc-400">{selectedMarkdown}</pre>
@@ -676,8 +741,21 @@ export default function PipelinesClient({ initialPipelines, initialRuns, agentsM
                 </div>
               )}
             </aside>
+
+            {selectedPipeline ? (
+              <main className="min-w-0 lg:[grid-area:map]">
+                <PipelineFlowMap pipeline={selectedPipeline} runs={selectedRuns} agentsMap={agentsMap} />
+              </main>
+            ) : null}
           </div>
         )}
+        <RunNowDialog
+          pipeline={runDialogPipeline}
+          agents={agents}
+          open={runDialogPipeline !== null}
+          onClose={() => setRunDialogFor(null)}
+          onStarted={onRunStarted}
+        />
     </div>
   );
 }

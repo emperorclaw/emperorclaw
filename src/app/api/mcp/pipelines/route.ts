@@ -2,9 +2,10 @@ import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/db";
 import { pipelines, projects, customers } from "@/db/schema";
 import { verifyMcpToken, checkIdempotency, saveIdempotencyResponse, resolveAgentId } from "@/lib/mcp";
-import { mcpRecordCondition, mcpRouteAccess } from "@/lib/mcp-access";
+import { mcpMayReachAgent, mcpMayUseRecord, mcpOutOfScope, mcpRecordCondition, mcpRouteAccess } from "@/lib/mcp-access";
 import { and, desc, eq, isNull } from "drizzle-orm";
-import { generateMermaid, parsePipelineContextConfig, parsePipelineSteps, validateForActivation, PIPELINE_STATUSES, PipelineStatus } from "@/lib/pipelines";
+import { generateMermaid, isPipelineScheduler, parsePipelineContextConfig, parsePipelineSteps, validateForActivation, PIPELINE_SCHEDULERS, PIPELINE_STATUSES, PipelineStatus } from "@/lib/pipelines";
+import { closeScheduleStreak, emperorScheduleProblemFor, nextRunAtFor } from "@/lib/pipeline-runs";
 import { moduleGuard } from "@/lib/modules-server";
 
 // GET /api/mcp/pipelines — list registered pipelines.
@@ -58,8 +59,11 @@ export async function GET(req: NextRequest) {
 //   trigger: 'cron' | 'event' | 'manual', triggerConfig: { cron | event },
 //   steps: [{ name, agentRef?, taskType?, description?, gate? }],
 //   runtimeRef, projectId?, customerId?, agentId? (caller — becomes owner),
-//   status? ('draft' | 'active' | 'paused' | 'retired')
+//   status? ('draft' | 'active' | 'paused' | 'retired'),
+//   scheduledBy? ('agent' = you fire the cron from your runtime, the default;
+//                 'emperor' = Emperor starts each run on schedule and hands you a task)
 // }
+// triggerConfig may carry { cron, timezone } (IANA zone; default the company's, else UTC).
 // diagramMermaid is ALWAYS generated server-side. Activation requires
 // purpose + docMarkdown + at least one step.
 export async function POST(req: NextRequest) {
@@ -86,6 +90,7 @@ export async function POST(req: NextRequest) {
             contextQuery, contextResourceIds, contextTagFilters, contextMaxChars,
             runtimeRef, projectId, customerId, agentId,
             status: requestedStatus,
+            scheduledBy: requestedScheduler,
         } = body;
 
         if (!name || typeof name !== "string" || !name.trim()) {
@@ -96,6 +101,10 @@ export async function POST(req: NextRequest) {
         }
         if (requestedStatus && !PIPELINE_STATUSES.includes(requestedStatus as PipelineStatus)) {
             return NextResponse.json({ error: `status must be one of: ${PIPELINE_STATUSES.join(", ")}` }, { status: 400 });
+        }
+
+        if (requestedScheduler !== undefined && !isPipelineScheduler(requestedScheduler)) {
+            return NextResponse.json({ error: `scheduledBy must be one of: ${PIPELINE_SCHEDULERS.join(", ")}` }, { status: 400 });
         }
 
         const { steps, error: stepsError } = parsePipelineSteps(rawSteps);
@@ -150,6 +159,34 @@ export async function POST(req: NextRequest) {
             }
         }
 
+        const scheduledBy = requestedScheduler ?? existing?.scheduledBy ?? "agent";
+
+        // Scope: an automation's owner gets its tasks (Run now, Emperor's
+        // schedule), so naming one is handing it work: only an agent the caller
+        // may reach. A restricted caller also keeps to its own projects and
+        // customers, and cannot re-register someone else's automation.
+        const scoped = await mcpRouteAccess(companyId, auth.companyToken!, null);
+        if (scoped.response) return scoped.response;
+        if (existing && !mcpMayUseRecord(scoped.access, existing)) return mcpOutOfScope("Pipeline");
+        if (!mcpMayUseRecord(scoped.access, { projectId: projectId ?? null, customerId: customerId ?? null })) {
+            return NextResponse.json({ error: "That project or customer is outside your scope" }, { status: 403 });
+        }
+        const resultingOwner = ownerAgentId ?? existing?.ownerAgentId ?? null;
+        if (ownerAgentId && !mcpMayReachAgent(scoped.access, ownerAgentId)) {
+            return NextResponse.json({ error: "You can't reach that agent: it is outside your scope" }, { status: 403 });
+        }
+        if (scheduledBy === "emperor" && trigger === "cron") {
+            if (resultingOwner && !mcpMayReachAgent(scoped.access, resultingOwner)) {
+                return NextResponse.json({ error: "Emperor's schedule would hand tasks to an agent outside your scope" }, { status: 403 });
+            }
+            const problem = status === "active" ? await emperorScheduleProblemFor(companyId, { trigger, triggerConfig, scheduledBy }) : null;
+            if (problem) return NextResponse.json({ error: problem }, { status: 422 });
+        }
+        // Re-registering on boot with the same schedule keeps the pending slot.
+        const sameSchedule = existing?.nextRunAt && existing.trigger === trigger && existing.status === status
+            && existing.scheduledBy === scheduledBy && JSON.stringify(existing.triggerConfig) === JSON.stringify(triggerConfig);
+        const nextRunAt = sameSchedule ? existing.nextRunAt : await nextRunAtFor(companyId, { status, trigger, triggerConfig });
+
         let row;
         let created = false;
         if (existing) {
@@ -169,6 +206,9 @@ export async function POST(req: NextRequest) {
                 customerId: customerId ?? existing.customerId,
                 ownerAgentId: ownerAgentId ?? existing.ownerAgentId,
                 status,
+                scheduledBy,
+                nextRunAt,
+                ...(status !== "paused" ? { pausedReason: null } : {}),
                 updatedAt: new Date(),
             }).where(eq(pipelines.id, existing.id)).returning();
         } else {
@@ -191,6 +231,9 @@ export async function POST(req: NextRequest) {
                 customerId: customerId ?? null,
                 ownerAgentId,
                 status,
+                scheduledBy,
+                nextRunAt,
+                ...(status !== "paused" ? { pausedReason: null } : {}),
                 createdByType: "agent",
                 createdById: ownerAgentId,
             }).returning();
@@ -201,6 +244,8 @@ export async function POST(req: NextRequest) {
             const activationError = validateForActivation(candidate);
             if (activationError) warnings.push(`Not activatable yet: ${activationError}`);
         }
+
+        if (existing && status === "active" && existing.status !== "active") await closeScheduleStreak(existing.id);
 
         const res = {
             message: created ? "Pipeline registered" : "Pipeline re-registered (updated)",
