@@ -9,7 +9,7 @@ tagged (e.g. `## [1.2.0] — 2026-07-22`). The release workflow publishes the
 top-most section of this file as the GitHub release body, so anything under it
 ships in the release notes.
 
-## [Unreleased]
+## [0.27.0] — 2026-11-02
 
 ### Added
 - **Run an automation now.** Each automation has a Run now button, in the list and in its detail. You pick the agent that runs it (its own agent is preselected), and Emperor gives that agent a task with the steps and asks it to report the run. The new run shows as running right away, and the toast links to the task. If a run is still going, Emperor asks before starting another.
