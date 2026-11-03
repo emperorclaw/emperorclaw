@@ -464,6 +464,12 @@ export const pipelines = pgTable("pipelines", {
     // Why Emperor paused it (an unreadable schedule, no agent able to run it);
     // cleared when it is turned on again. NULL when a person or agent paused it.
     pausedReason: text("paused_reason"),
+    // Fields a person edited in the app (lib/pipeline-operator-edits.ts:
+    // schedule, purpose, docMarkdown, steps, context). Agent re-registration
+    // and MCP PATCH keep the operator's values for these.
+    operatorFields: jsonb("operator_fields").default('[]').notNull(),
+    operatorEditedAt: timestamp("operator_edited_at"),
+    operatorEditedBy: uuid("operator_edited_by"), // users.id of the last operator edit
     createdByType: text("created_by_type").default('agent').notNull(), // 'agent' | 'human'
     createdById: uuid("created_by_id"),
     createdAt: timestamp("created_at").defaultNow().notNull(),

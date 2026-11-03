@@ -27,6 +27,7 @@ The Automations page (`/pipelines`) shows who runs each automation and when, let
 - **Recent runs**: where each run came from (Run now and who pressed it, the agent, the schedule), how long it took, its summary, and links to its tasks.
 - **Visual Map**: an automatic React Flow map of trigger -> Context Pack -> declared steps -> output -> run evidence.
 - **Documentation**: the human-readable contract, context rules, workflow steps, recent runs, and copy-ready markdown.
+- **Edit**: change when it runs and what it does (see [Editing An Automation In The App](#editing-an-automation-in-the-app)).
 - **Delete**: removes the registry entry when a pipeline is obsolete. It does not delete external agent code.
 
 Use the page to answer three operator questions quickly:
@@ -34,6 +35,24 @@ Use the page to answer three operator questions quickly:
 1. What does this automation do?
 2. Which Company Brain context should ground it?
 3. What evidence did the last runs produce?
+
+## Editing An Automation In The App
+
+A person who may change an automation (the same people who can pause it) and may hand work to its runner agent can open **Edit** on its detail; anyone else gets `403`, and nothing is changed or sent:
+
+- **When it runs**: on a schedule or only when someone starts it. The schedule builder offers every hour, every day at a time, on chosen days at a time, or a custom cron. There is no "every N days" preset: cron's day-of-month step (`*/2`) restarts on the 1st of each month, so it can run on two days in a row (the 31st and the 1st). An existing cron like that opens as Custom with that warning; for a steady rhythm pick weekdays. Pick a time zone; the editor shows the schedule in plain words and its next three runs before you save. Emperor reads the same cron the same way. An automation that runs on an event keeps its trigger.
+- **What it does**: purpose, documentation (Markdown), steps (add, remove, reorder, name, description, the agent of a step, and "Needs your approval" for a `gate`), and the Context Pack (query, tags, budget).
+- The **name** is read-only: agents re-register by name, so a renamed automation would come back as a duplicate.
+
+Only what changed is saved (`PATCH /api/pipelines/{id}` with `schedule: { cron, timezone }` or `null`, `purpose`, `docMarkdown`, `steps`, `contextQuery`, `contextResourceIds`, `contextTagFilters`, `contextMaxChars`; for the lists, `null` or `[]` clears them). The usual rules hold: an active automation keeps a purpose, documentation and at least one step (`422` with the reason), an unreadable cron or unknown time zone is refused (`400`), pinned sources must be this company's Company Brain resources (`400`), and Emperor's 15-minute minimum applies (`422`). The response's `agentNotified` says whether the runner agent was sent a message.
+
+**A schedule saved in the app switches the automation to Emperor's schedule** (`scheduledBy: "emperor"`). Emperor computes the next run from the new schedule, starts each run and gives the runner agent a task; the agent's own schedule is no longer used. The editor says so before you save an automation the agent was scheduling.
+
+**Handing the schedule back.** Choosing "The agent runs it from its runtime" again hands the schedule back: Emperor stops starting runs, the stored schedule stays as it is (it is not reverted to the agent's old one), the schedule is no longer operator-owned, and the runner agent gets a short message saying Emperor no longer starts it, with the stored cron and time zone to fire from its runtime.
+
+**Edited fields are operator-owned.** The automation stores which fields a person edited (`operatorFields`: `schedule`, `purpose`, `docMarkdown`, `steps`, `context`), who edited it last and when; the detail shows them. When the agent registers the automation again (`POST /pipelines`) or updates it (`PATCH /pipelines/{id}`), Emperor keeps the person's values for those fields and applies the rest. The response carries `operatorOwned` (the operator-owned fields), `ignoredFields` (the ones the agent tried to change) and a warning telling the agent to read the automation and update its runtime to match. `list_automations` shows `operatorOwned` too.
+
+**The agent is told.** After an edit, the runner agent gets one system message in its direct thread with what changed: the old and new schedule in plain words, or which parts were updated, and that Emperor now keeps the schedule. Saving the same values again changes nothing and sends nothing. Edits are in the Activity log (which fields, and the schedule; not the texts).
 
 ## Context Pack
 
@@ -64,7 +83,7 @@ The response includes `sourceIds`. Agents should cite those IDs in the run repor
 ## Rules
 
 1. **Register every pipeline you operate.** If an agent runs recurring work that is not in the registry, the human operator cannot see, pause, or reason about it.
-2. **Re-register on boot.** Registration is an upsert by `(company, name)`. Re-registering keeps `runtimeRef`, steps, and trigger accurate and never creates duplicates.
+2. **Re-register on boot.** Registration is an upsert by `(company, name)`. Re-registering keeps `runtimeRef`, steps, and trigger accurate and never creates duplicates. Fields a person edited in the app stay as they set them; when the response lists `operatorOwned`, update your runtime to match instead.
 3. **Report every run.** Each trigger firing produces a run record, including failures. A pipeline whose runs are not reported is indistinguishable from a dead one.
 4. **Declare the steps.** Agents declare steps; Emperor draws the visual map. The diagram should never be hand-maintained separately from registered data.
 5. **No activation without documentation.** A pipeline cannot move to `active` until it has a `purpose`, `docMarkdown`, and at least one step.
@@ -150,6 +169,7 @@ Base: `https://emperorclaw.example.com/api/mcp`
 - `contextQuery`, `contextResourceIds`, `contextTagFilters`, and `contextMaxChars` define the Context Pack. Omit them to use normal scope-based Company Brain context.
 - `agentId` becomes the owner agent.
 - Requesting `status: "active"` without `purpose`, `docMarkdown`, and at least one step returns `422` with the exact reason.
+- If a person edited the automation in the app, the response adds `operatorOwned` and `ignoredFields`; those fields keep the person's values (see [Editing An Automation In The App](#editing-an-automation-in-the-app)).
 
 ### `POST /pipelines/{id}/runs` - Report Runs
 

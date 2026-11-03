@@ -122,6 +122,8 @@ export const AUDIT_FIELD_ALLOWLIST: Record<AuditTargetType, Record<string, Field
     pipeline: {
         name: "label", status: "enum", ownerAgentId: "id", scheduledBy: "enum",
         runId: "id", taskId: "id", source: "enum", agentId: "id", reason: "label",
+        // A person's edit in the app: which fields, and the schedule (never the texts).
+        fields: "label", trigger: "enum", cron: "label", timezone: "label",
     },
 };
 

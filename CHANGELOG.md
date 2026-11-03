@@ -9,6 +9,18 @@ tagged (e.g. `## [1.2.0] — 2026-07-22`). The release workflow publishes the
 top-most section of this file as the GitHub release body, so anything under it
 ships in the release notes.
 
+## [Unreleased]
+
+### Added
+- **Edit an automation from the app.** An Edit button on each automation opens an editor for when it runs and what it does. Pick a schedule (every hour, every day at a time, on chosen days, or a custom cron) and a time zone, and see it in plain words with its next three runs before you save. Change the purpose, the documentation, the steps (add, remove, reorder, choose the agent of a step, and mark a step as needing your approval) and the Context Pack. The name stays as it is, because the agent finds the automation by it.
+- A schedule saved in the app is kept by Emperor: Emperor starts each run and gives the agent a task, and the agent's own schedule is no longer used. The editor says so before you save an automation the agent was scheduling.
+- What you edit stays as you set it: when the agent registers the automation again, Emperor keeps your schedule, purpose, documentation, steps and Context Pack, and tells the agent which fields are yours. Choosing "The agent runs it from its runtime" again hands the schedule back: the schedule stays as it is, and the agent is told to fire it from its runtime.
+- A custom cron that steps through the days of the month (like `*/2`) shows a warning: it restarts on the 1st, so it can run on two days in a row.
+- The agent that runs the automation gets one message saying what you changed (the old and new schedule in plain words, or which parts were updated). The confirmation after saving only says the agent was told when it was.
+- Only people who can hand work to an automation's agent can edit it.
+- The automation's detail shows who edited it last and when, and which fields were set in the app. Edits are in the Activity log.
+- MCP: registering or updating an automation answers with `operatorOwned` and `ignoredFields` when a person edited it; `list_automations` shows `operatorOwned`.
+
 ## [0.27.0] — 2026-11-02
 
 ### Added
