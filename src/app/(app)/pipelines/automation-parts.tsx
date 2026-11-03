@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useFormatter, useTranslations } from "next-intl";
 import { toast } from "sonner";
-import { IconArrowsSplit, IconCalendarTime, IconCopy, IconExternalLink, IconPlayerPause, IconPlayerPlay, IconPlayerSkipForward, IconRobot, IconUser } from "@tabler/icons-react";
+import { IconArrowsSplit, IconCalendarTime, IconCopy, IconExternalLink, IconPencil, IconPlayerPause, IconPlayerPlay, IconPlayerSkipForward, IconRobot, IconUser } from "@tabler/icons-react";
 import { CharacterAvatar } from "@/components/character/character-avatar";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -12,6 +12,7 @@ import { SearchableSelect } from "@/components/ui/searchable-select";
 import { SettingsSwitch } from "@/components/ui/settings-switch";
 import { taskHref } from "@/lib/task-story";
 import { pipelineRunDurationMs, pipelineRunOrigin } from "@/lib/pipelines";
+import { operatorFieldsOf } from "@/lib/pipeline-operator-edits";
 import { cn } from "@/lib/utils";
 
 export type AgentOption = {
@@ -44,6 +45,10 @@ export type AutomationRow = {
   lastRunAt: string | null;
   lastRunStatus: string | null;
   schedule: ScheduleInfo | null;
+  /** Fields a person edited in the app (agents can't change them), and who did it last, when. */
+  operatorFields?: unknown;
+  operatorEditedAt?: string | null;
+  operatorEditedBy?: string | null;
 };
 
 export type AutomationRun = {
@@ -221,6 +226,8 @@ export function HowItRuns({ pipeline, agents, agentsMap, peopleMap, canEdit, onC
     ? pipeline.createdByType === "human" ? peopleMap[pipeline.createdById] : agentsMap[pipeline.createdById]
     : null;
   const createdDate = format.dateTime(new Date(pipeline.createdAt), { dateStyle: "medium" });
+  const editorName = pipeline.operatorEditedBy ? peopleMap[pipeline.operatorEditedBy] : null;
+  const owned = operatorFieldsOf(pipeline.operatorFields);
   const cfg = pipeline.triggerConfig || {};
   const next = nextRunText(t, format, pipeline);
 
@@ -304,6 +311,17 @@ export function HowItRuns({ pipeline, agents, agentsMap, peopleMap, canEdit, onC
         {pipeline.createdByType === "human" ? <IconUser className="h-3.5 w-3.5" /> : <IconRobot className="h-3.5 w-3.5" />}
         {createdName ? t("created.byOn", { name: createdName, date: createdDate }) : t("created.on", { date: createdDate })}
       </div>
+      {pipeline.operatorEditedAt ? (
+        <div className="-mt-2 space-y-0.5 text-xs text-zinc-500">
+          <div className="flex items-center gap-1.5">
+            <IconPencil className="h-3.5 w-3.5 shrink-0" />
+            {editorName
+              ? t("edit.editedBy", { name: editorName, time: format.dateTime(new Date(pipeline.operatorEditedAt), { dateStyle: "medium", timeStyle: "short" }) })
+              : t("edit.editedAt", { time: format.dateTime(new Date(pipeline.operatorEditedAt), { dateStyle: "medium", timeStyle: "short" }) })}
+          </div>
+          {owned.length > 0 ? <p className="pl-5">{t("edit.ownedFields", { fields: format.list(owned.map((field) => t(`edit.fields.${field}`)), { type: "conjunction" }) })}</p> : null}
+        </div>
+      ) : null}
     </section>
   );
 }

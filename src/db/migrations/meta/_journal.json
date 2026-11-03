@@ -540,6 +540,13 @@
       "when": 1793698831125,
       "tag": "0076_views-maintainer",
       "breakpoints": true
+    },
+    {
+      "idx": 77,
+      "version": "7",
+      "when": 1793703741919,
+      "tag": "0077_automation-operator-edits",
+      "breakpoints": true
     }
   ]
 }

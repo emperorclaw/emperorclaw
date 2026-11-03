@@ -7,6 +7,7 @@ import { and, desc, eq, isNull } from "drizzle-orm";
 import { generateMermaid, isPipelineScheduler, parsePipelineContextConfig, parsePipelineSteps, validateForActivation, PIPELINE_SCHEDULERS, PIPELINE_STATUSES, PipelineStatus, PipelineStep } from "@/lib/pipelines";
 import { closeScheduleStreak, emperorScheduleProblemFor, nextRunAtFor } from "@/lib/pipeline-runs";
 import { moduleGuard } from "@/lib/modules-server";
+import { keepOperatorValues, operatorFieldsOf, operatorOwnedNotice, type OperatorField, type PipelineEditableValues } from "@/lib/pipeline-operator-edits";
 
 async function findPipeline(companyId: string, id: string) {
     const [row] = await db.select().from(pipelines).where(
@@ -135,6 +136,23 @@ export async function PATCH(
             updates.triggerConfig = body.triggerConfig;
             regenerate = true;
         }
+
+        // A person's edits in the app win: operator-owned fields keep their
+        // stored values, and the response says which ones the agent tried to change.
+        const owned = operatorFieldsOf(pipeline.operatorFields);
+        let ignored: OperatorField[] = [];
+        if (owned.length > 0) {
+            const kept = keepOperatorValues(owned, updates as Partial<PipelineEditableValues>, pipeline);
+            ignored = kept.ignored;
+            Object.assign(updates, kept.values);
+            if (owned.includes("steps")) steps = Array.isArray(pipeline.stepsJson) ? pipeline.stepsJson as PipelineStep[] : [];
+            if (owned.includes("schedule")) {
+                trigger = pipeline.trigger;
+                triggerConfig = pipeline.triggerConfig;
+            }
+        }
+        const scheduleOwned = owned.includes("schedule");
+
         if (regenerate) {
             updates.diagramMermaid = generateMermaid(trigger, triggerConfig, steps);
         }
@@ -191,6 +209,8 @@ export async function PATCH(
                     triggerConfig: updates.triggerConfig !== undefined ? updates.triggerConfig : pipeline.triggerConfig,
                 });
             }
+        } else if (scheduleOwned) {
+            // The person's schedule: the agent states no slot of its own.
         } else if (body.nextRunAt) {
             const stated = new Date(body.nextRunAt);
             if (!Number.isNaN(stated.getTime())) updates.nextRunAt = stated;
@@ -203,7 +223,12 @@ export async function PATCH(
 
         if (resumed) await closeScheduleStreak(pipeline.id);
 
-        const res = { message: "Pipeline updated", pipeline: updated };
+        const notice = operatorOwnedNotice(pipeline.id, owned, ignored);
+        const res = {
+            message: "Pipeline updated",
+            pipeline: updated,
+            ...(notice ? { operatorOwned: owned, ignoredFields: ignored, warnings: [notice] } : {}),
+        };
         await saveIdempotencyResponse(companyId, endpoint, requestHash!, res);
         return NextResponse.json(res);
     } catch (e) {

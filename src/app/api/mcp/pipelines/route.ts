@@ -7,6 +7,7 @@ import { and, desc, eq, isNull } from "drizzle-orm";
 import { generateMermaid, isPipelineScheduler, parsePipelineContextConfig, parsePipelineSteps, validateForActivation, PIPELINE_SCHEDULERS, PIPELINE_STATUSES, PipelineStatus } from "@/lib/pipelines";
 import { closeScheduleStreak, emperorScheduleProblemFor, nextRunAtFor } from "@/lib/pipeline-runs";
 import { moduleGuard } from "@/lib/modules-server";
+import { keepOperatorValues, operatorFieldsOf, operatorOwnedNotice } from "@/lib/pipeline-operator-edits";
 
 // GET /api/mcp/pipelines — list registered pipelines.
 // Filters: ?name= ?status= ?projectId=
@@ -65,7 +66,9 @@ export async function GET(req: NextRequest) {
 // }
 // triggerConfig may carry { cron, timezone } (IANA zone; default the company's, else UTC).
 // diagramMermaid is ALWAYS generated server-side. Activation requires
-// purpose + docMarkdown + at least one step.
+// purpose + docMarkdown + at least one step. Fields a person edited in the app
+// (operatorFields: schedule, purpose, docMarkdown, steps, context) keep the
+// person's values; the response lists them (operatorOwned, ignoredFields).
 export async function POST(req: NextRequest) {
     const auth = await verifyMcpToken(req);
     if (auth.error) {
@@ -134,7 +137,6 @@ export async function POST(req: NextRequest) {
             if (!customer) return NextResponse.json({ error: "Customer not found" }, { status: 404 });
         }
 
-        const diagramMermaid = generateMermaid(trigger, triggerConfig, steps);
         const contextConfig = parsePipelineContextConfig({
             contextQuery,
             contextResourceIds,
@@ -146,10 +148,33 @@ export async function POST(req: NextRequest) {
             and(eq(pipelines.companyId, companyId), eq(pipelines.name, name.trim()), isNull(pipelines.deletedAt))
         ).limit(1);
 
+        // What this registration would store; a person's edits in the app win
+        // over it (operator-owned fields keep their stored values).
+        const owned = existing ? operatorFieldsOf(existing.operatorFields) : [];
+        const proposed = {
+            trigger: trigger as string,
+            triggerConfig: triggerConfig as unknown,
+            scheduledBy: (requestedScheduler ?? existing?.scheduledBy ?? "agent") as string,
+            purpose: (purpose ?? existing?.purpose ?? null) as string | null,
+            docMarkdown: (docMarkdown ?? existing?.docMarkdown ?? null) as string | null,
+            stepsJson: steps as unknown,
+            contextQuery: contextQuery !== undefined || !existing ? contextConfig.contextQuery : existing.contextQuery,
+            contextResourceIds: contextResourceIds !== undefined || !existing ? contextConfig.contextResourceIds as unknown : existing.contextResourceIds,
+            contextTagFilters: contextTagFilters !== undefined || !existing ? contextConfig.contextTagFilters as unknown : existing.contextTagFilters,
+            contextMaxChars: contextMaxChars !== undefined || !existing ? contextConfig.contextMaxChars : existing.contextMaxChars,
+        };
+        const sent = new Set(Object.keys(body).map((key) => (key === "steps" ? "stepsJson" : key)));
+        const { values: kept, ignored } = existing && owned.length > 0
+            ? keepOperatorValues(owned, proposed, existing, sent)
+            : { values: proposed, ignored: [] };
+        const keptTrigger = kept.trigger;
+        const keptTriggerConfig = kept.triggerConfig;
+        const diagramMermaid = generateMermaid(keptTrigger, keptTriggerConfig, Array.isArray(kept.stepsJson) ? kept.stepsJson as typeof steps : steps);
+
         const candidate = {
-            purpose: purpose ?? existing?.purpose ?? null,
-            docMarkdown: docMarkdown ?? existing?.docMarkdown ?? null,
-            stepsJson: steps,
+            purpose: kept.purpose,
+            docMarkdown: kept.docMarkdown,
+            stepsJson: kept.stepsJson,
         };
         const status = (requestedStatus as PipelineStatus | undefined) ?? existing?.status ?? "draft";
         if (status === "active") {
@@ -159,7 +184,7 @@ export async function POST(req: NextRequest) {
             }
         }
 
-        const scheduledBy = requestedScheduler ?? existing?.scheduledBy ?? "agent";
+        const scheduledBy = kept.scheduledBy;
 
         // Scope: an automation's owner gets its tasks (Run now, Emperor's
         // schedule), so naming one is handing it work: only an agent the caller
@@ -175,32 +200,32 @@ export async function POST(req: NextRequest) {
         if (ownerAgentId && !mcpMayReachAgent(scoped.access, ownerAgentId)) {
             return NextResponse.json({ error: "You can't reach that agent: it is outside your scope" }, { status: 403 });
         }
-        if (scheduledBy === "emperor" && trigger === "cron") {
+        if (scheduledBy === "emperor" && keptTrigger === "cron") {
             if (resultingOwner && !mcpMayReachAgent(scoped.access, resultingOwner)) {
                 return NextResponse.json({ error: "Emperor's schedule would hand tasks to an agent outside your scope" }, { status: 403 });
             }
-            const problem = status === "active" ? await emperorScheduleProblemFor(companyId, { trigger, triggerConfig, scheduledBy }) : null;
+            const problem = status === "active" ? await emperorScheduleProblemFor(companyId, { trigger: keptTrigger, triggerConfig: keptTriggerConfig, scheduledBy }) : null;
             if (problem) return NextResponse.json({ error: problem }, { status: 422 });
         }
         // Re-registering on boot with the same schedule keeps the pending slot.
-        const sameSchedule = existing?.nextRunAt && existing.trigger === trigger && existing.status === status
-            && existing.scheduledBy === scheduledBy && JSON.stringify(existing.triggerConfig) === JSON.stringify(triggerConfig);
-        const nextRunAt = sameSchedule ? existing.nextRunAt : await nextRunAtFor(companyId, { status, trigger, triggerConfig });
+        const sameSchedule = existing?.nextRunAt && existing.trigger === keptTrigger && existing.status === status
+            && existing.scheduledBy === scheduledBy && JSON.stringify(existing.triggerConfig) === JSON.stringify(keptTriggerConfig);
+        const nextRunAt = sameSchedule ? existing.nextRunAt : await nextRunAtFor(companyId, { status, trigger: keptTrigger, triggerConfig: keptTriggerConfig });
 
         let row;
         let created = false;
         if (existing) {
             [row] = await db.update(pipelines).set({
-                purpose: candidate.purpose,
-                docMarkdown: candidate.docMarkdown,
-                trigger,
-                triggerConfig,
-                stepsJson: steps,
+                purpose: kept.purpose,
+                docMarkdown: kept.docMarkdown,
+                trigger: keptTrigger,
+                triggerConfig: keptTriggerConfig,
+                stepsJson: kept.stepsJson,
                 diagramMermaid,
-                contextQuery: contextQuery !== undefined ? contextConfig.contextQuery : existing.contextQuery,
-                contextResourceIds: contextResourceIds !== undefined ? contextConfig.contextResourceIds : existing.contextResourceIds,
-                contextTagFilters: contextTagFilters !== undefined ? contextConfig.contextTagFilters : existing.contextTagFilters,
-                contextMaxChars: contextMaxChars !== undefined ? contextConfig.contextMaxChars : existing.contextMaxChars,
+                contextQuery: kept.contextQuery,
+                contextResourceIds: kept.contextResourceIds,
+                contextTagFilters: kept.contextTagFilters,
+                contextMaxChars: kept.contextMaxChars,
                 runtimeRef: runtimeRef ?? existing.runtimeRef,
                 projectId: projectId ?? existing.projectId,
                 customerId: customerId ?? existing.customerId,
@@ -247,10 +272,14 @@ export async function POST(req: NextRequest) {
 
         if (existing && status === "active" && existing.status !== "active") await closeScheduleStreak(existing.id);
 
+        const notice = existing ? operatorOwnedNotice(existing.id, owned, ignored) : null;
+        if (notice) warnings.push(notice);
+
         const res = {
             message: created ? "Pipeline registered" : "Pipeline re-registered (updated)",
             pipeline: row,
             warnings,
+            ...(owned.length > 0 ? { operatorOwned: owned, ignoredFields: ignored } : {}),
         };
         await saveIdempotencyResponse(companyId, endpoint, requestHash!, res);
         return NextResponse.json(res, { status: created ? 201 : 200 });

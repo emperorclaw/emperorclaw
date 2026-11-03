@@ -73,8 +73,10 @@ export function eventTopicsFor(payload: unknown, subject: RealtimeSubject | null
         case "project_updated":
             topics.add("projects");
             break;
-        // An automation run started, closed or was skipped (lib/pipeline-runs.ts).
+        // An automation run started, closed or was skipped (lib/pipeline-runs.ts),
+        // or a person edited an automation (PATCH /api/pipelines/[id]).
         case "pipeline_run_updated":
+        case "pipeline_updated":
             topics.add("automations");
             break;
         case "group_updated":

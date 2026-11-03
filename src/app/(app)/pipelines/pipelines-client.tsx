@@ -16,7 +16,7 @@ import {
   type NodeProps,
 } from "@xyflow/react";
 import ELK from "elkjs/lib/elk.bundled.js";
-import { IconCircleCheck, IconClock, IconCopy, IconDatabase, IconFileText, IconStack2, IconArrowsMaximize, IconArrowsMinimize, IconPlayerPlay, IconRepeat, IconSearch, IconSparkles, IconTrash, IconArrowsSplit } from "@tabler/icons-react";
+import { IconCircleCheck, IconClock, IconCopy, IconDatabase, IconFileText, IconStack2, IconArrowsMaximize, IconArrowsMinimize, IconPencil, IconPlayerPlay, IconRepeat, IconSearch, IconSparkles, IconTrash, IconArrowsSplit } from "@tabler/icons-react";
 import { toast } from "sonner";
 import { useRouter } from "next/navigation";
 import { useFormatter, useTranslations } from "next-intl";
@@ -26,6 +26,7 @@ import {
   AgentChip, EmptyAutomationsState, HowItRuns, nextRunText, PauseResumeButton, RunHistoryItem, RunNowButton, RunNowDialog, RunStatusDot,
   runStatusText, StatusToggle, type AgentOption, type AutomationRow, type AutomationRun,
 } from "./automation-parts";
+import { EditAutomationDialog } from "./edit-automation-dialog";
 
 type PipelineStep = {
   id?: string;
@@ -484,6 +485,7 @@ export default function PipelinesClient({ initialPipelines, initialRuns, agents,
   const [status, setStatus] = useState("all");
   const [confirmingDelete, setConfirmingDelete] = useState<string | null>(null);
   const [runDialogFor, setRunDialogFor] = useState<string | null>(null);
+  const [editFor, setEditFor] = useState<string | null>(null);
   const [savingId, setSavingId] = useState<string | null>(null);
   const [now, setNow] = useState(() => Date.now());
 
@@ -510,6 +512,7 @@ export default function PipelinesClient({ initialPipelines, initialRuns, agents,
   const selectedRuns = useMemo(() => initialRuns.filter((run) => run.pipelineId === selectedPipeline?.id), [initialRuns, selectedPipeline?.id]);
   const selectedMarkdown = selectedPipeline ? buildPipelineMarkdown(selectedPipeline, selectedRuns, agentsMap, projectsMap, customersMap) : "";
   const runDialogPipeline = pipelines.find((pipeline) => pipeline.id === runDialogFor) ?? null;
+  const editPipeline = pipelines.find((pipeline) => pipeline.id === editFor) ?? null;
 
   const deletePipeline = useCallback(async (pipeline: PipelineRow) => {
     if (confirmingDelete !== pipeline.id) {
@@ -566,6 +569,17 @@ export default function PipelinesClient({ initialPipelines, initialRuns, agents,
     if (scheduledBy === pipeline.scheduledBy) return;
     void patchPipeline(pipeline, { scheduledBy }, scheduledBy === "emperor" ? t("schedule.nowEmperor") : t("schedule.nowAgent"), t("schedule.changeFailed"));
   }, [patchPipeline, t]);
+
+  // Saved from the editor: keep the row in step until the refresh brings the
+  // server's view (schedule description, next run).
+  const onEdited = useCallback((updated: Record<string, unknown>, notified: boolean) => {
+    const id = typeof updated.id === "string" ? updated.id : editFor;
+    const name = typeof updated.name === "string" ? updated.name : "";
+    setEditFor(null);
+    setPipelines((current) => current.map((item) => (item.id === id ? { ...item, ...updated, schedule: item.schedule } as PipelineRow : item)));
+    toast.success(notified ? t("edit.saved", { name }) : t("edit.savedNoAgent", { name }));
+    router.refresh();
+  }, [editFor, router, t]);
 
   const onRunStarted = useCallback((result: { taskId: string }, agentName: string) => {
     setRunDialogFor(null);
@@ -667,6 +681,11 @@ export default function PipelinesClient({ initialPipelines, initialRuns, agents,
                     <div className="flex flex-wrap gap-2">
                       {canEdit && selectedPipeline.status === "active" ? <RunNowButton onClick={() => setRunDialogFor(selectedPipeline.id)} /> : null}
                       {canEdit ? <PauseResumeButton pipeline={selectedPipeline} disabled={savingId === selectedPipeline.id} onToggle={(nextStatus) => toggleStatus(selectedPipeline, nextStatus)} /> : null}
+                      {canEdit ? (
+                        <button type="button" onClick={() => setEditFor(selectedPipeline.id)} className="inline-flex cursor-pointer items-center gap-2 rounded-full border border-zinc-700 bg-zinc-900/60 px-4 py-2 text-sm font-medium text-zinc-200 transition-colors hover:border-zinc-600">
+                          <IconPencil className="h-4 w-4" /> {t("edit.button")}
+                        </button>
+                      ) : null}
                       <button type="button" onClick={() => copyPipelineMarkdown(selectedMarkdown, t)} className="inline-flex cursor-pointer items-center gap-2 rounded-full border border-zinc-700 bg-zinc-900/60 px-4 py-2 text-sm font-medium text-zinc-200 transition-colors hover:border-zinc-600">
                         <IconCopy className="h-4 w-4" /> {t("copyDocs")}
                       </button>
@@ -755,6 +774,13 @@ export default function PipelinesClient({ initialPipelines, initialRuns, agents,
           open={runDialogPipeline !== null}
           onClose={() => setRunDialogFor(null)}
           onStarted={onRunStarted}
+        />
+        <EditAutomationDialog
+          pipeline={editPipeline}
+          agents={agents}
+          open={editPipeline !== null}
+          onClose={() => setEditFor(null)}
+          onSaved={onEdited}
         />
     </div>
   );

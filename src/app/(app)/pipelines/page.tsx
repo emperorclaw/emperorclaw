@@ -56,9 +56,10 @@ export default async function PipelinesPage() {
     const customerList = await db.select({ id: customers.id, name: customers.name }).from(customers)
         .where(and(eq(customers.companyId, companyId), isNull(customers.deletedAt)));
 
-    // People named on the page: who created an automation, who pressed Run now.
+    // People named on the page: who created or last edited an automation, who pressed Run now.
     const personIds = [...new Set([
         ...pipelineList.filter((p) => p.createdByType === "human" && p.createdById).map((p) => p.createdById!),
+        ...pipelineList.filter((p) => p.operatorEditedBy).map((p) => p.operatorEditedBy!),
         ...recentRuns.filter((r) => r.triggeredByType === "user" && r.triggeredById).map((r) => r.triggeredById!),
     ])];
     const people = personIds.length > 0

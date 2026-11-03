@@ -8,6 +8,7 @@ import { assertMcpMayReachAgent, isMcpAccessRestricted, mcpAccessForAgent, mcpMa
 import { mcpActor } from "@/lib/audit";
 import { companyTimezone, PipelineRunError, startPipelineRun } from "@/lib/pipeline-runs";
 import { computeNextRunAt, cronExpression, describeCron, scheduleTimezone } from "@/lib/pipeline-schedule";
+import { operatorFieldsOf } from "@/lib/pipeline-operator-edits";
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -55,6 +56,8 @@ export function registerAutomationTools(server: McpServer, companyId: string, ca
                         nextRunAt: row.status === "active" ? next?.toISOString() ?? null : null,
                         lastRun: row.lastRunAt ? { at: row.lastRunAt.toISOString(), status: row.lastRunStatus } : null,
                         runCount: row.runCount,
+                        // Fields a person edited in the app: re-registering won't change them.
+                        operatorOwned: operatorFieldsOf(row.operatorFields),
                     };
                 }),
             });
