@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 import { useRouter, usePathname } from "next/navigation";
 import { useTranslations } from "next-intl";
-import { IconArrowLeft, IconArrowRight, IconRosetteDiscountCheck, IconBook, IconRobot, IconFolder, IconGitBranch, IconDeviceSdCard, IconKey, IconLayoutDashboard, IconMessage, IconFileText, IconShieldCheck, IconX } from "@tabler/icons-react";
+import { IconArrowLeft, IconArrowRight, IconRosetteDiscountCheck, IconRobot, IconFolder, IconGitBranch, IconDeviceSdCard, IconKey, IconLayoutDashboard, IconMessage, IconFileText, IconShieldCheck, IconX } from "@tabler/icons-react";
 
 import { pathEnabled, type ModuleState } from "@/lib/modules";
 
@@ -12,7 +12,7 @@ const TOUR_DONE_KEY = "emperor:interactive-tour:v1";
 
 interface TourStep {
     /** Title and body: onboarding.interactiveTour.steps.{id} in messages/*.json. */
-    id: "dashboard" | "projects" | "automations" | "knowledge" | "messages" | "approvals" | "agents" | "customers" | "files" | "settings" | "docs";
+    id: "dashboard" | "projects" | "automations" | "knowledge" | "messages" | "approvals" | "agents" | "customers" | "files" | "settings";
     href: string;
     icon: typeof IconLayoutDashboard;
 }
@@ -28,7 +28,6 @@ const TOUR_STEPS: TourStep[] = [
     { id: "customers", href: "/customers", icon: IconShieldCheck },
     { id: "files", href: "/artifacts", icon: IconDeviceSdCard },
     { id: "settings", href: "/settings", icon: IconKey },
-    { id: "docs", href: "/docs", icon: IconBook },
 ];
 
 export function InteractiveTour({ modules }: { modules?: ModuleState | null }) {

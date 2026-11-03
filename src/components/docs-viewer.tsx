@@ -108,10 +108,11 @@ export function DocsViewer({ version: initialVersion, slug }: DocsViewerProps) {
           <div className="flex items-center gap-3">
             <Link 
               href="/"
-              className="hidden md:flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground transition-colors px-3 py-1.5 rounded-lg hover:bg-accent border border-transparent hover:border-border"
+              aria-label={t('backToDashboard')}
+              className="flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground transition-colors px-3 py-1.5 rounded-lg hover:bg-accent border border-transparent hover:border-border"
             >
               <IconArrowLeft className="w-4 h-4" />
-              {t('backToDashboard')}
+              <span className="hidden sm:inline">{t('backToDashboard')}</span>
             </Link>
             <button 
               onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
