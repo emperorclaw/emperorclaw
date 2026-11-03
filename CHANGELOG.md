@@ -9,7 +9,7 @@ tagged (e.g. `## [1.2.0] — 2026-07-22`). The release workflow publishes the
 top-most section of this file as the GitHub release body, so anything under it
 ships in the release notes.
 
-## [Unreleased]
+## [0.28.0] — 2026-11-03
 
 ### Added
 - **Agents know the org chart.** Every agent knows whom it reports to for each team, its direct reports, its peers and its chain of command up to the company leader and then the humans. Hermes and Codex agents get this in a short block in their instructions; MCP agents get one line when they connect; the lean context has the same line.
@@ -37,6 +37,8 @@ ships in the release notes.
 
 ### Fixed
 - The Messages badge counted each agent's hidden Work log (in private direct-chat mode, where task wakes and the agent's replies to them land), so it could show 99+ unread that no conversation in the list explained and nothing could clear. The badge now counts exactly the conversations Messages lists, from the same server code as the page. A Work log's unread count shows on its button in the agent's panel instead, and opening it marks it read as before.
+- The installers (`install.sh`, `install.ps1`) download the current app image before starting. A machine that had run an older EmperorClaw used to start that old cached version (a fresh reinstall came up on 0.8.67).
+- The docs page keeps its "Back to Dashboard" link at every width (it was hidden below 768px), and the interactive tour now ends in the app instead of on the docs page. The tour's Agents step no longer describes agents as OpenClaw workers.
 
 ### Security
 - **No anonymous agent writes.** A company-wide token that names no agent can no longer create or change views (`POST /api/mcp/views`, `PATCH /api/mcp/views/{id}`, `PUT …/panels/{panelId}`, `POST …/archive`) or send messages (`POST /api/mcp/messages/send`) through the REST API: it gets `400 agentId required`. Such writes used to be recorded as "System", leaving a view with no maintaining agent, so the agent lost it when the view was made private and could rebuild its data somewhere everyone could see. Before upgrading, make sure every agent script sends `agentId` on writes; Emperor's bridges and the Hermes plugin already do.
