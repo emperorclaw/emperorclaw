@@ -14,6 +14,8 @@ import { moduleGuard } from "@/lib/modules-server";
  * The audit actor and the created_by / updated_by stamps come from the SAME
  * resolution as the scope (resolveMcpAgentAccess), so the agent a view is
  * recorded as built by is exactly the agent later writes are checked against.
+ * A write naming no agent never reaches the route: verifyMcpToken refuses it
+ * (400, lib/mcp-write-actor.ts), and lib/views.ts refuses it again.
  */
 export async function viewMcpCaller(req: NextRequest): Promise<{ companyId: string; caller: ViewCaller; tokenId: string; response?: undefined } | { response: NextResponse }> {
     const auth = await verifyMcpToken(req);
@@ -24,7 +26,7 @@ export async function viewMcpCaller(req: NextRequest): Promise<{ companyId: stri
     const scoped = await mcpRouteAccess(token.companyId, token, req.nextUrl.searchParams.get("agentId"));
     if (scoped.response) return { response: scoped.response };
     const actor = mcpActor(scoped.access.agentId, token.id);
-    return { companyId: token.companyId, caller: { kind: "agent", access: scoped.access, actor }, tokenId: token.id };
+    return { companyId: token.companyId, caller: { kind: "agent", access: scoped.access, actor, channel: "rest" }, tokenId: token.id };
 }
 
 export async function readJson(req: NextRequest): Promise<Record<string, unknown> | null> {

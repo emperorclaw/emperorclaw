@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/db";
-import { users } from "@/db/schema";
+import { companyMembers, users } from "@/db/schema";
+import { scheduleOrganizationNoteRefresh } from "@/lib/organization-note-schedule";
 import { eq } from "drizzle-orm";
 import { getValidatedServerSession } from "@/lib/auth";
 import { requireRole } from "@/lib/roles";
@@ -67,6 +68,11 @@ export async function PATCH(req: NextRequest) {
         .where(eq(users.id, session.user.id))
         .returning({ id: users.id, displayName: users.displayName, roleTitle: users.roleTitle, email: users.email, locale: users.locale });
 
+    // People appear on the org chart (and its note) by name and role.
+    if ("displayName" in updates || "roleTitle" in updates) {
+        const memberships = await db.select({ companyId: companyMembers.companyId }).from(companyMembers).where(eq(companyMembers.userId, session.user.id)).catch(() => []);
+        for (const { companyId } of memberships) scheduleOrganizationNoteRefresh(companyId);
+    }
     const res = NextResponse.json({ ok: true, user: updated });
     // Mirror the saved language in NEXT_LOCALE, so requests resolve it without a DB query.
     return "locale" in updates ? withCookies(res, localeCookieHeaders(updates.locale as Locale | null, isSecureRequest(req))) : res;

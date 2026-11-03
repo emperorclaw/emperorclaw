@@ -16,7 +16,7 @@ const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
  * registered and when it runs next, and start one now. run_automation uses the
  * same run service as Run now in the app (lib/pipeline-runs.ts).
  */
-export function registerAutomationTools(server: McpServer, companyId: string, callerAgentId?: string | null, tokenId: string | null = null) {
+export function registerAutomationTools(server: McpServer, companyId: string, callerAgentId?: string | null, tokenId: string | null = null, operatorUserId: string | null = null) {
     const access = () => mcpAccessForAgent(companyId, callerAgentId ?? null);
 
     server.registerTool("list_automations", {
@@ -87,7 +87,7 @@ export function registerAutomationTools(server: McpServer, companyId: string, ca
                 force: force === true,
                 source: "api",
                 triggeredBy: callerAgentId ? { type: "agent", id: callerAgentId } : null,
-                actor: mcpActor(callerAgentId, tokenId),
+                actor: mcpActor(callerAgentId, tokenId, operatorUserId),
                 // A restricted agent adds work only to its projects; a new "General" project is not one of them.
                 mayUseProject: async (projectId) => projectId ? mcpMayUseProject(scope, projectId) : !isMcpAccessRestricted(scope),
             });

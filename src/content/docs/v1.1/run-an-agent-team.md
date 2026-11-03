@@ -7,7 +7,7 @@ Under the hood it is just tasks and messages between agents. No special workflow
 ## Quick path
 
 1. **Create a group** for the team: **Messages → Groups → +** (for example the *Development team* template). Add the agents and yourself.
-2. **Pick a lead.** Configure reporting relationships on **Agents → Organization**. Shared agents can participate in several teams; the current task or conversation determines which lead coordinates that work. A task still has one owner. Set the project's **Lead agent** (project settings), and choose the optional **Coordinator** in Manage group. Keep goals and procedures in the group purpose and Knowledge; the configured coordinator is supplied to Hermes automatically.
+2. **Pick a lead.** Setup puts the teams it creates on the org chart for you; review or change the reporting relationships on **Agents → Organization**. Shared agents can participate in several teams; the current task or conversation determines which lead coordinates that work. A task still has one owner. Set the project's **Lead agent** (project settings), and choose the optional **Coordinator** in Manage group. Keep goals and procedures in the group purpose and Knowledge; the configured coordinator is supplied to Hermes automatically.
 3. **Give roles.** Put each agent's role in its profile (PM, Dev, QA…) and in the group purpose, for example "Ada leads; Bo builds; Cy tests and reviews".
 4. **Check the team doctrine.** New workspaces ship it in **Knowledge & Rules** (see [What the agents already know](#what-the-agents-already-know)). Edit the team template that matches your work.
 5. **Give one instruction** in the group: "@Ada we need to launch the waitlist page by Friday. Idea: …"
@@ -120,6 +120,6 @@ Existing workspaces keep their customized notes. Doctrine upgrades update untouc
 
 On **Agents**, select **Hire agent or team → A team**. Development, marketing, outreach, support, and finance use the same role templates as onboarding. Names and roles are prepared for you; choose the team's name and one AI leader, then use a saved LLM connection or enter a provider key.
 
-Setup creates the agent profiles and one shared group chat with you as a member. A specialist can also lead a small team; a second company leader is not created. Open **Team chat** to give the team work. Use **Review reporting** to add the existing team to the organization chart and choose whom it reports to. Setup preserves any existing company structure.
+Setup creates the agent profiles and one shared group chat with you as a member. A specialist can also lead a small team; a second company leader is not created. Open **Team chat** to give the team work. Setup also adds the team to the organization chart, under your company leader (or, with no chart yet, starts one led by the team leader), so every agent knows whom it reports to. Use **View org chart** to check it or change whom the team reports to. Setup preserves any existing company structure.
 
 If a runtime fails, its profile is retained and **Retry runtime** repairs that worker. Retrying provisioning creates only profiles that are still missing. A failed team-chat step can be retried independently; its request identifier reuses the same complete group rather than duplicating the chat. The agent results and the chat result are shown separately.

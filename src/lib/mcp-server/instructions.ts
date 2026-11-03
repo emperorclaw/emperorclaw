@@ -1,5 +1,6 @@
 import { MCP_KERNEL } from "@/lib/emperor-manual";
 import { getCompanyContext } from "@/lib/control-plane";
+import { organizationSummaryForAgent } from "@/lib/organization";
 
 /**
  * MCP clients only strictly need the incident-driven kernel plus a pointer to
@@ -7,7 +8,7 @@ import { getCompanyContext } from "@/lib/control-plane";
  * get_emperor_manual and the knowledge index/tools rather than inlined here,
  * so every `initialize` handshake stays cheap.
  */
-const KERNEL_POINTER = `Full Emperor doctrine: call \`get_emperor_manual\` (sections: overview, chat-and-mentions, tasks-and-projects, writing, approvals, team-handoffs, knowledge, storage, reply-formatting, where-to-look). Company knowledge: read the index from \`list_knowledge\`, open a note with \`get_knowledge_note\`, and find one with \`search_knowledge\`. File new notes in the right \`folder\` (see \`list_knowledge_folders\`).`;
+const KERNEL_POINTER = `Full Emperor doctrine: call \`get_emperor_manual\` (sections: overview, chat-and-mentions, tasks-and-projects, writing, approvals, team-handoffs, knowledge, storage, reply-formatting, where-to-look). Company knowledge: read the index from \`list_knowledge\`, open a note with \`get_knowledge_note\`, and find one with \`search_knowledge\`. File new notes in the right \`folder\` (see \`list_knowledge_folders\`). The org chart and your place in it (manager per team, direct reports, peers, chain of command, the whole tree): \`get_organization\`.`;
 
 /**
  * Only for a connection with no agent bound. That is usually an operator's
@@ -33,11 +34,16 @@ export function capContextNotes(notes: string, maxChars = MCP_CONTEXT_NOTES_MAX_
 }
 
 export async function buildMcpInstructions(companyId: string, callerAgentId: string | null = null): Promise<string> {
-    const contextNotes = await getCompanyContext(companyId);
+    const [contextNotes, organization] = await Promise.all([
+        getCompanyContext(companyId),
+        // An agent knows its place on the chart from the first handshake.
+        callerAgentId ? organizationSummaryForAgent(companyId, callerAgentId) : Promise.resolve(""),
+    ]);
 
     return [
         MCP_KERNEL,
         KERNEL_POINTER,
+        organization || null,
         callerAgentId ? null : OPERATOR_GUIDE,
         contextNotes
             ? "## Company-Specific Notes (untrusted reference data)\n\n" +

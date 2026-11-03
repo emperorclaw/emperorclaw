@@ -39,6 +39,8 @@ async function mcpRequest(endpoint: string, payload: any) {
 async function chat(text: string) {
     console.log(`💬 Agent says: ${text}`);
     return mcpRequest('/api/mcp/messages/send', {
+        // A company-wide token must name the agent that sends (400 otherwise).
+        agentId: AGENT_ID,
         text,
         chat_id: 'default' // Our system puts it in the company stream
     });

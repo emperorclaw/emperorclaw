@@ -126,7 +126,7 @@ export function ViewRow({ view, now, showScope = true, visibility }: { view: Vie
     const scopeText = useScopeText();
     const updated = view.dataUpdatedAt && view.dataUpdatedAt > view.updatedAt ? view.dataUpdatedAt : view.updatedAt;
     const metadata = view.access === "metadata";
-    const maintainer = view.createdBy.type === "agent" ? view.createdBy.name : null;
+    const maintainer = view.maintainer?.name ?? null;
     const overdue = !metadata && viewStaleness({ lastAt: view.dataUpdatedAt, since: view.createdAt, refreshEveryMinutes: view.refreshEveryMinutes }, now).overdue;
     return (
         <li className="relative flex flex-col gap-1.5 px-4 py-3 transition-colors focus-within:bg-accent/60 hover:bg-accent/60 sm:flex-row sm:items-center sm:gap-4">

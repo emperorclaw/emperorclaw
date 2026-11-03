@@ -1,18 +1,14 @@
 import { redirect } from "next/navigation";
 import { getCompanyId, getUserId } from "@/lib/auth";
 import { db } from "@/db";
-import { agents, companyMembers, messageThreads, threadMessages, threadParticipants, users } from "@/db/schema";
-import { and, count, eq, gt, inArray, isNull } from "drizzle-orm";
+import { companyMembers, users } from "@/db/schema";
+import { and, eq, isNull } from "drizzle-orm";
 import { getTranslations } from "next-intl/server";
 import { MessagingHub } from "@/components/messaging-hub";
-import { ensureTeamThread, getDirectChatMode, getThreadMessages } from "@/lib/control-plane";
-import { listGroupsForUser } from "@/lib/groups";
-import { isMissingSchemaError } from "@/lib/schema-compat";
-import { userMayUseThread } from "@/lib/direct-chat-mode";
-import { loadMemberScope, memberAgentCondition } from "@/lib/member-scope";
-import { agentsNotUsableBy, usableAgentCondition } from "@/lib/agent-access-server";
+import { ensureTeamThread, getThreadMessages } from "@/lib/control-plane";
+import { loadMemberScope } from "@/lib/member-scope";
 import { requireRole } from "@/lib/roles";
-import { memberMaySeeGroup } from "@/lib/group-route";
+import { loadMessagesListing, unreadCountsForUser } from "@/lib/messages-listing";
 
 export const dynamic = "force-dynamic";
 
@@ -36,79 +32,22 @@ export default async function MessagesPage() {
     if (!companyId) redirect("/login");
     if (!userId) redirect("/login");
 
-    const directChatMode = await getDirectChatMode(companyId);
+    // Created (and every member joined to it) before the listing reads it.
+    const teamThread = await ensureTeamThread(companyId);
     // A restricted member only sees (and chats with) the agents in their scope.
     const memberScope = await loadMemberScope(userId, companyId);
-    // Nor the DMs of an agent limited to other people (0.20), admins included.
     const guard = await requireRole("viewer")().catch(() => null);
-    const { hidden } = guard ? await agentsNotUsableBy({ companyId, userId, role: guard.role, scope: memberScope }) : { hidden: new Set<string>() };
-    const allAgents = await db.select().from(agents).where(
-        and(eq(agents.companyId, companyId), isNull(agents.deletedAt), memberAgentCondition(memberScope, agents.id), usableAgentCondition(hidden, agents.id))
-    );
-
-    const directThreads = await db.select().from(messageThreads).where(
-        and(
-            eq(messageThreads.companyId, companyId),
-            eq(messageThreads.type, "direct"),
-            isNull(messageThreads.archivedAt)
-        )
-    );
-
-    const directThreadIds = directThreads.map((thread) => thread.id);
-    const directThreadIdSet = new Set(directThreadIds);
-    const directParticipants = directThreadIds.length > 0
-        ? await db.select().from(threadParticipants).where(
-            and(
-                eq(threadParticipants.companyId, companyId),
-                inArray(threadParticipants.threadId, directThreadIds)
-            )
-        )
-        : [];
-    const participantMap = new Map<string, typeof directParticipants>();
-    for (const participant of directParticipants) {
-        if (!directThreadIdSet.has(participant.threadId)) continue;
-        const existing = participantMap.get(participant.threadId) || [];
-        existing.push(participant);
-        participantMap.set(participant.threadId, existing);
-    }
+    // The same selection the nav badge counts (lib/messages-listing.ts).
+    const listing = await loadMessagesListing({ companyId, userId, role: guard?.role ?? null, scope: memberScope });
+    const allAgents = listing.agents;
+    // Work logs too: they are not listed, but open from the agent's panel.
+    const unreadBy = await unreadCountsForUser(companyId, userId, [...listing.direct.map((d) => d.thread.id), teamThread.id]);
 
     const directThreadByAgentId = new Map<string, DirectThreadSummary>();
     // Besides the one conversation per agent in the main list: in private mode
     // the agent's Operations thread; in shared mode your earlier private ones.
     const secondaryThreads: DirectThreadSummary[] = [];
-    const userThreads = directThreads.filter((thread) => {
-        const participants = participantMap.get(thread.id) || [];
-        return participants.some((participant) =>
-            participant.participantType === "human" && participant.participantRef === userId
-        );
-    });
-
-    for (const thread of userThreads) {
-        const participants = participantMap.get(thread.id) || [];
-        const agentParticipant = participants.find((participant) =>
-            participant.participantType === "agent" && participant.participantId
-        );
-        const humanParticipant = participants.find((participant) =>
-            participant.participantType === "human" && participant.participantRef === userId
-        );
-
-        if (!agentParticipant?.participantId) continue;
-
-        const agent = allAgents.find((row) => row.id === agentParticipant.participantId);
-        if (!agent) continue;
-
-        const [latestMessage] = await getThreadMessages(companyId, thread.id, 1);
-        const unreadConditions = [
-            eq(threadMessages.companyId, companyId),
-            eq(threadMessages.threadId, thread.id),
-            eq(threadMessages.senderType, "agent"),
-        ];
-        if (humanParticipant?.lastReadAt) {
-            unreadConditions.push(gt(threadMessages.createdAt, humanParticipant.lastReadAt));
-        }
-        const [unreadRow] = await db.select({ value: count() }).from(threadMessages).where(and(...unreadConditions));
-        const unreadCount = unreadRow?.value || 0;
-
+    for (const { agent, thread, kind, latest } of listing.direct) {
         const summary: DirectThreadSummary = {
             agentId: agent.id,
             threadId: thread.id,
@@ -116,25 +55,12 @@ export default async function MessagesPage() {
             agentRole: agent.role,
             avatarUrl: agent.avatarUrl,
             status: agent.status,
-            unreadCount,
-            lastMessageText: latestMessage?.text || null,
-            lastMessageAt: latestMessage ? new Date(latestMessage.createdAt).toISOString() : null,
+            unreadCount: unreadBy.get(thread.id) ?? 0,
+            lastMessageText: latest?.text || null,
+            lastMessageAt: latest ? latest.createdAt.toISOString() : null,
         };
-        // Someone else's private thread is never listed, even with a stray row.
-        if (!userMayUseThread(thread, userId)) continue;
-        const primary = directChatMode === "private" ? thread.ownerUserId === userId : !thread.isPrivate && !thread.ownerUserId;
-        if (!primary) {
-            secondaryThreads.push({ ...summary, kind: thread.ownerUserId ? "private" : "operations" });
-            continue;
-        }
-
-        const current = directThreadByAgentId.get(agent.id);
-        const latestTime = latestMessage ? new Date(latestMessage.createdAt).getTime() : 0;
-        const currentTime = current?.lastMessageAt ? new Date(current.lastMessageAt).getTime() : 0;
-
-        if (!current || latestTime >= currentTime) {
-            directThreadByAgentId.set(agent.id, summary);
-        }
+        if (kind === "primary") directThreadByAgentId.set(agent.id, summary);
+        else secondaryThreads.push({ ...summary, kind });
     }
 
     const directThreadSummaries: DirectThreadSummary[] = allAgents
@@ -151,38 +77,12 @@ export default async function MessagesPage() {
         })
         .sort((a, b) => a.agentName.localeCompare(b.agentName));
 
-    const teamThread = await ensureTeamThread(companyId);
     const teamMessageWindow = await getThreadMessages(companyId, teamThread.id, 26);
     const initialTeamHasMore = teamMessageWindow.length > 25;
     const teamMessages = initialTeamHasMore ? teamMessageWindow.slice(1) : teamMessageWindow;
+    const teamUnreadCount = unreadBy.get(teamThread.id) ?? 0;
 
-    const [teamHumanParticipant] = await db.select().from(threadParticipants).where(
-        and(
-            eq(threadParticipants.companyId, companyId),
-            eq(threadParticipants.threadId, teamThread.id),
-            eq(threadParticipants.participantType, "human"),
-            eq(threadParticipants.participantRef, userId),
-        )
-    );
-    const teamUnreadConditions = [
-        eq(threadMessages.companyId, companyId),
-        eq(threadMessages.threadId, teamThread.id),
-        eq(threadMessages.senderType, "agent"),
-    ];
-    if (teamHumanParticipant?.lastReadAt) {
-        teamUnreadConditions.push(gt(threadMessages.createdAt, teamHumanParticipant.lastReadAt));
-    }
-    const [teamUnreadRow] = await db.select({ value: count() }).from(threadMessages).where(and(...teamUnreadConditions));
-    const teamUnreadCount = teamUnreadRow?.value || 0;
-
-    // Group chats. A server whose database hasn't run the group migration yet
-    // still renders Messages; it just shows no groups.
-    let groups: Awaited<ReturnType<typeof listGroupsForUser>> = [];
-    try {
-        groups = (await listGroupsForUser(companyId, userId)).filter((g) => memberMaySeeGroup(memberScope, g));
-    } catch (error) {
-        if (!isMissingSchemaError(error)) throw error;
-    }
+    const groups = listing.groups;
     const humans = (await db.select({ id: users.id, displayName: users.displayName, email: users.email })
         .from(companyMembers)
         .innerJoin(users, eq(users.id, companyMembers.userId))

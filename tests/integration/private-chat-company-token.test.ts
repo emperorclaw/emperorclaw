@@ -121,12 +121,15 @@ maybe("company token: the bridge reply flow for X lands in P's private thread; a
     for (const body of [
         { thread_id: s.thread.id, agentId: s.agentY.id, text: "Y intrudes" },
         { agentId: s.agentY.id, text: "Y intrudes via reply", replyToMessageId: s.message.id },
-        { thread_id: s.thread.id, text: "nobody named" },
         { thread_id: s.thread.id, agentId: s.agentX.id, from_user_id: s.agentY.id, text: "X named, Y as sender" },
     ]) {
         const res = await send.POST(makeRequest("http://localhost/api/mcp/messages/send", { method: "POST", headers: auth(s.companyToken), body }));
         assert.equal(res.status, 404, `refused: ${JSON.stringify(body)}`);
     }
+    // Naming nobody is refused before the thread is looked at: a company-wide token must say which agent sends.
+    const anonymous = await send.POST(makeRequest("http://localhost/api/mcp/messages/send", { method: "POST", headers: auth(s.companyToken), body: { thread_id: s.thread.id, text: "nobody named" } }));
+    assert.equal(anonymous.status, 400);
+    assert.match(((await anonymous.json()) as { error: string }).error, /^agentId required: a company-wide token must say which agent is acting/);
 
     // The thread-scoped post route follows the same rule.
     assert.equal((await threadMessagesRoute.POST(makeRequest(threadUrl, { method: "POST", headers: auth(s.companyToken), body: { text: "X via thread route", senderId: s.agentX.id } }), params)).status, 201);

@@ -1,13 +1,15 @@
 /**
  * Assembles the lean per-session context a bridge gets: the kernel, the
- * knowledge index, the always-block, and the roster, plus a content hash so a
- * bridge can skip re-sending unchanged context (ETag).
+ * knowledge index, the always-block, the roster and the agent's org-chart
+ * line, plus a content hash so a bridge can skip re-sending unchanged
+ * context (ETag).
  */
 import { createHash } from "node:crypto";
 import { loadAgentScopeContext } from "@/lib/agent-scope";
 import { listAgentsForCompany } from "@/lib/agents-crud";
 import { BRIDGE_KERNEL } from "@/lib/emperor-manual";
 import { normalizeMention } from "@/lib/message-routing";
+import { organizationSummaryForAgent } from "@/lib/organization";
 import { buildKnowledgeIndex } from "@/lib/resources";
 
 export const LEAN_CONTEXT_VERSION = 1;
@@ -72,6 +74,8 @@ export type LeanContext = {
   knowledgeIndex: string;
   alwaysBlock: string;
   roster: string;
+  /** One line: "Org chart: you report to X (Team); your direct reports: …", or "". */
+  organization: string;
   alwaysOverBudget: boolean;
   alwaysUsedChars: number;
   hash: string;
@@ -82,10 +86,12 @@ export async function buildLeanContext(input: {
   companyId: string;
   agentId?: string | null;
 }): Promise<LeanContext> {
-  const [roster, knowledge] = await Promise.all([
+  const [roster, knowledge, organization] = await Promise.all([
     // The prompt roster lists only the agents this agent may work with.
     loadAgentScopeContext(input.companyId, input.agentId ?? null).then((scope) => buildAgentRoster(input.companyId, scope.allowedAgentIds)),
     buildKnowledgeIndex({ companyId: input.companyId, agentId: input.agentId ?? null }),
+    // The agent's place on the chart; the whole tree stays one tool call away.
+    input.agentId ? organizationSummaryForAgent(input.companyId, input.agentId) : Promise.resolve(""),
   ]);
 
   const payload = {
@@ -94,6 +100,7 @@ export async function buildLeanContext(input: {
     knowledgeIndex: knowledge.knowledgeIndex,
     alwaysBlock: knowledge.alwaysBlock,
     roster: roster.text,
+    organization,
   };
   const hash = createHash("sha256")
     .update(JSON.stringify(payload))

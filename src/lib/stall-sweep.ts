@@ -1,16 +1,18 @@
-import { and, asc, eq, gte, inArray, isNull, lt, sql } from "drizzle-orm";
+import { and, eq, gte, inArray, isNull, lt, sql } from "drizzle-orm";
 import { db } from "@/db";
 import { agents, companies, projects, taskEvents, tasks, threadMessages } from "@/db/schema";
 import { appendThreadMessage, ensureDirectThread } from "@/lib/control-plane";
 import { companyAdminIds, notify } from "@/lib/notifications";
 import { SLA_TRACKED_TASK_STATES } from "@/lib/task-state";
 import { sanitizePromptText } from "@/lib/task-wake";
+import { isOrganizationConfigured, loadOrganizationCached } from "@/lib/organization";
+import { stallChartManager, stallEscalationTarget, taskCreatorAgentId } from "@/lib/organization-routing";
 
 /**
  * Stall sweep: tasks assigned to an agent that have not moved (no note/update)
  * for a while get one targeted nudge to the owner; if still stale after another
- * window, the project lead agent (or the task creator) is told and a human
- * notification is raised. Deduped through task-events timestamps so it never
+ * window, the owner's chart manager (else the project lead agent, else the
+ * task creator) is told and a human notification is raised. Deduped through task-events timestamps so it never
  * spams: nudge once, escalate once, then stay quiet until the task updates.
  *
  * A sweep can find many stale tasks at once (e.g. the first run after deploy
@@ -30,6 +32,8 @@ export const DEFAULT_STALL_SWEEP_HOURS = 4;
 export const STALL_NUDGE_EVENT = "stall_nudge";
 export const STALL_ESCALATION_EVENT = "stall_escalation";
 export const DEFAULT_STALL_MAX_AGE_DAYS = 7;
+/** Chart-manager lookups per sweep (each costs a few queries); the rest escalate to the project lead. */
+export const MAX_CHART_LOOKUPS_PER_SWEEP = 50;
 /** At most this many task lines are listed in a coalesced message. */
 export const MAX_STALL_TASK_LINES = 8;
 
@@ -246,6 +250,9 @@ async function runLockedStallSweep(now: Date): Promise<number> {
     const escalateItems: StallGroupItem[] = [];
     const escalateEvents: Array<{ companyId: string; taskId: string }> = [];
     const escalatedByCompany = new Map<string, number>();
+    // One chart load per company per sweep (null: no chart).
+    const organizations = new Map<string, Awaited<ReturnType<typeof loadOrganizationCached>> | null>();
+    let chartLookups = 0;
 
     for (const task of rows) {
         if (!task.assignedAgentId) continue;
@@ -270,17 +277,29 @@ async function runLockedStallSweep(now: Date): Promise<number> {
 
         if (coolingCompanies.has(task.companyId)) continue;
 
-        // Escalate: tell the project lead agent, else the task's creator agent,
-        // and always raise a human notification.
+        // Escalate up the chart: the assignee's chart manager for the task's
+        // team (an agent), else the project lead agent, else the task's creator
+        // agent; a human notification is always raised.
         const [lead] = await db.select({ leadAgentId: projects.leadAgentId }).from(projects)
             .where(and(eq(projects.id, task.projectId), eq(projects.companyId, task.companyId), isNull(projects.deletedAt))).limit(1);
-        let escalationTarget: string | null = lead?.leadAgentId ?? null;
-        if (!escalationTarget) {
-            const [creator] = await db.select({ actorId: taskEvents.actorId, actorType: taskEvents.actorType }).from(taskEvents)
-                .where(and(eq(taskEvents.companyId, task.companyId), eq(taskEvents.taskId, task.id), eq(taskEvents.eventType, "task_generated"), eq(taskEvents.actorType, "agent")))
-                .orderBy(asc(taskEvents.createdAt)).limit(1);
-            escalationTarget = creator?.actorId ?? null;
+        // The creator is only looked up when the chart or the fallback needs it.
+        let creator: Promise<string | null> | null = null;
+        const creatorAgentId = () => (creator ??= taskCreatorAgentId(task.companyId, task.id));
+        // Bounded: past MAX_CHART_LOOKUPS_PER_SWEEP the sweep falls back to the
+        // project lead / creator. A manager who may not see the project is skipped.
+        let manager: string | null = null;
+        if (chartLookups < MAX_CHART_LOOKUPS_PER_SWEEP) {
+            chartLookups += 1;
+            try {
+                if (!organizations.has(task.companyId)) organizations.set(task.companyId, await isOrganizationConfigured(task.companyId) ? await loadOrganizationCached(task.companyId) : null);
+                const org = organizations.get(task.companyId);
+                if (org) manager = await stallChartManager(task.companyId, task, task.assignedAgentId, { org, creatorAgentId: await creatorAgentId() });
+            } catch (error) {
+                console.warn("[stall-sweep] org chart lookup failed:", error instanceof Error ? error.message : error);
+            }
         }
+        const escalationTarget = stallEscalationTarget([manager, lead?.leadAgentId], task.assignedAgentId)
+            ?? stallEscalationTarget([await creatorAgentId()], task.assignedAgentId);
         if (escalationTarget && coolingAgents.has(`${task.companyId}\u0000${escalationTarget}`)) continue;
         escalateEvents.push({ companyId: task.companyId, taskId: task.id });
         escalatedByCompany.set(task.companyId, (escalatedByCompany.get(task.companyId) ?? 0) + 1);

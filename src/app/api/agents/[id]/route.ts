@@ -18,6 +18,7 @@ import { and, desc, eq, inArray, isNull } from "drizzle-orm";
 import { isMissingSchemaError } from "@/lib/schema-compat";
 import { userMayUseThread } from "@/lib/direct-chat-mode";
 import { getDirectChatMode } from "@/lib/control-plane";
+import { unreadCountsForUser } from "@/lib/messages-listing";
 import { resolveAgentModelConfiguration } from "@/lib/agent-model-config";
 import { decryptSecretPayload, encryptSecretPayload } from "@/lib/secrets";
 import { CUSTOM_LLM_PROVIDER, checkLlmModelName, llmEndpointHost, llmSecretPayload, normalizeLlmBaseUrl, parseLlmSecret, type LlmSecret } from "@/lib/llm-endpoint";
@@ -376,6 +377,11 @@ export async function GET(
         if (!isMissingSchemaError(error)) throw error;
     }
 
+    // This viewer's unread agent messages per thread: the Work log shows its own (it is not in the Messages badge).
+    const unreadByThread = threads.length > 0
+        ? await unreadCountsForUser(companyId, viewerId, threads.map((thread) => thread.id)).catch(() => new Map<string, number>())
+        : new Map<string, number>();
+
     const latestMessageByThread: Record<string, typeof threadMessages.$inferSelect> = {};
     for (const msg of lastMessages) {
         if (!latestMessageByThread[msg.threadId]) latestMessageByThread[msg.threadId] = msg;
@@ -424,6 +430,7 @@ export async function GET(
         threads: threads.map(t => ({
             ...t,
             lastMessage: latestMessageByThread[t.id]?.text ?? null,
+            unreadCount: unreadByThread.get(t.id) ?? 0,
         })),
     });
 }

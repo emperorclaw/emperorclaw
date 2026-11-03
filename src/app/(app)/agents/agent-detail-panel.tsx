@@ -139,6 +139,8 @@ type AgentDetailData = {
         ownerUserId?: string | null;
         createdAt: string;
         lastMessage: string | null;
+        /** Agent messages this viewer has not read yet. */
+        unreadCount?: number;
     }>;
 };
 
@@ -419,6 +421,12 @@ export function AgentDetailPanel({ agentId, agentName, runtime = null }: {
                         <Link href={directThreadLink(workLogThread.id, agent.id)} title={t("openWorkLog", { title: workLogThreadTitle(agent.name) })}
                             className="inline-flex min-h-11 items-center gap-1.5 rounded-xl border border-zinc-800 px-3 text-xs text-zinc-300 transition-colors hover:border-cyan-400/40 hover:bg-cyan-400/10 hover:text-cyan-100">
                             {t("workLog")}
+                            {(workLogThread.unreadCount ?? 0) > 0 && (
+                                <span className="min-w-5 rounded-full bg-cyan-400 px-1.5 py-0.5 text-center text-[10px] font-bold text-cyan-950">
+                                    <span aria-hidden="true">{workLogThread.unreadCount}</span>
+                                    <span className="sr-only">{t("workLogUnread", { count: workLogThread.unreadCount ?? 0 })}</span>
+                                </span>
+                            )}
                         </Link>
                     )}
                     {timelineOn && (

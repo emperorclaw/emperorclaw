@@ -5,6 +5,7 @@ import { writeAgentMemory } from "@/lib/control-plane";
 import { resolveAgentModelConfiguration } from "@/lib/agent-model-config";
 import { recordAgentChange, recordAudit, SYSTEM_ACTOR, type AuditActor } from "@/lib/audit";
 import { broadcastMcpEvent } from "@/lib/pubsub";
+import { scheduleOrganizationNoteRefresh } from "@/lib/organization-note-schedule";
 import { legacyAvatarToAppearance, normalizeAppearance, resolveAvatarPhoto } from "@/lib/character/model";
 import { checkLlmModelName } from "@/lib/llm-endpoint";
 
@@ -222,5 +223,7 @@ export async function updateAgentForCompany(input: UpdateAgentInput) {
 
     await recordAgentChange(input.companyId, input.actor ?? SYSTEM_ACTOR, existing, updated);
     await broadcastMcpEvent(input.companyId, { type: "agent_updated", agent: updated });
+    // The org chart note names agents with their roles.
+    if (input.name !== undefined || input.role !== undefined) scheduleOrganizationNoteRefresh(input.companyId);
     return redactAgent(updated);
 }

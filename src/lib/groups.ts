@@ -2,6 +2,7 @@ import { and, asc, count, desc, eq, inArray, isNull, ne, sql } from "drizzle-orm
 import { db } from "@/db";
 import { agents, companies, companyMembers, messageThreads, threadMessages, threadParticipants, users } from "@/db/schema";
 import { removeOrganizationBranch } from "@/lib/organization-tree";
+import { scheduleOrganizationNoteRefresh } from "@/lib/organization-note-schedule";
 import { resolveAgentId } from "@/lib/mcp";
 import { coordinationRole, isCoordinatorRole, teamCoordinator, type CoordinatorRef } from "@/lib/team-coordination";
 
@@ -344,6 +345,7 @@ export async function createGroup(companyId: string, actor: GroupActor, input: {
         if (coordinator) await applyCoordinator(tx, companyId, thread.id, coordinator);
         return thread.id;
     });
+    scheduleOrganizationNoteRefresh(companyId);
     return getGroup(companyId, threadId);
 }
 
@@ -360,6 +362,7 @@ export async function updateGroup(companyId: string, groupId: string, input: { t
         if (coordinator !== undefined) await applyCoordinator(tx, companyId, thread.id, coordinator);
         if (Object.keys(patch).length) await tx.update(messageThreads).set(patch).where(eq(messageThreads.id, thread.id));
     });
+    scheduleOrganizationNoteRefresh(companyId);
     return getGroup(companyId, thread.id);
 }
 
@@ -373,6 +376,7 @@ export async function addGroupMembers(companyId: string, groupId: string, input:
         throw new GroupError(`Groups are limited to ${MAX_GROUP_MEMBERS} members`, 400);
     }
     await insertMembers(companyId, thread.id, agentIds, userIds);
+    scheduleOrganizationNoteRefresh(companyId);
     return getGroup(companyId, thread.id);
 }
 
@@ -397,6 +401,7 @@ export async function removeGroupMember(companyId: string, groupId: string, memb
     } else {
         throw new GroupError('kind must be "agent" or "human"', 400);
     }
+    scheduleOrganizationNoteRefresh(companyId);
     return getGroup(companyId, thread.id);
 }
 
@@ -413,6 +418,7 @@ export async function archiveGroup(companyId: string, groupId: string): Promise<
         }
         await tx.update(messageThreads).set({ archivedAt: new Date() }).where(eq(messageThreads.id, thread.id));
     });
+    scheduleOrganizationNoteRefresh(companyId);
 }
 
 export async function isAgentGroupMember(companyId: string, groupId: string, agentId: string): Promise<boolean> {

@@ -1834,7 +1834,21 @@
       "makePrivate": "设为私有",
       "choosePeople": "选择人员",
       "archiveTitle": "归档此视图？",
-      "deleteTitle": "删除此视图？"
+      "deleteTitle": "删除此视图？",
+      "maintainedBy": "由 {name} 维护",
+      "noMaintainer": "无维护者",
+      "changeMaintainer": "{current}。选择维护此视图的智能体",
+      "chooseMaintainer": "选择维护者",
+      "maintainerTitle": "谁维护此视图",
+      "maintainerDescription": "维护智能体负责让此视图的数值保持最新。即使视图是私有的，它也始终可以打开和修改此视图。仅列出范围涵盖此视图的智能体。",
+      "maintainerAgent": "智能体",
+      "maintainerSaved": "维护者已更新",
+      "maintainerCleared": "此视图现在没有维护智能体",
+      "maintainerFailed": "无法更改此视图的维护者",
+      "maintainerAgentsFailed": "无法加载智能体",
+      "noAgentsCoverScope": "没有智能体的范围涵盖此视图。",
+      "narrowKeepsMaintainer": "{name} 维护此视图并保留访问权限，因此仍可刷新它。",
+      "narrowNoMaintainer": "没有智能体维护此视图，因此此后没有智能体能够刷新它。"
     }
   },
   "projects": {
@@ -2770,11 +2784,12 @@
         "includes": "包含 {count, plural, other {# 个智能体}}、一名 AI 团队负责人，以及一个与你共享的聊天。",
         "name": "团队名称",
         "leader": "团队负责人",
-        "reportingHint": "设置完成后，请在组织中设置汇报关系。",
+        "reportingHint": "设置会把此团队放到组织结构图中，位于公司负责人之下。你可以随时在组织中调整汇报关系。",
         "chatReady": "{name} · 团队聊天已就绪",
         "openChat": "打开团队聊天",
-        "reviewReporting": "查看汇报关系",
-        "orgChartHint": "在为此团队选择汇报对象时，将其加入组织结构图。现有关系将保留。",
+        "reviewReporting": "查看组织结构图",
+        "orgChartHint": "此团队已在组织结构图中，其智能体知道向谁汇报。现有关系将保留。",
+        "orgChartManual": "此团队尚未加入组织结构图。请在组织中添加，让其智能体知道向谁汇报。",
         "creatingChat": "正在创建团队聊天……",
         "waitingProfiles": "正在等待所有智能体档案。",
         "retryChat": "重试团队聊天"
@@ -2916,6 +2931,7 @@
       "runsOnStatus": "运行于 {host}（{status}）",
       "openWorkLog": "打开 {title}",
       "workLog": "工作日志",
+      "workLogUnread": "{count, plural, other {# 条未读消息}}",
       "onTimeline": "在时间线上查看此智能体",
       "recreateTitle": "重新创建运行时 —— 停止、移除并重新置备此智能体的 Hermes 容器",
       "recreateConfirmTitle": "重新创建 {name} 的运行时？",
@@ -3160,6 +3176,7 @@
         "visibility_changed": "<who>{actor}</who> 更改了可查看 <target>视图 {label}</target> 的人员 {detail}",
         "owner_transferred": "<who>{actor}</who> 转移了 <target>视图 {label}</target> {detail}",
         "owner_claimed": "<who>{actor}</who> 接管了 <target>视图 {label}</target> {detail}",
+        "maintainer_changed": "<who>{actor}</who> 更改了 <target>视图 {label}</target> 的维护者 {detail}",
         "deleted": "<who>{actor}</who> 删除了 <target>视图 {label}</target> {detail}",
         "read_unbound_token": "<who>{actor}</who> 使用全公司令牌打开了 <target>视图 {label}</target> {detail}"
       },
@@ -4308,6 +4325,8 @@
     "subtitle": "团队与直接对话",
     "filterPlaceholder": "筛选智能体……",
     "filterLabel": "筛选对话",
+    "markAllRead": "全部标为已读",
+    "markAllReadFailed": "无法将对话标为已读，请重试。",
     "everyone": "所有人",
     "groups": "群组",
     "newGroup": "新建群组",
@@ -4544,6 +4563,7 @@
       "createAgentsFailed": "无法创建你的智能体。",
       "noResult": "设置未返回此资料的结果。",
       "reportingRetry": "团队聊天已就绪，但报表设置需要重试。请在智能体 → 组织中检查。",
+      "reportingNotPlaced": "部分团队无法自动加入组织结构图。请在智能体 → 组织中添加。",
       "restartFailed": "无法重启此运行时",
       "doc": {
         "handingOver": "正在移交任务……",
@@ -4559,6 +4579,7 @@
         "company": "你的公司",
         "model": "AI 模型",
         "team": "你的团队",
+        "work": "工作方式",
         "launch": "启动"
       },
       "setUpLater": "稍后设置",
@@ -4637,6 +4658,26 @@
         "groupMembers": "{names}、你",
         "smallMachine": "每个智能体都在自己的运行时中运行。在小型机器（如树莓派、笔记本）上，先从 {count} 个或更少开始，之后再添加。",
         "noBoss": "没有老板时，请自行向每位专家分配工作。"
+      },
+      "work": {
+        "title": "你的工作方式",
+        "intro": "可选。以下内容来自你当前的设置；按需修改，或跳过并保留。",
+        "loading": "正在加载你的设置…",
+        "profileTitle": "你的姓名和职务",
+        "profileHint": "你的姓名和职务能帮助智能体知道该联系谁。填写姓名后，你会位于组织结构图的顶端，在负责人智能体之上。",
+        "reviewTitle": "每日回顾",
+        "reviewHint": "每天在这个时间，每个智能体都会收到一份未完成任务的简短回顾。",
+        "reviewTime": "时间",
+        "timeZone": "时区：{zone}",
+        "notificationsTitle": "通知",
+        "notificationsHint": "所有内容都会出现在应用内的通知中。另外通过邮件通知我：",
+        "emailApprovals": "等待我处理的审批和决定",
+        "emailBlocked": "受阻、停滞或失败的工作",
+        "emailOff": "此服务器尚未配置邮件，审批和受阻工作会显示在应用内的通知中。",
+        "moreInSettings": "更多设置",
+        "skip": "跳过",
+        "skipHint": "跳过将保留这些设置不变。你之后可以在设置中修改全部内容。",
+        "saveFailed": "部分设置未能保存。你可以在设置中修改。"
       },
       "launch": {
         "ready": "你的团队已就绪",
@@ -4756,7 +4797,7 @@
         },
         "agents": {
           "title": "智能体——你的 AI 团队",
-          "body": "注册并管理你已连接的 OpenClaw 工作者。每个智能体都有资料、能力和运行时配置。"
+          "body": "招聘并管理你的 AI 智能体。每个智能体都有资料、角色、在组织架构中的位置，以及运行它的运行时。"
         },
         "customers": {
           "title": "客户——客户上下文",

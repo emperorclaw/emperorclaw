@@ -8,7 +8,7 @@ import { resolveAgentId } from "@/lib/mcp";
 import { BOUND_AGENT_MISMATCH, assertMcpMayAssign, mcpAccessForAgent, mcpMayUseProject, mcpMayUseTask } from "@/lib/mcp-access";
 import { mcpActor } from "@/lib/audit";
 
-export function registerTaskTools(server: McpServer, companyId: string, callerAgentId?: string | null, tokenId: string | null = null) {
+export function registerTaskTools(server: McpServer, companyId: string, callerAgentId?: string | null, tokenId: string | null = null, operatorUserId: string | null = null) {
     // Every task tool runs under the bound agent's data scope (lib/mcp-access.ts).
     const access = () => mcpAccessForAgent(companyId, callerAgentId ?? null);
     const requireTask = async (taskId: string) => {
@@ -138,7 +138,7 @@ export function registerTaskTools(server: McpServer, companyId: string, callerAg
         try {
             await requireTask(taskId);
             await assertMcpMayAssign(companyId, await access(), { assignee, assignedAgentId });
-            const task = await updateTaskForCompany({ companyId, taskId, title, goal, priority, assignee, assignedAgentId, state, blockedReason, inputJson, actorType: "agent", actorId: callerAgentId ?? null, actor: mcpActor(callerAgentId, tokenId) });
+            const task = await updateTaskForCompany({ companyId, taskId, title, goal, priority, assignee, assignedAgentId, state, blockedReason, inputJson, actorType: "agent", actorId: callerAgentId ?? null, actor: mcpActor(callerAgentId, tokenId, operatorUserId) });
             return jsonResult({ message: "Task updated", task });
         } catch (e) {
             return errorResult(e);

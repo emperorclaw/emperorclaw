@@ -1,41 +1,21 @@
 import { NextResponse } from "next/server";
-import { db } from "@/db";
-import { messageThreads, threadMessages, threadParticipants } from "@/db/schema";
-import { and, count, eq, gt, isNull, or } from "drizzle-orm";
 import { companyRouteAccess } from "@/lib/company-access";
+import { loadMessagesListing, unreadCountsForUser } from "@/lib/messages-listing";
 
-// Total unread agent messages across every thread (direct + shared team
-// thread) the current human is a participant in. Used for the sidebar badge.
+// Total unread agent messages across the conversations the Messages page lists
+// for the current human (lib/messages-listing.ts). Used for the sidebar badge.
+// An agent's Work log is not listed, so it is not counted here: the agent's
+// panel shows its own unread count.
 export async function GET() {
     const access = await companyRouteAccess("viewer");
     if (access.response) return access.response;
-    const companyId = access.ctx.companyId;
-    const userId = access.ctx.userId;
+    const { companyId, userId, role, scope } = access.ctx;
 
     try {
-        const [row] = await db
-            .select({ value: count() })
-            .from(threadMessages)
-            .innerJoin(threadParticipants, and(
-                eq(threadParticipants.threadId, threadMessages.threadId),
-                eq(threadParticipants.companyId, threadMessages.companyId),
-                eq(threadParticipants.participantType, "human"),
-                eq(threadParticipants.participantRef, userId),
-            ))
-            .innerJoin(messageThreads, and(
-                eq(messageThreads.id, threadMessages.threadId),
-                isNull(messageThreads.archivedAt),
-            ))
-            .where(and(
-                eq(threadMessages.companyId, companyId),
-                eq(threadMessages.senderType, "agent"),
-                or(
-                    isNull(threadParticipants.lastReadAt),
-                    gt(threadMessages.createdAt, threadParticipants.lastReadAt),
-                ),
-            ));
-
-        return NextResponse.json({ count: row?.value || 0 });
+        const { listedThreadIds } = await loadMessagesListing({ companyId, userId, role, scope });
+        let total = 0;
+        for (const value of (await unreadCountsForUser(companyId, userId, listedThreadIds)).values()) total += value;
+        return NextResponse.json({ count: total });
     } catch (error) {
         console.error("[/api/chat/unread-count] GET error:", error);
         return NextResponse.json({ error: "Internal Server Error" }, { status: 500 });

@@ -1,11 +1,16 @@
-import { and, eq, isNull } from "drizzle-orm";
+import { and, eq, isNull, sql } from "drizzle-orm";
 import { db } from "@/db";
 import { agents, companies, companyMembers, users } from "@/db/schema";
-import { GroupError, listGroups, type GroupSummary } from "@/lib/groups";
-import { validateOrganizationTree, type OrganizationNode } from "@/lib/organization-tree";
+import { GroupError, listGroups } from "@/lib/groups";
+import { coerceStoredOrganization, validateOrganizationTree, type OrganizationNode, type StoredOrganization } from "@/lib/organization-tree";
+import { organizationBriefing, type OrgName } from "@/lib/organization-briefing";
+import { cachedOrganization, invalidateOrganizationCache } from "@/lib/organization-cache";
+import { addTeamToChart, initialChart, type ChartTeam } from "@/lib/organization-setup";
+import { mcpAccessForAgent } from "@/lib/mcp-access";
 import type { CoordinatorRef } from "@/lib/team-coordination";
 
-export type OrganizationConfig = { leader: CoordinatorRef | null; teamIds: string[]; nodes?: OrganizationNode[] };
+/** flatTeamIds: teams setup placed without a team node (members directly under the leader). */
+export type OrganizationConfig = StoredOrganization;
 export function parseOrganization(input: unknown): OrganizationConfig {
     if (!input || typeof input !== "object" || Array.isArray(input)) throw new GroupError("Invalid organization", 400);
     const value = input as Record<string, unknown>;
@@ -24,7 +29,7 @@ export async function loadOrganization(companyId: string) {
         listGroups(companyId, { includePairThreads: false }),
     ]);
     if (!company) throw new GroupError("Company not found", 404);
-    const stored: OrganizationConfig = company.config ?? { leader: null, teamIds: [] };
+    const stored: OrganizationConfig = coerceStoredOrganization(company.config) ?? { leader: null, teamIds: [] };
     const config = { ...stored, teamIds: stored.teamIds.filter(id => groups.some(group => group.id === id)) };
     const leader = config.leader ? (config.leader.kind === "agent" ? roster : people).find(member => member.id === config.leader!.id) : null;
     if (config.leader && !leader) config.leader = null;
@@ -53,25 +58,111 @@ export async function saveOrganization(companyId: string, input: unknown, initia
     }
     const changed = await db.update(companies).set({ organizationJson: config }).where(initialize ? and(eq(companies.id, companyId), isNull(companies.organizationJson)) : eq(companies.id, companyId)).returning({id: companies.id});
     if (!changed.length) throw new GroupError("Organization is already configured", 409);
+    invalidateOrganizationCache(companyId);
     return config;
 }
-/** A reporting relationship guides coordination; it never grants permission. */
-export function organizationBriefing(leader: { kind: string; id: string; name: string } | null, teams: GroupSummary[], agentId: string, nodes: OrganizationNode[] = [], names: {id: string; name: string; kind: "agent" | "human"}[] = []) {
-    const own = teams.filter(team => team.members.some(member => member.kind === "agent" && member.id === agentId));
-    const lookup = (kind: "agent" | "human", id: string) => names.find(p => p.kind === kind && p.id === id) ?? {kind,id,name:kind === "human" ? "Human executive" : "AI lead"};
-    const reporting = nodes.filter(n => (n.kind === "person" && n.person.kind === "agent" && n.person.id === agentId) || (n.kind === "team" && n.leaderAgentId === agentId)).map(n => {
-        const parent = nodes.find(p => p.id === n.parentId);
-        const target = parent?.kind === "person" ? lookup(parent.person.kind,parent.person.id) : parent?.kind === "team" ? lookup("agent",parent.leaderAgentId) : null;
-        let containing = parent;
-        while (containing?.kind === "person") containing = nodes.find(p => p.id === containing!.parentId);
-        const teamId = n.kind === "team" ? n.teamId : containing?.kind === "team" ? containing.teamId : null;
-        return { nodeId:n.id, teamId, context:teamId ? teams.find(t => t.id === teamId)?.title ?? "Team" : "Direct reporting", reportsTo:target && !(target.kind === "agent" && target.id === agentId) ? target : null };
-    });
-    const dedicatedLeader = (leader?.kind === "agent" && leader.id === agentId) || nodes.some(n => n.kind === "team" && n.leaderAgentId === agentId);
-    if (nodes.length && !dedicatedLeader) for (const team of own) {
-        if (reporting.some(r => r.teamId === team.id)) continue;
-        const node = nodes.find(n => n.kind === "team" && n.teamId === team.id);
-        if (node?.kind === "team") reporting.push({nodeId:node.id,teamId:team.id,context:team.title,reportsTo:node.leaderAgentId === agentId ? leader && leader.id !== agentId ? {...leader,kind:leader.kind as "agent" | "human"} : null : lookup("agent",node.leaderAgentId)});
+type LoadedOrganization = Awaited<ReturnType<typeof loadOrganization>>;
+
+/** loadOrganization with a few seconds of in-process caching, for hot read paths (routing, lean context, instructions). */
+export function loadOrganizationCached(companyId: string): Promise<LoadedOrganization> {
+    return cachedOrganization(companyId, () => loadOrganization(companyId));
+}
+
+/** One cheap column read: has this company saved any chart? */
+export async function isOrganizationConfigured(companyId: string): Promise<boolean> {
+    const [row] = await db.select({ configured: sql<boolean>`${companies.organizationJson} IS NOT NULL` }).from(companies).where(eq(companies.id, companyId)).limit(1);
+    return Boolean(row?.configured);
+}
+
+/** Everyone the chart can name: agents and company members, with their roles. */
+export function organizationNames(org: LoadedOrganization): OrgName[] {
+    return [
+        ...org.roster.map(p => ({ id: p.id, name: p.name, kind: "agent" as const, role: p.role })),
+        ...org.people.map(p => ({ id: p.id, name: p.name, kind: "human" as const, role: p.role })),
+    ];
+}
+
+/**
+ * One agent's place on the chart and the whole tree, trimmed to the agents it
+ * may work with. Shared by GET /organization, the get_organization tool, the
+ * lean context and work routing.
+ */
+export async function organizationForAgent(companyId: string, agentId: string | null, options: { org?: LoadedOrganization; maxPeople?: number } = {}) {
+    const org = options.org ?? await loadOrganization(companyId);
+    const visibleAgentIds = agentId ? (await mcpAccessForAgent(companyId, agentId)).allowedAgentIds : null;
+    const briefing = organizationBriefing(org.leader, org.teams, agentId ?? "", org.config.nodes, organizationNames(org), { visibleAgentIds, maxPeople: options.maxPeople });
+    return { configured: org.configured, companyName: org.companyName, ...briefing };
+}
+
+/** Last good one-line summary per agent, so a transient failure never changes what an agent is told (or a lean ETag). */
+const lastSummaries = new Map<string, string>();
+let summaryErrorLogged = false;
+
+/**
+ * The agent's one-line place on the chart ("Org chart: you report to …"), or
+ * "" with no chart. Used by the lean context and MCP instructions. On an error
+ * it serves the last good line (logged once per process), never throws.
+ */
+export async function organizationSummaryForAgent(companyId: string, agentId: string): Promise<string> {
+    const key = `${companyId}:${agentId}`;
+    try {
+        const org = await loadOrganizationCached(companyId);
+        const summary = org.configured ? (await organizationForAgent(companyId, agentId, { org })).summary : "";
+        lastSummaries.set(key, summary);
+        if (lastSummaries.size > 2000) lastSummaries.delete(lastSummaries.keys().next().value!);
+        return summary;
+    } catch (error) {
+        if (!summaryErrorLogged) {
+            summaryErrorLogged = true;
+            console.warn("[organization] could not build an agent's org line; serving the last one:", error instanceof Error ? error.message : error);
+        }
+        return lastSummaries.get(key) ?? "";
     }
-    return { reporting, leader, teams: own.map(team => ({ id: team.id, name: team.title, purpose: team.description, coordinator: team.coordinator ? { kind: team.coordinator.kind, id: team.coordinator.id, name: team.coordinator.name } : null })), reportingRule: "An agent may collaborate in several teams. Use the task or conversation team to select its reporting relationship; do not treat every team leader as a manager for every task. Each task has one coordinating owner; joining a team never transfers task ownership. Company and team leaders follow their chart relationship; membership in another team chat is collaboration, not a new reporting line. Report useful progress to that team leader; team leaders follow their chart reporting relationship. Escalate conflicting priorities or unclear ownership to the company leader, or to humans if you are that leader. Existing task ownership, approvals and access rules still apply. Send updates only when useful; do not start reporting loops." };
+}
+
+/**
+ * Put an existing group on the chart as a team (setup wizard, easy setup).
+ * Only adds: a chart someone already edited keeps every node, and a team that
+ * cannot be placed validly (no eligible AI leader) leaves the chart as it is.
+ * With no chart yet, one is started with rootAgentId (else the team's
+ * coordinator) as the company's AI leader, under rootHumanId (the person
+ * setting it up) when given. Serialized per company (row lock). onChart says
+ * whether the team is on the chart afterwards.
+ */
+export async function attachTeamToOrganization(companyId: string, teamId: string, options: { rootAgentId?: string | null; rootHumanId?: string | null } = {}) {
+    const current = await loadOrganization(companyId);
+    const group = current.groups.find(g => g.id === teamId);
+    if (!group) throw new GroupError("Teams must be active company groups", 400);
+    const onRoster = (id: string) => current.roster.some(agent => agent.id === id);
+    const memberAgentIds = group.members.filter(m => m.kind === "agent" && onRoster(m.id)).map(m => m.id);
+    const coordinatorAgentId = group.coordinator?.kind === "agent" && onRoster(group.coordinator.id) ? group.coordinator.id : null;
+    const team: ChartTeam = { teamId, coordinatorAgentId, memberAgentIds };
+    const placed = (config: OrganizationConfig | null) => Boolean(config?.teamIds.includes(teamId) || config?.flatTeamIds?.includes(teamId));
+    const result = await db.transaction(async tx => {
+        const [company] = await tx.select({ config: companies.organizationJson }).from(companies).where(and(eq(companies.id, companyId), isNull(companies.deletedAt))).for("update");
+        if (!company) throw new GroupError("Company not found", 404);
+        const stored = coerceStoredOrganization(company.config);
+        if (placed(stored)) return { changed: false, onChart: true, config: stored };
+        let next: OrganizationConfig | null = null;
+        if (!stored) {
+            const rootId = [options.rootAgentId, coordinatorAgentId, memberAgentIds[0]].find((id): id is string => Boolean(id) && onRoster(id!));
+            if (!rootId) return { changed: false, onChart: false, config: null };
+            const humanId = options.rootHumanId && current.people.some(p => p.id === options.rootHumanId) ? options.rootHumanId : null;
+            const nodes = initialChart(rootId, team, humanId);
+            const teamIds = nodes.flatMap(n => n.kind === "team" ? [n.teamId] : []);
+            // A first chart led by this team's own leader holds its members directly: remember the team.
+            next = { leader: humanId ? { kind: "human", id: humanId } : { kind: "agent", id: rootId }, teamIds, nodes, ...(teamIds.includes(teamId) ? {} : { flatTeamIds: [teamId] }) };
+        } else if (stored.nodes?.length) {
+            const nodes = addTeamToChart(stored.nodes, team);
+            if (nodes) next = { ...stored, nodes, teamIds: nodes.flatMap(n => n.kind === "team" ? [n.teamId] : []) };
+        } else {
+            // A chart saved before reporting trees: just list the team.
+            next = { ...stored, teamIds: [...stored.teamIds, teamId] };
+        }
+        if (!next) return { changed: false, onChart: false, config: stored };
+        await tx.update(companies).set({ organizationJson: next }).where(eq(companies.id, companyId));
+        return { changed: true, onChart: placed(next), config: next };
+    });
+    if (result.changed) invalidateOrganizationCache(companyId);
+    return result;
 }

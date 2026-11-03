@@ -170,7 +170,7 @@ export async function getTaskContextForCompany(companyId: string, taskId: string
     }
   }
 
-  const visible = <T extends { scopeType: string; scopeId: string | null }>(rows: T[]) =>
+  const visible = <T extends { scopeType: string; scopeId: string | null; name: string }>(rows: T[]) =>
     access ? rows.filter((row) => mcpMayUseResource(access, row)) : rows;
 
   return {

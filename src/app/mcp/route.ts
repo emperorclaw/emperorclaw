@@ -2,6 +2,7 @@ import { NextRequest } from "next/server";
 import { WebStandardStreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js";
 import { verifyMcpToken } from "@/lib/mcp";
 import { buildMcpServer } from "@/lib/mcp-server";
+import { mcpServerOperatorUserId } from "@/lib/mcp-write-actor";
 import { getOAuthIssuerUrl } from "@/lib/env";
 
 // The real, spec-compliant MCP endpoint (initialize/tools/list/tools/call) —
@@ -39,7 +40,9 @@ export async function POST(req: NextRequest) {
     const companyId = auth.companyToken!.companyId;
 
     try {
-        const server = await buildMcpServer(companyId, auth.companyToken!.agentId, auth.companyToken!.id);
+        // A company-wide token here is a person's connection: what it changes
+        // without naming an agent is recorded as that person (lib/mcp-write-actor.ts).
+        const server = await buildMcpServer(companyId, auth.companyToken!.agentId, auth.companyToken!.id, mcpServerOperatorUserId(auth.companyToken!));
         const transport = new WebStandardStreamableHTTPServerTransport();
         await server.connect(transport);
         return await transport.handleRequest(req);

@@ -24,9 +24,11 @@ import {
 import { recordAudit, type AuditActor } from "@/lib/audit";
 import { broadcastMcpEvent, broadcastUserEvent } from "@/lib/pubsub";
 import { NextResponse } from "next/server";
-import { mcpAccessErrorResponse, mcpMayUseResource, mcpMayWriteResourceScope, type McpAgentAccess } from "@/lib/mcp-access";
+import { mcpAccessErrorResponse, mcpAccessForAgent, mcpMayUseResource, mcpMayWriteResourceScope, type McpAgentAccess } from "@/lib/mcp-access";
+import { decideMcpWriter, type McpWriteChannel } from "@/lib/mcp-write-actor";
+import { agentsNotUsableBy, usableAgentCondition } from "@/lib/agent-access-server";
 import { consumeRateLimit } from "@/lib/rate-limit";
-import { getScopedCustomerIds, memberMaySeeResource, memberVisibleProjectIds, resolveMemberScope, type MemberScope } from "@/lib/member-scope";
+import { getScopedCustomerIds, memberAgentCondition, memberMaySeeResource, memberVisibleProjectIds, resolveMemberScope, type MemberScope } from "@/lib/member-scope";
 import type { Role } from "@/lib/role-matrix";
 import {
     jsonBytes, parsePanelData, parseViewDescription, parseViewPanels, parseViewTitle, planViewVersion, storedPanelData, storedViewSpec,
@@ -34,7 +36,7 @@ import {
     type MetricPanelData, type ViewPanelData, type ViewPanelLayout, type ViewScopeType, type ViewSpec,
 } from "@/lib/view-spec";
 import {
-    AGENT_VIEW_VISIBILITIES, VIEW_VISIBILITIES, defaultViewVisibility, maintainerAgentId, mayChangeVisibility, parseRefreshEveryMinutes, pickViewOwner, viewAccess,
+    AGENT_VIEW_VISIBILITIES, VIEW_VISIBILITIES, defaultViewVisibility, maintainerAgentId, mayChangeMaintainer, mayChangeVisibility, parseRefreshEveryMinutes, pickViewOwner, viewAccess,
     type ViewAccess, type ViewAccessSubject, type ViewVisibility,
 } from "@/lib/view-access";
 
@@ -81,7 +83,9 @@ export class ViewRefusedError extends Error {
     }
 }
 
-export const VIEW_NOT_OWNER_MESSAGE = "Only the agent that built this view (or a person) can change it";
+export const VIEW_NOT_OWNER_MESSAGE = "Only the agent that maintains this view (or a person) can change it";
+export const VIEW_MAINTAINER_REFUSED_MESSAGE = "Only the view's owner, or an owner/admin who can open it, can choose the agent that maintains it";
+export const VIEW_MAINTAINER_AGENT_REFUSED = "Agents cannot choose who maintains a view: a person does that in Emperor";
 export const VIEW_PRIVATE_MESSAGE = "This view is private: only its owner and the people it is shared with can open it";
 
 /** A request the caller can fix (bad spec, bad scope, unknown panel). */
@@ -94,12 +98,15 @@ export class ViewInputError extends Error {
 
 /**
  * Who is reading or writing. Agents carry their MCP access (an operator token
- * naming no agent is unrestricted by scope but never sees private views);
- * people carry their role and member scope (null for admins and unrestricted
- * members). The route checks the minimum role (viewer reads, member writes).
+ * naming no agent is unrestricted by scope but never sees private views) and
+ * the channel they came in on (lib/mcp-write-actor.ts: a REST write must name
+ * its agent; an MCP server connection naming none writes as its token's
+ * person, `actor`); people carry their role and member scope (null for
+ * admins and unrestricted members). The route checks the minimum role
+ * (viewer reads, member writes).
  */
 export type ViewCaller =
-    | { kind: "agent"; access: McpAgentAccess; actor: AuditActor }
+    | { kind: "agent"; access: McpAgentAccess; actor: AuditActor; channel: McpWriteChannel }
     | { kind: "member"; userId: string; scope: MemberScope | null; role: Role };
 
 /** The member caller for a route or page guard context. */
@@ -167,7 +174,8 @@ async function sharesOf(viewIds: string[]): Promise<Map<string, string[]>> {
 
 /** The caller's scope ceiling as a per-row check (one project lookup for a whole list). */
 async function scopeChecker(companyId: string, caller: ViewCaller): Promise<(row: { scopeType: string; scopeId: string | null }) => boolean> {
-    if (caller.kind === "agent") return (row) => mcpMayUseResource(caller.access, row);
+    // A view is not a note: only its scope applies (no note name to match).
+    if (caller.kind === "agent") return (row) => mcpMayUseResource(caller.access, { ...row, name: "" });
     const scope = caller.scope;
     if (!scope) return () => true;
     const customerIds = new Set(getScopedCustomerIds(scope) ?? []);
@@ -200,7 +208,7 @@ async function readCondition(companyId: string, caller: ViewCaller): Promise<SQL
     if (caller.kind === "agent") {
         const agentId = caller.access.agentId;
         visible = agentId
-            ? or(eq(views.visibility, "scope"), and(eq(views.createdByType, "agent"), eq(views.createdById, agentId)))
+            ? or(eq(views.visibility, "scope"), eq(views.maintainerAgentId, agentId))
             : eq(views.visibility, "scope");
         if (!agentId) return visible;
         customerIds = caller.access.allowedCustomerIds ? [...caller.access.allowedCustomerIds] : null;
@@ -261,13 +269,36 @@ async function checkWritableScope(companyId: string, caller: ViewCaller, scopeTy
 
 /**
  * Who may change a view it can fully see. People: the route already requires
- * member or above. Agents: only the views they built. An operator token
- * naming no agent is unrestricted, as everywhere in MCP.
+ * member or above. Agents: only the views they maintain. An operator
+ * connection naming no agent is unrestricted, as everywhere in MCP, but must
+ * say who it is (assertAttributedWriter).
  */
-function assertMayWrite(caller: ViewCaller, row: { createdByType: string; createdById: string | null }): void {
+function assertMayWrite(caller: ViewCaller, row: { maintainerAgentId: string | null }): void {
+    assertAttributedWriter(caller);
     if (caller.kind !== "agent" || !caller.access.agentId) return;
-    if (row.createdByType === "agent" && row.createdById === caller.access.agentId) return;
+    if (maintainerAgentId(row) === caller.access.agentId) return;
     throw new ViewRefusedError(VIEW_NOT_OWNER_MESSAGE, 403);
+}
+
+/**
+ * Every view write says who made it: a person, an agent, or (an MCP server
+ * connection naming no agent) the person its token records. Anything else is
+ * refused with 400 (lib/mcp-write-actor.ts), never stamped "system": a view
+ * nobody is recorded as building has no maintainer once it is made private.
+ */
+function assertAttributedWriter(caller: ViewCaller): void {
+    if (caller.kind !== "agent") return;
+    const writer = decideMcpWriter({
+        channel: caller.channel,
+        actingAgentId: caller.access.agentId,
+        tokenCreatorUserId: caller.actor.type === "human" ? caller.actor.id : null,
+    });
+    if (writer.kind === "refused") throw new ViewInputError(writer.error);
+}
+
+/** The person an MCP server connection acting as no agent writes as, or null. */
+function operatorPerson(caller: ViewCaller): string | null {
+    return caller.kind === "agent" && !caller.access.agentId && caller.actor.type === "human" ? caller.actor.id : null;
 }
 
 /**
@@ -386,6 +417,8 @@ export type ViewSummary = {
     version: number;
     archived: boolean;
     createdBy: { type: string; id: string | null; name: string | null };
+    /** The agent that keeps it up to date (views.maintainer_agent_id), or null. */
+    maintainer: Named | null;
     refreshEveryMinutes: number | null;
     createdAt: string;
     updatedAt: string;
@@ -511,7 +544,8 @@ export async function listViews(companyId: string, caller: ViewCaller, options: 
             .from(viewPanelData).where(and(eq(viewPanelData.companyId, companyId), inArray(viewPanelData.viewId, fullIds)))
             .groupBy(viewPanelData.viewId) : Promise.resolve([]),
         scopeInfo(companyId, visible),
-        loadNames(visible.filter((r) => r.createdByType === "agent" && r.createdById).map((r) => r.createdById!),
+        loadNames([...visible.filter((r) => r.createdByType === "agent" && r.createdById).map((r) => r.createdById!),
+                ...visible.map((r) => r.maintainerAgentId).filter((id): id is string => Boolean(id))],
             [...visible.filter((r) => r.createdByType === "human" && r.createdById).map((r) => r.createdById!),
                 ...visible.map((r) => r.ownerUserId).filter((id): id is string => Boolean(id))]),
         myPins(companyId, caller, ids),
@@ -541,6 +575,7 @@ export async function listViews(companyId: string, caller: ViewCaller, options: 
             version: metadata ? 0 : row.version,
             archived: Boolean(row.archivedAt),
             createdBy: { type: row.createdByType, id: row.createdById, name: nameOf(names, row.createdByType, row.createdById) },
+            maintainer: row.maintainerAgentId ? { id: row.maintainerAgentId, name: names.agents.get(row.maintainerAgentId) ?? null } : null,
             refreshEveryMinutes: metadata ? null : row.refreshEveryMinutes,
             createdAt: row.createdAt.toISOString(),
             updatedAt: row.updatedAt.toISOString(),
@@ -595,7 +630,7 @@ export async function getView(
     const people = [row.createdByType === "human" ? row.createdById : null, row.updatedByType === "human" ? row.updatedById : null, row.ownerUserId,
         ...(isOwner ? shared : []),
         ...dataRows.filter((d) => d.updatedByType === "human").map((d) => d.updatedById)].filter((id): id is string => Boolean(id));
-    const bots = [row.createdByType === "agent" ? row.createdById : null, row.updatedByType === "agent" ? row.updatedById : null,
+    const bots = [row.createdByType === "agent" ? row.createdById : null, row.updatedByType === "agent" ? row.updatedById : null, row.maintainerAgentId,
         ...dataRows.filter((d) => d.updatedByType === "agent").map((d) => d.updatedById)].filter((id): id is string => Boolean(id));
     const [names, scopes, pins] = await Promise.all([loadNames(bots, people), scopeInfo(companyId, [row]), myPins(companyId, caller, [row.id])]);
     const info = row.scopeId ? scopes.get(row.scopeId) : undefined;
@@ -617,6 +652,7 @@ export async function getView(
         version: metadata ? 0 : row.version,
         archived: Boolean(row.archivedAt),
         createdBy: { type: row.createdByType, id: row.createdById, name: nameOf(names, row.createdByType, row.createdById) },
+        maintainer: row.maintainerAgentId ? { id: row.maintainerAgentId, name: names.agents.get(row.maintainerAgentId) ?? null } : null,
         updatedBy: metadata
             ? { type: row.createdByType, id: null, name: null }
             : { type: row.updatedByType, id: row.updatedById, name: nameOf(names, row.updatedByType, row.updatedById) },
@@ -807,6 +843,7 @@ export type CreateViewInput = {
 };
 
 export async function createView(companyId: string, caller: ViewCaller, input: CreateViewInput): Promise<ViewDetail> {
+    assertAttributedWriter(caller);
     const title = parseViewTitle(input.title);
     if (!title.ok) throw new ViewInputError(title.error);
     const description = parseViewDescription(input.description);
@@ -829,8 +866,9 @@ export async function createView(companyId: string, caller: ViewCaller, input: C
         visibility = parseVisibility(input.visibility, ["private", "scope"]) ?? defaultViewVisibility({ ownerUserId, source: "person" });
     } else {
         const resolved = await resolveAgentOwner(companyId, caller.access.agentId, input);
-        ownerUserId = resolved.ownerUserId;
-        ownerSource = resolved.source;
+        // A person's MCP connection acting as no agent builds the view for themselves.
+        ownerUserId = resolved.ownerUserId ?? operatorPerson(caller);
+        ownerSource = resolved.ownerUserId ? resolved.source : ownerUserId ? "person" : resolved.source;
         if (ownerUserId && !(await personInScope(companyId, ownerUserId, scope))) {
             throw new ViewInputError("That person cannot see this scope; file the view under a scope they can see");
         }
@@ -851,12 +889,14 @@ export async function createView(companyId: string, caller: ViewCaller, input: C
         throw new ViewRefusedError(`This company already has ${VIEW_MAX_ACTIVE_PER_COMPANY} views, the limit. Update an existing view (list_views) or archive one that is no longer needed.`, 409);
     }
     const by = stamp(caller);
+    // The building agent maintains what it builds; a person picks a maintainer later.
+    const maintainer = caller.kind === "agent" ? caller.access.agentId : null;
     const now = new Date();
 
     const row = await db.transaction(async (tx) => {
         const [created] = await tx.insert(views).values({
             companyId, title: title.value, description: description.value, scopeType: scope.scopeType, scopeId: scope.scopeId,
-            specJson: panels.value.spec, version: 1, ownerUserId, visibility, refreshEveryMinutes: refresh.value ?? null,
+            specJson: panels.value.spec, version: 1, ownerUserId, visibility, refreshEveryMinutes: refresh.value ?? null, maintainerAgentId: maintainer,
             createdByType: by.type, createdById: by.id, updatedByType: by.type, updatedById: by.id, createdAt: now, updatedAt: now,
         }).returning();
         await writeVersion(tx, companyId, created.id, 1, created.title, panels.value.spec, by, now);
@@ -866,7 +906,7 @@ export async function createView(companyId: string, caller: ViewCaller, input: C
 
     await recordAudit({
         companyId, actor: actorOf(caller), action: "view.created", target: { type: "view", id: row.id },
-        after: { ...auditFields(row, panels.value.spec), visibility, ownerUserId },
+        after: { ...auditFields(row, panels.value.spec), visibility, ownerUserId, maintainerAgentId: maintainer },
         // Where an agent's owner came from (and which thread), so a named owner can be traced.
         meta: { label: row.title, ...(caller.kind === "agent" ? { ownerSource, threadId: typeof input.threadId === "string" ? input.threadId : null } : {}) },
     });
@@ -1136,6 +1176,93 @@ async function notifyViewTransferred(companyId: string, row: ViewRow, input: { p
     }
 }
 
+// ─── Maintainer ──────────────────────────────────────────────────────────────
+
+/**
+ * The agents this person may work with: live, inside their member scope and
+ * not limited to other people (0.20 agent access, admins included), the same
+ * set the Messages list shows. `agentId` narrows it to one.
+ */
+async function usableAgentsFor(caller: Extract<ViewCaller, { kind: "member" }>, companyId: string, agentId?: string): Promise<{ id: string; name: string }[]> {
+    const { hidden } = await agentsNotUsableBy({ companyId, userId: caller.userId, role: caller.role, scope: caller.scope });
+    return db.select({ id: agents.id, name: agents.name }).from(agents).where(and(
+        eq(agents.companyId, companyId), isNull(agents.deletedAt), agentId ? eq(agents.id, agentId) : undefined,
+        memberAgentCondition(caller.scope, agents.id), usableAgentCondition(hidden, agents.id),
+    )).orderBy(asc(agents.name)).limit(300);
+}
+
+/** Does this agent's scope cover the view's scope? The same ceiling every agent read of the view goes through. */
+async function agentCoversScope(companyId: string, agentId: string, view: { scopeType: string; scopeId: string | null }): Promise<boolean> {
+    return mcpMayUseResource(await mcpAccessForAgent(companyId, agentId), { scopeType: view.scopeType, scopeId: view.scopeId, name: "" });
+}
+
+/** The person who may choose the maintainer, with the view as they see it; throws otherwise. */
+async function loadForMaintainerChange(companyId: string, caller: ViewCaller, viewId: string): Promise<{ row: ViewRow; caller: Extract<ViewCaller, { kind: "member" }> }> {
+    if (caller.kind !== "member") throw new ViewRefusedError(VIEW_MAINTAINER_REFUSED_MESSAGE, 403);
+    const { row, access } = await loadVisibleView(companyId, caller, viewId, { includeArchived: true, need: "metadata" });
+    if (!mayChangeMaintainer(row.ownerUserId, subjectOf(caller), access === "full")) throw new ViewRefusedError(VIEW_MAINTAINER_REFUSED_MESSAGE, 403);
+    return { row, caller };
+}
+
+/**
+ * The agents a person may make a view's maintainer: live agents of the
+ * company that the person may work with (inside their scope and not limited
+ * to other people) and whose scope covers the view's scope. Empty for anyone
+ * who may not choose it.
+ */
+export async function listViewMaintainerAgents(companyId: string, caller: ViewCaller, viewId: string): Promise<{ agents: Named[]; maintainer: Named | null }> {
+    let loaded: Awaited<ReturnType<typeof loadForMaintainerChange>>;
+    try {
+        loaded = await loadForMaintainerChange(companyId, caller, viewId);
+    } catch (error) {
+        if (error instanceof ViewRefusedError) return { agents: [], maintainer: null };
+        throw error;
+    }
+    const { row } = loaded;
+    const rows = await usableAgentsFor(loaded.caller, companyId);
+    const covered = await Promise.all(rows.map((agent) => agentCoversScope(companyId, agent.id, row)));
+    const current = row.maintainerAgentId ? (await loadNames([row.maintainerAgentId], [])).agents.get(row.maintainerAgentId) ?? null : null;
+    return {
+        agents: rows.filter((_, i) => covered[i]).map((agent) => ({ id: agent.id, name: agent.name })),
+        maintainer: row.maintainerAgentId ? { id: row.maintainerAgentId, name: current } : null,
+    };
+}
+
+/**
+ * Choose, change or clear (`agentId` null) the agent that maintains a view.
+ * A person only: the view's owner, or an owner/admin who can open it
+ * (lib/view-access.ts mayChangeMaintainer); agents never change it. The agent
+ * must be one the person may work with and whose scope covers the view's
+ * scope (else 400). The maintainer reads and writes the view whatever its
+ * visibility, so this is audit-logged.
+ */
+export async function setViewMaintainer(companyId: string, caller: ViewCaller, viewId: string, agentId: unknown): Promise<ViewDetail> {
+    const loaded = await loadForMaintainerChange(companyId, caller, viewId);
+    const { row } = loaded;
+    let next: { id: string; name: string } | null = null;
+    if (agentId !== null && agentId !== undefined && agentId !== "") {
+        if (typeof agentId !== "string") throw new ViewInputError("agentId must be an agent id, or null for no maintainer");
+        const id = agentId.trim();
+        next = UUID_RE.test(id) ? (await usableAgentsFor(loaded.caller, companyId, id))[0] ?? null : null;
+        if (!next || !(await agentCoversScope(companyId, next.id, row))) {
+            throw new ViewInputError("The maintainer must be an agent whose scope covers this view's scope");
+        }
+    } else if (agentId === undefined) {
+        throw new ViewInputError("agentId (an agent id, or null for no maintainer) is required");
+    }
+    const before = row.maintainerAgentId;
+    if ((next?.id ?? null) === before) return getView(companyId, caller, row.id, { includeArchived: true });
+    await db.update(views).set({ maintainerAgentId: next?.id ?? null }).where(and(eq(views.id, row.id), eq(views.companyId, companyId)));
+    const previousName = before ? (await loadNames([before], [])).agents.get(before) ?? null : null;
+    await recordAudit({
+        companyId, actor: actorOf(caller), action: "view.maintainer_changed", target: { type: "view", id: row.id },
+        before: { maintainerAgentId: before }, after: { maintainerAgentId: next?.id ?? null },
+        meta: { label: row.title, fromName: previousName, toName: next?.name ?? null },
+    });
+    announce(companyId, row);
+    return getView(companyId, caller, row.id, { includeArchived: true });
+}
+
 /** Delete a view for good (versions, values, shares and pins go with it): owners/admins, without reading it, or its owner. */
 export async function deleteView(companyId: string, caller: ViewCaller, viewId: string): Promise<{ id: string; deleted: true }> {
     if (caller.kind !== "member") throw new ViewRefusedError("Only owners, admins and the view's owner can delete it", 403);
@@ -1167,9 +1294,9 @@ export async function revertView(companyId: string, caller: ViewCaller, viewId: 
     return updateView(companyId, caller, row.id, { title: old.title, panels: spec.panels }, { revertedFrom: wanted });
 }
 
-/** The agent that should refresh a view: its creator when that was an agent. */
-export function owningAgentId(view: { createdBy: { type: string; id: string | null } }): string | null {
-    return maintainerAgentId({ createdByType: view.createdBy.type, createdById: view.createdBy.id });
+/** The agent that should refresh a view: its maintainer. */
+export function owningAgentId(view: { maintainer: { id: string } | null }): string | null {
+    return maintainerAgentId({ maintainerAgentId: view.maintainer?.id ?? null });
 }
 
 export type PinnedViewCard = {

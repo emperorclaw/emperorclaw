@@ -110,7 +110,7 @@ export const AUDIT_FIELD_ALLOWLIST: Record<AuditTargetType, Record<string, Field
         title: "label", scopeType: "enum", scopeId: "id", panelCount: "number", version: "number",
         archived: "bool", pinnedToHome: "bool", fromVersion: "number",
         visibility: "enum", ownerUserId: "id", sharedCount: "number", toName: "label",
-        ownerSource: "enum", threadId: "id",
+        ownerSource: "enum", threadId: "id", maintainerAgentId: "id", fromName: "label",
     },
     // A paired machine running agents (0.21): its name, platform and state, and the jobs sent to it.
     runtime_host: {
@@ -276,6 +276,7 @@ const VERBS: Record<string, string> = {
     "view.visibility_changed": "changed who can see",
     "view.owner_transferred": "transferred",
     "view.owner_claimed": "took ownership of",
+    "view.maintainer_changed": "changed who maintains",
     "view.deleted": "deleted",
     "view.read_unbound_token": "opened with a company-wide token",
     "agent.runtime_host_changed": "changed the host of",
@@ -400,6 +401,8 @@ function detailCopyFor(action: string, payload: AuditPayload, names: Readonly<Re
         case "agent.owner_transferred":
         case "view.owner_transferred":
             return typeof meta.toName === "string" && meta.toName ? d("toName", { name: meta.toName }) : null;
+        case "view.maintainer_changed":
+            return typeof meta.toName === "string" && meta.toName ? d("toName", { name: meta.toName }) : d("toNobody");
         case "company.settings_changed":
             return typeof meta.setting === "string" && SETTING_LABELS[meta.setting] ? d("setting", { setting: copy(`activity.words.settings.${meta.setting}`) }) : null;
         case "agent.permission_changed":
@@ -480,6 +483,8 @@ function detailFor(action: string, payload: AuditPayload, names: Readonly<Record
         }
         case "view.owner_transferred":
             return typeof meta.toName === "string" && meta.toName ? `to ${meta.toName}` : null;
+        case "view.maintainer_changed":
+            return typeof meta.toName === "string" && meta.toName ? `to ${meta.toName}` : "to nobody";
         case "knowledge_note.moved":
             return typeof after.path === "string" ? `to ${after.path}` : "to the top level";
         case "approval.approved":

@@ -102,12 +102,16 @@ export async function call(
     return { status: res.status, json: json as Record<string, unknown> & { [key: string]: unknown }, text };
 }
 
-/** Connect an in-process MCP client as the given bound agent. */
-export async function mcpClientFor(companyId: string, callerAgentId: string | null) {
+/**
+ * Connect an in-process MCP client as the given bound agent, or (agent null)
+ * as an operator connection; `operatorUserId` is the person its company-wide
+ * token records (what /mcp passes from created_by_user_id).
+ */
+export async function mcpClientFor(companyId: string, callerAgentId: string | null, operatorUserId: string | null = null) {
     const { Client } = await import("@modelcontextprotocol/sdk/client/index.js");
     const { InMemoryTransport } = await import("@modelcontextprotocol/sdk/inMemory.js");
     const { buildMcpServer } = await import("@/lib/mcp-server");
-    const server = await buildMcpServer(companyId, callerAgentId, null);
+    const server = await buildMcpServer(companyId, callerAgentId, null, operatorUserId);
     const client = new Client({ name: "acl-test", version: "1.0.0" });
     const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
     await Promise.all([server.connect(serverTransport), client.connect(clientTransport)]);

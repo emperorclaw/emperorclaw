@@ -33,14 +33,31 @@ export type ViewAccessSubject =
 export type ViewAccessFacts = {
     visibility: string;
     ownerUserId: string | null;
-    createdByType: string;
-    createdById: string | null;
+    /** views.maintainer_agent_id: the agent that keeps it up to date, or null. */
+    maintainerAgentId: string | null;
     /** The people on view_shares (only consulted for 'shared'). */
     sharedWith: readonly string[];
 };
 
-export function maintainerAgentId(view: { createdByType: string; createdById: string | null }): string | null {
-    return view.createdByType === "agent" ? view.createdById : null;
+/**
+ * The agent that keeps a view up to date: views.maintainer_agent_id, set to
+ * the building agent at creation and changed only by a person. Never derived
+ * from who created the view: a view made without an agent has no maintainer
+ * until a person picks one.
+ */
+export function maintainerAgentId(view: { maintainerAgentId: string | null }): string | null {
+    return view.maintainerAgentId ?? null;
+}
+
+/**
+ * Who may pick, change or clear a view's maintainer: a person, never an
+ * agent. The view's owner, or an owner/admin, and only while they can open
+ * the view (an admin who only sees its name must not hand its content to an
+ * agent). `fullAccess` is the caller's viewAccess on the view.
+ */
+export function mayChangeMaintainer(ownerUserId: string | null, subject: ViewAccessSubject, fullAccess: boolean): boolean {
+    if (subject.kind !== "member" || !fullAccess) return false;
+    return subject.isAdmin || ownerUserId === subject.userId;
 }
 
 /**

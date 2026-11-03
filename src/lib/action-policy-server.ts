@@ -23,6 +23,7 @@ import {
     ACTION_APPROVAL_KIND, ACTION_GRANT_TTL_MS, MAX_PENDING_ACTION_ASKS, actionBinding, hashActionArgs, matchActionApproval, previewActionArgs,
 } from "@/lib/action-policy-rules";
 import { isVerifiedReplyBy, mcpActingAgentId } from "@/lib/thread-access";
+import { decideMcpWriter } from "@/lib/mcp-write-actor";
 import { EXTERNAL_APPROVAL_TTL_MS } from "@/lib/approval-status";
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -264,7 +265,9 @@ export async function checkExternalAction(input: { companyId: string; agentId: s
 
 /**
  * The REST side of the gate, called by verifyMcpToken for every agent API
- * request. Returns null when the request may proceed, else the error to send.
+ * request. Returns null when the request may proceed, else the error to send:
+ * 400 for an authored write by a company-wide token naming no agent
+ * (lib/mcp-write-actor.ts), then the agent's action permissions.
  * The acting agent is the token's bound agent, else the agent the route
  * itself acts as, read the same way (lib/action-policy.ts restActorRef);
  * none resolved means the company policy applies.
@@ -281,7 +284,15 @@ export async function enforceRestActionPolicy(
     const raw = parsedBody !== undefined ? parsedBody : req.bodyUsed ? null : await req.clone().json().catch(() => null);
     const body = raw && typeof raw === "object" && !Array.isArray(raw) ? raw as Record<string, unknown> : null;
     const query = req.nextUrl?.searchParams ?? new URL(req.url).searchParams;
-    const agentId = await mcpActingAgentId(token.companyId, token, restActorRef(route.actor, query, body));
+    const actorRef = restActorRef(route.actor, query, body);
+    // An authored write (a view, a message) by a company-wide token must name
+    // its agent: refused before the permission check, so an anonymous call
+    // never even creates an approval.
+    if (route.authored) {
+        const writer = decideMcpWriter({ channel: "rest", boundAgentId: token.agentId ?? null, namedAgent: actorRef !== null, agentIn: route.actor === "query" ? "query" : "body" });
+        if (writer.kind === "refused") return { error: writer.error, status: writer.status };
+    }
+    const agentId = await mcpActingAgentId(token.companyId, token, actorRef);
     const decision = await enforceActionPolicy({
         companyId: token.companyId, agentId, tokenId: token.id, actionKey: route.key,
         args: { ...body, __route: pathname },

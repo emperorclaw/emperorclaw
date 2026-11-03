@@ -17,6 +17,7 @@ import {
   selectPendingDecisions,
 } from "./approval-status";
 import { auditTaskTitle, humanActor, recordAudits, taskChangeEntries } from "@/lib/audit";
+import { queueTaskOutcomeReport } from "@/lib/organization-routing";
 
 export async function createApprovalRequest(input: {
   companyId: string;
@@ -140,6 +141,8 @@ export async function resolveApproval(input: {
         type: "task_updated",
         task: updatedTask,
       });
+      // An approved close is the requesting agent's done: it flows up the chart too.
+      if (updatedTask) queueTaskOutcomeReport({ companyId: input.companyId, task: updatedTask, previousState: row.task.state, actorAgentId: approval.requesterAgentId ?? null });
     }
   }
 

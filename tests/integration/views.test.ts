@@ -99,7 +99,7 @@ maybe("an agent creates a view, refreshes one panel without touching the layout,
     assert.deepEqual(audits.map((a) => a.action).sort(), ["view.created", "view.updated"]);
     const created_ = audits.find((a) => a.action === "view.created")!;
     assert.equal(created_.actorType, "agent");
-    assert.deepEqual((created_.payloadJson as { after: Record<string, unknown> }).after, { title: "Products this month", scopeType: "company", scopeId: null, panelCount: 3, version: 1, visibility: "scope", ownerUserId: null });
+    assert.deepEqual((created_.payloadJson as { after: Record<string, unknown> }).after, { title: "Products this month", scopeType: "company", scopeId: null, panelCount: 3, version: 1, visibility: "scope", ownerUserId: null, maintainerAgentId: f.builder.id });
     assert.equal(JSON.stringify(audits).includes("12400"), false, "panel values leaked into the audit log");
     assert.equal(JSON.stringify(audits).includes("Mug"), false, "panel values leaked into the audit log");
 
@@ -147,7 +147,7 @@ maybe("a scoped agent cannot see or write out-of-scope views, and gets the same 
     json(await client.tool("get_view", { viewId: inView.id }));
     const foreign = await client.tool("update_panel", { viewId: inView.id, panelId: "revenue", data: { value: 2 } });
     assert.equal(foreign.isError, true);
-    assert.equal(foreign.text, "Only the agent that built this view (or a person) can change it");
+    assert.equal(foreign.text, "Only the agent that maintains this view (or a person) can change it");
     // Its own in-scope view works.
     const mine = json<{ view: ViewOut }>(await client.tool("create_view", { title: "Mine", scopeType: "customer", scopeId: f.customerIn.id, panels: [PANELS[0]] })).view;
     json(await client.tool("update_panel", { viewId: mine.id, panelId: "revenue", data: { value: 2 } }));
@@ -347,7 +347,7 @@ maybe("agents change only the views they built; people (member and up) change an
     const other = await seedAgent(f.companyId, { name: "Other" });
     const view = await seedView(f.companyId, f.builder.id, { title: "Builder's", panels: PANELS });
     const client = await mcpClientFor(f.companyId, other.id);
-    const NOT_OWNER = "Only the agent that built this view (or a person) can change it";
+    const NOT_OWNER = "Only the agent that maintains this view (or a person) can change it";
 
     // MCP tools: readable, but every write is a 403-style refusal with a clear message.
     json(await client.tool("get_view", { viewId: view.id }));

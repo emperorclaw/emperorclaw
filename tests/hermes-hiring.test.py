@@ -165,7 +165,8 @@ class AcknowledgeTests(unittest.TestCase):
         request.assert_not_called()
 
     def test_ordinary_post_is_not_an_ack(self):
-        with patch.dict(os.environ, {**self._clean_env(), **self.TURN}, clear=True), \
+        # A message names its agent (the plugin refuses locally without one).
+        with patch.dict(os.environ, {**self._clean_env(), **self.TURN, "EMPEROR_CLAW_AGENT_ID": "self-agent"}, clear=True), \
              patch.object(plugin, "_request", return_value={"ok": True}) as request:
             plugin.emperor_send_message({"text": "handoff", "threadId": "team-x"})
         self.assertNotIn("ack", request.call_args.kwargs["body"])

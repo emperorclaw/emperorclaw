@@ -36,16 +36,17 @@ const panelInput = z.object({
  * it, an agent sees the views open to the scope plus the private/shared views
  * it maintains (lib/view-access.ts), and changes only the views it built.
  */
-export function registerViewTools(server: McpServer, companyId: string, callerAgentId?: string | null, tokenId: string | null = null) {
+export function registerViewTools(server: McpServer, companyId: string, callerAgentId?: string | null, tokenId: string | null = null, operatorUserId: string | null = null) {
     const caller = async (): Promise<ViewCaller> => ({
         kind: "agent",
         access: await mcpAccessForAgent(companyId, callerAgentId ?? null),
-        actor: mcpActor(callerAgentId, tokenId),
+        actor: mcpActor(callerAgentId, tokenId, operatorUserId),
+        channel: "mcp_server",
     });
 
     server.registerTool("list_views", {
         title: "List Views",
-        description: "List the views (dashboards) you can see: title, scope, visibility, owner, panel count, who built each one, and when their values were last updated. You see views open to your scope and the private views you maintain. Check here before creating a view so you update one of your own instead of building a duplicate (you can only change views you built; createdBy shows the builder).",
+        description: "List the views (dashboards) you can see: title, scope, visibility, owner, panel count, who built each one, and when their values were last updated. You see views open to your scope and the private views you maintain. Check here before creating a view so you update one of your own instead of building a duplicate (you can only change views you maintain; maintainer shows which agent that is).",
         inputSchema: {
             scopeType: z.enum(VIEW_SCOPE_TYPES).optional(),
             scopeId: z.string().optional().describe("Customer or project id, with scopeType"),
@@ -109,7 +110,7 @@ export function registerViewTools(server: McpServer, companyId: string, callerAg
 
     server.registerTool("update_view", {
         title: "Update View",
-        description: "Change a view's title, description, refresh interval (refreshEveryMinutes) or layout (add, remove, reorder or resize panels). Who can see a view is not changed here: its owner does that in Emperor. Only for views you built; another agent's view is refused (ask a person or that agent). Passing panels replaces the whole layout, so send every panel you want to keep (with their ids); panels you send with data also get those values. Each title or layout change saves a new version people can revert. To refresh numbers only, use update_panel instead.",
+        description: "Change a view's title, description, refresh interval (refreshEveryMinutes) or layout (add, remove, reorder or resize panels). Who can see a view is not changed here: its owner does that in Emperor. Only for views you maintain; another agent's view is refused (ask a person or that agent). Passing panels replaces the whole layout, so send every panel you want to keep (with their ids); panels you send with data also get those values. Each title or layout change saves a new version people can revert. To refresh numbers only, use update_panel instead.",
         inputSchema: {
             viewId: z.string(),
             title: z.string().optional(),
@@ -128,7 +129,7 @@ export function registerViewTools(server: McpServer, companyId: string, callerAg
 
     server.registerTool("update_panel", {
         title: "Update View Panel",
-        description: "Replace one panel's values with a fresh snapshot (the layout is untouched and no version is created). This is how you keep a view up to date: call it once per panel on your refresh schedule, and when someone asks you to refresh the view. Only for views you built; at most 60 updates per view per minute. The data must match the panel's type (see create_view); get_view lists the panel ids and types. Each panel shows \"Updated <time> by <you>\".",
+        description: "Replace one panel's values with a fresh snapshot (the layout is untouched and no version is created). This is how you keep a view up to date: call it once per panel on your refresh schedule, and when someone asks you to refresh the view. Only for views you maintain; at most 60 updates per view per minute. The data must match the panel's type (see create_view); get_view lists the panel ids and types. Each panel shows \"Updated <time> by <you>\".",
         inputSchema: {
             viewId: z.string(),
             panelId: z.string(),
@@ -145,7 +146,7 @@ export function registerViewTools(server: McpServer, companyId: string, callerAg
 
     server.registerTool("archive_view", {
         title: "Archive View",
-        description: "Archive a view you built that is no longer needed (it leaves the Views list and Home; a person can restore it). Stop your refresh schedule for it too.",
+        description: "Archive a view you maintain that is no longer needed (it leaves the Views list and Home; a person can restore it). Stop your refresh schedule for it too.",
         inputSchema: {
             viewId: z.string(),
         },

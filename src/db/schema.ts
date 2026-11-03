@@ -49,7 +49,7 @@ export const companies = pgTable("companies", {
     retentionPolicyJson: jsonb("retention_policy_json").default('{}'),
     contextNotes: text("context_notes"),
     // Organization is opt-in; branches reuse existing group chats.
-    organizationJson: jsonb("organization_json").$type<{ leader: { kind: "agent" | "human"; id: string } | null; teamIds: string[]; nodes?: import("@/lib/organization-tree").OrganizationNode[] }>(),
+    organizationJson: jsonb("organization_json").$type<{ leader: { kind: "agent" | "human"; id: string } | null; teamIds: string[]; nodes?: import("@/lib/organization-tree").OrganizationNode[]; flatTeamIds?: string[] }>(),
     // Daily agent review (lib/agent-routines.ts). NULL = defaults: on, 09:00 UTC, weekdays.
     agentRoutineJson: jsonb("agent_routine_json").$type<{ enabled?: boolean; time?: string; timezone?: string; weekdaysOnly?: boolean; stallRemindersEnabled?: boolean }>(),
     // Local date (YYYY-MM-DD, in the routine's timezone) of the last daily review run.
@@ -1413,9 +1413,14 @@ export const views = pgTable("views", {
     // column any more. Drop it in a later release.
     pinnedToHome: boolean("pinned_to_home").default(false).notNull(),
     // The person the view is for (whoever asked for it). NULL for views built
-    // before 0.19 and for views an agent started on its own. The building agent
-    // (created_by) stays the maintainer.
+    // before 0.19 and for views an agent started on its own.
     ownerUserId: uuid("owner_user_id").references(() => users.id, { onDelete: 'set null' }),
+    // The agent that keeps the view up to date (lib/view-access.ts
+    // maintainerAgentId): it reads and writes the view whatever its
+    // visibility. Set to the building agent at creation; only a person (the
+    // view's owner or an owner/admin) changes or clears it afterwards. Kept
+    // apart from created_by so maintenance is explicit. NULL = no agent.
+    maintainerAgentId: uuid("maintainer_agent_id").references(() => agents.id, { onDelete: 'set null' }),
     // Who sees it, inside the scope (lib/view-access.ts): 'private' = the owner
     // (and the maintaining agent), 'shared' = the owner plus view_shares,
     // 'scope' = everyone who can see the scope (the pre-0.19 behavior).

@@ -85,6 +85,35 @@ Authorization: Bearer <your-mcp-token>
 
 A company-wide token (one not bound to an agent) can act as any agent by naming it with `?agentId=`, so it can read whatever that agent can, including the private views an agent maintains. The rule that other agents cannot read a private view holds for agent-bound tokens; keep company-wide tokens with operators. Each time a company-wide token opens a private or shared view, Activity records it ("opened with a company-wide token").
 
+### Every write says who made it
+
+Emperor never records an agent's change as made by nobody. Which agent or person a write belongs to depends on the token and where it is sent:
+
+| Token | REST API (`/api/mcp/*`) | MCP server (`/mcp`) |
+|-------|-------------------------|---------------------|
+| Bound to an agent | That agent | That agent |
+| Company-wide, naming an agent (`?agentId=` or body `agentId`) | That agent | Not available: the connection acts as no agent |
+| Company-wide, naming no agent | Views and `POST /api/mcp/messages/send`: refused with `400` | The person who created the token (Settings → Access Tokens, an agent's Connect tab, or the OAuth approval) |
+
+The REST API is what agent runtimes call, so a company-wide token there must name the agent it acts for. These writes answer `400 {"error": "agentId required: a company-wide token must say which agent is acting (?agentId=<id>)"}` without one:
+
+- `POST /api/mcp/views`, `PATCH /api/mcp/views/{id}`, `PUT /api/mcp/views/{id}/panels/{panelId}`, `POST /api/mcp/views/{id}/archive` (`?agentId=`)
+- `POST /api/mcp/messages/send` (`agentId` in the body)
+
+Reads keep working without `agentId`. Other REST writes keep their current behavior for now; send `agentId` on every write anyway.
+
+On the MCP server, a company-wide token acts as the person who created it: what it changes without an agent is recorded as theirs, and a view it creates is theirs. A token with no person recorded (made before people were recorded, or by an older install) cannot create or change views there; create a new one in Settings → Access Tokens.
+
+### Views: the maintaining agent
+
+A view's **maintainer** is the agent that keeps its values up to date. The agent that builds a view becomes its maintainer. The maintainer can always open and change the view, even when it is private or shared; any other agent gets `404`, as if the view did not exist.
+
+Only a person changes the maintainer: the view's owner, or an owner or admin who can open the view. On the view's page, choose **Maintained by** (or **No maintainer**) next to the owner, and pick an agent or **No agent**. The list shows only agents whose scope covers the view's scope; any other agent is refused with `400`. Every change is recorded in Activity. Agents cannot change it: `PATCH /api/mcp/views/{id}` with a `maintainerAgentId` answers `403`.
+
+When you make a view private or share it with specific people, the confirmation says what happens to its upkeep: its maintainer keeps access, and a view with no maintainer can no longer be refreshed by any agent. Choose a maintainer first if an agent should keep it up to date.
+
+A `404` on a view an agent used before means it became private, was archived, or was deleted. Agents are told never to recreate it or copy its data elsewhere, and to ask the person instead.
+
 ## Endpoints
 
 ### Health Check

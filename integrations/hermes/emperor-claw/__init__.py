@@ -173,6 +173,20 @@ def _agent_ref() -> str:
     return _creds()["agent_ref"]
 
 
+AGENT_REF_MISSING = (
+    "This profile does not say which Emperor agent it is: set EMPEROR_CLAW_AGENT_ID (or "
+    "EMPEROR_CLAW_AGENT_NAME) in the profile's .env. Emperor refuses view and message writes "
+    "that name no agent (400 agentId required)."
+)
+
+
+def _missing_agent_ref(explicit: Any = None) -> Dict[str, Any] | None:
+    """A local error for a write Emperor would refuse because it names no agent, else None."""
+    if (str(explicit).strip() if explicit else "") or _agent_ref():
+        return None
+    return {"ok": False, "error": AGENT_REF_MISSING}
+
+
 def _available() -> bool:
     # Inside an Emperor session the answer is exact. Outside one (gateway boot
     # in shared mode has no single token) the tools stay listed and a call
@@ -1111,6 +1125,9 @@ def emperor_send_message(args: Dict[str, Any], **_: Any) -> str:
         thread_id = turn_thread
         thread_type = thread_type or turn["threadType"]
     reply_to = turn_message if turn_thread and thread_id == turn_thread else None
+    missing = _missing_agent_ref(args.get("agentId") or args.get("agent_id"))
+    if missing:
+        return _json(missing)
     body = {
         "text": text,
         "agentId": args.get("agentId") or args.get("agent_id") or _agent_ref(),
@@ -1181,7 +1198,8 @@ def _view_id(args: Dict[str, Any]) -> str:
 def _view_query(extra: Dict[str, Any] | None = None) -> Dict[str, Any]:
     # Every views call names the acting agent (like the task/message tools), so
     # an operator token acts with this agent's scope and is recorded as it:
-    # the server checks writes against the view's builder.
+    # the server checks writes against the view's maintainer, and refuses a
+    # write that names no agent (400), so writes check _missing_agent_ref first.
     return {**(extra or {}), "agentId": _agent_ref()}
 
 
@@ -1206,6 +1224,9 @@ def emperor_create_view(args: Dict[str, Any], **_: Any) -> str:
     panels = args.get("panels")
     if not title or not isinstance(panels, list):
         return _json({"error": "title and a panels array are required"})
+    missing = _missing_agent_ref()
+    if missing:
+        return _json(missing)
     # The conversation the request came from decides who the view is for: the
     # server makes the owner of a private chat the view's owner (private by
     # default). Inside a bridge turn that is the turn's thread unless the
@@ -1239,6 +1260,9 @@ def emperor_update_view(args: Dict[str, Any], **_: Any) -> str:
             break
     if not body:
         return _json({"error": "Pass title, description, panels or refreshEveryMinutes"})
+    missing = _missing_agent_ref()
+    if missing:
+        return _json(missing)
     return _json(_request("PATCH", f"/views/{urllib.parse.quote(view_id)}", body=body, query=_view_query()))
 
 
@@ -1248,6 +1272,9 @@ def emperor_update_panel(args: Dict[str, Any], **_: Any) -> str:
     data = args.get("data")
     if not view_id or not panel_id or not isinstance(data, dict):
         return _json({"error": "viewId, panelId and a data object are required"})
+    missing = _missing_agent_ref()
+    if missing:
+        return _json(missing)
     path = f"/views/{urllib.parse.quote(view_id)}/panels/{urllib.parse.quote(panel_id, safe='')}"
     return _json(_request("PUT", path, body={"data": data}, query=_view_query()))
 
@@ -1256,6 +1283,9 @@ def emperor_archive_view(args: Dict[str, Any], **_: Any) -> str:
     view_id = _view_id(args)
     if not view_id:
         return _json({"error": "viewId is required"})
+    missing = _missing_agent_ref()
+    if missing:
+        return _json(missing)
     return _json(_request("POST", f"/views/{urllib.parse.quote(view_id)}/archive", body={}, query=_view_query()))
 
 
@@ -1820,7 +1850,7 @@ def register(ctx: Any) -> None:
         "emperor_list_views",
         TOOLSET,
         _schema(
-            "List the Emperor views (dashboards) you can see (those open to your scope and the private ones you maintain), with scope, visibility, owner, panel count, who built each and when their values were last updated. Check before creating one so you update one of yours instead of building a duplicate (you can only change views you built).",
+            "List the Emperor views (dashboards) you can see (those open to your scope and the private ones you maintain), with scope, visibility, owner, panel count, who built each, which agent maintains it, and when their values were last updated. Check before creating one so you update one you maintain instead of building a duplicate (you can only change views you maintain). A view you used before that is now missing became private, was archived or was deleted: never rebuild it or copy its data, ask the person.",
             {
                 "scopeType": {"type": "string", "enum": ["company", "customer", "project"]},
                 "scopeId": {"type": "string"},
@@ -1877,7 +1907,7 @@ def register(ctx: Any) -> None:
         "emperor_update_view",
         TOOLSET,
         _schema(
-            "Change an Emperor view you built: title, description, refresh interval or layout (another agent's view is refused; who can see it is its owner's call, in Emperor). panels replaces the whole layout (send every panel to keep, with its id). Each title or layout change is a new version people can revert. For new numbers only, use emperor_update_panel.",
+            "Change an Emperor view you maintain: title, description, refresh interval or layout (a view another agent maintains is refused; who can see it and who maintains it are people's calls, in Emperor). panels replaces the whole layout (send every panel to keep, with its id). Each title or layout change is a new version people can revert. For new numbers only, use emperor_update_panel.",
             {
                 "viewId": {"type": "string"},
                 "title": {"type": "string"},
@@ -1896,7 +1926,7 @@ def register(ctx: Any) -> None:
         "emperor_update_panel",
         TOOLSET,
         _schema(
-            "Replace one panel's values in an Emperor view you built with a fresh snapshot (layout untouched, no new version). Call it once per panel on your refresh schedule and when asked to refresh (max 60 per view per minute). data must match the panel's type (see emperor_create_view).",
+            "Replace one panel's values in an Emperor view you maintain with a fresh snapshot (layout untouched, no new version). Call it once per panel on your refresh schedule and when asked to refresh (max 60 per view per minute). data must match the panel's type (see emperor_create_view).",
             {
                 "viewId": {"type": "string"},
                 "panelId": {"type": "string"},

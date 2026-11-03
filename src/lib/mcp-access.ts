@@ -164,12 +164,13 @@ export function mcpMayUseRecord(
  * builders use (company notes, the agent's own notes, and notes of projects or
  * customers in scope). An operator token naming no agent sees everything.
  */
-export function mcpMayUseResource(access: McpAgentAccess, resource: { scopeType: string; scopeId: string | null }): boolean {
+export function mcpMayUseResource(access: McpAgentAccess, resource: { scopeType: string; scopeId: string | null; name: string }): boolean {
     if (!access.agentId) return true;
     return canAgentReadResource(resource, {
         callerAgentId: access.agentId,
         allowedProjectIds: access.allowedProjectIds,
         allowedCustomerIds: access.allowedCustomerIds,
+        allowedAgentIds: access.allowedAgentIds,
     });
 }
 

@@ -30,11 +30,14 @@ export function humanActor(userId: string | null | undefined): AuditActor {
 }
 
 /**
- * The caller behind an MCP token: the agent it is bound to, else "system"
- * with the token id (a company-wide token acting for an operator script).
+ * The caller behind an MCP token: the agent it acts as; else, on the MCP
+ * server, the person whose company-wide token it is (`operatorUserId`,
+ * lib/mcp-write-actor.ts); else "system" with the token id.
  */
-export function mcpActor(agentId: string | null | undefined, tokenId?: string | null): AuditActor {
-    return agentId ? { type: "agent", id: agentId, tokenId: tokenId ?? null } : { type: "system", id: null, tokenId: tokenId ?? null };
+export function mcpActor(agentId: string | null | undefined, tokenId?: string | null, operatorUserId?: string | null): AuditActor {
+    if (agentId) return { type: "agent", id: agentId, tokenId: tokenId ?? null };
+    if (operatorUserId) return { type: "human", id: operatorUserId, tokenId: tokenId ?? null };
+    return { type: "system", id: null, tokenId: tokenId ?? null };
 }
 
 /**

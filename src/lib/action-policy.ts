@@ -165,9 +165,14 @@ export type RestActorSource = "body" | "query" | "sender" | "send" | "claim" | "
  * Emperor action, mapped to the same key as the MCP tool. One table, read by
  * the single REST gate in verifyMcpToken (lib/mcp.ts). Routes not listed are
  * not governed (reads, deletes of tasks and files, uploads...).
+ *
+ * `authored`: the write is recorded under the agent that made it (a view and
+ * its maintainer, a message's sender), so a company-wide token must name the
+ * agent; naming none is refused with 400 (lib/mcp-write-actor.ts), never
+ * recorded as "system".
  */
-const REST_ACTION_ROUTES: readonly { method: string; pattern: RegExp; key: string; actor: RestActorSource }[] = [
-    { method: "POST", pattern: /^\/api\/mcp\/messages\/send$/, key: "send_message", actor: "send" },
+const REST_ACTION_ROUTES: readonly { method: string; pattern: RegExp; key: string; actor: RestActorSource; authored?: true }[] = [
+    { method: "POST", pattern: /^\/api\/mcp\/messages\/send$/, key: "send_message", actor: "send", authored: true },
     { method: "POST", pattern: /^\/api\/mcp\/threads\/[^/]+\/messages$/, key: "send_message", actor: "sender" },
     { method: "POST", pattern: /^\/api\/mcp\/tasks$/, key: "create_task", actor: "body" },
     { method: "POST", pattern: /^\/api\/mcp\/tasks\/generate$/, key: "create_task", actor: "body" },
@@ -189,20 +194,20 @@ const REST_ACTION_ROUTES: readonly { method: string; pattern: RegExp; key: strin
     { method: "POST", pattern: /^\/api\/mcp\/groups\/[^/]+\/members$/, key: "add_group_members", actor: "body" },
     { method: "DELETE", pattern: /^\/api\/mcp\/groups\/[^/]+\/members$/, key: "remove_group_member", actor: "body" },
     { method: "POST", pattern: /^\/api\/mcp\/objectives$/, key: "update_objective", actor: "query" },
-    { method: "POST", pattern: /^\/api\/mcp\/views$/, key: "create_view", actor: "query" },
-    { method: "PATCH", pattern: /^\/api\/mcp\/views\/[^/]+$/, key: "update_view", actor: "query" },
-    { method: "PUT", pattern: /^\/api\/mcp\/views\/[^/]+\/panels\/[^/]+$/, key: "update_panel", actor: "query" },
-    { method: "POST", pattern: /^\/api\/mcp\/views\/[^/]+\/archive$/, key: "archive_view", actor: "query" },
+    { method: "POST", pattern: /^\/api\/mcp\/views$/, key: "create_view", actor: "query", authored: true },
+    { method: "PATCH", pattern: /^\/api\/mcp\/views\/[^/]+$/, key: "update_view", actor: "query", authored: true },
+    { method: "PUT", pattern: /^\/api\/mcp\/views\/[^/]+\/panels\/[^/]+$/, key: "update_panel", actor: "query", authored: true },
+    { method: "POST", pattern: /^\/api\/mcp\/views\/[^/]+\/archive$/, key: "archive_view", actor: "query", authored: true },
     // The body's agent is the recipient; the caller is an operator or another platform.
     { method: "POST", pattern: /^\/api\/mcp\/requests$/, key: "send_agent_request", actor: "none" },
 ];
 
 /** The governed action a REST request performs and where its actor is named, or null (not governed). */
-export function restActionForRequest(method: string, pathname: string): { key: string; actor: RestActorSource } | null {
+export function restActionForRequest(method: string, pathname: string): { key: string; actor: RestActorSource; authored: boolean } | null {
     const upper = method.toUpperCase();
     const path = pathname.replace(/\/+$/, "");
     const route = REST_ACTION_ROUTES.find((r) => r.method === upper && r.pattern.test(path));
-    return route ? { key: route.key, actor: route.actor } : null;
+    return route ? { key: route.key, actor: route.actor, authored: route.authored === true } : null;
 }
 
 export function actionKeyForRestRequest(method: string, pathname: string): string | null {

@@ -20,6 +20,7 @@ import { getTaskAssignee, resolveTaskAssignee } from "@/lib/task-assignee";
 import { getAgentScope, getAllowedProjectIds, isProjectAllowed, scopeCondition } from "@/lib/agent-scope";
 import { notifyTaskAssigned } from "@/lib/notifications";
 import { wakeAgentOnTaskAssignment } from "@/lib/task-wake";
+import { queueTaskOutcomeReport } from "@/lib/organization-routing";
 import { recordTaskChange, SYSTEM_ACTOR, type AuditActor } from "@/lib/audit";
 import { lengthError, TASK_TITLE_MAX } from "@/lib/input-limits";
 
@@ -280,6 +281,12 @@ export async function assignTaskToAgent(input: AssignTaskInput) {
   return { status: 200 as const, task };
 }
 
+/** The agent behind an update: the explicit actor, else the audit actor (MCP passes only that). */
+function actorAgentIdOf(input: Pick<UpdateTaskInput, "actorType" | "actorId" | "actor">): string | null {
+  if (input.actorType === "agent") return input.actorId ?? null;
+  return input.actor?.type === "agent" ? input.actor.id ?? null : null;
+}
+
 export async function updateTaskForCompany(input: UpdateTaskInput) {
   const [existingTask] = await db.select().from(tasks).where(
     and(eq(tasks.id, input.taskId), eq(tasks.companyId, input.companyId), isNull(tasks.deletedAt)),
@@ -416,6 +423,8 @@ export async function updateTaskForCompany(input: UpdateTaskInput) {
       reason: "reassigned",
     });
   }
+  // Work flows up the chart: an agent's done/blocked reaches its chart manager (off the request path).
+  queueTaskOutcomeReport({ companyId: input.companyId, task, previousState: existingTask.state, actorAgentId: actorAgentIdOf(input) });
   return { status: 200 as const, task };
 }
 
@@ -581,6 +590,7 @@ export async function finalizeTaskForAgent(input: FinalizeTaskInput) {
   await recordTaskChange(input.companyId, { type: "agent", id: internalAgentId }, existingTask, task);
 
   await broadcastMcpEvent(input.companyId, { type: "task_updated", task });
+  queueTaskOutcomeReport({ companyId: input.companyId, task, previousState: existingTask.state, actorAgentId: internalAgentId, ...(input.comment?.trim() ? { detail: input.comment } : {}) });
   return { status: 200 as const, task };
 }
 

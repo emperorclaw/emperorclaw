@@ -1834,7 +1834,21 @@
       "makePrivate": "Make private",
       "choosePeople": "Choose people",
       "archiveTitle": "Archive this view?",
-      "deleteTitle": "Delete this view?"
+      "deleteTitle": "Delete this view?",
+      "maintainedBy": "Maintained by {name}",
+      "noMaintainer": "No maintainer",
+      "changeMaintainer": "{current}. Choose who maintains this view",
+      "chooseMaintainer": "Choose a maintainer",
+      "maintainerTitle": "Who maintains this view",
+      "maintainerDescription": "The maintaining agent keeps this view's values up to date. It can always open and change the view, even when the view is private. Only agents whose scope covers this view are listed.",
+      "maintainerAgent": "Agent",
+      "maintainerSaved": "Maintainer updated",
+      "maintainerCleared": "No agent maintains this view now",
+      "maintainerFailed": "Couldn't change who maintains this view",
+      "maintainerAgentsFailed": "Couldn't load the agents",
+      "noAgentsCoverScope": "No agent's scope covers this view.",
+      "narrowKeepsMaintainer": "{name} maintains it and keeps access, so it can still refresh it.",
+      "narrowNoMaintainer": "No agent maintains this view, so no agent will be able to refresh it after this."
     }
   },
   "projects": {
@@ -2770,11 +2784,12 @@
         "includes": "Includes {count, plural, one {# agent} other {# agents}}, one AI team leader and a shared chat with you.",
         "name": "Team name",
         "leader": "Team leader",
-        "reportingHint": "Set reporting relationships in Organization after setup.",
+        "reportingHint": "Setup puts this team on the organization chart under your company leader. Adjust reporting in Organization any time.",
         "chatReady": "{name} · Team chat ready",
         "openChat": "Open team chat",
-        "reviewReporting": "Review reporting",
-        "orgChartHint": "Add this team to the organization chart when you choose who it reports to. Existing relationships are preserved.",
+        "reviewReporting": "View org chart",
+        "orgChartHint": "This team is on the organization chart, so its agents know whom they report to. Existing relationships are preserved.",
+        "orgChartManual": "This team is not on the organization chart yet. Add it in Organization so its agents know whom they report to.",
         "creatingChat": "Creating team chat…",
         "waitingProfiles": "Waiting for all agent profiles.",
         "retryChat": "Retry team chat"
@@ -2916,6 +2931,7 @@
       "runsOnStatus": "Runs on {host} ({status})",
       "openWorkLog": "Open {title}",
       "workLog": "Work log",
+      "workLogUnread": "{count, plural, one {# unread message} other {# unread messages}}",
       "onTimeline": "See this agent on the timeline",
       "recreateTitle": "Recreate Runtime — stop, remove, and re-provision this agent's Hermes container",
       "recreateConfirmTitle": "Recreate {name}'s runtime?",
@@ -3160,6 +3176,7 @@
         "visibility_changed": "<who>{actor}</who> changed who can see <target>view {label}</target> {detail}",
         "owner_transferred": "<who>{actor}</who> transferred <target>view {label}</target> {detail}",
         "owner_claimed": "<who>{actor}</who> took ownership of <target>view {label}</target> {detail}",
+        "maintainer_changed": "<who>{actor}</who> changed who maintains <target>view {label}</target> {detail}",
         "deleted": "<who>{actor}</who> deleted <target>view {label}</target> {detail}",
         "read_unbound_token": "<who>{actor}</who> opened with a company-wide token <target>view {label}</target> {detail}"
       },
@@ -4308,6 +4325,8 @@
     "subtitle": "Team and direct conversations",
     "filterPlaceholder": "Filter agents...",
     "filterLabel": "Filter conversations",
+    "markAllRead": "Mark all as read",
+    "markAllReadFailed": "Could not mark your conversations as read. Try again.",
     "everyone": "Everyone",
     "groups": "Groups",
     "newGroup": "New group",
@@ -4544,6 +4563,7 @@
       "createAgentsFailed": "Could not create your agents.",
       "noResult": "Setup returned no result for this profile.",
       "reportingRetry": "Team chats are ready, but the reporting setup needs a retry. Review it in Agents → Organization.",
+      "reportingNotPlaced": "Some teams could not be put on the org chart automatically. Add them in Agents → Organization.",
       "restartFailed": "Could not restart this runtime",
       "doc": {
         "handingOver": "Handing over the job…",
@@ -4559,6 +4579,7 @@
         "company": "Your company",
         "model": "AI model",
         "team": "Your teams",
+        "work": "How you work",
         "launch": "Launch"
       },
       "setUpLater": "Set up later",
@@ -4637,6 +4658,26 @@
         "groupMembers": "{names}, you",
         "smallMachine": "Each agent runs its own runtime. On a small machine (a Raspberry Pi, a laptop), start with {count} or fewer and add more later.",
         "noBoss": "Without a Boss, assign work to each specialist yourself."
+      },
+      "work": {
+        "title": "How you work",
+        "intro": "Optional. These start from your current settings; change what you like, or skip and keep them.",
+        "loading": "Loading your settings…",
+        "profileTitle": "Your name and role",
+        "profileHint": "Your name and role help agents know who to contact. Once you add your name, you sit at the top of the org chart, above your lead agent.",
+        "reviewTitle": "Daily review",
+        "reviewHint": "Each agent gets a short review of its open tasks at this time every day.",
+        "reviewTime": "Time",
+        "timeZone": "Time zone: {zone}",
+        "notificationsTitle": "Notifications",
+        "notificationsHint": "You always see everything in your notifications here in the app. Also email me about:",
+        "emailApprovals": "Approvals and decisions waiting for me",
+        "emailBlocked": "Blocked, stalled or failed work",
+        "emailOff": "Email is not set up on this server, so approvals and blocked work show up in your notifications here in the app.",
+        "moreInSettings": "More in Settings",
+        "skip": "Skip",
+        "skipHint": "Skip keeps these settings as they are. You can change all of them later in Settings.",
+        "saveFailed": "Some of your settings could not be saved. You can change them in Settings."
       },
       "launch": {
         "ready": "Your team is ready",
@@ -4756,7 +4797,7 @@
         },
         "agents": {
           "title": "Agents — your AI workforce",
-          "body": "Register and manage your connected OpenClaw workers. Each agent has a profile, capabilities, and runtime config."
+          "body": "Hire and manage your AI agents. Each one has a profile, a role, its place in the org chart, and the runtime it runs on."
         },
         "customers": {
           "title": "Customers — client context",

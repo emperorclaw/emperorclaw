@@ -66,6 +66,7 @@ function readAccessOf(access: McpAgentAccess): AgentResourceAccess | null {
     callerAgentId: access.agentId,
     allowedProjectIds: access.allowedProjectIds,
     allowedCustomerIds: access.allowedCustomerIds,
+    allowedAgentIds: access.allowedAgentIds,
   };
 }
 
@@ -143,7 +144,7 @@ function conventionOwnerAllowed(path: string, owners: FolderOwnerIndex, access: 
 
 /** Knowledge notes in a folder and beneath it (case-insensitive), scope columns only. */
 async function notesInFolderTree(companyId: string, path: string) {
-  return db.select({ scopeType: scopedResources.scopeType, scopeId: scopedResources.scopeId })
+  return db.select({ scopeType: scopedResources.scopeType, scopeId: scopedResources.scopeId, name: scopedResources.name })
     .from(scopedResources)
     .where(and(
       eq(scopedResources.companyId, companyId),
@@ -302,7 +303,7 @@ export type KnowledgeFolderTree = {
  * (`totalCount`).
  */
 export async function listKnowledgeFolders(companyId: string, access: McpAgentAccess): Promise<KnowledgeFolderTree> {
-  const rows = await db.select({ scopeType: scopedResources.scopeType, scopeId: scopedResources.scopeId, path: scopedResources.path })
+  const rows = await db.select({ scopeType: scopedResources.scopeType, scopeId: scopedResources.scopeId, name: scopedResources.name, path: scopedResources.path })
     .from(scopedResources)
     .where(and(
       eq(scopedResources.companyId, companyId),

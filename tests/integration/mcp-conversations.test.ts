@@ -51,7 +51,7 @@ async function agentReply(companyId: string, threadId: string, agentId: string, 
 const SHARED_TOOLS = [
     "add_group_members", "add_task_note", "archive_group", "archive_view", "check_action", "claim_task",
     "create_agent", "create_group", "create_knowledge_note", "create_project", "create_task", "create_view",
-    "get_agent", "get_agent_health", "get_emperor_manual", "get_group", "get_knowledge_context", "get_knowledge_note",
+    "get_agent", "get_agent_health", "get_emperor_manual", "get_group", "get_knowledge_context", "get_knowledge_note", "get_organization",
     "get_project", "get_task", "get_task_overview", "get_view", "list_agents", "list_groups", "list_knowledge",
     "list_automations", "list_knowledge_folders", "list_objectives", "list_projects", "list_storage_files", "list_tasks", "list_threads",
     "list_views", "read_thread", "remove_group_member", "request_approval", "run_automation", "search_knowledge", "send_message",

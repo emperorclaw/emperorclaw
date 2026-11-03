@@ -7,13 +7,14 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslations } from "next-intl";
 import {
     IconArrowLeft, IconArrowRight, IconBook2, IconBuilding, IconCheck, IconCircleCheck, IconCpu,
-    IconExternalLink, IconKey, IconLoader2, IconMessage, IconRocket, IconSparkles, IconUsersGroup, IconAlertTriangle, IconX,
+    IconAdjustments, IconExternalLink, IconKey, IconLoader2, IconMessage, IconRocket, IconSparkles, IconUsersGroup, IconAlertTriangle, IconX,
 } from "@tabler/icons-react";
 import { Button } from "@/components/ui/button";
 import { HermesImageProgress } from "@/components/hermes-image-progress";
 import { SampleClientOffer } from "@/components/sample-client";
 import { DisabledReason } from "@/components/ui/disabled-reason";
 import { Input } from "@/components/ui/input";
+import { EMPTY_WORK_SETTINGS, loadWorkSettings, saveWorkSettings, SetupWorkStep, withLocalTimeZone, type WorkSettings } from "@/components/setup-work-step";
 import { agentRoleTemplates, getAgentTemplate } from "@/lib/agent-templates";
 import { BUSINESS_TYPES, COMFORTABLE_AGENT_COUNT, DEFAULT_AGENT_NAMES, MAX_WIZARD_AGENTS, TEAM_TEMPLATES, planTeam, suggestedTeams, teamPlanProblemKind, type PlannedGroup } from "@/lib/onboarding-shared";
 import { cn } from "@/lib/utils";
@@ -24,11 +25,13 @@ import { COMPANY_TEMPLATES, DEFAULT_COMPANY_TEMPLATE, type CompanyTemplateId } f
  * First-run setup, modelled on an OS setup assistant: one focused screen per
  * decision, a step rail showing where you are, and nothing else on screen.
  * Company → AI model (a key is required: without it no agent can answer) →
- * team → launch, where the lead agent's first job is documenting the company
- * in Knowledge & Rules while you watch.
+ * team → how you work (optional) → launch, where the lead agent's first job is
+ * documenting the company in Knowledge & Rules while you watch. "How you work"
+ * comes before launch so your name is saved before the org chart is built:
+ * you sit at its top, above the lead agent, and agents escalate to you by name.
  */
 
-type Step = "welcome" | "company" | "model" | "team" | "launch";
+type Step = "welcome" | "company" | "model" | "team" | "work" | "launch";
 type KeyState = { status: "idle" | "checking" | "ok" | "bad" | "unknown"; message: string };
 type Member = { templateId: string; name: string };
 type Created = { name: string; agentId: string | null; success: boolean; message: string; templateId: string; reused?: boolean };
@@ -47,6 +50,7 @@ const STEPS: { id: Step; icon: typeof IconBuilding }[] = [
     { id: "company", icon: IconBuilding },
     { id: "model", icon: IconCpu },
     { id: "team", icon: IconUsersGroup },
+    { id: "work", icon: IconAdjustments },
     { id: "launch", icon: IconRocket },
 ];
 
@@ -110,6 +114,12 @@ export function SetupWizard({ initialCompanyName, initialBusinessType = "", prof
     const groupRequestIds = useRef(new Map<string, string>());
     const [groupBusy, setGroupBusy] = useState(false);
     const [groupsMade, setGroupsMade] = useState<{ title: string; icon: string; ok: boolean; members: string[] }[]>([]);
+
+    // How you work: optional, saved through the Settings APIs before launch.
+    const [workInitial, setWorkInitial] = useState<WorkSettings | null>(null);
+    const [work, setWork] = useState<WorkSettings>(EMPTY_WORK_SETTINGS);
+    // Put the person above the lead agent when the chart is first built (their saved profile has a name).
+    const [placeMeOnTop, setPlaceMeOnTop] = useState(false);
 
     // Launch
     const [launching, setLaunching] = useState(false);
@@ -253,13 +263,33 @@ export function SetupWizard({ initialCompanyName, initialBusinessType = "", prof
     const teamValid = !planProblem;
     const addable = agentRoleTemplates.filter((t) => !team.some((m) => m.templateId === t.id));
 
+    // ── How you work ─────────────────────────────────────────────────────────
+    useEffect(() => {
+        if (step !== "work" || workInitial) return;
+        let cancelled = false;
+        // Setup is for owners and admins, so every setting here is theirs to change.
+        void loadWorkSettings(true).then((loaded) => {
+            if (cancelled) return;
+            setWorkInitial(loaded);
+            setWork(withLocalTimeZone(loaded));
+        });
+        return () => { cancelled = true; };
+    }, [step, workInitial]);
+
     // ── Launch ───────────────────────────────────────────────────────────────
-    const launch = async () => {
+    const launch = async (options: { saveWork?: boolean } = {}) => {
         if (launching) return;
         setStep("launch");
         setLaunching(true);
         setError("");
         try {
+            let onTop = false;
+            if (options.saveWork && workInitial) {
+                const saved = await saveWorkSettings(workInitial, work);
+                onTop = saved.named;
+                setPlaceMeOnTop(onTop);
+                if (!saved.ok) setError(t("work.saveFailed"));
+            }
             // The lead goes first: it gets the documentation job.
             const ordered = [...team].sort((a, b) => (a.templateId === "boss" ? -1 : b.templateId === "boss" ? 1 : 0));
             const previousByRole = new Map((created ?? []).filter(result => result.agentId).map(result => [result.templateId, result]));
@@ -294,7 +324,7 @@ export function SetupWizard({ initialCompanyName, initialBusinessType = "", prof
             setCreated(results);
             setLaunchedAt(Date.now());
             if (results.some((r) => r.success && r.agentId)) setApiKey("");
-            await createGroups(plan.groups, results);
+            await createGroups(plan.groups, results, onTop);
             router.refresh();
         } catch (e) {
             setError(e instanceof Error ? e.message : t("createAgentsFailed"));
@@ -305,12 +335,13 @@ export function SetupWizard({ initialCompanyName, initialBusinessType = "", prof
 
     // One group chat per chosen team, with its agents and the Boss; you are
     // added as its creator. A failed group never blocks the agents.
-    const createGroups = async (groups: PlannedGroup[], results: Created[]) => {
+    const createGroups = async (groups: PlannedGroup[], results: Created[], onTop: boolean) => {
         if (groupBusy) return;
         setGroupBusy(true);
         try {
             const byRole = new Map(results.filter(result => result.agentId).map(result => [result.templateId, result]));
             const teamIds: string[] = [];
+            const coordinators = new Set<string>();
             const made: { title: string; icon: string; ok: boolean; members: string[] }[] = [];
             for (const group of groups) {
                 const members = group.roles.map(role => byRole.get(role)).filter((member): member is Created => Boolean(member));
@@ -318,8 +349,11 @@ export function SetupWizard({ initialCompanyName, initialBusinessType = "", prof
                     made.push({ title: group.title, icon: group.icon, ok: false, members: members.map(member => member.name) });
                     continue;
                 }
-                const coordinatorId = members.find(member => member.templateId !== "boss")?.agentId;
+                // A distinct coordinator per team when possible: each AI team leader leads one team on the chart.
+                const specialists = members.filter(member => member.templateId !== "boss" && member.agentId);
+                const coordinatorId = (specialists.find(member => !coordinators.has(member.agentId!)) ?? specialists[0])?.agentId;
                 if (!coordinatorId) continue;
+                coordinators.add(coordinatorId);
                 if (!groupRequestIds.current.has(group.teamId)) groupRequestIds.current.set(group.teamId, createClientRequestId());
                 const response = await fetch("/api/groups", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({
                     requestId: groupRequestIds.current.get(group.teamId), title: group.title, description: group.description, icon: group.icon,
@@ -329,11 +363,19 @@ export function SetupWizard({ initialCompanyName, initialBusinessType = "", prof
                 if (data?.group?.id) teamIds.push(data.group.id);
                 made.push({ title: group.title, icon: group.icon, ok: Boolean(data?.group?.id), members: members.map(member => member.name) });
             }
-            if (teamIds.length && teamIds.length === groups.length) {
-                const leaderId = byRole.get("boss")?.agentId ?? results.find(result => result.agentId)?.agentId;
-                const response = await fetch("/api/organization", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ initialize: true, leader: leaderId ? { kind: "agent", id: leaderId } : null, teamIds }) }).catch(() => null);
-                if (!response?.ok && response?.status !== 409) setError(t("reportingRetry"));
+            // Build the reporting tree: the Boss leads the company, each team sits
+            // under it with its coordinator as team leader and its other agents
+            // below. Only adds to a chart someone already edited.
+            const leaderId = byRole.get("boss")?.agentId ?? results.find(result => result.agentId)?.agentId;
+            let reportingFailed = false;
+            let notPlaced = false;
+            for (const teamId of teamIds) {
+                const response = await fetch("/api/organization/teams", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ teamId, rootAgentId: leaderId, placeMeOnTop: onTop }) }).catch(() => null);
+                if (!response?.ok) reportingFailed = true;
+                else if ((await response.json().catch(() => ({}))).onChart !== true) notPlaced = true;
             }
+            if (reportingFailed) setError(t("reportingRetry"));
+            else if (notPlaced) setError(t("reportingNotPlaced"));
             setGroupsMade(made);
         } finally {
             setGroupBusy(false);
@@ -704,6 +746,8 @@ export function SetupWizard({ initialCompanyName, initialBusinessType = "", prof
                             </section>
                         )}
 
+                        {step === "work" && <SetupWorkStep value={work} onChange={setWork} loading={!workInitial} />}
+
                         {step === "launch" && (
                             <section className="mx-auto max-w-2xl space-y-6">
                                 <header>
@@ -751,7 +795,7 @@ export function SetupWizard({ initialCompanyName, initialBusinessType = "", prof
                                     </ul>
                                 )}
                                 {created?.some(result => !result.agentId) && <Button variant="outline" onClick={() => void launch()} disabled={launching}>{tSetup("retryProvisioning")}</Button>}
-                                {created && groupsMade.some(group => !group.ok) && <Button variant="outline" onClick={() => void createGroups(plan.groups, created)} disabled={groupBusy || launching || created.some(result => !result.agentId)}>{groupBusy ? t("launch.creatingChats") : t("launch.retryChats")}</Button>}
+                                {created && groupsMade.some(group => !group.ok) && <Button variant="outline" onClick={() => void createGroups(plan.groups, created, placeMeOnTop)} disabled={groupBusy || launching || created.some(result => !result.agentId)}>{groupBusy ? t("launch.creatingChats") : t("launch.retryChats")}</Button>}
                                 {lead && documentIt && (
                                     <div aria-live="polite" className="rounded-2xl border border-cyan-400/25 bg-cyan-400/[0.05] p-5">
                                         <div className="flex items-start gap-3">
@@ -801,7 +845,13 @@ export function SetupWizard({ initialCompanyName, initialBusinessType = "", prof
                                         {keyState.status === "checking" ? <><IconLoader2 className="h-4 w-4 animate-spin" />{t("checkingKey")}</> : <>{keyState.status === "unknown" ? t("continueAnyway") : t("continue")}<IconArrowRight className="h-4 w-4" /></>}
                                     </Button>
                                 ))}
-                            {step === "team" && <Button onClick={() => void launch()} disabled={!teamValid}>{t("createAgents", { count: team.length })}<IconRocket className="h-4 w-4" /></Button>}
+                            {step === "team" && <Button onClick={() => { setError(""); setStep("work"); }} disabled={!teamValid}>{t("continue")}<IconArrowRight className="h-4 w-4" /></Button>}
+                            {step === "work" && (
+                                <>
+                                    <Button variant="ghost" onClick={() => void launch()} disabled={!teamValid}>{t("work.skip")}</Button>
+                                    <Button onClick={() => void launch({ saveWork: true })} disabled={!teamValid || !workInitial}>{t("createAgents", { count: team.length })}<IconRocket className="h-4 w-4" /></Button>
+                                </>
+                            )}
                             {step === "launch" && (
                                 <>
                                     <Button variant="ghost" onClick={() => void goToDashboard()} disabled={launching}>{t("goToDashboard")}</Button>

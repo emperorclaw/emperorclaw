@@ -13,7 +13,7 @@ import { NAME_MAX } from "@/lib/input-limits";
 /** Shared wording so every knowledge tool teaches the same filing rule. */
 const FOLDER_DESCRIPTION = 'Folder path to file the note in, e.g. "Customers/Harbor Dental/Meetings"; missing folders are created. Call list_knowledge_folders first when unsure and reuse the existing convention (Company, Agents, Projects/<project>, Customers/<customer>). "" or "/" is the vault root.';
 
-export function registerKnowledgeTools(server: McpServer, companyId: string, callerAgentId?: string | null, tokenId: string | null = null) {
+export function registerKnowledgeTools(server: McpServer, companyId: string, callerAgentId?: string | null, tokenId: string | null = null, operatorUserId: string | null = null) {
     server.registerTool("get_knowledge_context", {
         title: "Get Knowledge Context",
         description: "Get this company's resolved Knowledge & Rules context — operating doctrine, SOPs, and business rules, ranked by relevance to the given scope. For the lean model prefer the knowledge index (list_knowledge / search_knowledge) and load a body with get_knowledge_note; use this only when you want the ranked auto-injected bodies in one call.",
@@ -117,7 +117,7 @@ export function registerKnowledgeTools(server: McpServer, companyId: string, cal
                 companyId, name, scopeType, scopeId, path,
                 provider: "knowledge", resourceType: "knowledge_base",
                 configText: content, isShared, status,
-                actor: mcpActor(callerAgentId, tokenId),
+                actor: mcpActor(callerAgentId, tokenId, operatorUserId),
             });
             return jsonResult({ message: "Knowledge note created", resource: toPublicResource(resource) });
         } catch (e) {
@@ -148,7 +148,7 @@ export function registerKnowledgeTools(server: McpServer, companyId: string, cal
             const resource = await updateScopedResource({
                 companyId, resourceId,
                 patch: { configText: content, name, isShared, status, path },
-                actor: mcpActor(callerAgentId, tokenId),
+                actor: mcpActor(callerAgentId, tokenId, operatorUserId),
             });
             return jsonResult({ message: "Knowledge note updated", resource: resource ? toPublicResource(resource) : resource });
         } catch (e) {

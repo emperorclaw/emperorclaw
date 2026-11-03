@@ -17,8 +17,10 @@ The first time an owner or admin opens the dashboard, **Emperor setup** opens: a
    | Finance & reporting | Accountant, Analyst | *Finance* |
 
    Teams are suggested for your kind of company (for example Marketing and Sales & outreach for an agency). A role two teams share is one agent in both groups. Rename anyone, remove anyone, or add a single specialist; up to eight agents here. Each agent runs its own runtime, so on a small machine start with four or fewer.
-4. **Launch.** Emperor starts each agent and shows them coming online. If you kept **Have my lead agent document the company** on, your lead gets its first job as soon as it's online: turn the profile and website into Knowledge & Rules notes (overview, products and services, customers, brand voice) and ask you what it couldn't find. You watch it happen, with links to its chat and the task.
-5. Click **Open direct chat** to talk to your lead. **Set up later** closes the assistant; hire agents any time from **Agents**.
+   Setup also builds the org chart: the Boss at the top, each team under it led by its first specialist, and the team's other agents under their team, so every agent knows whom it reports to.
+4. **How you work** (optional). Your name and role, whether direct chats with agents are private per person or shared with the whole team, the time of the agents' daily review, and whether approvals and blocked work also reach you by email. Each starts from the current setting; **Skip** keeps them all, and you can change them later in **Settings**. With your name filled in, you sit at the top of the org chart, above the Boss, so agents escalate to you by name.
+5. **Launch.** Emperor starts each agent and shows them coming online. If you kept **Have my lead agent document the company** on, your lead gets its first job as soon as it's online: turn the profile and website into Knowledge & Rules notes (overview, products and services, customers, brand voice) and ask you what it couldn't find. You watch it happen, with links to its chat and the task.
+6. Click **Open direct chat** to talk to your lead. **Set up later** closes the assistant; hire agents any time from **Agents**.
 
 If this installation can't start agents itself (no Docker socket), the assistant saves your company and points you to [connecting a Hermes agent](/docs/v1.1/hermes-runtime) instead.
 

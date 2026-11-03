@@ -7,8 +7,10 @@ import { mcpAccessForAgent, mcpAgentUpdateDenial, mcpMayReachAgent } from "@/lib
 import { computeCompanyHealth } from "@/lib/agent-health";
 import { mcpActor } from "@/lib/audit";
 import { NAME_MAX } from "@/lib/input-limits";
+import { resolveAgentId } from "@/lib/mcp";
+import { organizationForAgent } from "@/lib/organization";
 
-export function registerAgentTools(server: McpServer, companyId: string, callerAgentId?: string | null, tokenId: string | null = null) {
+export function registerAgentTools(server: McpServer, companyId: string, callerAgentId?: string | null, tokenId: string | null = null, operatorUserId: string | null = null) {
     server.registerTool("get_agent_health", {
         title: "Get Agent Health",
         description: "Health of every agent over the last 7 days: unanswered and failed messages, median response time, retries, open/overdue/done tasks, cost, and a status (healthy, attention, down, idle) with reasons. Read the reasons before acting: an agent is `down` when it is offline, but also when its LLM provider is out of credits (reason first: 'LLM provider out of credits'), which only an owner/admin topping up the provider fixes; messaging or reassigning to it will not. Includes the messages that need attention. Use it to check on the team before reporting status or reassigning work.",
@@ -21,6 +23,21 @@ export function registerAgentTools(server: McpServer, companyId: string, callerA
             if (agentId && reach && !reach.has(agentId)) throw new Error(`Agent ${agentId} not found`);
             const health = await computeCompanyHealth(companyId, agentId ? { agentIds: [agentId] } : reach ? { agentIds: [...reach] } : {});
             return jsonResult(health);
+        } catch (e) {
+            return errorResult(e);
+        }
+    });
+
+    server.registerTool("get_organization", {
+        title: "Get Organization",
+        description: "The org chart and your place in it: your manager for each team (managers), your directReports, peers, chainOfCommand up to the company leader (then the humans), the teams you belong to, and a compact tree of the whole company (tree). Use the task's team to pick which manager to report done or blocked work to. A reporting line guides coordination; it never grants permission, and you may still ask anyone you can reach.",
+        inputSchema: {
+            agentId: z.string().optional().describe("Whose place to show (operator connections only; an agent-bound connection always gets its own)"),
+        },
+    }, async ({ agentId }) => {
+        try {
+            const subject = callerAgentId ?? (agentId ? await resolveAgentId(companyId, agentId) : null);
+            return jsonResult(await organizationForAgent(companyId, subject));
         } catch (e) {
             return errorResult(e);
         }
@@ -77,9 +94,9 @@ export function registerAgentTools(server: McpServer, companyId: string, callerA
             if (deploymentMode === "local") {
                 sourceAgentId = callerAgentId || sourceAgentId;
                 if (!sourceAgentId) throw new Error("sourceAgentId is required for local Hermes hiring");
-                return jsonResult(await hireHermesAgent({ companyId, name, role, sourceAgentId, doctrineJson, actor: mcpActor(callerAgentId, tokenId) }));
+                return jsonResult(await hireHermesAgent({ companyId, name, role, sourceAgentId, doctrineJson, actor: mcpActor(callerAgentId, tokenId, operatorUserId) }));
             }
-            const agent = await createAgentForCompany({ companyId, name, role, skillsJson, llmProvider, llmModel, actorType: "mcp", actor: mcpActor(callerAgentId, tokenId) });
+            const agent = await createAgentForCompany({ companyId, name, role, skillsJson, llmProvider, llmModel, actorType: "mcp", actor: mcpActor(callerAgentId, tokenId, operatorUserId) });
             return jsonResult({ message: "Agent registered", agent });
         } catch (e) {
             return errorResult(e);
@@ -102,7 +119,7 @@ export function registerAgentTools(server: McpServer, companyId: string, callerA
             // A bound connection may only update its own agent, and never its model.
             const denial = await mcpAgentUpdateDenial(companyId, { agentId: callerAgentId ?? null }, agentId, { llmProvider, llmModel });
             if (denial) throw new Error(denial);
-            const agent = await updateAgentForCompany({ companyId, agentId, name, role, skillsJson, llmProvider, llmModel, actor: mcpActor(callerAgentId, tokenId) });
+            const agent = await updateAgentForCompany({ companyId, agentId, name, role, skillsJson, llmProvider, llmModel, actor: mcpActor(callerAgentId, tokenId, operatorUserId) });
             return jsonResult({ message: "Agent updated", agent });
         } catch (e) {
             return errorResult(e);

@@ -87,36 +87,64 @@ function stripCodexNoise(stdout) {
         .trim();
 }
 
+const ORG_BLOCK_MAX = 520;
+const ORG_RULE = "Work flows up: report done or blocked work to your manager for that team; escalate cross-team "
+    + "conflicts to the leader; details: GET /organization.";
+
+/** One line of display text, capped (names are user-set). */
+function orgLine(value, limit) {
+    const text = String(value || "").replace(/\s+/g, " ").trim();
+    return text.length <= limit ? text : text.slice(0, limit - 1) + "…";
+}
+
 /**
- * Who this agent reports to, from the chart: its first reporting line, else the
- * coordinator of a team it belongs to. Mirrors the Hermes bridge's resolution.
+ * Who this agent reports to, from the chart: ALL its reporting lines (the
+ * richer briefing's managers, else reporting), else the coordinator of a team
+ * it belongs to. Mirrors the Hermes bridge's resolution.
  */
-function reportsToName(info, leader, agentId) {
-    const reporting = Array.isArray(info.reporting) ? info.reporting : [];
-    for (const relation of reporting) {
-        if (!relation || typeof relation !== "object") continue;
-        const target = relation.reportsTo && typeof relation.reportsTo === "object" ? relation.reportsTo : {};
-        return String(target.name || "humans");
+function reportsToNames(info, leader, agentId) {
+    const managers = (Array.isArray(info.managers) ? info.managers : [])
+        .filter((entry) => entry && typeof entry === "object" && entry.manager && typeof entry.manager === "object");
+    if (managers.length) {
+        const names = managers.slice(0, 3).map((entry) => {
+            const name = orgLine(entry.manager.name || "humans", 32);
+            return entry.teamId ? `${name} (${orgLine(entry.context, 32)})` : name;
+        });
+        return names.join(" and ") + (managers.length > 3 ? ` (+${managers.length - 3} more teams)` : "");
     }
+    // Older servers: a reporting line whose reportsTo is null means the humans.
+    const reporting = (Array.isArray(info.reporting) ? info.reporting : [])
+        .filter((relation) => relation && typeof relation === "object")
+        .map((relation) => orgLine(relation.reportsTo && typeof relation.reportsTo === "object" ? relation.reportsTo.name || "humans" : "humans", 32));
+    if (reporting.length) return [...new Set(reporting)].join(" and ");
     const teams = Array.isArray(info.teams) ? info.teams : [];
     for (const team of teams) {
         if (!team || typeof team !== "object") continue;
         const coordinator = team.coordinator && typeof team.coordinator === "object" ? team.coordinator : {};
         if (coordinator.kind === "agent" && coordinator.id === agentId) {
             if (leader.kind === "agent" && leader.id === agentId) return "humans";
-            return String(leader.name || "humans");
+            return orgLine(leader.name || "humans", 64);
         }
-        return String(coordinator.name || leader.name || "unassigned");
+        return orgLine(coordinator.name || leader.name || "unassigned", 64);
     }
     return "humans";
 }
 
+/** "A, B, C, D and 2 more" from a list of people. */
+function peopleList(values, limit = 4) {
+    const names = (Array.isArray(values) ? values : [])
+        .filter((person) => person && typeof person === "object" && person.name)
+        .map((person) => orgLine(person.name, 32));
+    return names.length > limit ? `${names.slice(0, limit).join(", ")} and ${names.length - limit} more` : names.join(", ");
+}
+
 /**
- * Minimal org chart reminder: the leader and this agent's reporting line, plus
- * one escalation rule. Same wording as the Hermes bridge so both runtimes speak
- * one minimal org vocabulary. Returns "" when the organization is unconfigured
- * or the payload is malformed. Kept well under 400 chars regardless of company
- * size.
+ * Compact org chart reminder: the leader, every reporting line, direct
+ * reports and the chain of command, plus one rule. Same wording as the Hermes
+ * bridge so both runtimes speak one org vocabulary. Returns "" when the
+ * organization is unconfigured or the payload is malformed. At most
+ * ORG_BLOCK_MAX chars regardless of company size; older servers (no
+ * managers/directReports/chainSummary) still get the leader and reporting line.
  *
  * @param {object} info     GET /organization response.
  * @param {string} agentId  This agent's id.
@@ -124,12 +152,15 @@ function reportsToName(info, leader, agentId) {
 function organizationContext(info, agentId) {
     if (!info || typeof info !== "object" || !info.configured) return "";
     const leader = info.leader && typeof info.leader === "object" ? info.leader : {};
-    const leaderName = String(leader.name || "unassigned").slice(0, 64);
-    const reportingLine = leader.kind === "agent" && leader.id === agentId
+    const leaderName = orgLine(leader.name || "unassigned", 64);
+    let line = info.isCompanyLeader || (leader.kind === "agent" && leader.id === agentId)
         ? "you lead the company; report to humans"
-        : "you report to " + reportsToName(info, leader, agentId).slice(0, 64);
-    return `Org: leader ${leaderName}; ${reportingLine}\n`
-        + "Escalate cross-team conflicts to the leader; details: GET /organization.";
+        : "you report to " + reportsToNames(info, leader, agentId);
+    const reports = peopleList(info.directReports);
+    if (reports) line += `; your direct reports: ${reports}`;
+    const chain = orgLine(info.chainSummary, 160);
+    const text = `Org: leader ${leaderName}; ${line}` + (chain.includes(" → ") ? `\nChain of command: ${chain}` : "");
+    return text.slice(0, ORG_BLOCK_MAX - ORG_RULE.length - 1) + "\n" + ORG_RULE;
 }
 
 /**

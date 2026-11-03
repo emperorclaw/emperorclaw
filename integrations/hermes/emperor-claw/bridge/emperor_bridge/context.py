@@ -185,29 +185,65 @@ def format_memory(entries: Sequence[Mapping[str, Any]]) -> str:
             + "\n".join(reversed(lines))) if lines else ""
 
 
+ORG_LIST_MAX = 4
+ORG_BLOCK_MAX = 520
+ORG_RULE = ("Work flows up: report done or blocked work to your manager for that team; escalate cross-team "
+            "conflicts to the leader; details: GET /organization.")
+
+
+def _org_people(values: Any, limit: int = ORG_LIST_MAX) -> str:
+    names = [clean_line(p.get("name"), 32) for p in values or [] if isinstance(p, Mapping) and p.get("name")]
+    if len(names) > limit:
+        return ", ".join(names[:limit]) + f" and {len(names) - limit} more"
+    return ", ".join(names)
+
+
 def format_organization(info: Any, agent_id: str) -> str:
-    """Leader + this agent's reporting line + one escalation rule, under 400 chars."""
+    """Leader, ALL of this agent's reporting lines, direct reports and chain, plus one rule; short.
+
+    Reads the richer briefing (managers, directReports, chainSummary) when the server sends it and
+    falls back to ``reporting``/``teams`` for older servers. Never more than ~520 chars.
+    """
     if not isinstance(info, Mapping) or not info.get("configured"):
         return ""
     leader = info.get("leader") if isinstance(info.get("leader"), Mapping) else {}
-    if leader.get("kind") == "agent" and leader.get("id") == agent_id:
+    if info.get("isCompanyLeader") or (leader.get("kind") == "agent" and leader.get("id") == agent_id):
         line = "you lead the company; report to humans"
     else:
-        target = "humans"
-        reporting = [r for r in info.get("reporting") or [] if isinstance(r, Mapping)]
-        teams = [t for t in info.get("teams") or [] if isinstance(t, Mapping)]
-        if reporting:
-            to = reporting[0].get("reportsTo") if isinstance(reporting[0].get("reportsTo"), Mapping) else {}
-            target = str(to.get("name") or "humans")
-        elif teams:
-            coordinator = teams[0].get("coordinator") if isinstance(teams[0].get("coordinator"), Mapping) else {}
-            if coordinator.get("kind") == "agent" and coordinator.get("id") == agent_id:
-                target = str(leader.get("name") or "humans")
-            else:
-                target = str(coordinator.get("name") or leader.get("name") or "unassigned")
-        line = "you report to " + target[:64]
-    return (f"Org: leader {str(leader.get('name') or 'unassigned')[:64]}; {line}\n"
-            "Escalate cross-team conflicts to the leader; details: GET /organization.")
+        lines: list[str] = []
+        managers = [m for m in info.get("managers") or [] if isinstance(m, Mapping) and isinstance(m.get("manager"), Mapping)]
+        if managers:
+            for entry in managers[:3]:
+                name = clean_line(entry["manager"].get("name") or "humans", 32)
+                lines.append(f"{name} ({clean_line(entry.get('context'), 32)})" if entry.get("teamId") else name)
+        else:
+            # Older servers: a reporting line whose reportsTo is null means the humans.
+            for relation in info.get("reporting") or []:
+                if not isinstance(relation, Mapping):
+                    continue
+                to = relation.get("reportsTo") if isinstance(relation.get("reportsTo"), Mapping) else {}
+                name = clean_line(to.get("name") or "humans", 32)
+                if name not in lines:
+                    lines.append(name)
+        if not lines:
+            teams = [t for t in info.get("teams") or [] if isinstance(t, Mapping)]
+            target = "humans"
+            if teams:
+                coordinator = teams[0].get("coordinator") if isinstance(teams[0].get("coordinator"), Mapping) else {}
+                if coordinator.get("kind") == "agent" and coordinator.get("id") == agent_id:
+                    target = str(leader.get("name") or "humans")
+                else:
+                    target = str(coordinator.get("name") or leader.get("name") or "unassigned")
+            lines.append(clean_line(target, 64))
+        more = len(managers) - 3 if len(managers) > 3 else 0
+        line = "you report to " + " and ".join(lines) + (f" (+{more} more teams)" if more else "")
+    reports = _org_people(info.get("directReports"))
+    if reports:
+        line += f"; your direct reports: {reports}"
+    chain = clean_line(info.get("chainSummary"), 160)
+    text = (f"Org: leader {clean_line(leader.get('name') or 'unassigned', 64)}; {line}"
+            + (f"\nChain of command: {chain}" if chain and " → " in chain else ""))
+    return text[:ORG_BLOCK_MAX - len(ORG_RULE) - 1] + "\n" + ORG_RULE
 
 
 def format_thread_context(thread_id: str, thread_type: str, detail: Mapping[str, Any], agent_name: str) -> str:

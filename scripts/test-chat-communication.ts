@@ -5,6 +5,12 @@ import * as crypto from 'crypto';
 
 const API_TOKEN = process.env.TEST_API_TOKEN;
 const BASE_URL = process.env.CLAW_URL || 'http://localhost:3000';
+// The agent that replies: a company-wide token must name it on every write (400 otherwise).
+const AGENT_ID = process.env.AGENT_ID;
+if (!API_TOKEN || !AGENT_ID) {
+    console.error("Please set TEST_API_TOKEN and AGENT_ID before running this script.");
+    process.exit(1);
+}
 
 async function mcpRequest(endpoint: string, payload: any) {
     const res = await fetch(`${BASE_URL}${endpoint}`, {
@@ -86,6 +92,7 @@ async function runChatTest() {
     // 3. Simulate OpenClaw replying via MCP
     console.log("ðŸ¤– OpenClaw Agent replying via MCP (/api/mcp/messages/send)...");
     const replyRes = await mcpRequest('/api/mcp/messages/send', {
+        agentId: AGENT_ID,
         chat_id: threadId,
         text: "I have reviewed the metrics. We had 1 Blocked Task due to a WAF trigger. I have promoted the Stealth SERP tactic to compensate.",
         reply_to_message_id: humanMsg.id

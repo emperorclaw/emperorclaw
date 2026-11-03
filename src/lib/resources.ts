@@ -11,6 +11,7 @@ import {
   scopedResources,
 } from "@/db/schema";
 import { isCustomerAllowed, isProjectAllowed, loadAgentScopeContext } from "@/lib/agent-scope";
+import { isOrganizationNote } from "@/lib/organization-briefing";
 import type { McpTaskScopeContext } from "@/lib/mcp";
 import {
   buildAlwaysBlock,
@@ -217,6 +218,8 @@ export type AgentResourceAccess = {
   callerAgentId: string;
   allowedProjectIds: Set<string> | null;
   allowedCustomerIds: Set<string> | null;
+  /** Agents it may see; null = all. A limited agent never reads the generated org chart note. */
+  allowedAgentIds: Set<string> | null;
 };
 
 /**
@@ -227,11 +230,14 @@ export type AgentResourceAccess = {
  * unrestricted scope grants all). Anything else is not visible.
  */
 export function canAgentReadResource(
-  resource: { scopeType: string; scopeId: string | null },
+  resource: { scopeType: string; scopeId: string | null; name: string },
   access: AgentResourceAccess | null,
 ): boolean {
   if (!access) return true;
   const scope = normalizeScopeType(resource.scopeType);
+  // The generated org chart note names every agent and team; an agent
+  // limited to certain agents gets its trimmed view from get_organization.
+  if (access.allowedAgentIds !== null && isOrganizationNote(resource)) return false;
   if (scope === "company") return true;
   if (scope === "agent") return resource.scopeId === access.callerAgentId;
   if (scope === "project") return isProjectAllowed(access.allowedProjectIds, resource.scopeId);
@@ -248,8 +254,8 @@ export async function loadAgentResourceAccess(
   callerAgentId: string | null | undefined,
 ): Promise<AgentResourceAccess | null> {
   if (!callerAgentId) return null;
-  const { allowedProjectIds, allowedCustomerIds } = await loadAgentScopeContext(companyId, callerAgentId);
-  return { callerAgentId, allowedProjectIds, allowedCustomerIds };
+  const { allowedProjectIds, allowedCustomerIds, allowedAgentIds } = await loadAgentScopeContext(companyId, callerAgentId);
+  return { callerAgentId, allowedProjectIds, allowedCustomerIds, allowedAgentIds };
 }
 
 function normalizeBrainKey(value: string) {

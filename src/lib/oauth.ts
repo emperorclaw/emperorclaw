@@ -145,6 +145,10 @@ export async function exchangeCodeForToken(input: {
         tokenHash,
         name: `oauth:${client?.clientName || row.clientId}`,
         scope: "mcp_full",
+        // The person who approved the connection: what it changes without
+        // naming an agent is recorded as them (lib/mcp-write-actor.ts), and
+        // the token stops working once they leave the company.
+        createdByUserId: row.userId,
     });
 
     return { accessToken: rawToken, expiresIn: Math.floor(ACCESS_TOKEN_TTL_MS / 1000), scope: "mcp_full" };

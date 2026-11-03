@@ -6,6 +6,7 @@ import { useFormatter, useTranslations } from "next-intl";
 import {
     IconArrowLeft,
     IconCheck,
+    IconChecks,
     IconChevronDown,
     IconLayoutSidebarLeftCollapse,
     IconLayoutSidebarLeftExpand,
@@ -32,6 +33,8 @@ import { workLogThreadTitle } from "@/lib/direct-chat-mode";
 import { EVERYONE_MENTION } from "./mention-textarea";
 import { GroupIcon } from "@/components/group-icon";
 import { EmptyState } from "@/components/ui/empty-state";
+import { refreshNavBadges } from "@/components/use-nav-badges";
+import { toast } from "sonner";
 
 type Agent = {
     id: string;
@@ -143,6 +146,34 @@ export function MessagingHub({
     const [searchQuery, setSearchQuery] = useState("");
     const [mobileChatOpen, setMobileChatOpen] = useState(false);
     const [isFocused, setIsFocused] = useState(false);
+    // "Mark all as read" zeroes the counts at once. Keyed to the props it
+    // cleared: the next server refresh brings the real counts back.
+    const [clearedFor, setClearedFor] = useState<DirectThreadSummary[] | null>(null);
+    const [markingAllRead, setMarkingAllRead] = useState(false);
+    const cleared = clearedFor === directThreads;
+    const unread = (count: number) => (cleared ? 0 : count);
+    // Exactly what the badge counts and read-all clears: not the Work logs.
+    const hasListedUnread = !cleared && (
+        teamUnreadCount > 0
+        || groups.some((group) => group.unreadCount > 0)
+        || directThreads.some((thread) => thread.unreadCount > 0)
+        || secondaryDirectThreads.some((thread) => thread.kind !== "operations" && thread.unreadCount > 0)
+    );
+
+    const markAllRead = async () => {
+        setMarkingAllRead(true);
+        try {
+            const res = await fetch("/api/chat/read-all", { method: "POST" });
+            if (!res.ok) throw new Error(String(res.status));
+            setClearedFor(directThreads);
+            void refreshNavBadges();
+            router.refresh();
+        } catch {
+            toast.error(t("markAllReadFailed"));
+        } finally {
+            setMarkingAllRead(false);
+        }
+    };
 
     const filteredThreads = useMemo(() => {
         return directThreads.filter((thread) =>
@@ -318,8 +349,8 @@ export function MessagingHub({
                         <p className="text-[11px] text-zinc-500">{t("subtitle")}</p>
                     </div>
                 </div>
-                <div className="border-b border-zinc-800/80 p-3 sm:p-4">
-                    <div className="relative">
+                <div className="flex items-center gap-2 border-b border-zinc-800/80 p-3 sm:p-4">
+                    <div className="relative min-w-0 flex-1">
                         <IconSearch className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-500" />
                         <input
                             type="text"
@@ -330,6 +361,16 @@ export function MessagingHub({
                             className="h-11 w-full rounded-xl border border-zinc-800 bg-zinc-950/80 py-2 pl-9 pr-4 text-sm text-zinc-200 placeholder:text-zinc-600 focus:outline-none focus:ring-2 focus:ring-cyan-400/70"
                         />
                     </div>
+                    <button
+                        type="button"
+                        onClick={() => void markAllRead()}
+                        disabled={!hasListedUnread || markingAllRead}
+                        aria-label={t("markAllRead")}
+                        title={t("markAllRead")}
+                        className="grid h-11 w-11 shrink-0 place-items-center rounded-xl border border-zinc-800 text-zinc-400 transition-colors hover:border-cyan-400/40 hover:bg-cyan-400/10 hover:text-cyan-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400/70 disabled:pointer-events-none disabled:opacity-40"
+                    >
+                        <IconChecks className="h-4 w-4" />
+                    </button>
                 </div>
 
                 <div className="flex-1 overflow-y-auto">
@@ -362,9 +403,9 @@ export function MessagingHub({
                                     </span>
                                     <span className="text-[10px] uppercase font-bold text-zinc-500 tracking-wider">{t("everyone")}</span>
                                 </div>
-                                {teamUnreadCount > 0 && (
+                                {unread(teamUnreadCount) > 0 && (
                                     <span className="min-w-5 shrink-0 rounded-full bg-cyan-400 px-1.5 py-0.5 text-center text-[10px] font-bold text-cyan-950">
-                                        {teamUnreadCount}
+                                        {unread(teamUnreadCount)}
                                     </span>
                                 )}
                             </div>
@@ -407,8 +448,8 @@ export function MessagingHub({
                                     <div className="min-w-0 flex-1">
                                         <div className="flex items-center justify-between gap-2">
                                             <span className={cn("truncate text-sm font-semibold tracking-tight", selected ? "text-cyan-100" : "text-zinc-300")}>{group.title}</span>
-                                            {group.unreadCount > 0 && (
-                                                <span className="min-w-5 shrink-0 rounded-full bg-cyan-400 px-1.5 py-0.5 text-center text-[10px] font-bold text-cyan-950">{group.unreadCount}</span>
+                                            {unread(group.unreadCount) > 0 && (
+                                                <span className="min-w-5 shrink-0 rounded-full bg-cyan-400 px-1.5 py-0.5 text-center text-[10px] font-bold text-cyan-950">{unread(group.unreadCount)}</span>
                                             )}
                                         </div>
                                         <span className="block truncate text-[11px] text-zinc-500">
@@ -469,9 +510,9 @@ export function MessagingHub({
                                             </span>
                                         </div>
                                         <div className="flex flex-col items-end gap-1 shrink-0">
-                                            {thread.unreadCount > 0 && (
+                                            {unread(thread.unreadCount) > 0 && (
                                                 <span className="min-w-5 rounded-full bg-cyan-400 px-1.5 py-0.5 text-center text-[10px] font-bold text-cyan-950">
-                                                    {thread.unreadCount}
+                                                    {unread(thread.unreadCount)}
                                                 </span>
                                             )}
                                             <span className="text-[10px] text-zinc-600">
@@ -512,8 +553,8 @@ export function MessagingHub({
                                     <div className="min-w-0 flex-1">
                                         <div className="flex items-center justify-between gap-2">
                                             <span className={cn("truncate text-sm font-semibold tracking-tight", selected ? "text-cyan-100" : "text-zinc-300")}>{secondaryThreadLabel(thread)}</span>
-                                            {thread.unreadCount > 0 && (
-                                                <span className="min-w-5 shrink-0 rounded-full bg-cyan-400 px-1.5 py-0.5 text-center text-[10px] font-bold text-cyan-950">{thread.unreadCount}</span>
+                                            {unread(thread.unreadCount) > 0 && (
+                                                <span className="min-w-5 shrink-0 rounded-full bg-cyan-400 px-1.5 py-0.5 text-center text-[10px] font-bold text-cyan-950">{unread(thread.unreadCount)}</span>
                                             )}
                                         </div>
                                         <span className="block truncate text-[11px] text-zinc-500">
@@ -612,9 +653,9 @@ export function MessagingHub({
                                         <div className="truncate text-sm font-medium">{t("teamChannel")}</div>
                                         <div className="text-[10px] text-zinc-500">{t("everyone")}</div>
                                     </div>
-                                    {teamUnreadCount > 0 && (
+                                    {unread(teamUnreadCount) > 0 && (
                                         <span className="min-w-5 shrink-0 rounded-full bg-cyan-400 px-1.5 py-0.5 text-center text-[10px] font-bold text-cyan-950">
-                                            {teamUnreadCount}
+                                            {unread(teamUnreadCount)}
                                         </span>
                                     )}
                                     {teamSelected && <IconCheck className="h-4 w-4 text-cyan-400" />}
@@ -638,8 +679,8 @@ export function MessagingHub({
                                                     <div className="truncate text-sm font-medium">{group.title}</div>
                                                     <div className="text-[10px] text-zinc-500">{t("agentCount", { count: group.members.filter((m) => m.kind === "agent").length })}</div>
                                                 </div>
-                                                {group.unreadCount > 0 && (
-                                                    <span className="min-w-5 rounded-full bg-cyan-400 px-1.5 py-0.5 text-center text-[10px] font-bold text-cyan-950">{group.unreadCount}</span>
+                                                {unread(group.unreadCount) > 0 && (
+                                                    <span className="min-w-5 rounded-full bg-cyan-400 px-1.5 py-0.5 text-center text-[10px] font-bold text-cyan-950">{unread(group.unreadCount)}</span>
                                                 )}
                                                 {selectedGroupId === group.id && <IconCheck className="h-4 w-4 text-cyan-400" />}
                                             </DropdownMenuItem>
@@ -667,9 +708,9 @@ export function MessagingHub({
                                             <div className="truncate text-sm font-medium">{thread.agentName}</div>
                                             <div className="truncate text-[10px] text-zinc-500">{thread.agentRole || t("operator")}</div>
                                         </div>
-                                        {thread.unreadCount > 0 && (
+                                        {unread(thread.unreadCount) > 0 && (
                                             <span className="min-w-5 rounded-full bg-cyan-400 px-1.5 py-0.5 text-center text-[10px] font-bold text-cyan-950">
-                                                {thread.unreadCount}
+                                                {unread(thread.unreadCount)}
                                             </span>
                                         )}
                                         {selectedAgentId === thread.agentId && <IconCheck className="h-4 w-4 text-cyan-400" />}

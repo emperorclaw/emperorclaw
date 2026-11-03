@@ -86,6 +86,8 @@ async function simulateOpenClaw() {
     // Step 5: Emulate Agent Team Chat 
     console.log("\n=== 5. Emitting Agent Team Coordination Messages ===");
     await mcpRequest("/messages/send", "POST", {
+        // A company-wide token must name the agent that sends (400 otherwise).
+        agentId: agent.id,
         chat_id: "human_manager",
         text: `[Agent Output] I am beginning work on TASK-${claimedTask.id.substring(0, 8)}. I will let you know when the UI renders are ready for QA.`,
     });

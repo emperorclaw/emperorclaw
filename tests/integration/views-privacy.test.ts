@@ -166,7 +166,9 @@ maybe("a view built from a person's private chat is theirs and private: nobody e
     for (const [auth, qs] of [[bearer(f.otherToken), ""], [bearer(f.operatorToken), `?agentId=${f.other.id}`], [bearer(f.operatorToken), ""]] as const) {
         assert.equal((await call(r.mcpView.GET, `/api/mcp/views/${id}${qs}`, { headers: auth, params })).status, 404);
         assert.equal(((await call(r.mcpList.GET, `/api/mcp/views${qs}`, { headers: auth })).json.views as { id: string }[]).some((v) => v.id === id), false);
-        assert.equal((await call(r.mcpPanel.PUT, `/api/mcp/views/${id}/panels/revenue${qs}`, { method: "PUT", headers: auth, body: { data: { value: 2 } }, params: { id, panelId: "revenue" } })).status, 404);
+        // A company-wide token naming no agent is refused before the view is even looked up (400, no existence oracle).
+        const anonymous = auth.authorization === bearer(f.operatorToken).authorization && qs === "";
+        assert.equal((await call(r.mcpPanel.PUT, `/api/mcp/views/${id}/panels/revenue${qs}`, { method: "PUT", headers: auth, body: { data: { value: 2 } }, params: { id, panelId: "revenue" } })).status, anonymous ? 400 : 404);
     }
     assert.equal((await call(r.mcpView.GET, `/api/mcp/views/${id}`, { headers: bearer(f.builderToken), params })).status, 200);
     // A company-wide token naming the maintainer can read it (token binding is the boundary), and that is recorded.

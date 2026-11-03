@@ -1515,7 +1515,7 @@
         },
         "agents": {
           "title": "Agents — your AI workforce",
-          "body": "Register and manage your connected OpenClaw workers. Each agent has a profile, capabilities, and runtime config."
+          "body": "Hire and manage your AI agents. Each one has a profile, a role, its place in the org chart, and the runtime it runs on."
         },
         "customers": {
           "title": "Customers — client context",

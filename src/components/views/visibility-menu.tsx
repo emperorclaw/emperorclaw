@@ -27,6 +27,8 @@ export type VisibilityMenuView = {
     scopeType: string;
     scopeLabel: string | null;
     owner: Named | null;
+    /** The agent that keeps it up to date (it keeps access when the view is narrowed). */
+    maintainer: Named | null;
 };
 
 async function errorOf(res: Response, fallback: string): Promise<string> {
@@ -77,20 +79,26 @@ export function useSaveVisibility(view: VisibilityMenuView) {
  * The visibility badge, as a menu for whoever may change it (the owner, or an
  * owner/admin on a view with no owner: lib/view-access.ts mayChangeVisibility):
  * Private / Shared with… (people picker) / Everyone in the company (or on the
- * project, at the client). Anyone else gets the plain badge.
+ * project, at the client). Anyone else gets the plain badge. Narrowing it
+ * also says what happens to its upkeep: the maintaining agent keeps access;
+ * with none, no agent can refresh it afterwards, and the dialog offers
+ * choosing a maintainer first (`onChooseMaintainer`, or the view's page).
  */
-export function VisibilityMenu({ view, canChange, description, className }: {
+export function VisibilityMenu({ view, canChange, description, className, onChooseMaintainer }: {
     view: VisibilityMenuView;
     canChange: boolean;
     /** A sentence on who sees it now, shown at the top of the menu. */
     description?: string;
     className?: string;
+    /** Opens the maintainer picker (the view page); without it the dialog links to the view's page. */
+    onChooseMaintainer?: () => void;
 }) {
     const t = useTranslations("views.detail");
     const tVisibility = useTranslations("views.visibility");
     const visibilityText = useVisibilityText();
     const audienceText = useAudienceText();
     const { save, saving } = useSaveVisibility(view);
+    const router = useRouter();
     const [picking, setPicking] = useState(false);
     // A narrowing choice waiting for the confirm dialog.
     const [pending, setPending] = useState<string | null>(null);
@@ -145,10 +153,21 @@ export function VisibilityMenu({ view, canChange, description, className }: {
             </DropdownMenu>
             {pending !== null && (
                 <ConfirmDialog open title={t("narrowTitle")}
-                    description={pending === "private" ? t("confirmPrivate", { scope }) : t("confirmShared", { scope })}
+                    description={[
+                        pending === "private" ? t("confirmPrivate", { scope }) : t("confirmShared", { scope }),
+                        view.maintainer ? t("narrowKeepsMaintainer", { name: view.maintainer.name ?? t("theMaintainingAgent") }) : t("narrowNoMaintainer"),
+                    ].join(" ")}
                     confirmLabel={pending === "private" ? t("makePrivate") : t("choosePeople")}
                     onConfirm={() => { const value = pending; setPending(null); apply(value); }}
-                    onCancel={() => setPending(null)} />
+                    onCancel={() => setPending(null)}
+                    extraAction={view.maintainer ? undefined : {
+                        label: t("chooseMaintainer"),
+                        onClick: () => {
+                            setPending(null);
+                            if (onChooseMaintainer) onChooseMaintainer();
+                            else router.push(`/views/${encodeURIComponent(view.id)}#maintainer`);
+                        },
+                    }} />
             )}
             {picking && <SharePicker viewId={view.id} onClose={() => setPicking(false)} onSave={(ids) => save("shared", ids)} />}
         </>

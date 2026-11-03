@@ -18,9 +18,9 @@ export const dynamic = "force-dynamic";
  * revert and ask the maintaining agent to refresh; everyone who can open it
  * can pin it to their own Home; its owner decides who sees it (on a view with
  * no owner, an owner/admin does, and making it private or shared makes them
- * its owner). An owner/admin
- * outside a private view sees its metadata only (and may delete or transfer
- * it). Not visible reads as not found.
+ * its owner). Its owner, or an owner/admin, picks the agent that maintains it.
+ * An owner/admin outside a private view sees its metadata only (and may
+ * delete or transfer it). Not visible reads as not found.
  */
 export default async function ViewPage({ params }: { params: Promise<{ id: string }> }) {
     const access = await requireCompanyAccess("viewer").catch(() => null);
@@ -67,6 +67,7 @@ export default async function ViewPage({ params }: { params: Promise<{ id: strin
                 canEdit={canEdit}
                 canManage={isAdmin || isOwner}
                 canChangeVisibility={canChangeVisibility}
+                canChooseMaintainer={isAdmin || isOwner}
                 agents={agentRows}
                 ownerAgentId={maintainer && agentRows.some((a) => a.id === maintainer) ? maintainer : null}
                 askAgentId={askAgentId}

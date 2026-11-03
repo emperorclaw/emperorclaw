@@ -405,6 +405,31 @@ class ViewToolsTests(PluginContextCase):
         body = self.create(self.viktor.bound(), {"title": "Shop", "panels": []})
         self.assertNotIn("threadId", body)
 
+    def test_writes_without_an_agent_fail_fast_with_a_clear_local_error(self):
+        # A profile with no EMPEROR_CLAW_AGENT_ID/NAME and no bound agent: Emperor would
+        # answer 400 "agentId required", so the plugin says what to fix and sends nothing.
+        (self.viktor.home / ".env").write_text('EMPEROR_CLAW_API_URL=https://emperor.example\nEMPEROR_CLAW_API_TOKEN="viktor-token"\n', encoding="utf-8")
+        plugin._dotenv_cache.clear()
+        bound = self.viktor.bound(agent_id="")
+        writes = {
+            "emperor_create_view": {"title": "Shop", "panels": []},
+            "emperor_update_view": {"viewId": self.VIEW, "title": "Shop v2"},
+            "emperor_update_panel": {"viewId": self.VIEW, "panelId": "revenue", "data": {"value": 1}},
+            "emperor_archive_view": {"viewId": self.VIEW},
+            "emperor_send_message": {"text": "hello"},
+        }
+        for name, args in writes.items():
+            with self.subTest(tool=name), self.bind(bound), patch.object(plugin, "_request") as request:
+                out = json.loads(getattr(plugin, name)(args))
+                request.assert_not_called()
+                self.assertIn("EMPEROR_CLAW_AGENT_ID", out["error"])
+                self.assertIn("EMPEROR_CLAW_AGENT_NAME", out["error"])
+        # Reads still go out; an explicit agentId on a message is enough.
+        with self.bind(bound), patch.object(plugin, "_request", return_value={"ok": True}) as request:
+            plugin.emperor_list_views({})
+            plugin.emperor_send_message({"text": "hello", "agentId": "viktor-id"})
+        self.assertEqual(request.call_count, 2)
+
     def test_update_view_can_clear_the_refresh_interval(self):
         with self.bind(self.viktor.bound()), patch.object(plugin, "_request", return_value={"ok": True}) as request:
             plugin.emperor_update_view({"viewId": self.VIEW, "refreshEveryMinutes": None})

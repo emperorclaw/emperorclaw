@@ -2,7 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import en from "../../messages/en.json";
 import {
-    defaultViewVisibility, mayChangeVisibility, parseRefreshEveryMinutes, pickViewOwner, refreshCadenceText, viewAccess, viewAudience, viewStaleness, visibilityChangeNarrows,
+    defaultViewVisibility, maintainerAgentId, mayChangeMaintainer, mayChangeVisibility, parseRefreshEveryMinutes, pickViewOwner, refreshCadenceText, viewAccess, viewAudience, viewStaleness, visibilityChangeNarrows,
     type ViewAccessFacts, type ViewAccessSubject,
 } from "../../src/lib/view-access";
 
@@ -14,7 +14,7 @@ const BUILDER = "builder-agent";
 const STRANGER = "stranger-agent";
 
 const view = (visibility: string, extra: Partial<ViewAccessFacts> = {}): ViewAccessFacts => ({
-    visibility, ownerUserId: OWNER, createdByType: "agent", createdById: BUILDER, sharedWith: [SHARED], ...extra,
+    visibility, ownerUserId: OWNER, maintainerAgentId: BUILDER, sharedWith: [SHARED], ...extra,
 });
 const member = (userId: string, isAdmin = false): ViewAccessSubject => ({ kind: "member", userId, isAdmin });
 const agent = (agentId: string | null): ViewAccessSubject => ({ kind: "agent", agentId });
@@ -55,9 +55,11 @@ test("viewAccess: a share list means nothing unless the view is shared; an admin
     assert.equal(viewAccess(member(ADMIN, true), view("shared", { sharedWith: [ADMIN] }), true), "full");
 });
 
-test("viewAccess: a view built by a person has no maintaining agent; an unknown visibility fails closed", () => {
-    const personBuilt = view("private", { createdByType: "human", createdById: OWNER });
-    assert.equal(viewAccess(agent(OWNER), personBuilt, true), "none", "an agent id equal to the builder's user id is not the maintainer");
+test("viewAccess: a view with no maintainer gives no agent access; an unknown visibility fails closed", () => {
+    const unmaintained = view("private", { maintainerAgentId: null });
+    assert.equal(viewAccess(agent(BUILDER), unmaintained, true), "none", "the builder is not the maintainer once none is set");
+    assert.equal(viewAccess(agent(null), unmaintained, true), "none", "no agent never matches no maintainer");
+    assert.equal(viewAccess(agent(STRANGER), view("private", { maintainerAgentId: STRANGER }), true), "full", "the chosen maintainer, whoever built it");
     assert.equal(viewAccess(member(OTHER), view("everyone"), true), "none");
     assert.equal(viewAccess(member(ADMIN, true), view("everyone"), true), "metadata");
     assert.equal(viewAccess(member(OWNER), view("private", { ownerUserId: null }), true), "none", "an orphaned private view");
@@ -137,4 +139,20 @@ test("everyone in scope reads as the real audience", () => {
     const messages = (en as { views: { visibility: Record<string, string> } }).views.visibility;
     for (const key of ["everyoneCompany", "everyoneOn", "everyoneAt", "everyoneProject", "everyoneClient"]) assert.equal(typeof messages[key], "string", key);
     assert.equal(messages.everyoneOn.replace("{name}", "Launch"), "Everyone on Launch");
+});
+
+test("maintainerAgentId reads the explicit column only", () => {
+    assert.equal(maintainerAgentId({ maintainerAgentId: BUILDER }), BUILDER);
+    assert.equal(maintainerAgentId({ maintainerAgentId: null }), null);
+});
+
+test("mayChangeMaintainer: the owner or an admin who can open the view; never an agent", () => {
+    assert.equal(mayChangeMaintainer(OWNER, member(OWNER), true), true, "the owner");
+    assert.equal(mayChangeMaintainer(OWNER, member(ADMIN, true), true), true, "an admin who can open it");
+    assert.equal(mayChangeMaintainer(null, member(ADMIN, true), true), true, "an admin on an ownerless view");
+    assert.equal(mayChangeMaintainer(OWNER, member(ADMIN, true), false), false, "an admin who only sees its name");
+    assert.equal(mayChangeMaintainer(OWNER, member(SHARED), true), false, "a person it is shared with");
+    assert.equal(mayChangeMaintainer(null, member(OTHER), true), false, "a member on an ownerless view");
+    assert.equal(mayChangeMaintainer(OWNER, agent(BUILDER), true), false, "the maintaining agent itself");
+    assert.equal(mayChangeMaintainer(OWNER, agent(null), true), false, "an operator connection");
 });

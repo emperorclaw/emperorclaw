@@ -253,6 +253,9 @@
         "no_docker": "This installation needs Docker with its socket mounted for automatic Hermes setup.",
         "docker_unresponsive": "Docker is not responding. Restart Docker and retry.",
         "docker_access": "The app cannot access Docker. Rerun the installer to repair socket permissions, then retry."
+      },
+      "team": {
+        "orgChartManual": "This team is not on the organization chart yet. Add it in Organization so its agents know whom they report to."
       }
     },
     "health": {
@@ -270,7 +273,14 @@
         "providerCredits": "LLM provider out of credits",
         "issue": "{issue}"
       }
+    },
+    "detail": {
+      "workLogUnread": "{count, plural, one {# unread message} other {# unread messages}}"
     }
+  },
+  "messagingHub": {
+    "markAllRead": "Mark all as read",
+    "markAllReadFailed": "Could not mark your conversations as read. Try again."
   },
   "runtimeHosts": {
     "hireReasons": {
@@ -449,6 +459,7 @@
         "visibility_changed": "<who>{actor}</who> changed who can see <target>view {label}</target> {detail}",
         "owner_transferred": "<who>{actor}</who> transferred <target>view {label}</target> {detail}",
         "owner_claimed": "<who>{actor}</who> took ownership of <target>view {label}</target> {detail}",
+        "maintainer_changed": "<who>{actor}</who> changed who maintains <target>view {label}</target> {detail}",
         "deleted": "<who>{actor}</who> deleted <target>view {label}</target> {detail}",
         "read_unbound_token": "<who>{actor}</who> opened with a company-wide token <target>view {label}</target> {detail}"
       },
@@ -554,7 +565,21 @@
       "makePrivate": "Make private",
       "choosePeople": "Choose people",
       "archiveTitle": "Archive this view?",
-      "deleteTitle": "Delete this view?"
+      "deleteTitle": "Delete this view?",
+      "maintainedBy": "Maintained by {name}",
+      "noMaintainer": "No maintainer",
+      "changeMaintainer": "{current}. Choose who maintains this view",
+      "chooseMaintainer": "Choose a maintainer",
+      "maintainerTitle": "Who maintains this view",
+      "maintainerDescription": "The maintaining agent keeps this view's values up to date. It can always open and change the view, even when the view is private. Only agents whose scope covers this view are listed.",
+      "maintainerAgent": "Agent",
+      "maintainerSaved": "Maintainer updated",
+      "maintainerCleared": "No agent maintains this view now",
+      "maintainerFailed": "Couldn't change who maintains this view",
+      "maintainerAgentsFailed": "Couldn't load the agents",
+      "noAgentsCoverScope": "No agent's scope covers this view.",
+      "narrowKeepsMaintainer": "{name} maintains it and keeps access, so it can still refresh it.",
+      "narrowNoMaintainer": "No agent maintains this view, so no agent will be able to refresh it after this."
     }
   },
   "settings": {
@@ -672,6 +697,34 @@
       "copy": "Copy prompt",
       "copied": "Prompt copied",
       "then": "Then you can see who runs it and when it runs next, run it now, pause it, and open the task of every run."
+    }
+  },
+  "onboarding": {
+    "wizard": {
+      "steps": {
+        "work": "How you work"
+      },
+      "work": {
+        "title": "How you work",
+        "intro": "Optional. These start from your current settings; change what you like, or skip and keep them.",
+        "loading": "Loading your settings…",
+        "profileTitle": "Your name and role",
+        "profileHint": "Your name and role help agents know who to contact. Once you add your name, you sit at the top of the org chart, above your lead agent.",
+        "reviewTitle": "Daily review",
+        "reviewHint": "Each agent gets a short review of its open tasks at this time every day.",
+        "reviewTime": "Time",
+        "timeZone": "Time zone: {zone}",
+        "notificationsTitle": "Notifications",
+        "notificationsHint": "You always see everything in your notifications here in the app. Also email me about:",
+        "emailApprovals": "Approvals and decisions waiting for me",
+        "emailBlocked": "Blocked, stalled or failed work",
+        "emailOff": "Email is not set up on this server, so approvals and blocked work show up in your notifications here in the app.",
+        "moreInSettings": "More in Settings",
+        "skip": "Skip",
+        "skipHint": "Skip keeps these settings as they are. You can change all of them later in Settings.",
+        "saveFailed": "Some of your settings could not be saved. You can change them in Settings."
+      },
+      "reportingNotPlaced": "Some teams could not be put on the org chart automatically. Add them in Agents → Organization."
     }
   }
 }

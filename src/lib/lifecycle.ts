@@ -10,6 +10,7 @@ import { runScheduledRetention } from "./retention";
 import { expireStaleApprovals } from "./approvals";
 import { runObjectiveFollowups } from "./agent-objective";
 import { flushPendingAgentWakes } from "./task-wake";
+import { reconcileOrganizationNotes } from "./organization-note";
 import { deliverRequestCallbacks } from "./agent-requests";
 import { runStarterDoctrineUpgrades } from "./starter-knowledge";
 import { SLA_TRACKED_TASK_STATES } from "./task-state";
@@ -96,6 +97,8 @@ async function runLifecycleMonitor() {
       // The starter-doctrine rollout shares the slow cadence: it is idempotent
       // per company and cheap when every company is already up to date.
       await runStarterDoctrineUpgrades().catch((error) => console.error("Starter doctrine upgrade failed:", error));
+      // The generated org chart note heals here if a debounced refresh was lost to a restart.
+      await reconcileOrganizationNotes().catch((error) => console.error("Org chart note reconcile failed:", error));
     }
     // Data retention: prune expired high-volume rows in bounded batches. It
     // runs hourly by default and is disabled with EMPEROR_RETENTION_INTERVAL_MS=0.

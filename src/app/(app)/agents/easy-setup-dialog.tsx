@@ -110,6 +110,8 @@ export function EasySetupDialog({
     const [teamRequestId, setTeamRequestId] = useState<string | null>(null);
     const [teamGroupId, setTeamGroupId] = useState<string | null>(null);
     const [teamError, setTeamError] = useState<string | null>(null);
+    // Whether the new team made it onto the org chart (null: not tried yet).
+    const [teamOnChart, setTeamOnChart] = useState<boolean | null>(null);
     const [teamBusy, setTeamBusy] = useState(false);
     const [retryingRuntime, setRetryingRuntime] = useState<string | null>(null);
     const [llmProvider, setLlmProvider] = useState(DEFAULT_LLM_PROVIDER);
@@ -168,6 +170,7 @@ export function EasySetupDialog({
         setTeamLeadSpecId("");
         setTeamRequestId(null);
         setTeamGroupId(null);
+        setTeamOnChart(null);
         setTeamError(null);
         setLlmProvider(DEFAULT_LLM_PROVIDER);
         setLlmApiKey("");
@@ -204,6 +207,7 @@ export function EasySetupDialog({
         setTeamLeadSpecId(members[0].id);
         setTeamRequestId(createClientRequestId());
         setTeamGroupId(null);
+        setTeamOnChart(null);
         setTeamError(null);
     };
     const createTeamChat = async (batch: AgentBatchResult[]) => {
@@ -226,6 +230,11 @@ export function EasySetupDialog({
             const data = await response.json().catch(() => ({}));
             if (!response.ok || !data.group?.id) throw new Error(data.error || t("team.chatFailed"));
             setTeamGroupId(data.group.id);
+            // Put the team on the org chart under the company leader (or start
+            // the chart with its leader). Only adds; a failure never blocks the chat.
+            const placed = await fetch("/api/organization/teams", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ teamId: data.group.id }) })
+                .then(async (res) => res.ok && (await res.json().catch(() => ({}))).onChart === true).catch(() => false);
+            setTeamOnChart(placed);
         } catch (error) {
             setTeamError(error instanceof Error ? error.message : t("team.chatFailed"));
         } finally {
@@ -648,7 +657,7 @@ export function EasySetupDialog({
                             </p>
                         )}
                         {teamTemplateId && <div className="rounded-xl border border-border p-4">
-                            {teamGroupId ? <><p className="text-sm font-medium">{t("team.chatReady", { name: teamName })}</p><div className="mt-3 flex flex-wrap gap-2"><Button asChild variant="outline"><Link href={`/messages?group=${teamGroupId}`}>{t("team.openChat")}</Link></Button><Button asChild variant="outline"><Link href="/agents/organization">{t("team.reviewReporting")}</Link></Button></div><p className="mt-2 text-xs text-muted-foreground">{t("team.orgChartHint")}</p></> : <><p role="status" className="text-sm">{teamBusy ? t("team.creatingChat") : teamError || t("team.waitingProfiles")}</p>{teamError && results.every(result => result.agentId) && <Button type="button" variant="outline" disabled={teamBusy} className="mt-3" onClick={() => void createTeamChat(results)}>{t("team.retryChat")}</Button>}</>}
+                            {teamGroupId ? <><p className="text-sm font-medium">{t("team.chatReady", { name: teamName })}</p><div className="mt-3 flex flex-wrap gap-2"><Button asChild variant="outline"><Link href={`/messages?group=${teamGroupId}`}>{t("team.openChat")}</Link></Button><Button asChild variant="outline"><Link href="/agents/organization">{t("team.reviewReporting")}</Link></Button></div><p className="mt-2 text-xs text-muted-foreground">{t(teamOnChart ? "team.orgChartHint" : "team.orgChartManual")}</p></> : <><p role="status" className="text-sm">{teamBusy ? t("team.creatingChat") : teamError || t("team.waitingProfiles")}</p>{teamError && results.every(result => result.agentId) && <Button type="button" variant="outline" disabled={teamBusy} className="mt-3" onClick={() => void createTeamChat(results)}>{t("team.retryChat")}</Button>}</>}
                         </div>}
                         <div className="space-y-2 max-h-[340px] overflow-y-auto pr-1">
                             {results.map((r, i) => (

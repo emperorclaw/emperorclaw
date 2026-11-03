@@ -55,6 +55,47 @@ class TestOrganizationReporting(unittest.TestCase):
         info = {"configured": True, "leader": {"name": "Lead"}, "teams": [{"coordinator": {"kind": "agent", "id": "x", "name": "Coord"}}]}
         self.assertIn("you report to Coord", ctx.format_organization(info, AGENT))
 
+    def test_all_reporting_lines_direct_reports_and_chain_are_shown(self):
+        info = {"configured": True, "leader": {"kind": "agent", "id": "boss", "name": "Boss"},
+                "managers": [{"teamId": "t1", "context": "Design", "manager": {"kind": "agent", "id": "a", "name": "Ada"}},
+                             {"teamId": "t2", "context": "Research", "manager": {"kind": "agent", "id": "b", "name": "Bob"}}],
+                "directReports": [{"name": n} for n in ("Cy", "Di", "Ed", "Fa", "Gu", "Ha")],
+                "chainSummary": "Ada → Boss → the humans"}
+        block = ctx.format_organization(info, AGENT)
+        self.assertIn("you report to Ada (Design) and Bob (Research)", block)
+        self.assertIn("your direct reports: Cy, Di, Ed, Fa and 2 more", block)
+        self.assertIn("Chain of command: Ada → Boss → the humans", block)
+        self.assertIn("report done or blocked work to your manager", block)
+
+    def test_rich_block_stays_short_with_huge_names(self):
+        big = "N" * 300
+        info = {"configured": True, "leader": {"name": big},
+                "managers": [{"teamId": str(i), "context": big, "manager": {"name": big}} for i in range(6)],
+                "directReports": [{"name": big}] * 20, "chainSummary": " → ".join([big] * 10)}
+        block = ctx.format_organization(info, AGENT)
+        self.assertIn("Org: leader", block)
+        self.assertLessEqual(len(block), ctx.ORG_BLOCK_MAX)
+
+    def test_old_server_null_reports_to_means_humans_not_a_team_coordinator(self):
+        info = {"configured": True, "leader": {"kind": "agent", "id": "boss", "name": "Boss"},
+                "reporting": [{"nodeId": "n", "teamId": None, "context": "Direct reporting", "reportsTo": None}],
+                "teams": [{"coordinator": {"kind": "agent", "id": "x", "name": "Coord"}}]}
+        block = ctx.format_organization(info, AGENT)
+        self.assertIn("you report to humans", block)
+        self.assertNotIn("Coord", block)
+
+    def test_old_server_lists_every_reporting_line(self):
+        info = {"configured": True, "leader": {"name": "Boss"},
+                "reporting": [{"reportsTo": {"name": "Ada"}}, {"reportsTo": {"name": "Bob"}}, {"reportsTo": {"name": "Ada"}}]}
+        self.assertIn("you report to Ada and Bob" + chr(10), ctx.format_organization(info, AGENT))
+
+    def test_company_leader_flag_lists_its_reports(self):
+        info = {"configured": True, "isCompanyLeader": True, "leader": {"kind": "agent", "id": AGENT, "name": "V"},
+                "directReports": [{"name": "Lead A"}, {"name": "Lead B"}], "chainSummary": "the humans"}
+        block = ctx.format_organization(info, AGENT)
+        self.assertIn("you lead the company; report to humans; your direct reports: Lead A, Lead B", block)
+        self.assertNotIn("Chain of command", block)
+
 
 class TestRuntimeControls(unittest.TestCase):
     def test_stop_commands_are_split_from_kill_and_replace(self):

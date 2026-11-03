@@ -161,8 +161,8 @@ test("classifyMessage: a legacy server fails agent messages closed (no agent @al
 });
 
 // ── Compact organization block ──────────────────────────────────────────
-// Same wording rules as the Hermes bridge: leader + this agent's reporting
-// line, one escalation rule, <=400 chars, "" when unconfigured.
+// Same wording rules as the Hermes bridge: leader + every reporting line,
+// direct reports and chain, one rule, <=520 chars, "" when unconfigured.
 test("organizationContext: names the leader and this agent's reporting line", () => {
     const info = {
         configured: true,
@@ -173,7 +173,8 @@ test("organizationContext: names the leader and this agent's reporting line", ()
     assert.equal(
         organizationContext(info, "a2"),
         "Org: leader Grace; you report to Ada\n"
-        + "Escalate cross-team conflicts to the leader; details: GET /organization."
+        + "Work flows up: report done or blocked work to your manager for that team; escalate cross-team "
+        + "conflicts to the leader; details: GET /organization."
     );
 });
 
@@ -208,6 +209,47 @@ test("organizationContext: stays under 400 chars with long names", () => {
         teams: [],
     };
     assert.ok(organizationContext(info, "a2").length <= 400);
+});
+
+test("organizationContext: an older server's null reportsTo means the humans, not a team coordinator", () => {
+    const info = {
+        configured: true,
+        leader: { kind: "agent", id: "boss", name: "Boss" },
+        reporting: [{ nodeId: "n", teamId: null, context: "Direct reporting", reportsTo: null }],
+        teams: [{ coordinator: { kind: "agent", id: "x", name: "Coord" } }],
+    };
+    const block = organizationContext(info, "me");
+    assert.match(block, /you report to humans/);
+    assert.doesNotMatch(block, /Coord/);
+    const several = organizationContext({ configured: true, leader: { name: "Boss" }, reporting: [{ reportsTo: { name: "Ada" } }, { reportsTo: { name: "Bob" } }, { reportsTo: { name: "Ada" } }] }, "me");
+    assert.match(several, /you report to Ada and Bob\n/);
+});
+
+test("organizationContext: shows every reporting line, direct reports and the chain", () => {
+    const info = {
+        configured: true,
+        leader: { kind: "agent", id: "boss", name: "Boss" },
+        managers: [
+            { teamId: "t1", context: "Design", manager: { kind: "agent", id: "a", name: "Ada" } },
+            { teamId: "t2", context: "Research", manager: { kind: "agent", id: "b", name: "Bob" } },
+        ],
+        directReports: ["Cy", "Di", "Ed", "Fa", "Gu", "Ha"].map((name) => ({ name })),
+        chainSummary: "Ada → Boss → the humans",
+    };
+    const block = organizationContext(info, "me");
+    assert.match(block, /you report to Ada \(Design\) and Bob \(Research\)/);
+    assert.match(block, /your direct reports: Cy, Di, Ed, Fa and 2 more/);
+    assert.match(block, /Chain of command: Ada → Boss → the humans/);
+});
+
+test("organizationContext: the company leader lists its reports; huge charts stay bounded", () => {
+    const lead = organizationContext({ configured: true, isCompanyLeader: true, leader: { kind: "agent", id: "me", name: "V" }, directReports: [{ name: "Lead A" }], chainSummary: "the humans" }, "me");
+    assert.match(lead, /you lead the company; report to humans; your direct reports: Lead A/);
+    assert.doesNotMatch(lead, /Chain of command/);
+    const big = "N".repeat(300);
+    const huge = organizationContext({ configured: true, leader: { name: big }, managers: Array.from({ length: 6 }, (_, i) => ({ teamId: String(i), context: big, manager: { name: big } })), directReports: Array(20).fill({ name: big }), chainSummary: Array(10).fill(big).join(" → ") }, "me");
+    assert.ok(huge.length <= 520, `${huge.length}`);
+    assert.match(huge, /details: GET \/organization\.$/);
 });
 
 // ── Run ledger (PR 3) ───────────────────────────────────────────────────

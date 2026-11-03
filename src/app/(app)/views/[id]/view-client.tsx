@@ -7,7 +7,7 @@ import { toast } from "sonner";
 import { useTranslations } from "next-intl";
 import { useApiError } from "@/lib/i18n/use-api-error";
 import {
-    IconArchive, IconArrowBackUp, IconChevronLeft, IconHistory, IconLock, IconPencil, IconPin, IconPinnedOff, IconRefresh, IconTrash, IconUserShare,
+    IconArchive, IconArrowBackUp, IconChevronLeft, IconHistory, IconLock, IconPencil, IconPin, IconPinnedOff, IconRefresh, IconRobot, IconTrash, IconUserShare,
 } from "@tabler/icons-react";
 import { Button } from "@/components/ui/button";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
@@ -41,7 +41,7 @@ const REFRESH_CHOICES = [
     { value: 10080, key: "weekly" },
 ] as const;
 
-export function ViewDetailClient({ view, canEdit, canManage, canChangeVisibility, agents, ownerAgentId, askAgentId, transferTo }: {
+export function ViewDetailClient({ view, canEdit, canManage, canChangeVisibility, canChooseMaintainer, agents, ownerAgentId, askAgentId, transferTo }: {
     view: ViewDetail;
     /** Member or above: rename, archive, revert, refresh. */
     canEdit: boolean;
@@ -49,6 +49,8 @@ export function ViewDetailClient({ view, canEdit, canManage, canChangeVisibility
     canManage: boolean;
     /** The view's owner, or an owner/admin when it has no owner: decides who sees it (the visibility badge is a menu). */
     canChangeVisibility: boolean;
+    /** The view's owner, or an owner/admin who can open it: picks the agent that keeps it up to date. */
+    canChooseMaintainer: boolean;
     /** Agents this person may message (Refresh picker). */
     agents: { id: string; name: string }[];
     /** The maintaining agent, when this person may message it. */
@@ -71,6 +73,11 @@ export function ViewDetailClient({ view, canEdit, canManage, canChangeVisibility
     const [historyOpen, setHistoryOpen] = useState(false);
     const [confirmArchive, setConfirmArchive] = useState(false);
     const [refreshAgent, setRefreshAgent] = useState(ownerAgentId ?? agents[0]?.id ?? "");
+    const [choosingMaintainer, setChoosingMaintainer] = useState(false);
+    // "Choose a maintainer" from a list row's visibility dialog lands here with #maintainer.
+    useEffect(() => {
+        if (canChooseMaintainer && window.location.hash === "#maintainer") setChoosingMaintainer(true);
+    }, [canChooseMaintainer]);
 
     const send = async (url: string, init: RequestInit, done: string, key: string, fallback = t("updateFailed")) => {
         setBusy(key);
@@ -118,7 +125,7 @@ export function ViewDetailClient({ view, canEdit, canManage, canChangeVisibility
         router.push(`/messages?agent=${encodeURIComponent(askAgentId)}`);
     };
 
-    const maintainer = view.createdBy.type === "agent" ? view.createdBy.name : null;
+    const maintainer = view.maintainer ? view.maintainer.name ?? t("theMaintainingAgent") : null;
     // Who sees it now, at the top of the visibility menu.
     const visibilitySentence = view.visibility === "private" ? t("visibilityPrivate")
         : view.visibility === "shared" ? t("visibilityShared", { people: view.sharedWith && view.sharedWith.length > 0 ? view.sharedWith.map((p) => p.name ?? t("someoneLower")).join(", ") : t("thePeopleYouPicked") })
@@ -137,11 +144,13 @@ export function ViewDetailClient({ view, canEdit, canManage, canChangeVisibility
                         <h1 className="break-words text-2xl font-semibold tracking-tight text-foreground sm:text-3xl">{view.title}</h1>
                         {view.description && <p className="whitespace-pre-line text-sm leading-6 text-muted-foreground">{view.description}</p>}
                         <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
-                            <VisibilityMenu view={view} canChange={canChangeVisibility} description={visibilitySentence} />
+                            <VisibilityMenu view={view} canChange={canChangeVisibility} description={visibilitySentence}
+                                onChooseMaintainer={canChooseMaintainer ? () => setChoosingMaintainer(true) : undefined} />
                             {view.owner && <PersonChip name={view.owner.name} label={t("ownerLabel")} />}
+                            <MaintainerChip name={maintainer} canChoose={canChooseMaintainer} onChoose={() => setChoosingMaintainer(true)} />
                         </div>
                         <p className="text-xs text-muted-foreground" suppressHydrationWarning>
-                            {maintainer ? t("keptUpBy", { name: maintainer }) : view.createdBy.name ? t("createdBy", { name: view.createdBy.name }) : t("createdByAgent")}
+                            {view.createdBy.name ? t("createdBy", { name: view.createdBy.name }) : t("createdByAgent")}
                             {view.refreshEveryMinutes ? ` ${cadence(view.refreshEveryMinutes)}` : ""}
                             {" · "}{lastData ? t("valuesUpdated", { ago: formatAgo(lastData, now) }) : t("noValuesYet")}
                             {" · "}{t("version", { version: view.version })}
@@ -208,6 +217,7 @@ export function ViewDetailClient({ view, canEdit, canManage, canChangeVisibility
             />
 
             {editing && <EditDialog view={view} onClose={() => setEditing(false)} onSave={(body) => patch(body, t("updated"), "edit")} />}
+            {choosingMaintainer && <MaintainerDialog view={view} onClose={() => setChoosingMaintainer(false)} />}
             <HistoryDrawer viewId={view.id} open={historyOpen} onOpenChange={setHistoryOpen} canRevert={canEdit && !view.archived} onReverted={() => router.refresh()} />
         </>
     );
@@ -222,7 +232,7 @@ export function ViewMetadataClient({ view, transferTo }: { view: ViewDetail; tra
     const formatAgo = useFormatAgo();
     const scopeText = useScopeText();
     const now = useNowMs();
-    const maintainer = view.createdBy.type === "agent" ? view.createdBy.name : null;
+    const maintainer = view.maintainer ? view.maintainer.name ?? t("theMaintainingAgent") : null;
     return (
         <div className="space-y-4">
             <Link href="/views" className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground">
@@ -258,6 +268,101 @@ export function ViewMetadataClient({ view, transferTo }: { view: ViewDetail; tra
                 </div>
             </section>
         </div>
+    );
+}
+
+/**
+ * "Maintained by <agent>" next to the owner. For whoever may choose it (the
+ * view's owner, or an owner/admin who can open it) it is a button that opens
+ * the picker.
+ */
+function MaintainerChip({ name, canChoose, onChoose }: { name: string | null; canChoose: boolean; onChoose: () => void }) {
+    const t = useTranslations("views.detail");
+    const text = name ? t("maintainedBy", { name }) : t("noMaintainer");
+    if (!canChoose) return <span className="inline-flex items-center gap-1 text-xs text-muted-foreground"><IconRobot className="h-3.5 w-3.5" aria-hidden />{text}</span>;
+    return (
+        <button type="button" onClick={onChoose} aria-label={t("changeMaintainer", { current: text })}
+            className="inline-flex items-center gap-1 rounded-full border border-border px-2 py-0.5 text-xs text-muted-foreground transition-colors hover:border-foreground/30 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+            <IconRobot className="h-3.5 w-3.5" aria-hidden />{text}
+        </button>
+    );
+}
+
+/** Pick, change or clear the agent that keeps the view up to date (PUT /api/views/:id/maintainer). */
+function MaintainerDialog({ view, onClose }: { view: ViewDetail; onClose: () => void }) {
+    const t = useTranslations("views.detail");
+    const tc = useTranslations("common");
+    const apiError = useApiError();
+    const router = useRouter();
+    const [agents, setAgents] = useState<Named[] | null>(null);
+    const [loadError, setLoadError] = useState<string | null>(null);
+    const [attempt, setAttempt] = useState(0);
+    const [chosen, setChosen] = useState(view.maintainer?.id ?? "");
+    const [saving, setSaving] = useState(false);
+    useEffect(() => {
+        let alive = true;
+        fetch(`/api/views/${encodeURIComponent(view.id)}/maintainer`).then(async (res) => {
+            if (!res.ok) throw new Error(await errorOf(res, t("maintainerAgentsFailed")));
+            const data = await res.json() as { agents: Named[] };
+            if (alive) setAgents(data.agents);
+        }).catch((error) => {
+            if (alive) setLoadError(apiError(error instanceof Error ? error.message : null, t("maintainerAgentsFailed")));
+        });
+        return () => { alive = false; };
+    }, [view.id, t, apiError, attempt]);
+    // The current maintainer stays in the list even when it no longer qualifies, so the select can show it.
+    const current = view.maintainer;
+    const options = agents && current && !agents.some((a) => a.id === current.id) ? [current, ...agents] : agents ?? [];
+    const unchanged = chosen === (current?.id ?? "");
+    const save = async () => {
+        setSaving(true);
+        try {
+            const res = await fetch(`/api/views/${encodeURIComponent(view.id)}/maintainer`, {
+                method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ agentId: chosen || null }),
+            });
+            if (!res.ok) throw new Error(await errorOf(res, t("maintainerFailed")));
+            toast.success(chosen ? t("maintainerSaved") : t("maintainerCleared"));
+            if (window.location.hash === "#maintainer") window.history.replaceState(null, "", window.location.pathname + window.location.search);
+            onClose();
+            router.refresh();
+        } catch (error) {
+            toast.error(apiError(error instanceof Error ? error.message : null, t("maintainerFailed")));
+        } finally {
+            setSaving(false);
+        }
+    };
+    return (
+        <Dialog open onOpenChange={(open) => { if (!open) onClose(); }}>
+            <DialogContent>
+                <form className="grid gap-4" onSubmit={(event) => { event.preventDefault(); void save(); }}>
+                    <DialogHeader>
+                        <DialogTitle>{t("maintainerTitle")}</DialogTitle>
+                        <DialogDescription>{t("maintainerDescription")}</DialogDescription>
+                    </DialogHeader>
+                    {loadError !== null ? (
+                        <div role="alert" className="flex items-center justify-between gap-3 rounded-xl border border-border p-3 text-sm">
+                            <span className="text-destructive">{loadError}</span>
+                            <Button type="button" variant="outline" size="sm" onClick={() => { setLoadError(null); setAgents(null); setAttempt((n) => n + 1); }}>{tc("retry")}</Button>
+                        </div>
+                    ) : (
+                        <div className="grid gap-1.5">
+                            <Label htmlFor="view-maintainer">{t("maintainerAgent")}</Label>
+                            <select id="view-maintainer" value={chosen} onChange={(e) => setChosen(e.target.value)} disabled={agents === null}
+                                className="h-10 rounded-xl border border-border bg-card px-3 text-sm text-foreground">
+                                <option value="">{t("noAgent")}</option>
+                                {options.map((a) => <option key={a.id} value={a.id}>{a.name ?? t("theAgent")}</option>)}
+                            </select>
+                            {agents === null && <p className="text-xs text-muted-foreground">{t("loading")}</p>}
+                            {agents !== null && agents.length === 0 && <p className="text-xs text-muted-foreground">{t("noAgentsCoverScope")}</p>}
+                        </div>
+                    )}
+                    <DialogFooter>
+                        <Button type="button" variant="ghost" onClick={onClose}>{tc("cancel")}</Button>
+                        <Button type="submit" disabled={saving || unchanged || loadError !== null}>{saving ? tc("saving") : tc("save")}</Button>
+                    </DialogFooter>
+                </form>
+            </DialogContent>
+        </Dialog>
     );
 }
 

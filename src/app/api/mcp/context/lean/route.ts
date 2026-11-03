@@ -4,9 +4,10 @@ import { buildLeanContext } from "@/lib/lean-context";
 
 /**
  * The lean per-session context for a bridge: the versioned kernel, the
- * company knowledge index, the always-block, and the roster. The response
- * carries an ETag (a content hash) so a bridge can send If-None-Match and get
- * a 304 instead of re-sending identical context every turn.
+ * company knowledge index, the always-block, the roster, and the agent's
+ * one-line place on the org chart. The response carries an ETag (a content
+ * hash) so a bridge can send If-None-Match and get a 304 instead of
+ * re-sending identical context every turn.
  */
 export async function GET(req: NextRequest) {
   const auth = await verifyMcpToken(req);
@@ -33,6 +34,7 @@ export async function GET(req: NextRequest) {
         knowledgeIndex: context.knowledgeIndex,
         alwaysBlock: context.alwaysBlock,
         roster: context.roster,
+        organization: context.organization,
         alwaysOverBudget: context.alwaysOverBudget,
         alwaysUsedChars: context.alwaysUsedChars,
       },

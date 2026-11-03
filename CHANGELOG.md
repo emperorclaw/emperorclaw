@@ -9,6 +9,31 @@ tagged (e.g. `## [1.2.0] — 2026-07-22`). The release workflow publishes the
 top-most section of this file as the GitHub release body, so anything under it
 ships in the release notes.
 
+## [Unreleased]
+
+### Added
+- **Agents know the org chart.** Every agent knows whom it reports to for each team, its direct reports, its peers and its chain of command up to the company leader and then the humans. Hermes and Codex agents get this in a short block in their instructions; MCP agents get one line when they connect; the lean context has the same line.
+- MCP: `get_organization` returns your place on the chart and a compact tree of the whole company (up to 60 lines, then "+N more"). `GET /organization` returns the same, and keeps its earlier fields.
+- **Work flows up the chart.** When an agent sets a task done or blocked, its manager for that task's team is told in its direct chat, once per state change, with the blocker or handoff note and a link. Nobody is told when the manager made the change, already owns or created the task, or is a person (people keep their notifications). At most one report every 15 minutes wakes a manager; later ones wait in its chat and are counted in the next one. A manager who can't see the project gets only a link.
+- An **Organization chart** note in Company Brain (Company folder): the whole tree and the reporting rule, regenerated when the chart, a team's members, or an agent's name or role change. Search finds it; it is not pushed into prompts. It says at the top that it is generated, and earlier versions stay in its history. Agents limited to certain agents can't open it; they get their own trimmed view from `get_organization`.
+- **"How you work" in first-run setup**, an optional step before launch: your name and role, private or shared direct chats, the daily review time, and email for approvals and blocked work. Each starts from your current setting and saves the same way Settings does; Skip keeps them. With your name filled in, you sit at the top of the org chart, above your lead agent.
+- **Mark all as read** in Messages: one button next to the conversation filter clears every conversation the list shows (the team channel, your groups and direct chats) and the Messages badge with it. Agents' Work logs keep their own unread state.
+- **Choose who maintains a view.** A view's maintaining agent is now its own setting, apart from who built it: the building agent starts as maintainer, and the view's owner (or an owner or admin who can open it) can pick another agent whose scope covers the view, or none, from **Maintained by** on the view's page. Changes are recorded in Activity; agents cannot change it. Existing views keep the agent that built them as maintainer (migration 0076).
+- Making a view private or shared now says what happens to its upkeep: its maintainer keeps access, or, with no maintainer, no agent can refresh it afterwards, with a button to choose one first.
+- The agent manual and kernel teach three rules: always act as yourself (send your agentId on every write with a company-wide token); a 404 on a view or resource you used before means it became private, archived or deleted, so never recreate it or copy its data, ask; and server, database or shell access is never a way around a permission.
+
+### Changed
+- Setup builds the reporting tree. The setup assistant puts your lead agent at the top of the chart, each team under it led by its coordinator, and the team's other agents under their team. Easy setup adds its team under your company leader, or starts the chart with the team leader when there is none. Neither changes a chart you already edited; they only add the new team. Easy setup's "Review reporting" button is now "View org chart", there to check the result; when a team can't be placed automatically, setup says so.
+- Stalled tasks escalate to the assignee's chart manager first (when it can see the project), then the project lead, and a person is always notified.
+- The agent manual's escalation order names your chart manager: yourself, the owner of your input, your manager for the task's team, up your chain, then a person. "Where to look" lists `get_organization`.
+
+### Fixed
+- The Messages badge counted each agent's hidden Work log (in private direct-chat mode, where task wakes and the agent's replies to them land), so it could show 99+ unread that no conversation in the list explained and nothing could clear. The badge now counts exactly the conversations Messages lists, from the same server code as the page. A Work log's unread count shows on its button in the agent's panel instead, and opening it marks it read as before.
+
+### Security
+- **No anonymous agent writes.** A company-wide token that names no agent can no longer create or change views (`POST /api/mcp/views`, `PATCH /api/mcp/views/{id}`, `PUT …/panels/{panelId}`, `POST …/archive`) or send messages (`POST /api/mcp/messages/send`) through the REST API: it gets `400 agentId required`. Such writes used to be recorded as "System", leaving a view with no maintaining agent, so the agent lost it when the view was made private and could rebuild its data somewhere everyone could see. Before upgrading, make sure every agent script sends `agentId` on writes; Emperor's bridges and the Hermes plugin already do.
+- On the MCP server (`/mcp`), a company-wide token naming no agent now acts as the person who created it: its changes are recorded as theirs instead of "System", and a view it creates is theirs. A token with no person recorded cannot create or change views there. Tokens from an OAuth approval now record the person who approved them, and stop working when that person leaves the company.
+
 ## [0.27.0] — 2026-11-02
 
 ### Added

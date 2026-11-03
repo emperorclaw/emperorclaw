@@ -79,7 +79,13 @@ function refusal(decision: Exclude<ActionDecision, { outcome: "allowed" }>) {
     };
 }
 
-export async function buildMcpServer(companyId: string, callerAgentId?: string | null, tokenId?: string | null): Promise<McpServer> {
+/**
+ * `operatorUserId`: for a company-wide token, the person who minted it
+ * (lib/mcp-write-actor.ts mcpServerOperatorUserId). What the connection
+ * changes without acting as an agent is recorded as that person; with none,
+ * writes that must name their author (views) are refused.
+ */
+export async function buildMcpServer(companyId: string, callerAgentId?: string | null, tokenId?: string | null, operatorUserId?: string | null): Promise<McpServer> {
     const instructions = await buildMcpInstructions(companyId, callerAgentId ?? null);
 
     const server = new McpServer(
@@ -89,17 +95,19 @@ export async function buildMcpServer(companyId: string, callerAgentId?: string |
     gateToolsByActionPolicy(server, companyId, callerAgentId ?? null, tokenId ?? null);
     omitToolsOfModulesOff(server, await loadCompanyModules(companyId));
 
-    registerAgentTools(server, companyId, callerAgentId, tokenId ?? null);
-    registerTaskTools(server, companyId, callerAgentId, tokenId ?? null);
-    registerProjectTools(server, companyId, callerAgentId, tokenId ?? null);
-    registerKnowledgeTools(server, companyId, callerAgentId, tokenId ?? null);
+    // Only a connection acting as no agent acts as its person.
+    const person = callerAgentId ? null : operatorUserId ?? null;
+    registerAgentTools(server, companyId, callerAgentId, tokenId ?? null, person);
+    registerTaskTools(server, companyId, callerAgentId, tokenId ?? null, person);
+    registerProjectTools(server, companyId, callerAgentId, tokenId ?? null, person);
+    registerKnowledgeTools(server, companyId, callerAgentId, tokenId ?? null, person);
     registerStorageTools(server, companyId, callerAgentId);
     registerMessagingTools(server, companyId, callerAgentId);
     registerConversationTools(server, companyId, callerAgentId, tokenId ?? null);
     registerObjectiveTools(server, companyId, callerAgentId);
-    registerViewTools(server, companyId, callerAgentId, tokenId ?? null);
+    registerViewTools(server, companyId, callerAgentId, tokenId ?? null, person);
     registerActionPolicyTools(server, companyId, callerAgentId, tokenId ?? null);
-    registerAutomationTools(server, companyId, callerAgentId, tokenId ?? null);
+    registerAutomationTools(server, companyId, callerAgentId, tokenId ?? null, person);
     // Handing work to an agent from outside is an operator action, not an agent one.
     if (!callerAgentId) registerRequestTools(server, companyId, tokenId ?? null);
 

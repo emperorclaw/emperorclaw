@@ -17,7 +17,7 @@ async function isResourceOutOfScope(
   companyId: string,
   token: { agentId?: string | null },
   agentIdParam: unknown,
-  resource: { scopeType: string; scopeId: string | null },
+  resource: { scopeType: string; scopeId: string | null; name: string },
 ): Promise<boolean> {
   try {
     const access = await resolveMcpAgentAccess(companyId, token, agentIdParam);

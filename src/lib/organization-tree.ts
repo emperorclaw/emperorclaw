@@ -76,3 +76,24 @@ export function organizationTeamAncestor(nodes: OrganizationNode[], id: string):
     }
     return null;
 }
+
+export type StoredOrganization = { leader: CoordinatorRef | null; teamIds: string[]; nodes?: OrganizationNode[]; flatTeamIds?: string[] };
+const strings = (value: unknown) => Array.isArray(value) ? value.filter((id): id is string => typeof id === 'string' && Boolean(id)) : [];
+const isRef = (value: unknown): value is CoordinatorRef => Boolean(value) && typeof value === 'object' && ['agent','human'].includes((value as CoordinatorRef).kind) && typeof (value as CoordinatorRef).id === 'string';
+/**
+ * The stored chart as the app reads it, never throwing on a malformed row
+ * (hand-edited JSON, an older shape): bad pieces are dropped, not trusted.
+ * null when nothing usable is stored.
+ */
+export function coerceStoredOrganization(raw: unknown): StoredOrganization | null {
+    if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null;
+    const value = raw as Record<string, unknown>;
+    const nodes = Array.isArray(value.nodes) ? (value.nodes as unknown[]).filter((node): node is OrganizationNode => {
+        if (!node || typeof node !== 'object') return false;
+        const n = node as OrganizationNode;
+        return typeof n.id === 'string' && (n.parentId === null || typeof n.parentId === 'string')
+            && (n.kind === 'person' ? isRef(n.person) : n.kind === 'team' && typeof n.teamId === 'string' && typeof n.leaderAgentId === 'string');
+    }) : undefined;
+    const flatTeamIds = strings(value.flatTeamIds);
+    return { leader: isRef(value.leader) ? { kind: value.leader.kind, id: value.leader.id } : null, teamIds: strings(value.teamIds), ...(nodes ? { nodes } : {}), ...(flatTeamIds.length ? { flatTeamIds } : {}) };
+}
