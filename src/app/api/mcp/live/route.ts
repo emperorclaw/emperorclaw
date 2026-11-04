@@ -16,6 +16,15 @@ import { moduleGuard } from "@/lib/modules-server";
  * includePrivateChats by a user who is still a member of the company.
  * Per-agent `thought` is sent only to read_only tokens minted with
  * includeAgentThoughts; for every other token reasoning is never queried.
+ *
+ * Per-agent `step` ({ label, text?, sec }) is the current step of the agent's
+ * running run. Every token gets the generic `label` ("Thinking", "Running
+ * terminal"); `text` (the step's real detail) only goes to the same opted-in
+ * tokens as `thought`, and only for runs the screen may read (team, group and
+ * thread-less task runs, or the creator's own private chat when private chats
+ * are included). Per-agent `last` ({ title, ageSec }) is an idle or offline
+ * agent's latest finished task from the last 7 days. Both are removed with
+ * their agent by scopeLiveFeed below.
  */
 export async function GET(req: NextRequest) {
     const auth = await verifyMcpToken(req, { allowReadOnlyScope: true });

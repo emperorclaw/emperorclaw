@@ -375,30 +375,62 @@ function shorten(value: string, max: number): string {
     return `${chars.slice(0, Math.max(0, max - 3)).join("").trimEnd()}...`;
 }
 
+/** Last-done titles shrink to this before any are dropped. */
+const LAST_TITLE_FLOOR_MAX = 32;
+
+/** The per-agent keys the budget may trim (all optional, all v2+). */
+export interface BudgetAgent {
+    thought?: string;
+    thoughtAgeSec?: number;
+    step?: { label: string; text?: string; sec: number };
+    last?: { title: string; ageSec: number };
+}
+
 /**
- * Keep the serialized feed under `budget` bytes. Only thoughts flex — every
- * other key is bounded by its own cap and v1 keys are never trimmed:
- *  1. shorten every thought 140 → 100 → 72 chars;
- *  2. drop the oldest thoughts, keeping the LIVE_MIN_THOUGHTS newest;
- *  3. shorten those to 48 chars.
- * When the feed without thoughts is already over budget (24 agents with every
+ * Keep the serialized feed under `budget` bytes. Only the optional per-agent
+ * text flexes (thoughts, step text, last-done titles) — every other key is
+ * bounded by its own cap, step labels are tiny, and v1 keys are never trimmed:
+ *  1. shorten every thought and step text 140 → 100 → 72 chars;
+ *  2. shorten last-done titles to 32 chars;
+ *  3. drop the oldest thoughts, keeping the LIVE_MIN_THOUGHTS newest;
+ *  4. drop the oldest step texts (labels stay), keeping the LIVE_MIN_THOUGHTS newest;
+ *  5. drop last-done titles, oldest first;
+ *  6. shorten the kept thoughts and step texts to 48 chars.
+ * When the feed without them is already over budget (24 agents with every
  * v1 string near its cap), the result can exceed it by those few short
- * thoughts (~250 bytes) rather than lose thoughts entirely. Mutates and
- * returns the feed.
+ * texts rather than lose them entirely. Mutates and returns the feed.
  */
-export function fitThoughtsToBudget<F extends { agents: { thought?: string; thoughtAgeSec?: number }[] }>(feed: F, budget = LIVE_PAYLOAD_BUDGET_BYTES): F {
+export function fitThoughtsToBudget<F extends { agents: BudgetAgent[] }>(feed: F, budget = LIVE_PAYLOAD_BUDGET_BYTES): F {
     const size = () => Buffer.byteLength(JSON.stringify(feed), "utf8");
     if (size() <= budget) return feed;
+    const shortenTexts = (max: number) => {
+        for (const agent of feed.agents) {
+            if (agent.thought) agent.thought = shorten(agent.thought, max);
+            if (agent.step?.text) agent.step.text = shorten(agent.step.text, max);
+        }
+    };
     for (const max of THOUGHT_STEPS.slice(1)) {
-        for (const agent of feed.agents) if (agent.thought) agent.thought = shorten(agent.thought, max);
+        shortenTexts(max);
         if (size() <= budget) return feed;
     }
+    for (const agent of feed.agents) if (agent.last) agent.last.title = shorten(agent.last.title, LAST_TITLE_FLOOR_MAX);
+    if (size() <= budget) return feed;
     const oldestFirst = feed.agents.filter((a) => a.thought).sort((x, y) => (y.thoughtAgeSec ?? 0) - (x.thoughtAgeSec ?? 0));
     for (const agent of oldestFirst.slice(0, Math.max(0, oldestFirst.length - LIVE_MIN_THOUGHTS))) {
         delete agent.thought;
         delete agent.thoughtAgeSec;
         if (size() <= budget) return feed;
     }
-    for (const agent of feed.agents) if (agent.thought) agent.thought = shorten(agent.thought, THOUGHT_FLOOR_MAX);
+    const oldestSteps = feed.agents.filter((a) => a.step?.text).sort((x, y) => (y.step?.sec ?? 0) - (x.step?.sec ?? 0));
+    for (const agent of oldestSteps.slice(0, Math.max(0, oldestSteps.length - LIVE_MIN_THOUGHTS))) {
+        delete agent.step!.text;
+        if (size() <= budget) return feed;
+    }
+    const oldestLast = feed.agents.filter((a) => a.last).sort((x, y) => (y.last?.ageSec ?? 0) - (x.last?.ageSec ?? 0));
+    for (const agent of oldestLast) {
+        delete agent.last;
+        if (size() <= budget) return feed;
+    }
+    shortenTexts(THOUGHT_FLOOR_MAX);
     return feed;
 }

@@ -544,8 +544,79 @@ maybe("thought comes from the live run step, never from a private or empty one",
     assert.equal(byId(fay.id).thought, "Answering the creator about the launch date");
     assert.ok(!raw.includes("salary"));
     assert.ok(!raw.includes("payroll"));
-    assert.ok(!raw.includes("Thinking"));
+    assert.ok(feed.agents.every((a: { thought?: string }) => !a.thought?.includes("Thinking")), "no placeholder thoughts");
 
     const plain = JSON.parse(await (await getLive(noThoughts)).text());
     assert.ok(plain.agents.every((a: Record<string, unknown>) => !("thought" in a)), "thoughts stay opt-in per token");
+});
+
+maybe("step: label and text on a readable run, label only on a private one; last for idle agents", async () => {
+    await resetDb();
+    const { companyId } = await seedCompanyWithToken();
+    const db = await getDb();
+    const { messageThreads, agentRuns, agentRunEvents, projects, tasks } = await getSchema();
+    const now = Date.now();
+    const ago = (sec: number) => new Date(now - sec * 1000);
+    const creator = await seedMember(companyId, "owner");
+    const other = await seedMember(companyId);
+    const ada = await seedAgent(companyId, { name: "Ada Lovelace", lastSeenAt: new Date() });
+    const bob = await seedAgent(companyId, { name: "Bob Builder", lastSeenAt: new Date() });
+    const eve = await seedAgent(companyId, { name: "Eve Work Log", lastSeenAt: new Date() });
+    const ivy = await seedAgent(companyId, { name: "Ivy Idle", lastSeenAt: new Date() });
+
+    const [team] = await db.insert(messageThreads).values({ companyId, type: "team", title: "Team" }).returning();
+    const { ensureDirectThread } = await import("@/lib/control-plane");
+    const bobDirect = await ensureDirectThread(companyId, bob.id, other);
+    const eveWorkLog = await ensureDirectThread(companyId, eve.id);
+
+    const run = async (agentId: string, threadId: string | null, events: { kind: string; toolName?: string; summary?: string }[]) => {
+        const id = randomUUID();
+        await db.insert(agentRuns).values({ id, companyId, agentId, threadId, status: "running", startedAt: ago(60) });
+        await db.insert(agentRunEvents).values(events.map((e, i) => ({
+            id: randomUUID(), companyId, runId: id, agentId, threadId, seq: i + 1, ts: ago(30 - i), kind: e.kind,
+            toolName: e.toolName ?? null, summary: e.summary ?? null,
+        })));
+    };
+    await run(ada.id, team.id, [{ kind: "tool.start", toolName: "terminal", summary: "npm test" }]);
+    await run(bob.id, bobDirect.id, [{ kind: "tool.start", toolName: "terminal", summary: "cat salary.csv" }]);
+    await run(eve.id, eveWorkLog.id, [{ kind: "reasoning", summary: "Routine wake about payroll" }]);
+
+    const [project] = await db.insert(projects).values({ companyId, goal: "Ops", status: "active" }).returning();
+    await db.insert(tasks).values([
+        { companyId, projectId: project.id, taskType: "report", state: "done", assignedAgentId: ivy.id, inputJson: { title: "Older report" }, updatedAt: ago(7200) },
+        { companyId, projectId: project.id, taskType: "report", state: "done", assignedAgentId: ivy.id, inputJson: { title: "Publish the café menu" }, updatedAt: ago(600) },
+        { companyId, projectId: project.id, taskType: "report", state: "done", assignedAgentId: ivy.id, inputJson: { title: "Ancient work" }, updatedAt: ago(8 * 24 * 3600) },
+    ]);
+
+    const screen = await seedScreenToken(companyId, creator, true, true);
+    const raw = await (await getLive(screen)).text();
+    const feed = JSON.parse(raw);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const byId = (f: any, id: string) => f.agents.find((a: { id: string }) => a.id === id) as Record<string, any>;
+    assert.deepEqual({ ...byId(feed, ada.id).step, sec: 0 }, { label: "Running terminal", text: "npm test", sec: 0 });
+    assert.ok(byId(feed, ada.id).step.sec >= 29 && byId(feed, ada.id).step.sec < 120);
+    assert.deepEqual(Object.keys(byId(feed, bob.id).step).sort(), ["label", "sec"], "another member's private chat: label only");
+    assert.equal(byId(feed, bob.id).step.label, "Running terminal");
+    assert.deepEqual(Object.keys(byId(feed, eve.id).step).sort(), ["label", "sec"], "the shared Work log: label only");
+    assert.equal(byId(feed, eve.id).step.label, "Thinking");
+    assert.equal("step" in byId(feed, ivy.id), false, "no running run, no step");
+    assert.ok(!raw.includes("salary") && !raw.includes("payroll"));
+
+    assert.equal(byId(feed, ivy.id).last.title, "Publish the cafe menu", "the newest finished task, ASCII");
+    assert.ok(byId(feed, ivy.id).last.ageSec >= 599 && byId(feed, ivy.id).last.ageSec < 700);
+    assert.equal(byId(feed, ada.id).name, "Ada Lovelace", "the full name is always sent");
+    assert.equal(byId(feed, ada.id).short, "Ada", "short stays the first word for 2.0 firmware");
+
+    // Without thoughts: the generic label still shows, never the text.
+    const plainRaw = await (await getLive(await seedScreenToken(companyId, creator, false, false))).text();
+    const plain = JSON.parse(plainRaw);
+    assert.deepEqual(Object.keys(byId(plain, ada.id).step).sort(), ["label", "sec"]);
+    assert.equal(byId(plain, ada.id).step.label, "Running terminal");
+    assert.ok(!plainRaw.includes("npm test"));
+    assert.equal(byId(plain, ivy.id).last.title, "Publish the cafe menu");
+
+    // A member scoped away from Ada: her step goes with her.
+    const { scopeLiveFeed } = await import("@/lib/live-feed");
+    const scoped = scopeLiveFeed(feed, [ivy.id]);
+    assert.ok(!JSON.stringify(scoped).includes("npm test"));
 });

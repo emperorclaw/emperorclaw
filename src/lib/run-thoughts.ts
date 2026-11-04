@@ -3,7 +3,7 @@ import { db } from "@/db";
 import { agentRunEvents, agentRuns, messageThreads, threadParticipants } from "@/db/schema";
 import { AGENT_PAIR_DESCRIPTION } from "@/lib/groups";
 import { cleanSnippet, THOUGHT_MAX } from "@/lib/live-feed-v2";
-import { buildRunLive, RUN_LIVE_MAX_AGE_MS, type RunEventSource } from "@/lib/run-events";
+import { buildRunLive, deriveActivityLine, isTerminalRunEventKind, publicActivityLine, RUN_LIVE_MAX_AGE_MS, type RunEventSource } from "@/lib/run-events";
 
 /**
  * Live run steps (0.9 bridges stream run events) for the surfaces that show
@@ -182,6 +182,83 @@ export function screenThoughtsFromRuns(rows: readonly RunThoughtRow[], options: 
         const thought = cleanSnippet(live.current.kind === "reasoning" ? text : `${label}: ${text}`, THOUGHT_MAX);
         if (!thought) continue;
         out.set(row.agentId, { thought, ageSec: Math.floor(live.current.sinceMs / 1000) });
+    }
+    return out;
+}
+
+/** `step.label` on a screen: a short generic headline ("Running terminal"). */
+export const STEP_LABEL_MAX = 32;
+/** `step.text` on a screen: the step's own detail (reasoning, tool target). */
+export const STEP_TEXT_MAX = 100;
+
+/** A running run's current step as a screen shows it. */
+export interface ScreenStep {
+    /** Generic headline, e.g. "Thinking", "Running terminal". Never conversation text unless the run is readable. */
+    label: string;
+    /** The step's real detail; only for a run the screen may read, on an opted-in token. */
+    text?: string;
+    /** Seconds since the step started. */
+    sec: number;
+}
+
+/** The newest event that sets the run's current line (what buildRunLive().current came from). */
+function currentEventOf(events: readonly RunEventSource[]): RunEventSource | null {
+    const newestFirst = [...events].sort((a, b) => b.seq - a.seq);
+    return newestFirst.find((e) => isTerminalRunEventKind(e.kind) || deriveActivityLine(e) !== null) ?? null;
+}
+
+/** Plain ASCII for a 240x240 screen font: fold accents and typographic punctuation, drop the rest. */
+export function screenAscii(value: string): string {
+    return value
+        .replace(/[‘’‚′]/g, "'")
+        .replace(/[“”„″]/g, "\"")
+        .replace(/[‐-―−]/g, "-")
+        .replace(/…/g, "...")
+        .replace(/·/g, "-")
+        .replace(/[  -​ ]/g, " ")
+        .normalize("NFKD")
+        .replace(/[^\x20-\x7E]/g, "")
+        .replace(/\s+/g, " ")
+        .trim();
+}
+
+/** A step headline for a screen: ASCII, without a trailing ellipsis ("Thinking..." -> "Thinking"). */
+function stepLabel(value: string): string {
+    return cleanSnippet(screenAscii(value).replace(/\s*\.{2,}$/, ""), STEP_LABEL_MAX);
+}
+
+/**
+ * Pure: each agent's current run step for a screen (GET /api/mcp/live), from
+ * its newest running run with events — the dashboard's live line split at
+ * " · " into a headline (`label`) and its detail (`text`).
+ *
+ * Privacy: `text` (and a headline taken from the line itself, which can quote
+ * a notice or status) is sent only when `allowText` (an opted-in token) and
+ * the screen may read the run (screenRunVisible). Every other run gets only
+ * publicActivityLine's generic label — the kind of step and the tool name,
+ * never reasoning, tool targets, notices or status text.
+ */
+export function screenStepsFromRuns(rows: readonly RunThoughtRow[], options: { nowMs: number; includePairThreads: boolean; allowText: boolean }): Map<string, ScreenStep> {
+    const out = new Map<string, ScreenStep>();
+    const now = new Date(options.nowMs);
+    const newestFirst = [...rows].sort((a, b) => b.startedAtMs - a.startedAtMs);
+    for (const row of newestFirst) {
+        if (out.has(row.agentId) || row.events.length === 0) continue;
+        const live = buildRunLive({ id: row.runId, agentId: row.agentId, triggerMessageId: null, status: "running", startedAt: new Date(row.startedAtMs), endedAt: null }, row.events, now);
+        const sec = Math.floor(live.current.sinceMs / 1000);
+        const event = currentEventOf(row.events);
+        const publicLabel = stepLabel(event ? publicActivityLine(event) : "Working") || "Working";
+        if (!options.allowText || !screenRunVisible(row, options.includePairThreads)) {
+            out.set(row.agentId, { label: publicLabel, sec });
+            continue;
+        }
+        const line = live.current.summary;
+        const split = line.indexOf(" · ");
+        const label = split >= 0 ? stepLabel(line.slice(0, split)) || publicLabel : publicLabel;
+        const detail = split >= 0 ? line.slice(split + 3) : line;
+        const text = cleanSnippet(screenAscii(detail), STEP_TEXT_MAX);
+        const sameAsLabel = stepLabel(detail).toLowerCase() === label.toLowerCase();
+        out.set(row.agentId, text && !sameAsLabel ? { label, text, sec } : { label, sec });
     }
     return out;
 }
