@@ -75,15 +75,25 @@ If the local runtime is the brain and hands, Emperor is the operating body that 
 
 | In the app | What it is for |
 |---|---|
-| **Dashboard** | Scene, Pulse, and List views of your agents; an action inbox for decisions and interventions; a separate watchlist for timing and response signals; recorded spend, throughput, and a task board preview. |
-| **Messages** | Private chats with each agent, the team channel, and members-only group chats. |
-| **Projects** | Projects and their task boards. |
-| **Approvals** | Requests from agents to spend, send, publish, delete, or close work; approve, or send back with a note. |
-| **Agents** | Each agent's profile: memory, instructions, scope, chat, and runs. **Health** and **Budgets** live here too. |
-| **People** | Company members and invitations (admins). |
-| **Customers** | Customers, their projects, and what needs attention for each. |
-| **Knowledge base**, **Files**, **Automations** | Knowledge & Rules, Storage, and pipelines. |
-| **Settings** | Profile, notifications, the daily review (**Routines**), agent connections, access tokens, updates. |
+| **Home** | Live agent status, work needing attention, personal pinned views and team controls. |
+| **Inbox** | Approvals, blocked or failing work, stalled agents and decisions; read, search and archive items. |
+| **Messages** | Private or shared direct chats, team channel and members-only group chats. In private mode, system-assigned work has a separate Work log. |
+| **Projects** | Kanban and list views, task ownership, notes, files, approvals and run history. |
+| **Automations** | Registered recurring work: Run now, schedules, editable steps, Context Packs and run evidence. The API still uses `pipelines`. |
+| **Views** | Agent-maintained dashboards with private/shared audiences, personal pins, freshness and version history. |
+| **Timeline** | Runs by agent or project, handoffs, outcomes, busy time and task attribution. |
+| **Costs** | Date-filtered reported or estimated costs by client, project, model and agent, plus CSV export. |
+| **Agents / Organization** | Agent status, instructions, memory, actions, scope, budgets and runs; reporting lines and teams. |
+| **Customers / Knowledge & Rules / Storage** | Scoped client work, durable company knowledge and files. |
+| **Search** | Full-text permitted tasks, notes, messages, knowledge, files, projects, customers and agents; also available through ⌘K / Ctrl+K. |
+| **Activity** | Administrative changes by people and agents, with before/after metadata. |
+| **Settings** | People, access, notifications, routines, modules, providers, runtime hosts, tokens, displays, language and updates. |
+
+Owners and admins can disable optional modules per company. Their data is retained,
+while their pages, APIs and agent tools become unavailable until re-enabled.
+
+See the [operator feature guide](operator-guide.md) for workflows and limits, or the
+[public feature map](https://emperorclaw.com/docs/features/) for an introduction.
 
 ## Recommended Reading
 
