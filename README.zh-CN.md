@@ -6,8 +6,8 @@
 
 <p align="center">
   <a href="#快速开始"><strong>快速开始</strong></a> &middot;
-  <a href="src/content/docs/v1.1/overview.md"><strong>文档</strong></a> &middot;
-  <a href="https://emperorclaw.com"><strong>官网</strong></a> &middot;
+  <a href="src/content/docs/v1.1/operator-guide.zh-CN.md"><strong>文档</strong></a> &middot;
+  <a href="https://emperorclaw.com/zh/"><strong>官网</strong></a> &middot;
   <a href="https://github.com/emperorclaw/emperorclaw/discussions"><strong>讨论区</strong></a> &middot;
   <a href="CHANGELOG.md"><strong>更新日志</strong></a>
 </p>
@@ -62,8 +62,8 @@
 | ❌ 一次崩溃或重启，请求就……凭空消失了。 | ✅ 每条消息和每个任务都有负责人和状态。回复通过持久化的 outbox 发送；停滞的工作会被重试，然后升级给人工处理。 |
 | ❌ 每次对话都要把同样的指令再粘贴一遍。 | ✅ **Company Brain**（公司大脑）保存你的规则和流程，可按公司、客户、项目或智能体划分范围，智能体在行动前会先读取。 |
 | ❌ 交付物散落在各种聊天和文件夹里。 | ✅ **Storage**（存储）把报告和产出按客户归档到真实的文件夹中，有唯一的正式版本，并支持搜索。 |
-| ❌ 一个循环一夜之间烧掉一周的 token。 | ✅ 按每次运行、每个智能体统计 token 和成本。预算在 80% 时预警，达到上限时暂停智能体。 |
-| ❌ 周期性工作全靠你记得去启动。 | ✅ **Pipelines**（流水线）按计划运行，步骤之间设有审批关卡，每次运行都有记录。 |
+| ❌ 一个循环一夜之间烧掉一周的 token。 | ✅ 按每次运行、每个智能体统计 token 和成本。预算在 80% 时预警，达到上限时阻止新运行；进行中的工作可能超过预算。 |
+| ❌ 周期性工作全靠你记得去启动。 | ✅ **Automations**（自动化）可立即运行或按计划启动，支持审批关卡，并保留每次运行的证据。 |
 
 <br/>
 
@@ -114,7 +114,7 @@ Hermes 智能体运行在常驻 gateway 上：每条消息的额外开销约 **0
 <td valign="top">
 
 ### 💰 成本控制
-每次运行的时长、工具调用次数、token 和成本。按智能体设置月度预算，提前预警并阻止失控的开销。
+每次运行的时长、工具调用次数、token 和成本。按智能体设置月度预算，提前预警，到达上限时阻止新运行；正在进行的工作可能超限。
 
 </td>
 <td valign="top">
@@ -125,8 +125,8 @@ Hermes 智能体运行在常驻 gateway 上：每条消息的额外开销约 **0
 </td>
 <td valign="top">
 
-### 🔁 Pipelines
-带审批关卡的可复用工作流，可视化流程图与实际运行一致，每次运行都留有完整记录。
+### 🔁 自动化
+立即或按计划启动周期性工作，在应用中编辑步骤和上下文，并查看审批关卡与每次运行的证据。具体工作由运行时执行。
 
 </td>
 </tr>
@@ -140,7 +140,7 @@ Hermes 智能体运行在常驻 gateway 上：每条消息的额外开销约 **0
 <td valign="top">
 
 ### 🔌 接入你自己的智能体
-Hermes、OpenClaw，或任何 MCP 客户端，包括 Claude。一套 API 提供 **38 个 MCP 工具**，覆盖智能体、任务、项目、审批、知识、存储和消息。
+支持 Hermes、OpenClaw 和兼容的 MCP 客户端。通过 MCP 工具处理权限范围内的公司工作，并使用 `send_message`、`wait_for_reply` 和 `read_thread` 与智能体对话。
 
 </td>
 <td valign="top">
@@ -160,6 +160,21 @@ Hermes、OpenClaw，或任何 MCP 客户端，包括 Claude。一套 API 提供 
 </p>
 
 <br/>
+
+## 更多团队管理能力
+
+- **视图：**让智能体创建指标、图表和表格仪表盘；选择读者与维护智能体，
+  固定到首页，并检查更新时间。
+- **组织架构：**智能体知道主管和汇报关系；任务完成或受阻时可以向上汇报，
+  同时仍遵守访问限制。
+- **操作控制：**为每类操作选择关闭、先询问或允许。外部运行时工具需要调用
+  `check_action`；Emperor 无法拦截任意外部调用。
+- **成本与时间线：**按客户、项目、模型和智能体分析支出，导出 CSV，并追踪
+  任务运行和交接。月度预算阻止新运行，进行中的工作可能超限。
+- **你的工作区：**按公司选择可选模块，每个人独立选择英文或简体中文。
+
+阅读[团队运营指南](src/content/docs/v1.1/operator-guide.zh-CN.md)或
+[中文版功能地图](https://emperorclaw.com/zh/docs/features/)，了解示例与边界。
 
 ## EmperorClaw 有何不同
 
@@ -182,7 +197,7 @@ Hermes、OpenClaw，或任何 MCP 客户端，包括 Claude。一套 API 提供 
 │                                                                  │
 │   Dashboard & chat  ·  Projects & tasks  ·  Approvals            │
 │   Company Brain     ·  Storage           ·  Pipelines            │
-│   Runs & costs      ·  Health watchdog   ·  MCP API (38 tools)   │
+│   Runs & costs      ·  Health watchdog   ·  MCP API              │
 │                                                                  │
 │                     PostgreSQL (durable state)                   │
 └──────────────────────────────────────────────────────────────────┘
