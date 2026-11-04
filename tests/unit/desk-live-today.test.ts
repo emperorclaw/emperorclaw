@@ -123,6 +123,11 @@ test("the chart keeps the top 5 agents and groups the rest as others, so the sli
     assert.deepEqual(byRuns.others, { n: 3, cost: 0, runs: 6 });
     assert.equal(byRuns.top.reduce((acc, s) => acc + s.runs, 0) + byRuns.others.runs, byRuns.runs);
 
+    // Costs that round to no cent fall back to the runs chart: null, never $0.00.
+    const fractions = shapeToday([{ agentId: "x", runs: 3, tokens: 0, cost: 0.4, costed: 2, done: 0 }], new Set(["x"]));
+    assert.equal(fractions.cost, null);
+    assert.deepEqual(fractions.top, [{ agentId: "x", cost: 0, runs: 3 }]);
+
     // A narrower viewer gets its own slices and others.
     const scoped = shapeToday(many, new Set(["agent-0", "agent-1"]));
     assert.deepEqual(scoped.top.map((s) => s.agentId), ["agent-1", "agent-0"]);

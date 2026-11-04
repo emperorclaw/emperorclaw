@@ -204,8 +204,10 @@ export const TODAY_TOP = 5;
 export function shapeToday(rows: readonly TodayRow[], agentIds: ReadonlySet<string>): LiveToday {
     const mine = rows.filter((r) => agentIds.has(r.agentId));
     const sum = (pick: (r: TodayRow) => number) => mine.reduce((acc, r) => acc + (Number(pick(r)) || 0), 0);
-    const byCost = sum((r) => r.costed) > 0;
     const cents = (r: TodayRow) => (r.costed > 0 ? Math.round(r.cost) : 0);
+    // By cost only when a whole cent was reported: sub-half-cent costs round to
+    // nothing and must read as "no cost" (runs chart), never as $0.00.
+    const byCost = mine.some((r) => cents(r) > 0);
     // Slices: by cost when any run reported one, else by runs (never an invented $).
     const ranked = mine.filter((r) => (byCost ? cents(r) > 0 : r.runs > 0))
         .sort((a, b) => (byCost ? cents(b) - cents(a) : b.runs - a.runs) || a.agentId.localeCompare(b.agentId));
