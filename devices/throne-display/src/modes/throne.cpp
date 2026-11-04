@@ -256,7 +256,7 @@ void actor_draw(int i, int x, int footY, int s, bool seated) {
       // once the agent has words (step text, thought or label), the bubble types them.
       char say[8];
       bool waiting = app_speech(app.model, a, say, sizeof(say)) == SPEECH_NONE && app.now - an.actSince < 8000;
-      if (waiting && moments_bubbleAgent() != an.idHash) drawSpeech(x + 8 * s, headY + s, s);
+      if (waiting) drawSpeech(x + 8 * s, headY + s, s);
       break;
     }
     case ACT_BLOCKED: drawAlert(x, headY - 8); break;
@@ -292,7 +292,7 @@ int throne_hit(int tx, int ty) {
   return best;
 }
 
-void throne_draw(bool director) {
+void throne_draw() {
   const Model& m = app.model;
   int s = app.charScale ? app.charScale : 2;
   drawFloor();
@@ -351,15 +351,4 @@ void throne_draw(bool director) {
   }
   drawParticles();
   moments_drawWorld();
-  if (!director) {
-    moments_drawThroneBubble();
-    moments_drawOverlay();
-  }
-}
-
-bool throne_tap(int tx, int ty) {
-  int best = throne_hit(tx, ty);
-  if (best < 0) return false;
-  app.focus = (uint8_t)best;
-  return true;
 }
