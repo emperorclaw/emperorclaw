@@ -306,6 +306,8 @@ Docker 安装器会自动完成所有配置。如果从源码安装，请将 `.e
 
 由 [Jose Zuniga](https://josezuma.com) 创建，由 [Malecu s.r.o.](https://malecu.eu) 拥有并维护。
 
+版权所有 © 2024–2026 Malecu s.r.o.
+
 ## Star、安装、贡献
 
 - ⭐ **给仓库点个 Star**：这能帮助更多人发现它。

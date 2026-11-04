@@ -306,6 +306,8 @@ The whole product ships under one license, **FSL-1.1-Apache-2.0**:
 
 Created by [Jose Zuniga](https://josezuma.com), owned and maintained by [Malecu s.r.o.](https://malecu.eu)
 
+Copyright © 2024–2026 Malecu s.r.o.
+
 ## Star, install, contribute
 
 - ⭐ **Star the repo**: it helps others find it.

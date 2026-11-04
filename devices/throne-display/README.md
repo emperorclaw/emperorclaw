@@ -320,3 +320,7 @@ src/
   app.*               UI state, per-agent animation, layout helpers
   modes/              throne.cpp, focus.cpp, pulse.cpp, feed.cpp, director.cpp
 ```
+
+## Ownership
+
+EmperorClaw is owned and maintained by [Malecu s.r.o.](https://malecu.eu).
