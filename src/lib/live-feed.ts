@@ -165,8 +165,21 @@ export interface LiveToday {
     tokensK: number;
     /** Tasks finished today by these agents. */
     done: number;
-    /** Up to 3 agents by cost today (cost > 0), highest first. */
-    top: { agentId: string; cost: number }[];
+    /**
+     * 2.3: the chart's slices. Up to 5 agents, highest first, by cost when
+     * any run reported one (`cost` is not null), else by runs; `others` holds
+     * the rest, so the slices plus `others` add up to `cost` (or to `runs`).
+     * Agents with nothing to count (no cost, or no runs) are left out.
+     */
+    top: LiveTodaySlice[];
+    others: { n: number; cost: number; runs: number };
+}
+
+export interface LiveTodaySlice {
+    agentId: string;
+    /** Cents; 0 when the chart is by runs. */
+    cost: number;
+    runs: number;
 }
 
 /** One agent's usage today, as loaded (the per-agent rows `today` is summed from). */
@@ -181,7 +194,7 @@ export interface TodayRow {
     done: number;
 }
 
-const TODAY_TOP = 3;
+export const TODAY_TOP = 5;
 
 /**
  * Pure: `today` from per-agent rows, counting only `agentIds`. The rows ride
@@ -191,16 +204,24 @@ const TODAY_TOP = 3;
 export function shapeToday(rows: readonly TodayRow[], agentIds: ReadonlySet<string>): LiveToday {
     const mine = rows.filter((r) => agentIds.has(r.agentId));
     const sum = (pick: (r: TodayRow) => number) => mine.reduce((acc, r) => acc + (Number(pick(r)) || 0), 0);
-    const costed = sum((r) => r.costed);
+    const byCost = sum((r) => r.costed) > 0;
+    const cents = (r: TodayRow) => (r.costed > 0 ? Math.round(r.cost) : 0);
+    // Slices: by cost when any run reported one, else by runs (never an invented $).
+    const ranked = mine.filter((r) => (byCost ? cents(r) > 0 : r.runs > 0))
+        .sort((a, b) => (byCost ? cents(b) - cents(a) : b.runs - a.runs) || a.agentId.localeCompare(b.agentId));
+    const rest = ranked.slice(TODAY_TOP);
     const today: LiveToday = {
-        cost: costed > 0 ? Math.round(sum((r) => r.cost)) : null,
+        // The sum of the rounded per-agent costs, so the slices add up exactly.
+        cost: byCost ? mine.reduce((acc, r) => acc + cents(r), 0) : null,
         runs: sum((r) => r.runs),
         tokensK: Math.round(sum((r) => r.tokens) / 1000),
         done: sum((r) => r.done),
-        top: mine.filter((r) => r.costed > 0 && r.cost > 0)
-            .sort((a, b) => b.cost - a.cost || a.agentId.localeCompare(b.agentId))
-            .slice(0, TODAY_TOP)
-            .map((r) => ({ agentId: r.agentId, cost: Math.round(r.cost) })),
+        top: ranked.slice(0, TODAY_TOP).map((r) => ({ agentId: r.agentId, cost: byCost ? cents(r) : 0, runs: r.runs })),
+        others: {
+            n: rest.length,
+            cost: byCost ? rest.reduce((acc, r) => acc + cents(r), 0) : 0,
+            runs: rest.reduce((acc, r) => acc + r.runs, 0),
+        },
     };
     return Object.defineProperty(today, "rows", { value: mine, enumerable: false });
 }

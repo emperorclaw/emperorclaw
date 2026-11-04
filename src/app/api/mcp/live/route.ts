@@ -28,12 +28,13 @@ import { moduleGuard } from "@/lib/modules-server";
  * (step-phrases.ts: "Using terminal", "Searching the web"); a run the screen
  * may not read only says "Working in a private chat".
  *
- * `today` ({ cost, runs, tokensK, done, top }) is the usage since local
+ * `today` ({ cost, runs, tokensK, done, top, others }) is the usage since local
  * midnight (company timezone, else UTC) of the agents on the screen;
  * scopeLiveFeed re-sums it for a narrower viewer. It counts only runs the
  * screen may read (the step / thought rule: no other member's private chat,
  * no Work log) and tasks by their completion event. `cost` is null when no
- * run reported a cost above zero.
+ * run reported a cost above zero. `top` holds up to 5 agents (by cost, or by
+ * runs when `cost` is null) and `others` the rest, so they add up to the total.
  */
 export async function GET(req: NextRequest) {
     const auth = await verifyMcpToken(req, { allowReadOnlyScope: true });

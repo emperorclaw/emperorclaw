@@ -694,14 +694,54 @@ maybe("today: cost, runs, tokens and tasks done since midnight, for the screen's
 
     const raw = await (await getLive(await seedScreenToken(companyId, creator, false))).text();
     const feed = JSON.parse(raw);
-    assert.deepEqual(feed.today, { cost: 155, runs: 4, tokensK: 5, done: 1, top: [{ agentId: ana.id, cost: 155 }] });
+    assert.deepEqual(feed.today, { cost: 155, runs: 4, tokensK: 5, done: 1, top: [{ agentId: ana.id, cost: 155, runs: 2 }], others: { n: 0, cost: 0, runs: 0 } });
     assert.ok(!raw.includes("\"rows\""), "per-agent rows never reach the device");
     const opted = JSON.parse(await (await getLive(await seedScreenToken(companyId, creator, true, true))).text());
-    assert.deepEqual(opted.today, { cost: 162, runs: 5, tokensK: 6, done: 1, top: [{ agentId: ana.id, cost: 155 }, { agentId: ben.id, cost: 7 }] }, "the creator's own chat counts on their opted-in screen");
+    assert.deepEqual(opted.today, { cost: 162, runs: 5, tokensK: 6, done: 1, top: [{ agentId: ana.id, cost: 155, runs: 2 }, { agentId: ben.id, cost: 7, runs: 3 }], others: { n: 0, cost: 0, runs: 0 } },
+        "the creator's own chat counts on their opted-in screen");
 
     // A narrower viewer (member scope / limited agents) sees only its agents' day.
     const { buildLiveFeed, scopeLiveFeed } = await import("@/lib/live-feed");
     const built = await buildLiveFeed(companyId, { now });
-    assert.deepEqual(scopeLiveFeed(built, [ben.id]).today, { cost: null, runs: 2, tokensK: 2, done: 1, top: [] }, "Ben's runs reported no cost: null, not 0");
-    assert.deepEqual(scopeLiveFeed(built, [ana.id]).today, { cost: 155, runs: 2, tokensK: 3, done: 0, top: [{ agentId: ana.id, cost: 155 }] });
+    assert.deepEqual(scopeLiveFeed(built, [ben.id]).today, { cost: null, runs: 2, tokensK: 2, done: 1, top: [{ agentId: ben.id, cost: 0, runs: 2 }], others: { n: 0, cost: 0, runs: 0 } },
+        "Ben's runs reported no cost: null, not 0, and the chart goes by runs");
+    assert.deepEqual(scopeLiveFeed(built, [ana.id]).today, { cost: 155, runs: 2, tokensK: 3, done: 0, top: [{ agentId: ana.id, cost: 155, runs: 2 }], others: { n: 0, cost: 0, runs: 0 } });
+});
+
+maybe("today's chart: top 5 agents plus others add up to the total; runs when no cost; re-totalled for a scoped viewer", async () => {
+    await resetDb();
+    const { companyId } = await seedCompanyWithToken();
+    const db = await getDb();
+    const { agentRuns } = await getSchema();
+    const now = new Date();
+    const midnight = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
+    const at = new Date(Math.min(now.getTime() - 1000, midnight.getTime() + 1000));
+    const creator = await seedMember(companyId, "owner");
+    const agents = [];
+    for (let i = 0; i < 7; i++) agents.push(await seedAgent(companyId, { name: `Agent ${i}`, lastSeenAt: new Date() }));
+    // Agent i: i + 1 runs at 10 cents each, all task runs (always visible).
+    await db.insert(agentRuns).values(agents.flatMap((a, i) => Array.from({ length: i + 1 }, () => ({
+        id: randomUUID(), companyId, agentId: a.id, status: "succeeded", startedAt: at, inputTokens: 100, outputTokens: 0, costCents: 10,
+    }))));
+
+    const feed = JSON.parse(await (await getLive(await seedScreenToken(companyId, creator, false))).text());
+    assert.equal(feed.today.cost, 280);
+    assert.deepEqual(feed.today.top.map((s: { agentId: string }) => s.agentId), [6, 5, 4, 3, 2].map((i) => agents[i].id));
+    assert.deepEqual(feed.today.others, { n: 2, cost: 30, runs: 3 });
+    const sliceSum = feed.today.top.reduce((acc: number, s: { cost: number }) => acc + s.cost, 0) + feed.today.others.cost;
+    assert.equal(sliceSum, feed.today.cost, "slices plus others add up to the total");
+
+    // The same day with no cost reported: slices by runs, cost null.
+    const { sql } = await import("drizzle-orm");
+    await db.execute(sql`UPDATE agent_runs SET cost_cents = 0 WHERE company_id = ${companyId}`);
+    const byRuns = JSON.parse(await (await getLive(await seedScreenToken(companyId, creator, false))).text()).today;
+    assert.equal(byRuns.cost, null);
+    assert.deepEqual(byRuns.top.map((s: { runs: number; cost: number }) => [s.runs, s.cost]), [[7, 0], [6, 0], [5, 0], [4, 0], [3, 0]]);
+    assert.deepEqual(byRuns.others, { n: 2, cost: 0, runs: 3 });
+
+    const { buildLiveFeed, scopeLiveFeed } = await import("@/lib/live-feed");
+    const scoped = scopeLiveFeed(await buildLiveFeed(companyId, { now }), [agents[0].id, agents[1].id]).today!;
+    assert.deepEqual(scoped.top.map((s) => [s.agentId, s.runs]), [[agents[1].id, 2], [agents[0].id, 1]]);
+    assert.deepEqual(scoped.others, { n: 0, cost: 0, runs: 0 });
+    assert.equal(scoped.runs, 3);
 });

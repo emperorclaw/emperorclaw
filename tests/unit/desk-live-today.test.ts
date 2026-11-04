@@ -73,10 +73,15 @@ const rows: TodayRow[] = [
 
 test("today sums the shown agents only, rounds tokens to thousands and ranks the top 3 by cost", () => {
     const today = shapeToday(rows, new Set(["a", "b", "c", "d", "e"]));
-    assert.deepEqual(today, { cost: 1373, runs: 18, tokensK: 131, done: 3, top: [{ agentId: "b", cost: 731 }, { agentId: "a", cost: 512 }, { agentId: "e", cost: 90 }] });
+    assert.deepEqual(today, {
+        cost: 1373, runs: 18, tokensK: 131, done: 3,
+        top: [{ agentId: "b", cost: 731, runs: 4 }, { agentId: "a", cost: 512, runs: 10 }, { agentId: "e", cost: 90, runs: 1 }, { agentId: "d", cost: 40, runs: 1 }],
+        others: { n: 0, cost: 0, runs: 0 },
+    }, "c reported no cost, so it is no slice of a cost chart");
     assert.ok(!JSON.stringify(today).includes("rows"), "the per-agent rows are never serialized");
-    assert.deepEqual(shapeToday(rows, new Set(["c"])), { cost: null, runs: 2, tokensK: 1, done: 1, top: [] }, "no cost reported: null, never 0");
-    assert.deepEqual(shapeToday([], new Set()), { cost: null, runs: 0, tokensK: 0, done: 0, top: [] });
+    assert.deepEqual(shapeToday(rows, new Set(["c"])), { cost: null, runs: 2, tokensK: 1, done: 1, top: [{ agentId: "c", cost: 0, runs: 2 }], others: { n: 0, cost: 0, runs: 0 } },
+        "no cost reported: null, never 0, and the slices go by runs");
+    assert.deepEqual(shapeToday([], new Set()), { cost: null, runs: 0, tokensK: 0, done: 0, top: [], others: { n: 0, cost: 0, runs: 0 } });
 });
 
 test("a scoped viewer's today counts only its agents", () => {
@@ -87,9 +92,9 @@ test("a scoped viewer's today counts only its agents", () => {
         messages: [], dm: [], events: [], needs: [], today: shapeToday(rows, new Set(["a", "b"])),
     } as unknown as LiveFeed;
     const scoped = scopeLiveFeed(feed, ["a"]);
-    assert.deepEqual(scoped.today, { cost: 512, runs: 10, tokensK: 120, done: 2, top: [{ agentId: "a", cost: 512 }] });
+    assert.deepEqual(scoped.today, { cost: 512, runs: 10, tokensK: 120, done: 2, top: [{ agentId: "a", cost: 512, runs: 10 }], others: { n: 0, cost: 0, runs: 0 } });
     assert.notEqual(liveFeedEtag(scoped), liveFeedEtag(feed));
-    assert.deepEqual(scopeLiveFeed(scoped, ["b"]).today, { cost: null, runs: 0, tokensK: 0, done: 0, top: [] });
+    assert.deepEqual(scopeLiveFeed(scoped, ["b"]).today, { cost: null, runs: 0, tokensK: 0, done: 0, top: [], others: { n: 0, cost: 0, runs: 0 } });
 });
 
 test("today starts at midnight in the company's timezone, else UTC", () => {
@@ -100,4 +105,26 @@ test("today starts at midnight in the company's timezone, else UTC", () => {
     assert.equal(localMidnight(new Date("2026-07-01T12:00:00Z"), "Europe/Bratislava").toISOString(), "2026-06-30T22:00:00.000Z", "summer time");
     assert.equal(localMidnight(new Date("2026-03-29T12:00:00Z"), "Europe/Bratislava").toISOString(), "2026-03-28T23:00:00.000Z", "the day summer time starts");
     assert.equal(localMidnight(now, "Not/AZone").toISOString(), "2026-11-04T00:00:00.000Z", "an invalid zone falls back to UTC");
+});
+
+test("the chart keeps the top 5 agents and groups the rest as others, so the slices add up to the total", () => {
+    const many: TodayRow[] = Array.from({ length: 8 }, (_, i) => ({ agentId: `agent-${i}`, runs: i + 1, tokens: 1000, cost: (i + 1) * 100, costed: 1, done: 0 }));
+    const ids = new Set(many.map((r) => r.agentId));
+    const today = shapeToday(many, ids);
+    assert.deepEqual(today.top.map((s) => s.agentId), ["agent-7", "agent-6", "agent-5", "agent-4", "agent-3"]);
+    assert.deepEqual(today.others, { n: 3, cost: 100 + 200 + 300, runs: 1 + 2 + 3 });
+    assert.equal(today.top.reduce((acc, s) => acc + s.cost, 0) + today.others.cost, today.cost);
+
+    // No run reported a cost: the chart goes by runs, cost stays null.
+    const runsOnly = many.map((r) => ({ ...r, cost: 0, costed: 0 }));
+    const byRuns = shapeToday(runsOnly, ids);
+    assert.equal(byRuns.cost, null);
+    assert.deepEqual(byRuns.top.map((s) => [s.agentId, s.cost, s.runs]), [["agent-7", 0, 8], ["agent-6", 0, 7], ["agent-5", 0, 6], ["agent-4", 0, 5], ["agent-3", 0, 4]]);
+    assert.deepEqual(byRuns.others, { n: 3, cost: 0, runs: 6 });
+    assert.equal(byRuns.top.reduce((acc, s) => acc + s.runs, 0) + byRuns.others.runs, byRuns.runs);
+
+    // A narrower viewer gets its own slices and others.
+    const scoped = shapeToday(many, new Set(["agent-0", "agent-1"]));
+    assert.deepEqual(scoped.top.map((s) => s.agentId), ["agent-1", "agent-0"]);
+    assert.deepEqual(scoped.others, { n: 0, cost: 0, runs: 0 });
 });
