@@ -408,16 +408,21 @@ void mapDocument(JsonDocument& doc, Model& m) {
   if (!td.isNull()) {
     Today& t = m.today;
     t.has = true;
-    t.cost = td["cost"].isNull() ? -1 : td["cost"].as<int32_t>();
-    t.runs = td["runs"] | 0;
-    t.tokensK = td["tokensK"] | 0;
-    t.done = (int16_t)(td["done"] | 0);
+    // Counts are clamped to 0..99,999,999 so a bad value can never wrap into a negative.
+    auto count = [](JsonVariant v) -> int32_t {
+      long n = v | 0L;
+      return n < 0 ? 0 : (n > 99999999L ? 99999999 : (int32_t)n);
+    };
+    t.cost = td["cost"].isNull() ? -1 : count(td["cost"]);
+    t.runs = count(td["runs"]);
+    t.tokensK = count(td["tokensK"]);
+    t.done = count(td["done"]);
     for (JsonObject x : td["top"].as<JsonArray>()) {
       if (t.nTop >= 3) break;
       const char* aid = x["agentId"] | "";
       if (!*aid) continue;
       t.top[t.nTop].agentHash = fnv1a(aid);
-      t.top[t.nTop].cost = x["cost"] | 0;
+      t.top[t.nTop].cost = count(x["cost"]);
       t.nTop++;
     }
   }

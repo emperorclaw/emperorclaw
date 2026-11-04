@@ -47,6 +47,8 @@ void today_draw() {
   fillCircle(CX, CY, 119, pal::BG);
   ring(CX, CY, 113, 118, c(pal::GOLD, 3));
   arcText("TODAY", 101, ANG_TOP, c(pal::GOLD, 13), F_MED, true);
+  // Demo numbers are a sample, said where nothing else is drawn.
+  if (m.demo) text("DEMO SAMPLE", CX, 38, c(pal::VIOLET, 12), F_TINY);
 
   if (!t.has) {
     text("No usage yet", CX, 112, pal::TEXT_DIM, F_SMALL);
@@ -67,7 +69,7 @@ void today_draw() {
   char runs[12], tokens[12], done[12];
   snprintf(runs, sizeof(runs), "%ld", (long)t.runs);
   fmtTokensK(tokens, sizeof(tokens), t.tokensK);
-  snprintf(done, sizeof(done), "%d", (int)t.done);
+  snprintf(done, sizeof(done), "%ld", (long)t.done);
   stat(CX - 58, runs, "runs");
   stat(CX, tokens, "tokens");
   stat(CX + 58, done, "done");

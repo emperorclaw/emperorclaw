@@ -155,7 +155,7 @@ struct Today {
   int32_t cost;     // cents, -1 = no run reported a cost
   int32_t runs;
   int32_t tokensK;  // input + output tokens, thousands
-  int16_t done;     // tasks finished today
+  int32_t done;     // tasks finished today
   uint8_t nTop;
   struct {
     uint32_t agentHash;

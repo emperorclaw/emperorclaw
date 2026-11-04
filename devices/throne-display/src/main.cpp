@@ -194,7 +194,9 @@ static void drawHoldProgress() {
 }
 
 static void drawDemoTag() {
-  if (!app.model.demo || app.mode == MODE_LIVE) return;
+  // LIVE and TODAY label demo data themselves (their own tag / caption), where the
+  // bottom of the screen carries content.
+  if (!app.model.demo || app.mode == MODE_LIVE || app.mode == MODE_TODAY) return;
   text("DEMO", CX, 222 - 8, c(pal::VIOLET, 12), F_TINY);
   uint32_t t = app.now - s_bootMs;
   bool hint = t < 20000 || (t % 60000) < 5000;
@@ -379,7 +381,7 @@ static void handleSerial() {
     }
     if (!strcmp(cmd, "help")) {
       Serial.println("commands: status | stats | version | scan | provision <base64> | demo | live | setup |"
-                     " reset | touch | mode <0-5> | camsafe | ssid <v> | pass <v> | server <url> | token <v> | save");
+                     " reset | touch | mode <0-5> (0 live, 1 today, 2 focus, 3 feed, 4 pulse, 5 throne) | camsafe | ssid <v> | pass <v> | server <url> | token <v> | save");
     } else if (!strcmp(cmd, "version")) {
       Serial.println("[version] " FW_VERSION);
     } else if (!strcmp(cmd, "scan")) {
