@@ -21,6 +21,10 @@ If something goes wrong, the page tells you what: the Wi-Fi password was rejecte
 
 The display's chip has no 5 GHz radio. It can't see or join a 5 GHz-only network, which is why the page only lists networks the display itself found. If your router has separate names for 2.4 GHz and 5 GHz, pick the 2.4 GHz one. A single name for both bands works.
 
+## What agents show
+
+While an agent works, the display shows its full name and the step it is on, the same line as the dashboard: **Thinking**, **Running terminal** and so on. With **Show agent thoughts**, it also shows that step's detail (what the agent is thinking, the command it runs), but only for work anyone in the company could see: team chat, groups and task work. An idle agent shows the last task it finished this week.
+
 ## Private chats
 
 With **Include my private chats**, the display also shows your own direct conversations with each agent (only yours, never other people's). Anyone who can see the screen can read them, so only enable it on a display you control.

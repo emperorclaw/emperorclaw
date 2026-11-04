@@ -102,8 +102,20 @@ void app_syncAnim(bool firstSync) {
 
 // ---------------------------------------------------------------- acting
 
+// A running run (feed 2.1 `step`) is real work even without a task or a typing row:
+// the character acts out the kind of step instead of idling.
+static uint8_t stepAct(const Agent& a) {
+  if (strncmp(a.step, "Thinking", 8) == 0) return ACT_THINKING;
+  if (strncmp(a.step, "Writing", 7) == 0) return ACT_WRITING;
+  if (strncmp(a.step, "Delegating", 10) == 0) return ACT_PRESENTING;
+  return ACT_TYPING;
+}
+
 static uint8_t baseAct(const Agent& a) {
   if (a.health == H_DOWN || a.state == S_OFFLINE) return ACT_OFFLINE;
+  bool idleAct = a.act == ACT_IDLE || a.act == ACT_COFFEE || a.act == ACT_NAP || a.act == ACT_STRETCH ||
+                 (a.act == ACT_AUTO && a.state == S_IDLE);
+  if (a.step[0] && idleAct) return stepAct(a);
   if (a.act != ACT_AUTO) return a.act;
   switch (a.state) {
     case S_TYPING: return ACT_TALKING;  // v1 "typing" = writing a chat message
@@ -494,4 +506,47 @@ void app_initials(const char* name, char* out, size_t cap) {
 void app_label(const Agent& a, char* out, size_t cap, bool shortName) {
   if (app_camSafe()) app_initials(a.name, out, cap);
   else strlcpy(out, shortName ? a.shortName : a.name, cap);
+}
+
+void app_nameFit(const Agent& a, char* out, size_t cap, int maxW, uint8_t font) {
+  if (app_camSafe()) {
+    app_initials(a.name, out, cap);
+    return;
+  }
+  strlcpy(out, a.name, cap);
+  if (out[0] && ui::textWidth(out, (ui::Font)font) <= maxW) return;
+  strlcpy(out, a.shortName[0] ? a.shortName : a.name, cap);
+}
+
+int32_t app_stepSec(const Agent& a) {
+  if (!a.step[0] || a.stepSec < 0) return -1;
+  return a.stepSec + app_snapshotAgeSec();
+}
+
+uint8_t app_speech(const Model& m, const Agent& a, char* out, size_t cap) {
+  out[0] = 0;
+  const char* st = model_stepText(m, a);
+  if (st) {
+    // A Thinking step's detail is the thought itself; a tool step reads "label: target".
+    if (strcmp(a.step, "Thinking") == 0) strlcpy(out, st, cap);
+    else snprintf(out, cap, "%s: %s", a.step, st);
+    return SPEECH_TEXT;
+  }
+  const Thought* th = model_thought(m, a);
+  if (th) {
+    strlcpy(out, th->text, cap);
+    return SPEECH_TEXT;
+  }
+  if (a.step[0]) {
+    strlcpy(out, a.step, cap);
+    return SPEECH_LABEL;
+  }
+  return SPEECH_NONE;
+}
+
+void fmtDur(char* out, size_t cap, int32_t sec) {
+  if (sec < 0) sec = 0;
+  if (sec < 60) snprintf(out, cap, "%lds", (long)sec);
+  else if (sec < 3600) snprintf(out, cap, "%ldm %02lds", (long)(sec / 60), (long)(sec % 60));
+  else snprintf(out, cap, "%ldh %02ldm", (long)(sec / 3600), (long)((sec / 60) % 60));
 }

@@ -42,17 +42,22 @@ bool moments_emperorKnock(bool* hit);
 bool moments_tap(int x, int y, bool anywhere);
 bool moments_cardOpen();
 
-// Thought bubble: pops up, types the text out, holds, then shrinks away.
+// Agent whose words the Throne Room bubble shows right now (0 = none).
+uint32_t moments_bubbleAgent();
+
+// Thought bubble: pops up, types the text out, holds, then shrinks away. An optional
+// title (the agent's name) sits on the first line, so the words have a speaker.
 struct Bubble {
   bool on;
   uint8_t n, nLines;
-  int16_t w;  // widest wrapped line, px
+  int16_t w;  // widest wrapped line (or the title), px
   uint32_t agentHash, textHash, start;
   uint16_t st[8];
   uint8_t ln[8];
+  char title[28];
   char text[THOUGHT_TEXT];
 };
-void bubble_start(Bubble& b, uint32_t agentHash, const char* text);
+void bubble_start(Bubble& b, uint32_t agentHash, const char* text, const char* title = nullptr);
 uint32_t bubble_duration(const Bubble& b);
 // Draws above (or below) the agent whose head is at (ax, headY) and feet at footY,
 // in screen coordinates. Returns false once the bubble has finished.

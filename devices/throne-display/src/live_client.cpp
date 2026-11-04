@@ -243,6 +243,12 @@ void buildFilter(JsonDocument& f) {
   a["mood"] = true;
   a["thought"] = true;
   a["thoughtAgeSec"] = true;
+  // Feed 2.1 (absent on older servers).
+  a["step"]["label"] = true;
+  a["step"]["text"] = true;
+  a["step"]["sec"] = true;
+  a["last"]["title"] = true;
+  a["last"]["ageSec"] = true;
   JsonObject e = f["events"].add<JsonObject>();
   e["id"] = true;
   e["t"] = true;
@@ -346,6 +352,13 @@ void mapDocument(JsonDocument& doc, Model& m) {
     // Only the MAX_THOUGHTS freshest thoughts are kept (shared pool).
     const char* th = a["thought"] | (const char*)nullptr;
     if (th && *th) model_setThought(m, m.nAgents - 1, th, a["thoughtAgeSec"] | 0);
+    // Feed 2.1: the running run's current step, and an idle agent's last finished task.
+    JsonVariant step = a["step"];
+    if (!step.isNull()) {
+      model_setStep(m, m.nAgents - 1, step["label"] | "", step["text"] | (const char*)nullptr, step["sec"] | 0);
+    }
+    JsonVariant last = a["last"];
+    if (!last.isNull()) model_setLast(m, m.nAgents - 1, last["title"] | "", last["ageSec"] | 0);
   }
   for (JsonObject x : doc["events"].as<JsonArray>()) {
     if (m.nEvents >= MAX_EVENTS) break;

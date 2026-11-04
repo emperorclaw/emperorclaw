@@ -81,7 +81,10 @@ int pickTarget() {
       case ACT_OFFLINE: score = -5; break;
       default: score = 1; break;
     }
-    if (model_thought(m, m.agents[i])) score += 6;
+    char say[8];
+    uint8_t speech = app_speech(m, m.agents[i], say, sizeof(say));
+    if (speech == SPEECH_TEXT) score += 6;
+    else if (speech == SPEECH_LABEL) score += 3;
     if (m.agents[i].idHash == s_lastTargetHash) score -= 9;  // rotate between agents
     score = score * 4 + rndRange(0, 4);
     if (score > bestScore) {
@@ -194,10 +197,15 @@ void director_draw() {
         ease = PUSH_MS;
         if (t >= s_shotDur) {
           int i = app_agentByHash(s_targetHash);
-          const Thought* th = i >= 0 ? model_thought(m, m.agents[i]) : nullptr;
-          const char* txt = th ? th->text : (i >= 0 ? m.agents[i].activity : "");
+          // The agent's real step text or thought; the caption already carries the
+          // step label, so a label alone gets no bubble. Else the live activity line.
+          static char txt[THOUGHT_TEXT];
+          txt[0] = 0;
+          if (i >= 0 && app_speech(m, m.agents[i], txt, sizeof(txt)) != SPEECH_TEXT) {
+            strlcpy(txt, m.agents[i].activity, sizeof(txt));
+          }
           uint32_t dur = HOLD_EMPTY_MS;
-          if (txt && *txt) {
+          if (txt[0]) {
             bubble_start(s_bubble, s_targetHash, txt);
             dur = bubble_duration(s_bubble);
             if (dur > 11000) dur = 11000;
@@ -243,7 +251,7 @@ void director_draw() {
 
   // ---- native-resolution overlays
   bool safe = app_camSafe();
-  char line[64], la[16], lb[16];
+  char line[THOUGHT_TEXT + 40], la[28], lb[16];
   int ti = app_agentByHash(s_shot == SHOT_EVENT ? s_event.aHash : s_targetHash);
   if (s_bubble.on && ti >= 0) {
     int wx, footY, s;
@@ -270,7 +278,14 @@ void director_draw() {
       }
       if (s_event.type == EV_HANDOFF) drawCaption(line);
     } else {
-      snprintf(line, sizeof(line), "%s is %s", la, actVerb(app.anim[ti].act));
+      // "Ada Lovelace - Running terminal: npm test": the proper name and the real
+      // step (its label, and its text when the screen may show it), fitted.
+      const Agent& ag = m.agents[ti];
+      app_nameFit(ag, la, sizeof(la), 120, F_SMALL);
+      const char* st = ag.step[0] ? model_stepText(m, ag) : nullptr;
+      if (ag.step[0] && st && !safe) snprintf(line, sizeof(line), "%s - %s: %s", la, ag.step, st);
+      else if (ag.step[0]) snprintf(line, sizeof(line), "%s - %s", la, ag.step);
+      else snprintf(line, sizeof(line), "%s is %s", la, actVerb(app.anim[ti].act));
       drawCaption(line);
     }
   }

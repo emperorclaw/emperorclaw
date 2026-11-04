@@ -5,11 +5,11 @@ import { db } from "@/db";
 import { approvals, companies, companyMembers, incidents, messageThreads, taskEvents, tasks, threadMessageReasoning, threadMessages, threadParticipants } from "@/db/schema";
 import { computeCompanyHealth, scoreAgent, type CompanyHealth, type HealthStatus } from "@/lib/agent-health";
 import { taskTitle } from "@/lib/emperor-entities";
-import { loadRunThoughtRows, screenThoughtsFromRuns, type RunThoughtRow } from "@/lib/run-thoughts";
+import { loadRunThoughtRows, PRIVATE_ACTIVITY, screenAscii, screenStepsFromRuns, screenThoughtsFromRuns, type RunThoughtRow } from "@/lib/run-thoughts";
 import { AGENT_PAIR_DESCRIPTION } from "@/lib/groups";
 import { SLA_TRACKED_TASK_STATES, TASK_STATES } from "@/lib/task-state";
 import {
-    approvalTitle, deriveActs, deriveEvents, deriveNeeds, fitThoughtsToBudget, isLiveProblemIncident, LIVE_RECENT_MS, packLook, pickThoughts,
+    approvalTitle, cleanSnippet, deriveActs, deriveEvents, deriveNeeds, fitThoughtsToBudget, isLiveProblemIncident, LIVE_RECENT_MS, packLook, pickThoughts,
     recentlyDoneAgents,
     type LiveAct, type LiveEvent, type LiveLook, type LiveMood, type LiveNeed, type PendingApprovalRow, type ReasoningRow,
 } from "@/lib/live-feed-v2";
@@ -23,7 +23,11 @@ import {
  * plain text. The keys are a firmware contract — bump `v` on any change that
  * is not purely additive. v2 (devices/throne-display/V2_PLAN.md) adds `look`,
  * `act`, `mood`, optional `thought`/`thoughtAgeSec` per agent, and top-level
- * `events` and `needs`; a v1 device ignores them.
+ * `events` and `needs`; a v1 device ignores them. 2.1 (still v2, additive)
+ * adds optional per-agent `step` (the running run's current step) and `last`
+ * (the latest finished task). Names: `name` is the full name and `short` stays
+ * the first word (≤10 chars) for older firmware; 2.1 firmware shows `name`
+ * whenever it fits the pixel width and falls back to `short`.
  *
  * Private direct chats never reach a screen, with one opt-in exception: a
  * read_only token minted with "include my private chats" carries its
@@ -44,7 +48,6 @@ const MESSAGE_SCAN_CHARS = 2000;
 const HEALTH_CACHE_MS = 10_000;
 /** Only team chat and group threads reach a screen — never private direct threads. */
 const PUBLIC_THREAD_TYPES = ["team", "group"] as const;
-const PRIVATE_ACTIVITY = "Working in a private chat";
 /** `dm`: at most this many messages per agent, and this many in total. */
 export const LIVE_DM_PER_AGENT = 4;
 export const LIVE_DM_MAX_MESSAGES = 40;
@@ -73,6 +76,29 @@ export interface LiveAgent {
     /** v2: latest redacted reasoning snippet (≤140 chars); omitted when none, stale or private. */
     thought?: string;
     thoughtAgeSec?: number;
+    /**
+     * 2.1: the current step of the agent's running run (same line as the
+     * dashboard). `label` is always generic ("Thinking", "Running terminal");
+     * `text` is the step's real detail, only on a thoughts-opted-in token for
+     * a run the screen may read. Omitted when the agent has no running run.
+     */
+    step?: LiveStep;
+    /** 2.1: the agent's most recently finished task (last 7 days); idle and offline agents only. */
+    last?: LiveLast;
+}
+
+export interface LiveStep {
+    label: string;
+    text?: string;
+    /** Seconds since the step started. */
+    sec: number;
+    /** Step identity for the ETag only: non-enumerable, never serialized. */
+    readonly key?: string;
+}
+
+export interface LiveLast {
+    title: string;
+    ageSec: number;
 }
 
 export interface LiveMessage {
@@ -243,7 +269,13 @@ export function liveFeedEtag(feed: LiveFeed): string {
     const stable = {
         ...feed,
         ts: undefined,
-        agents: feed.agents.map((a) => ({ ...a, lastSeenSec: undefined, thoughtAgeSec: undefined })),
+        agents: feed.agents.map((a) => ({
+            ...a, lastSeenSec: undefined, thoughtAgeSec: undefined,
+            // The step's identity (non-enumerable `key`: run + event) counts, so a new
+            // step with the same label refreshes the device timer; its ticking `sec` does not.
+            step: a.step ? { ...a.step, sec: undefined, key: a.step.key } : undefined,
+            last: a.last ? { ...a.last, ageSec: undefined } : undefined,
+        })),
         messages: feed.messages.map((m) => ({ ...m, ageSec: undefined })),
         dm: (feed.dm ?? []).map((t) => ({ ...t, messages: t.messages.map((m) => ({ ...m, ageSec: undefined })) })),
         events: (feed.events ?? []).map((e) => ({ ...e, ageSec: undefined })),
@@ -624,6 +656,56 @@ function loadOpenAgentIncidents(companyId: string) {
         .limit(INCIDENT_SCAN_ROWS);
 }
 
+/** `last`: how far back a finished task still counts, and its title cap. */
+export const LIVE_LAST_DONE_MS = 7 * 24 * 60 * 60 * 1000;
+export const LAST_TITLE_MAX = 56;
+
+/**
+ * Each agent's most recently finished (done) task from the last 7 days, ONE
+ * row per agent (DISTINCT ON), in one query for the company.
+ */
+function loadLastDoneTasks(companyId: string, now: Date) {
+    return db.selectDistinctOn([tasks.assignedAgentId], {
+        agentId: tasks.assignedAgentId,
+        title: sql<string | null>`${tasks.inputJson}->>'title'`,
+        taskType: tasks.taskType,
+        doneAt: tasks.updatedAt,
+    }).from(tasks)
+        .where(and(
+            eq(tasks.companyId, companyId),
+            eq(tasks.state, TASK_STATES.done),
+            isNull(tasks.deletedAt),
+            isNotNull(tasks.assignedAgentId),
+            gt(tasks.updatedAt, new Date(now.getTime() - LIVE_LAST_DONE_MS)),
+        ))
+        .orderBy(tasks.assignedAgentId, desc(tasks.updatedAt), desc(tasks.id));
+}
+
+/** Pure: `last` for one agent — an ASCII title of at most LAST_TITLE_MAX chars, or undefined. */
+export function lastDoneOf(row: { title: string | null; taskType: string | null; doneAt: Date } | undefined, nowMs: number): LiveLast | undefined {
+    if (!row) return undefined;
+    const title = cleanSnippet(screenAscii(taskTitle({ inputJson: { title: row.title }, taskType: row.taskType })), LAST_TITLE_MAX);
+    if (!title) return undefined;
+    return { title, ageSec: Math.max(0, Math.floor((nowMs - row.doneAt.getTime()) / 1000)) };
+}
+
+/** The device keeps only this many step texts and last-done titles (its shared pools). */
+export const LIVE_MAX_STEP_TEXTS = 6;
+export const LIVE_MAX_LASTS = 6;
+
+/**
+ * Pure: send `step.text` only for the LIVE_MAX_STEP_TEXTS most recent steps
+ * and `last` only for the LIVE_MAX_LASTS most recently finished agents, as
+ * many as the device can keep (step labels stay on every agent). Ties keep
+ * the feed's agent order. Mutates the agents.
+ */
+export function capScreenExtras(agents: LiveAgent[]): void {
+    const withText = agents.filter((a) => a.step?.text).sort((x, y) => x.step!.sec - y.step!.sec);
+    for (const agent of withText.slice(LIVE_MAX_STEP_TEXTS)) delete agent.step!.text;
+    const withLast = agents.filter((a) => a.last).sort((x, y) => x.last!.ageSec - y.last!.ageSec);
+    for (const agent of withLast.slice(LIVE_MAX_LASTS)) delete agent.last;
+}
+
 /** The agent replies to the token creator that `dm` is built from. */
 function creatorReplyIdsOf(chats: Awaited<ReturnType<typeof loadPrivateChats>>): string[] {
     return (chats ?? []).flatMap((c) => c.messages.filter((m) => !m.me).map((m) => m.id));
@@ -652,12 +734,13 @@ export async function buildLiveFeed(companyId: string, options: {
     // Live run steps (0.9 bridges), read like the dashboard with the screen's
     // creator as viewer - only once their private chats are known to be
     // allowed, so a direct chat they take part in counts only on an opted-in
-    // screen whose creator is still an admin.
-    const runThoughtPromise: Promise<RunThoughtRow[]> = options.agentThoughts
-        ? privateChatsPromise.then((chats) => loadRunThoughtRows(companyId, { now, viewerUserId: chats ? options.privateChatsUserId ?? null : null }))
-        : Promise.resolve([]);
+    // screen whose creator is still an admin. Every screen reads them for the
+    // generic `step.label`; step text and thoughts stay opt-in. The viewer is
+    // only passed on a thoughts token: without it no direct chat is readable.
+    const runThoughtPromise: Promise<RunThoughtRow[]> = privateChatsPromise.then((chats) =>
+        loadRunThoughtRows(companyId, { now, viewerUserId: options.agentThoughts && chats ? options.privateChatsUserId ?? null : null }));
     const [health, companyRows, taskCounts, agentTasks, approvalCount, typingRows, messageRows, privateChats,
-        reasoningRows, runThoughtRows, handoffRows, transitionRows, approvalRows, incidentRows] = await Promise.all([
+        reasoningRows, runThoughtRows, handoffRows, transitionRows, approvalRows, incidentRows, lastDoneRows] = await Promise.all([
         getCachedHealth(companyId, now),
         db.select({ name: companies.name }).from(companies).where(eq(companies.id, companyId)).limit(1),
         db.select({
@@ -722,6 +805,7 @@ export async function buildLiveFeed(companyId: string, options: {
         loadRecentTransitions(companyId, since),
         loadPendingApprovals(companyId),
         loadOpenAgentIncidents(companyId),
+        loadLastDoneTasks(companyId, now),
     ]);
 
     // Freshest live activity per agent. Activity from a private direct thread
@@ -796,7 +880,7 @@ export async function buildLiveFeed(companyId: string, options: {
             health: status,
             state: deriveLiveState({ typing: Boolean(live), online: a.online, hasTaskInProgress: Boolean(task) }),
             activity: live?.activity ? toPlainText(live.activity, ACTIVITY_MAX) || null : null,
-            task: task ? { id: task.id, title: truncateText(taskTitle({ inputJson: { title: task.title }, taskType: task.taskType }), TASK_TITLE_MAX) } : null,
+            task: task ? { id: task.id, title: cleanSnippet(taskTitle({ inputJson: { title: task.title }, taskType: task.taskType }), TASK_TITLE_MAX) } : null,
             lastSeenSec: Number.isFinite(lastSeenMs) ? Math.max(0, Math.floor((now.getTime() - lastSeenMs) / 1000)) : null,
             unanswered: a.unanswered,
             look: packLook(resolveAppearance({ id: a.id, avatarUrl: a.avatarUrl, avatarAppearance: a.avatarAppearance })),
@@ -843,14 +927,30 @@ export async function buildLiveFeed(companyId: string, options: {
     const thoughts = pickThoughts(reasoningRows.filter((r) => shownIds.has(r.agentId)), { nowMs: now.getTime(), creatorReplyIds });
     // A live run step wins over legacy reasoning, as on the dashboard. Pair
     // threads stay readable here, as they always were for legacy reasoning.
-    const runThoughts = screenThoughtsFromRuns(runThoughtRows.filter((r) => shownIds.has(r.agentId)), { nowMs: now.getTime(), includePairThreads: true });
+    const shownRuns = runThoughtRows.filter((r) => shownIds.has(r.agentId));
+    const runThoughts = options.agentThoughts
+        ? screenThoughtsFromRuns(shownRuns, { nowMs: now.getTime(), includePairThreads: true })
+        : new Map<string, { thought: string; ageSec: number }>();
+    // Steps: a generic label for every screen; the real text only where the
+    // thought could be shown too (same token opt-in and run visibility).
+    const steps = screenStepsFromRuns(shownRuns, { nowMs: now.getTime(), includePairThreads: true, allowText: options.agentThoughts === true });
+    const lastDoneByAgent = new Map(lastDoneRows.filter((r) => r.agentId).map((r) => [r.agentId!, r]));
     for (const agent of shown) {
-        const t = runThoughts.get(agent.id) ?? thoughts.get(agent.id);
+        // An offline agent's `running` run is a leftover (a crashed bridge), not live work.
+        const offline = agent.state === "offline";
+        const t = (offline ? undefined : runThoughts.get(agent.id)) ?? thoughts.get(agent.id);
         if (t) {
             agent.thought = t.thought;
             agent.thoughtAgeSec = t.ageSec;
         }
+        const step = offline ? undefined : steps.get(agent.id);
+        if (step) agent.step = step;
+        if (agent.state === "idle" || offline) {
+            const last = lastDoneOf(lastDoneByAgent.get(agent.id), now.getTime());
+            if (last) agent.last = last;
+        }
     }
+    capScreenExtras(shown);
 
     const events = deriveEvents({
         handoffs: handoffRows.map((m) => ({ id: m.id, senderId: m.senderId, targetAgentId: m.targetAgentId, text: m.text ?? "", createdAtMs: m.createdAt.getTime() })),
