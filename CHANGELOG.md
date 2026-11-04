@@ -9,7 +9,7 @@ tagged (e.g. `## [1.2.0] — 2026-07-22`). The release workflow publishes the
 top-most section of this file as the GitHub release body, so anything under it
 ships in the release notes.
 
-## [0.28.1] — 2026-11-04
+## [Unreleased]
 
 ### Added
 
@@ -32,6 +32,8 @@ ships in the release notes.
   test" instead of "Ada is typing"; Focus shows the step with its timer, or
   "Idle" with the last finished task, or "Not responding", instead of "No
   current activity".
+
+## [0.28.1] — 2026-11-04
 
 ### Fixed
 
