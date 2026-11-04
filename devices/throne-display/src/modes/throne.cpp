@@ -3,7 +3,7 @@
 // ring (typing on a laptop, writing, reviewing with a magnifier, presenting at a small
 // board, thinking, talking), take idle breaks (coffee, stretch, nap), walk up to the
 // front glass when they need you, and haunt their desks as ghosts when down / offline.
-// Director mode draws this same scene and then zooms the frame.
+// LIVE draws this same scene and then zooms the frame.
 #include "../app.h"
 #include "../character.h"
 #include "../moments.h"

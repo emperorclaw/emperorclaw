@@ -13,6 +13,37 @@ ships in the release notes.
 
 ### Added
 
+- **Desk displays open on LIVE and narrate what agents do.** Throne Display
+  firmware 2.2.0 starts on LIVE (formerly Director), which moves from one
+  working agent to the next and types out, at reading speed, what it is doing
+  in plain words: "Thinking: ...", "Using terminal: npm test", "Searching the
+  web: ...", "Writing the reply", "Working in a private chat". The server
+  phrases each step (one helper, ASCII), with the same privacy rules as
+  before. When nobody works, LIVE shows "All quiet" and the last finished
+  task.
+- **TODAY on desk displays.** A new screen, one swipe from LIVE, shows what the
+  agents on the screen cost today (from midnight in the company's timezone,
+  else UTC), runs, tokens, tasks done, the three agents that spent the most and
+  approvals waiting. The feed carries it as `today`; a cost no run reported
+  shows as "-", never $0.00. Screens scoped to some agents count only theirs.
+
+### Changed
+
+- Desk display modes are ordered LIVE, TODAY, Focus, Feed, Pulse, Throne Room
+  (serial `mode <n>` numbers follow). Camera-safe is off by default.
+
+### Fixed
+
+- **Desk displays drew scribbles instead of what an agent was writing.**
+  Camera-safe was on by default in Director, so every bubble and name on that
+  screen was deliberately scrambled. It is now off until turned on. The
+  display also maps more typographic characters (middle dots, bullets, arrows,
+  dashes, quotes) to ASCII instead of dropping them.
+
+## [Unreleased]
+
+### Added
+
 - **Desk displays show every agent's real current step.** The screen feed
   (`GET /api/mcp/live`) adds a per-agent `step` (`label`, `text`, `sec`): the
   step of the agent's running run, the same line as the dashboard ("Running

@@ -249,6 +249,14 @@ void buildFilter(JsonDocument& f) {
   a["step"]["sec"] = true;
   a["last"]["title"] = true;
   a["last"]["ageSec"] = true;
+  // Feed 2.2 (absent on older servers).
+  f["today"]["cost"] = true;
+  f["today"]["runs"] = true;
+  f["today"]["tokensK"] = true;
+  f["today"]["done"] = true;
+  JsonObject tt = f["today"]["top"].add<JsonObject>();
+  tt["agentId"] = true;
+  tt["cost"] = true;
   JsonObject e = f["events"].add<JsonObject>();
   e["id"] = true;
   e["t"] = true;
@@ -396,6 +404,23 @@ void mapDocument(JsonDocument& doc, Model& m) {
     g.ageSec = x["ageSec"] | 0;
   }
   mapDm(doc["dm"].as<JsonArray>(), m);
+  JsonObject td = doc["today"];
+  if (!td.isNull()) {
+    Today& t = m.today;
+    t.has = true;
+    t.cost = td["cost"].isNull() ? -1 : td["cost"].as<int32_t>();
+    t.runs = td["runs"] | 0;
+    t.tokensK = td["tokensK"] | 0;
+    t.done = (int16_t)(td["done"] | 0);
+    for (JsonObject x : td["top"].as<JsonArray>()) {
+      if (t.nTop >= 3) break;
+      const char* aid = x["agentId"] | "";
+      if (!*aid) continue;
+      t.top[t.nTop].agentHash = fnv1a(aid);
+      t.top[t.nTop].cost = x["cost"] | 0;
+      t.nTop++;
+    }
+  }
   // Order oldest -> newest regardless of server ordering (stable insertion sort on age).
   for (int i = 1; i < m.nMsgs; i++) {
     Message tmp = m.msgs[i];

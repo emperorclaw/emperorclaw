@@ -496,7 +496,8 @@ void moments_drawNeedsCard() {
 
 // ---------------------------------------------------------------- thought bubble
 
-static constexpr int B_POP = 240, B_CPS = 30, B_HOLD = 3600, B_OUT = 320;
+// 20 characters a second types at reading speed; the whole text then holds 3 s.
+static constexpr int B_POP = 240, B_CPS = 20, B_HOLD = 3000, B_OUT = 320;
 static constexpr int B_MAXW = 136, B_LINES = 4, B_LH = 10;
 
 uint32_t moments_bubbleAgent() { return s_tb.on ? s_tb.agentHash : 0; }

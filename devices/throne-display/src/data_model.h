@@ -149,6 +149,20 @@ struct Need {
   char title[TITLE_TEXT];
 };
 
+// Feed 2.2 `today`: usage since local midnight of the agents on this screen.
+struct Today {
+  bool has;         // the server sent `today`
+  int32_t cost;     // cents, -1 = no run reported a cost
+  int32_t runs;
+  int32_t tokensK;  // input + output tokens, thousands
+  int16_t done;     // tasks finished today
+  uint8_t nTop;
+  struct {
+    uint32_t agentHash;
+    int32_t cost;  // cents
+  } top[3];
+};
+
 struct Summary {
   int16_t agents, healthy, attention, down, idle, working;
   int16_t pendingApprovals, tasksInProgress, tasksOverdue;
@@ -177,6 +191,7 @@ struct Model {
   Need needs[MAX_NEEDS];
   StepText stepTexts[MAX_STEP_TEXTS];
   LastDone lasts[MAX_LASTS];
+  Today today;
 };
 
 enum NetStatus : uint8_t { NET_DEMO = 0, NET_WIFI, NET_CONNECTING, NET_OK, NET_ERROR, NET_PORTAL };

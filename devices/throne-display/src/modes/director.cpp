@@ -1,9 +1,11 @@
-// DIRECTOR: an automatic camera over the Throne Room, made for filming. It cycles a
-// shot list (wide room -> eased push-in on the busiest agent -> its thought typing
-// out -> pull back) and cuts to every moment as it happens (handoff, task done, needs
-// you, blocked). The scene is drawn at 1x by throne_draw(), then the whole frame is
+// LIVE (the boot screen): an automatic camera over the Throne Room. It cycles a shot
+// list (wide room -> eased push-in on the next agent at work -> what it is doing,
+// narrated by the server, typing out at a readable pace -> pull back), giving every
+// working agent its turn, and cuts to every moment as it happens (handoff, task done,
+// needs you, blocked). When nobody works it stays wide: "All quiet" and the last
+// finished task. The scene is drawn at 1x by throne_draw(), then the whole frame is
 // zoomed in place; text overlays are drawn afterwards at native resolution so they
-// stay sharp. Camera-safe is on here by default (see app_camSafe()).
+// stay sharp. Camera-safe is off unless turned on (double-tap; see app_camSafe()).
 #include "../app.h"
 #include "../moments.h"
 #include "../palette.h"
@@ -17,7 +19,8 @@ namespace {
 enum Shot : uint8_t { SHOT_WIDE = 0, SHOT_PUSH, SHOT_HOLD, SHOT_PULL, SHOT_EVENT };
 
 constexpr int Z_WIDE = 256, Z_CLOSE = 512;
-constexpr uint32_t WIDE_MS = 3600, PUSH_MS = 1300, PULL_MS = 1100, EVENT_EASE_MS = 700, HOLD_EMPTY_MS = 3500;
+constexpr uint32_t WIDE_MS = 3600, WIDE_BUSY_MS = 1500, PUSH_MS = 1300, PULL_MS = 1100, EVENT_EASE_MS = 700,
+                   HOLD_EMPTY_MS = 3500, HOLD_MAX_MS = 15000;
 
 uint8_t s_shot = SHOT_WIDE;
 uint32_t s_shotStart = 0, s_shotDur = 0;
@@ -60,39 +63,54 @@ bool agentFocus(uint32_t hash, int& x, int& y) {
   return true;
 }
 
+// Whether an agent has something real to narrate: a live step, a thought, or a
+// live activity line (typing).
+bool hasWords(const Agent& a, int i) {
+  if (app.anim[i].act == ACT_OFFLINE) return false;
+  char say[8];
+  return app_speech(app.model, a, say, sizeof(say)) != SPEECH_NONE || a.activity[0];
+}
+
+int workingCount() {
+  int n = 0;
+  for (int i = 0; i < app.model.nAgents; i++)
+    if (hasWords(app.model.agents[i], i)) n++;
+  return n;
+}
+
+// Every agent with words gets its turn: the next one after the last agent shown.
 int pickTarget() {
   const Model& m = app.model;
-  int best = -1, bestScore = -100;
+  int last = app_agentByHash(s_lastTargetHash);
+  for (int k = 1; k <= m.nAgents; k++) {
+    int i = (last + k + m.nAgents) % m.nAgents;
+    if (hasWords(m.agents[i], i)) return i;
+  }
+  return -1;
+}
+
+// The calm wide shot when nobody works: "All quiet", and the freshest finished task.
+void drawQuiet() {
+  const Model& m = app.model;
+  const LastDone* best = nullptr;
+  int bi = -1;
   for (int i = 0; i < m.nAgents; i++) {
-    int score;
-    switch (app.anim[i].act) {
-      case ACT_PRESENTING:
-      case ACT_CELEBRATE: score = 6; break;
-      case ACT_TYPING:
-      case ACT_WRITING:
-      case ACT_REVIEWING: score = 5; break;
-      case ACT_TALKING:
-      case ACT_THINKING: score = 4; break;
-      case ACT_BLOCKED:
-      case ACT_WAITING: score = 3; break;
-      case ACT_COFFEE:
-      case ACT_NAP:
-      case ACT_STRETCH: score = 2; break;
-      case ACT_OFFLINE: score = -5; break;
-      default: score = 1; break;
-    }
-    char say[8];
-    uint8_t speech = app_speech(m, m.agents[i], say, sizeof(say));
-    if (speech == SPEECH_TEXT) score += 6;
-    else if (speech == SPEECH_LABEL) score += 3;
-    if (m.agents[i].idHash == s_lastTargetHash) score -= 9;  // rotate between agents
-    score = score * 4 + rndRange(0, 4);
-    if (score > bestScore) {
-      bestScore = score;
-      best = i;
+    const LastDone* l = model_last(m, m.agents[i]);
+    if (l && (!best || l->ageSec < best->ageSec)) {
+      best = l;
+      bi = i;
     }
   }
-  return best;
+  int h = best ? 40 : 20;
+  fillRoundRect(CX - 92, 186 - (best ? 10 : 0), 184, h, 10, c(pal::NEUTRAL, 1));
+  text("All quiet", CX, best ? 185 : 196, pal::WHITE, F_SMALL);
+  if (!best) return;
+  char who[28], ago[24], line[THOUGHT_TEXT];
+  app_nameFit(m.agents[bi], who, sizeof(who), 70, F_TINY);
+  fmtAgo(ago, sizeof(ago), best->ageSec + app_snapshotAgeSec());
+  snprintf(line, sizeof(line), "last: %s finished %s", who, best->title);
+  textFitS(line, CX, 199, 170, c(pal::GOLD, 12), F_TINY, lgfx::middle_center, app_camSafe());
+  text(ago, CX, 209, pal::TEXT_FAINT, F_TINY);
 }
 
 // Camera target for a moment: who is involved, and how close.
@@ -173,7 +191,8 @@ void director_draw() {
     case SHOT_WIDE:
       toZ = Z_WIDE + 22;  // a slow push keeps the wide shot alive
       ease = WIDE_MS;
-      if (t >= s_shotDur) {
+      // With agents at work, cut to the next one sooner; a quiet room stays wide.
+      if (t >= (workingCount() > 0 ? WIDE_BUSY_MS : s_shotDur)) {
         int i = pickTarget();
         if (i >= 0 && m.nAgents > 0) {
           s_targetHash = m.agents[i].idHash;
@@ -197,18 +216,19 @@ void director_draw() {
         ease = PUSH_MS;
         if (t >= s_shotDur) {
           int i = app_agentByHash(s_targetHash);
-          // The agent's real step text or thought; the caption already carries the
-          // step label, so a label alone gets no bubble. Else the live activity line.
+          // What the agent is doing, narrated by the server: its step ("Using
+          // terminal: npm test", "Writing the reply"), else its thought, else
+          // the live activity line. Typed out at a readable pace, then held.
           static char txt[THOUGHT_TEXT];
           txt[0] = 0;
-          if (i >= 0 && app_speech(m, m.agents[i], txt, sizeof(txt)) != SPEECH_TEXT) {
+          if (i >= 0 && app_speech(m, m.agents[i], txt, sizeof(txt)) == SPEECH_NONE) {
             strlcpy(txt, m.agents[i].activity, sizeof(txt));
           }
           uint32_t dur = HOLD_EMPTY_MS;
           if (txt[0]) {
             bubble_start(s_bubble, s_targetHash, txt);
             dur = bubble_duration(s_bubble);
-            if (dur > 11000) dur = 11000;
+            if (dur > HOLD_MAX_MS) dur = HOLD_MAX_MS;
           }
           startShot(SHOT_HOLD, dur);
           t = 0;
@@ -278,22 +298,37 @@ void director_draw() {
       }
       if (s_event.type == EV_HANDOFF) drawCaption(line);
     } else {
-      // "Ada Lovelace - Running terminal: npm test": the proper name and the real
-      // step (its label, and its text when the screen may show it), fitted.
+      // The speaker's proper name; the bubble above says what it is doing. A live
+      // step adds how long the agent has been on it ("Ada Lovelace  1m 05s").
       const Agent& ag = m.agents[ti];
-      app_nameFit(ag, la, sizeof(la), 120, F_SMALL);
-      const char* st = ag.step[0] ? model_stepText(m, ag) : nullptr;
-      if (ag.step[0] && st && !safe) snprintf(line, sizeof(line), "%s - %s: %s", la, ag.step, st);
-      else if (ag.step[0]) snprintf(line, sizeof(line), "%s - %s", la, ag.step);
-      else snprintf(line, sizeof(line), "%s is %s", la, actVerb(app.anim[ti].act));
+      app_nameFit(ag, la, sizeof(la), 130, F_SMALL);
+      int32_t sec = app_stepSec(ag);
+      if (sec >= 0) {
+        char dur[16];
+        fmtDur(dur, sizeof(dur), sec);
+        snprintf(line, sizeof(line), "%s  %s", la, dur);
+      } else if (s_bubble.on) {
+        strlcpy(line, la, sizeof(line));
+      } else {
+        snprintf(line, sizeof(line), "%s is %s", la, actVerb(app.anim[ti].act));
+      }
+      drawCaption(line);
+    }
+  } else if (s_shot == SHOT_WIDE || s_shot == SHOT_PULL) {
+    int n = workingCount();
+    if (n == 0) {
+      drawQuiet();
+    } else {
+      snprintf(line, sizeof(line), n == 1 ? "%d agent at work" : "%d agents at work", n);
       drawCaption(line);
     }
   }
 
-  // "LIVE" tag, and the camera-safe badge.
+  // "LIVE" tag (DEMO in demo mode: nothing on screen is real then), and the camera-safe badge.
   bool blink = (app.now / 600) & 1;
-  fillCircle(CX - 22, 30, 3, c(pal::RED, blink ? 12 : 6));
-  text("LIVE", CX - 15, 30, pal::WHITE, F_TINY, lgfx::middle_left);
+  bool demo = m.demo;
+  fillCircle(CX - 22, 30, 3, c(demo ? pal::VIOLET : pal::RED, blink ? 12 : 6));
+  text(demo ? "DEMO" : "LIVE", CX - 15, 30, pal::WHITE, F_TINY, lgfx::middle_left);
   if (safe) {
     fillRoundRect(CX + 6, 24, 30, 12, 6, c(pal::GOLD, 4));
     text("SAFE", CX + 21, 30, c(pal::GOLD, 15), F_TINY);
