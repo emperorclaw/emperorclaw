@@ -257,6 +257,8 @@ void buildFilter(JsonDocument& f) {
   JsonObject tt = f["today"]["top"].add<JsonObject>();
   tt["agentId"] = true;
   tt["cost"] = true;
+  tt["runs"] = true;
+  f["today"]["others"] = true;
   JsonObject e = f["events"].add<JsonObject>();
   e["id"] = true;
   e["t"] = true;
@@ -418,13 +420,18 @@ void mapDocument(JsonDocument& doc, Model& m) {
     t.tokensK = count(td["tokensK"]);
     t.done = count(td["done"]);
     for (JsonObject x : td["top"].as<JsonArray>()) {
-      if (t.nTop >= 3) break;
+      if (t.nTop >= 5) break;
       const char* aid = x["agentId"] | "";
       if (!*aid) continue;
       t.top[t.nTop].agentHash = fnv1a(aid);
       t.top[t.nTop].cost = count(x["cost"]);
+      t.top[t.nTop].runs = count(x["runs"]);
       t.nTop++;
     }
+    JsonObject o = td["others"];
+    t.othersN = count(o["n"]);
+    t.othersCost = count(o["cost"]);
+    t.othersRuns = count(o["runs"]);
   }
   // Order oldest -> newest regardless of server ordering (stable insertion sort on age).
   for (int i = 1; i < m.nMsgs; i++) {

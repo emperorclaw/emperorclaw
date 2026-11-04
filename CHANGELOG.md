@@ -9,6 +9,22 @@ tagged (e.g. `## [1.2.0] — 2026-07-22`). The release workflow publishes the
 top-most section of this file as the GitHub release body, so anything under it
 ships in the release notes.
 
+## [Unreleased]
+
+### Changed
+
+- **TODAY on desk displays is a cost chart.** Throne Display firmware 2.3.0
+  draws the day's cost as a ring: one slice per agent in its own color (the
+  five biggest, the rest as "Others"), the total in the middle, a legend with
+  names and amounts, and runs, tokens and tasks done underneath. When no run
+  reported a cost the slices are runs ("runs today"), never an invented $;
+  with no work yet the ring is empty. The feed's `today.top` now holds up to 5
+  agents (with their runs) and a new `today.others`, so the slices add up to
+  the total; scoping and visibility rules are unchanged.
+- **One live screen.** The Throne Room is no longer a separate mode: it showed
+  the same office as LIVE, without the camera. The modes are LIVE, TODAY,
+  Focus, Feed and Pulse (serial `mode <0-4>`).
+
 ## [0.29.0] — 2026-11-04
 
 ### Added

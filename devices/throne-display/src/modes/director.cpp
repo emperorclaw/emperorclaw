@@ -266,7 +266,7 @@ void director_draw() {
   s_camY = s_fromY + (toY - s_fromY) * k / 1024;
   s_camZ = s_fromZ + (toZ - s_fromZ) * k / 1024;
 
-  throne_draw(true);
+  throne_draw();
   zoomFrame(s_camX + ox, s_camY + oy, s_camZ);
 
   // ---- native-resolution overlays

@@ -409,15 +409,20 @@ void demo_init(Model& m) {
   m.today.runs = 64;
   m.today.tokensK = 912;
   m.today.done = 7;
+  // Five slices plus Others, adding up to the totals above (1842 cents, 64 runs).
   static const struct {
     uint8_t agent;
-    int32_t cost;
-  } kTop[] = {{1, 731}, {0, 512}, {3, 288}};
+    int32_t cost, runs;
+  } kTop[] = {{1, 731, 26}, {0, 512, 18}, {3, 288, 9}, {6, 180, 6}, {2, 95, 3}};
   for (const auto& t : kTop) {
     m.today.top[m.today.nTop].agentHash = m.agents[t.agent].idHash;
     m.today.top[m.today.nTop].cost = t.cost;
+    m.today.top[m.today.nTop].runs = t.runs;
     m.today.nTop++;
   }
+  m.today.othersN = 1;
+  m.today.othersCost = 36;
+  m.today.othersRuns = 2;
   model_recount(m);
   s_nextHandoff = now + 3000;
   s_nextDone = now + 7000;

@@ -157,10 +157,14 @@ struct Today {
   int32_t tokensK;  // input + output tokens, thousands
   int32_t done;     // tasks finished today
   uint8_t nTop;
+  // Chart slices (2.3): by cost when cost >= 0, else by runs. They plus `others`
+  // add up to the total.
   struct {
     uint32_t agentHash;
-    int32_t cost;  // cents
-  } top[3];
+    int32_t cost;  // cents (0 when the chart is by runs)
+    int32_t runs;
+  } top[5];
+  int32_t othersN, othersCost, othersRuns;
 };
 
 struct Summary {

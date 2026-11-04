@@ -57,10 +57,6 @@ struct Card {
 };
 Card s_card;
 
-Bubble s_tb;  // throne room bubble
-uint32_t s_nextBubble = 0;
-uint8_t s_rr = 0;
-
 bool seen(uint32_t h) {
   for (uint32_t v : s_seen)
     if (v == h) return true;
@@ -79,7 +75,6 @@ void resetAll() {
   memset(s_planes, 0, sizeof(s_planes));
   s_card.open = false;
   s_toast.start = 0;
-  s_tb.on = false;
   s_primed = false;
 }
 
@@ -254,38 +249,6 @@ void moments_update() {
     else s_emperorKnockMs = app.now;
   }
   if (s_card.open && app.now - s_card.openedMs > 6000) s_card.open = false;
-
-  // Throne Room bubble: what each working agent is doing in its own words (its step
-  // text or thought), else its generic step label. Something new first (real text
-  // before labels), then round-robin from the last agent shown, so every working
-  // agent gets its turn.
-  if (app.mode == MODE_THRONE && !s_tb.on && (int32_t)(app.now - s_nextBubble) >= 0) {
-    static char say[THOUGHT_TEXT];
-    int pick = -1;
-    for (int pass = 0; pass < 2 && pick < 0; pass++) {
-      for (int k = 0; k < m.nAgents && pick < 0; k++) {
-        int i = (s_rr + k) % m.nAgents;
-        if (app.anim[i].act == ACT_OFFLINE) continue;
-        uint8_t kind = app_speech(m, m.agents[i], say, sizeof(say));
-        if (kind == SPEECH_NONE || (pass == 0 && kind != SPEECH_TEXT)) continue;
-        if (fnv1a(say) != app.anim[i].shownThought) pick = i;
-      }
-    }
-    for (int k = 0; k < m.nAgents && pick < 0; k++) {
-      int i = (s_rr + k) % m.nAgents;
-      if (app.anim[i].act != ACT_OFFLINE && app_speech(m, m.agents[i], say, sizeof(say)) != SPEECH_NONE) pick = i;
-    }
-    if (pick >= 0) {
-      app_speech(m, m.agents[pick], say, sizeof(say));
-      char who[28];
-      app_nameFit(m.agents[pick], who, sizeof(who), 130, F_TINY);
-      bubble_start(s_tb, m.agents[pick].idHash, say, who);
-      app.anim[pick].shownThought = s_tb.textHash;
-      s_rr = (uint8_t)(pick + 1);
-    } else {
-      s_nextBubble = app.now + 1000;
-    }
-  }
 }
 
 const Moment* moments_current() {
@@ -366,18 +329,6 @@ void moments_drawWorld() {
     circle(hx, hy, r, c(pal::NEUTRAL, 13));
     circle(hx, hy, r + 3, c(pal::NEUTRAL, 7));
   }
-}
-
-void moments_drawThroneBubble() {
-  if (!s_tb.on) return;
-  int i = app_agentByHash(s_tb.agentHash);
-  if (i < 0) {
-    s_tb.on = false;
-    return;
-  }
-  int x, headY, footY;
-  anchor(i, x, headY, footY);
-  if (!bubble_draw(s_tb, x, headY, footY)) s_nextBubble = app.now + 2200;
 }
 
 void moments_drawOverlay() {
@@ -499,8 +450,6 @@ void moments_drawNeedsCard() {
 // 20 characters a second types at reading speed; the whole text then holds 3 s.
 static constexpr int B_POP = 240, B_CPS = 20, B_HOLD = 3000, B_OUT = 320;
 static constexpr int B_MAXW = 136, B_LINES = 4, B_LH = 10;
-
-uint32_t moments_bubbleAgent() { return s_tb.on ? s_tb.agentHash : 0; }
 
 void bubble_start(Bubble& b, uint32_t agentHash, const char* text, const char* title) {
   memset(&b, 0, sizeof(b));

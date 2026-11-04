@@ -7,11 +7,12 @@
 #include "character.h"
 #include "data_model.h"
 
-// Swipe order (2.2.0). LIVE, the automatic camera over the agents at work, is the
-// boot screen: it is what a desk display is for. TODAY (spend and output) is one
-// swipe away, then the per-agent and list views; the Throne Room overview is last.
-// The serial `mode <n>` numbers follow this order.
-enum Mode : uint8_t { MODE_LIVE = 0, MODE_TODAY, MODE_FOCUS, MODE_FEED, MODE_PULSE, MODE_THRONE, MODE_COUNT };
+// Swipe order (2.3.0). LIVE, the automatic camera over the agents at work, is the
+// boot screen: it is what a desk display is for. TODAY (the day's cost chart) is one
+// swipe away, then the per-agent and list views. The office scene itself is only
+// drawn by LIVE (2.3.0 dropped the separate Throne Room mode, which showed the same
+// scene without the camera). The serial `mode <n>` numbers follow this order.
+enum Mode : uint8_t { MODE_LIVE = 0, MODE_TODAY, MODE_FOCUS, MODE_FEED, MODE_PULSE, MODE_COUNT };
 
 // Camera-safe preference (NVS "throne-ui"/"camsafe"). AUTO (never toggled) = off:
 // a desk display shows the real text. A double-tap in LIVE (or the serial `camsafe`
@@ -39,7 +40,6 @@ struct AgentAnim {
   uint32_t glassSince;
   // Moment timers (millis deadlines, 0 = off).
   uint32_t celebrateUntil, receiveUntil, knockUntil, blockedUntil, throwUntil;
-  uint32_t shownThought;  // hash of the last thought shown in a bubble
 };
 
 struct App {
@@ -124,9 +124,9 @@ Pose app_pose(int i);
 bool app_knockHit(int i);
 
 // Modes
-void throne_draw(bool director);
-bool throne_tap(int x, int y);  // returns true if an agent was tapped (switches to focus)
-int throne_hit(int x, int y);   // agent index under (x, y), -1 if none
+// The office scene LIVE films (drawn at 1x, then zoomed).
+void throne_draw();
+int throne_hit(int x, int y);  // agent index under (x, y), -1 if none
 // One agent at (x, footY) with its pose, props and overhead marks (shared by Focus).
 void actor_draw(int i, int x, int footY, int scale, bool seated);
 // Where agent i stands in the throne room (world coordinates) and its draw scale.

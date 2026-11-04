@@ -22,8 +22,6 @@ void moments_sync(bool firstSync);  // after app.model was replaced
 void moments_update();              // once per frame (called by app_update)
 // World space (inside the throne room, before a LIVE zoom): paper planes, glass ripples.
 void moments_drawWorld();
-// The Throne Room's own rotating thought bubble.
-void moments_drawThroneBubble();
 // Screen space: toasts for the moment playing now.
 void moments_drawOverlay();
 // Screen space: the needs-you card, when open (any mode).
@@ -41,9 +39,6 @@ bool moments_emperorKnock(bool* hit);
 // hits the outer ring, a waiting agent, or anywhere when `anywhere`. True if consumed.
 bool moments_tap(int x, int y, bool anywhere);
 bool moments_cardOpen();
-
-// Agent whose words the Throne Room bubble shows right now (0 = none).
-uint32_t moments_bubbleAgent();
 
 // Thought bubble: pops up, types the text out, holds, then shrinks away. An optional
 // title (the agent's name) sits on the first line, so the words have a speaker.

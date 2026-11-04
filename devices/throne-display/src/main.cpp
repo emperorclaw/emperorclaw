@@ -331,10 +331,7 @@ static void handleGesture(const TouchEvent& ev) {
         } else {
           s_lastTapMs = app.now;
         }
-      } else if (app.mode == MODE_THRONE && moments_tap(ev.x, ev.y, false)) {
-        // needs card opened / closed
-      } else if (app.mode == MODE_THRONE && throne_tap(ev.x, ev.y)) startTransition(MODE_FOCUS, +1);
-      else if (app.mode == MODE_PULSE && pulse_tap(ev.x, ev.y)) startTransition(MODE_FOCUS, -1);
+      } else if (app.mode == MODE_PULSE && pulse_tap(ev.x, ev.y)) startTransition(MODE_FOCUS, -1);
       else if (app.mode == MODE_FOCUS && s_transDir == 0) focus_openChat(true);
       break;
     case G_HOLD_2S:
@@ -381,7 +378,7 @@ static void handleSerial() {
     }
     if (!strcmp(cmd, "help")) {
       Serial.println("commands: status | stats | version | scan | provision <base64> | demo | live | setup |"
-                     " reset | touch | mode <0-5> (0 live, 1 today, 2 focus, 3 feed, 4 pulse, 5 throne) | camsafe | ssid <v> | pass <v> | server <url> | token <v> | save");
+                     " reset | touch | mode <0-4> (0 live, 1 today, 2 focus, 3 feed, 4 pulse) | camsafe | ssid <v> | pass <v> | server <url> | token <v> | save");
     } else if (!strcmp(cmd, "version")) {
       Serial.println("[version] " FW_VERSION);
     } else if (!strcmp(cmd, "scan")) {
@@ -547,14 +544,14 @@ void loop() {
     uint32_t r0 = micros();
     int bright = transitionStep();
     pal::apply(s_canvas, bright);
-    if (app.mode == MODE_THRONE || app.mode == MODE_LIVE) ox += moments_nudgeX();  // knock on the glass
+    if (app.mode == MODE_LIVE) ox += moments_nudgeX();  // knock on the glass
     switch (app.mode) {
       case MODE_FOCUS: focus_draw(); break;
       case MODE_PULSE: pulse_draw(); break;
       case MODE_FEED: feed_draw(); break;
       case MODE_LIVE: director_draw(); break;
       case MODE_TODAY: today_draw(); break;
-      default: throne_draw(false); break;
+      default: break;
     }
     ox = oy = 0;
     moments_drawNeedsCard();
