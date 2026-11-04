@@ -1,8 +1,8 @@
 // FOCUS: one agent per page. Swipe up / down to cycle agents. Tap to open the
 // agent's private chat (the token creator's own direct messages, when the token
-// carries them); tap again, or swipe left / right, to close it. When the agent has a
-// fresh thought (feed v2), it types out in a cloud under the character instead of
-// the activity line.
+// carries them); tap again, or swipe left / right, to close it. A working agent shows
+// its current step (feed 2.1: label + timer) with the step's text or its thought
+// typing out in a cloud; an idle one shows its last finished task.
 #include "../app.h"
 #include "../palette.h"
 #include "../ui_common.h"
@@ -174,26 +174,53 @@ void focus_draw() {
   bool ghost = an.act == ACT_OFFLINE;
   actor_draw(idx, CX, ghost ? 98 : 102, 3, false);
 
-  // State chip.
-  const char* sl = stateLabel(a.state);
+  // State chip. A running run is work even without a task (feed 2.1 `step`).
+  uint8_t shownState = (a.step[0] && a.state == S_IDLE && !ghost) ? S_WORKING : a.state;
+  sr = stateRamp(shownState);
+  const char* sl = stateLabel(shownState);
   int tw = textWidth(sl, F_TINY);
   int cw = tw + 18;
   fillRoundRect(CX - cw / 2, 106, cw, 13, 6, c(sr, 4));
   fillCircle(CX - cw / 2 + 7, 112, 2, c(sr, 13));
   text(sl, CX + 4, 113, c(sr, 15), F_TINY);
 
-  // Thought (typed out in a cloud) or activity, word-wrapped; long texts scroll line by line.
-  const Thought* th = ghost ? nullptr : model_thought(m, a);
-  const char* act = th ? th->text : (a.activity[0] ? a.activity : (ghost ? "Not responding" : "No current activity"));
+  // What the agent is doing, in its own words where the feed allows. A running step
+  // gets a header (its label and how long the agent has been on it) with its text
+  // typed out below; otherwise the thought or the live activity line. With no words
+  // at all: the plain state and the last finished task, never a filler line.
+  int32_t stepSec = ghost ? -1 : app_stepSec(a);
+  const char* stepTxt = stepSec >= 0 ? model_stepText(m, a) : nullptr;
+  const Thought* th = (ghost || stepTxt) ? nullptr : model_thought(m, a);
+  const char* typedText = stepTxt ? stepTxt : (th ? th->text : nullptr);
+  const char* act = typedText ? typedText : (!ghost && a.activity[0] ? a.activity : "");
+  int top = 124, visible = 3;
+  if (stepSec >= 0) {
+    char head[STEP_LABEL + 16], dur[16];
+    fmtDur(dur, sizeof(dur), stepSec);
+    snprintf(head, sizeof(head), "%s  %s", a.step, dur);
+    textFit(head, CX, 129, 172, c(pal::CYAN, 13), F_SMALL);
+    top = 138;
+    visible = 2;
+  } else if (!act[0]) {
+    text(ghost ? "Not responding" : (shownState == S_IDLE ? "Idle" : stateLabel(shownState)), CX, 134, pal::TEXT_DIM, F_SMALL);
+    const LastDone* last = model_last(m, a);
+    if (last) {
+      char lbuf[TITLE_TEXT + 12], ago[24];
+      snprintf(lbuf, sizeof(lbuf), "Last done: %s", last->title);
+      textFitS(lbuf, CX, 153, 176, c(pal::GOLD, 12), F_TINY, lgfx::middle_center, safe);
+      fmtAgo(ago, sizeof(ago), last->ageSec + app_snapshotAgeSec());
+      text(ago, CX, 165, pal::TEXT_FAINT, F_TINY);
+    }
+  }
   uint16_t st[12];
   uint8_t ln[12];
-  int lines = wrapText(act, th ? 164 : 172, F_SMALL, st, ln, 12);
-  const int lineH = 16, top = 124, visible = 3;
+  int lines = act[0] ? wrapText(act, typedText ? 164 : 172, F_SMALL, st, ln, 12) : 0;
+  const int lineH = 16;
   int first = 0, sub = 0;
   static uint32_t s_thoughtHash = 0, s_thoughtStart = 0;
   int typed = 1 << 14;
-  if (th) {
-    uint32_t h = fnv1a(th->text) ^ a.idHash;
+  if (typedText) {
+    uint32_t h = fnv1a(typedText) ^ a.idHash;
     if (h != s_thoughtHash) {
       s_thoughtHash = h;
       s_thoughtStart = app.now;
@@ -201,12 +228,14 @@ void focus_draw() {
     uint32_t elapsed = app.now - s_thoughtStart;
     if (elapsed > 60000) elapsed = 60000;  // fully typed long before; avoids overflow
     typed = (int)(elapsed * 30 / 1000);
-    // Cloud behind the text, with two puffs rising from the character.
-    fillCircle(CX + 22, 116, 2, c(an.ramp, 3));
-    fillCircle(CX + 30, 121, 3, c(an.ramp, 3));
+    // Cloud behind the text, with two puffs rising from the character (not over a step header).
+    if (stepSec < 0) {
+      fillCircle(CX + 22, 116, 2, c(an.ramp, 3));
+      fillCircle(CX + 30, 121, 3, c(an.ramp, 3));
+    }
     fillRoundRect(CX - 88, top - 2, 176, visible * lineH + 6, 10, c(an.ramp, 3));
   }
-  if (th && typed < (int)strlen(act)) {
+  if (typedText && typed < (int)strlen(act)) {
     // Still typing: keep the line being typed in view.
     int last = 0;
     for (int l = 0; l < lines; l++)
@@ -232,17 +261,14 @@ void focus_draw() {
     if (n <= 0) break;
     memcpy(buf, act + st[li], n);
     buf[n] = 0;
-    bool real = th || a.activity[0];
-    if (th) textS(buf, CX - 80, y + lineH / 2, pal::WHITE, F_SMALL, lgfx::middle_left, safe);
-    else textS(buf, CX, y + lineH / 2, real ? pal::TEXT : pal::TEXT_DIM, F_SMALL, lgfx::middle_center, safe && real);
+    if (typedText) textS(buf, CX - 80, y + lineH / 2, pal::WHITE, F_SMALL, lgfx::middle_left, safe);
+    else textS(buf, CX, y + lineH / 2, pal::TEXT, F_SMALL, lgfx::middle_center, safe);
   }
 
-  // Task title.
+  // Task title (nothing when there is none: the state above says enough).
   if (a.task[0]) {
     fillRect(CX - 76, 176, 3, 12, c(pal::GOLD, 9));
     textFitS(a.task, CX - 69, 182, 146, c(pal::GOLD, 12), F_SMALL, lgfx::middle_left, safe);
-  } else {
-    text("no active task", CX, 182, pal::TEXT_FAINT, F_SMALL);
   }
 
   // Last seen + unanswered.

@@ -255,20 +255,31 @@ void moments_update() {
   }
   if (s_card.open && app.now - s_card.openedMs > 6000) s_card.open = false;
 
-  // Throne Room thought bubble: fresh thoughts first, then round-robin.
+  // Throne Room bubble: what each working agent is doing in its own words (its step
+  // text or thought), else its generic step label. Something new first (real text
+  // before labels), then round-robin from the last agent shown, so every working
+  // agent gets its turn.
   if (app.mode == MODE_THRONE && !s_tb.on && (int32_t)(app.now - s_nextBubble) >= 0) {
+    static char say[THOUGHT_TEXT];
     int pick = -1;
-    for (int i = 0; i < m.nAgents && pick < 0; i++) {
-      const Thought* t = model_thought(m, m.agents[i]);
-      if (t && app.anim[i].act != ACT_OFFLINE && fnv1a(t->text) != app.anim[i].shownThought) pick = i;
+    for (int pass = 0; pass < 2 && pick < 0; pass++) {
+      for (int k = 0; k < m.nAgents && pick < 0; k++) {
+        int i = (s_rr + k) % m.nAgents;
+        if (app.anim[i].act == ACT_OFFLINE) continue;
+        uint8_t kind = app_speech(m, m.agents[i], say, sizeof(say));
+        if (kind == SPEECH_NONE || (pass == 0 && kind != SPEECH_TEXT)) continue;
+        if (fnv1a(say) != app.anim[i].shownThought) pick = i;
+      }
     }
     for (int k = 0; k < m.nAgents && pick < 0; k++) {
       int i = (s_rr + k) % m.nAgents;
-      if (model_thought(m, m.agents[i]) && app.anim[i].act != ACT_OFFLINE) pick = i;
+      if (app.anim[i].act != ACT_OFFLINE && app_speech(m, m.agents[i], say, sizeof(say)) != SPEECH_NONE) pick = i;
     }
     if (pick >= 0) {
-      const Thought* t = model_thought(m, m.agents[pick]);
-      bubble_start(s_tb, m.agents[pick].idHash, t->text);
+      app_speech(m, m.agents[pick], say, sizeof(say));
+      char who[28];
+      app_nameFit(m.agents[pick], who, sizeof(who), 130, F_TINY);
+      bubble_start(s_tb, m.agents[pick].idHash, say, who);
       app.anim[pick].shownThought = s_tb.textHash;
       s_rr = (uint8_t)(pick + 1);
     } else {
@@ -488,12 +499,15 @@ void moments_drawNeedsCard() {
 static constexpr int B_POP = 240, B_CPS = 30, B_HOLD = 3600, B_OUT = 320;
 static constexpr int B_MAXW = 136, B_LINES = 4, B_LH = 10;
 
-void bubble_start(Bubble& b, uint32_t agentHash, const char* text) {
+uint32_t moments_bubbleAgent() { return s_tb.on ? s_tb.agentHash : 0; }
+
+void bubble_start(Bubble& b, uint32_t agentHash, const char* text, const char* title) {
   memset(&b, 0, sizeof(b));
   b.on = true;
   b.agentHash = agentHash;
   b.start = app.now;
   strlcpy(b.text, text, sizeof(b.text));
+  if (title) strlcpy(b.title, title, sizeof(b.title));
   b.textHash = fnv1a(b.text);
   b.n = (uint8_t)strlen(b.text);
   b.nLines = (uint8_t)wrapText(b.text, B_MAXW, F_TINY, b.st, b.ln, 8);
@@ -502,6 +516,11 @@ void bubble_start(Bubble& b, uint32_t agentHash, const char* text) {
     memcpy(buf, b.text + b.st[l], b.ln[l]);
     buf[b.ln[l]] = 0;
     int w = textWidth(buf, F_TINY);
+    if (w > b.w) b.w = (int16_t)w;
+  }
+  if (b.title[0]) {
+    int w = textWidth(b.title, F_TINY);
+    if (w > B_MAXW) w = B_MAXW;
     if (w > b.w) b.w = (int16_t)w;
   }
 }
@@ -525,7 +544,8 @@ bool bubble_draw(Bubble& b, int ax, int headY, int footY) {
   // Size for the final text so the bubble does not grow while typing.
   int vis = b.nLines < B_LINES ? b.nLines : B_LINES;
   if (vis < 1) vis = 1;
-  int bw = b.w + 16, bh = vis * B_LH + 10;
+  int titleH = b.title[0] ? B_LH + 1 : 0;
+  int bw = b.w + 16, bh = vis * B_LH + 10 + titleH;
   int top = headY - 16 - bh;
   bool above = true;
   if (top < 34) {
@@ -574,14 +594,20 @@ bool bubble_draw(Bubble& b, int ax, int headY, int footY) {
   bool safe = app_camSafe();
   uint8_t ink = c(pal::NEUTRAL, 2);
   char buf[THOUGHT_TEXT];
-  int caretX = bx + 8, caretY = top + 9;
+  if (titleH) {
+    // The speaker: the agent's name in its own color, above its words.
+    int ai = app_agentByHash(b.agentHash);
+    uint8_t ramp = ai >= 0 ? app.anim[ai].ramp : pal::VIOLET;
+    textFit(b.title, bx + 8, top + 9, bw - 16, c(ramp, 6), F_TINY, lgfx::middle_left);
+  }
+  int caretX = bx + 8, caretY = top + 9 + titleH;
   for (int l = first; l < b.nLines && l < first + B_LINES; l++) {
     int cnt = typed - b.st[l];
     if (cnt <= 0) break;
     if (cnt > b.ln[l]) cnt = b.ln[l];
     memcpy(buf, b.text + b.st[l], cnt);
     buf[cnt] = 0;
-    int ly = top + 9 + (l - first) * B_LH;
+    int ly = top + 9 + titleH + (l - first) * B_LH;
     textS(buf, bx + 8, ly, ink, F_TINY, lgfx::middle_left, safe);
     caretX = bx + 8 + textWidth(buf, F_TINY) + 1;
     caretY = ly;

@@ -22,6 +22,13 @@ constexpr int THOUGHT_TEXT = 141;
 constexpr int MAX_EVENTS = 10;
 constexpr int MAX_NEEDS = 3;
 constexpr int TITLE_TEXT = 57;
+// Feed 2.1: per-agent `step` (label inline, text in a shared pool like thoughts) and
+// `last` (latest finished task, shared pool: only idle / offline agents carry one).
+// The Model is held three times (producer, shared, render), so these stay small.
+constexpr int STEP_LABEL = 25;  // server caps labels at 24 chars
+constexpr int MAX_STEP_TEXTS = 6;
+constexpr int STEP_TEXT = 101;
+constexpr int MAX_LASTS = 6;
 
 enum Health : uint8_t { H_HEALTHY = 0, H_ATTENTION, H_DOWN, H_IDLE };
 enum AgentState : uint8_t { S_TYPING = 0, S_WORKING, S_IDLE, S_OFFLINE };
@@ -77,10 +84,14 @@ struct Agent {
   uint8_t dmStart;      // index of the agent's newest message in Model::dm
   uint8_t dmCount;      // 0..MAX_DM_PER_AGENT, newest first
   int32_t dmNewestSec;  // age of the newest dm at receive time, -1 = none
+  int32_t stepSec;      // seconds since the current step started, at receive time
   Look look;
-  uint8_t act;      // Act
-  uint8_t mood;     // Mood
-  uint8_t thought;  // 1-based slot in Model::thoughts, 0 = none
+  uint8_t act;       // Act
+  uint8_t mood;      // Mood
+  uint8_t thought;   // 1-based slot in Model::thoughts, 0 = none
+  uint8_t stepText;  // 1-based slot in Model::stepTexts, 0 = none
+  uint8_t last;      // 1-based slot in Model::lasts, 0 = none
+  char step[STEP_LABEL];  // generic step label ("Running terminal"), "" = no running run
   char name[28];
   char shortName[12];
   char activity[88];
@@ -107,6 +118,19 @@ struct Thought {
   uint32_t agentHash;
   int32_t ageSec;
   char text[THOUGHT_TEXT];
+};
+
+// The real detail of an agent's current step (feed 2.1 `step.text`).
+struct StepText {
+  uint32_t agentHash;
+  char text[STEP_TEXT];
+};
+
+// An idle / offline agent's latest finished task (feed 2.1 `last`).
+struct LastDone {
+  uint32_t agentHash;
+  int32_t ageSec;
+  char title[TITLE_TEXT];
 };
 
 // One moment from feed v2 `events[]`. The id hash de-duplicates playback.
@@ -141,6 +165,8 @@ struct Model {
   uint8_t nThoughts;
   uint8_t nEvents;  // newest first
   uint8_t nNeeds;
+  uint8_t nStepTexts;
+  uint8_t nLasts;
   char company[32];
   Summary s;
   Agent agents[MAX_AGENTS];
@@ -149,6 +175,8 @@ struct Model {
   Thought thoughts[MAX_THOUGHTS];
   Event events[MAX_EVENTS];
   Need needs[MAX_NEEDS];
+  StepText stepTexts[MAX_STEP_TEXTS];
+  LastDone lasts[MAX_LASTS];
 };
 
 enum NetStatus : uint8_t { NET_DEMO = 0, NET_WIFI, NET_CONNECTING, NET_OK, NET_ERROR, NET_PORTAL };
@@ -181,3 +209,13 @@ void model_recount(Model& m);
 bool model_setThought(Model& m, int idx, const char* text, int32_t ageSec);
 // The agent's thought text, or nullptr.
 const Thought* model_thought(const Model& m, const Agent& a);
+// Feed 2.1 step: label + seconds always, text (may be empty / nullptr) into the pool,
+// first come first served (the server sends at most a few under its payload budget).
+void model_setStep(Model& m, int idx, const char* label, const char* text, int32_t sec);
+void model_clearStep(Model& m, int idx);
+// The agent's step text, or nullptr.
+const char* model_stepText(const Model& m, const Agent& a);
+// Feed 2.1 last: stored when a pool slot is free (or replaces the agent's own).
+void model_setLast(Model& m, int idx, const char* title, int32_t ageSec);
+void model_clearLast(Model& m, int idx);
+const LastDone* model_last(const Model& m, const Agent& a);

@@ -192,3 +192,82 @@ const Thought* model_thought(const Model& m, const Agent& a) {
   const Thought& t = m.thoughts[a.thought - 1];
   return (t.agentHash == a.idHash && t.text[0]) ? &t : nullptr;
 }
+
+void model_setStep(Model& m, int idx, const char* label, const char* text, int32_t sec) {
+  if (idx < 0 || idx >= m.nAgents || !label || !*label) return;
+  Agent& a = m.agents[idx];
+  asciiCopy(a.step, sizeof(a.step), label);
+  a.stepSec = sec < 0 ? 0 : sec;
+  if (!text || !*text) {
+    if (a.stepText && a.stepText <= m.nStepTexts) m.stepTexts[a.stepText - 1].text[0] = 0;
+    return;
+  }
+  int slot = a.stepText ? a.stepText - 1 : -1;
+  if (slot < 0) {
+    // Reuse a slot emptied by a cleared step, else take a new one.
+    for (int i = 0; i < m.nStepTexts && slot < 0; i++)
+      if (!m.stepTexts[i].text[0]) slot = i;
+    if (slot < 0 && m.nStepTexts < MAX_STEP_TEXTS) slot = m.nStepTexts++;
+    if (slot < 0) {
+      // Full: take the slot of the agent whose step is the stalest, if older than this one.
+      int32_t stalest = a.stepSec;
+      for (int i = 0; i < m.nAgents; i++) {
+        const Agent& o = m.agents[i];
+        if (i != idx && o.stepText && o.stepText <= m.nStepTexts && o.stepSec > stalest) {
+          stalest = o.stepSec;
+          slot = o.stepText - 1;
+        }
+      }
+      if (slot < 0) return;
+    }
+    for (int i = 0; i < m.nAgents; i++)
+      if (m.agents[i].stepText == slot + 1) m.agents[i].stepText = 0;
+  }
+  StepText& t = m.stepTexts[slot];
+  t.agentHash = a.idHash;
+  asciiCopy(t.text, sizeof(t.text), text);
+  a.stepText = t.text[0] ? (uint8_t)(slot + 1) : 0;
+}
+
+void model_clearStep(Model& m, int idx) {
+  if (idx < 0 || idx >= m.nAgents) return;
+  Agent& a = m.agents[idx];
+  if (a.stepText && a.stepText <= m.nStepTexts) m.stepTexts[a.stepText - 1].text[0] = 0;
+  a.stepText = 0;
+  a.step[0] = 0;
+  a.stepSec = -1;
+}
+
+const char* model_stepText(const Model& m, const Agent& a) {
+  if (!a.step[0] || !a.stepText || a.stepText > m.nStepTexts) return nullptr;
+  const StepText& t = m.stepTexts[a.stepText - 1];
+  return (t.agentHash == a.idHash && t.text[0]) ? t.text : nullptr;
+}
+
+void model_setLast(Model& m, int idx, const char* title, int32_t ageSec) {
+  if (idx < 0 || idx >= m.nAgents || !title || !*title) return;
+  Agent& a = m.agents[idx];
+  int slot = a.last ? a.last - 1 : -1;
+  for (int i = 0; i < m.nLasts && slot < 0; i++)
+    if (!m.lasts[i].title[0]) slot = i;
+  if (slot < 0 && m.nLasts < MAX_LASTS) slot = m.nLasts++;
+  if (slot < 0) return;
+  LastDone& l = m.lasts[slot];
+  l.agentHash = a.idHash;
+  l.ageSec = ageSec < 0 ? 0 : ageSec;
+  asciiCopy(l.title, sizeof(l.title), title);
+  a.last = l.title[0] ? (uint8_t)(slot + 1) : 0;
+}
+
+void model_clearLast(Model& m, int idx) {
+  if (idx < 0 || idx >= m.nAgents) return;
+  Agent& a = m.agents[idx];
+  if (a.last && a.last <= m.nLasts) m.lasts[a.last - 1].title[0] = 0;
+  a.last = 0;
+}
+
+const LastDone* model_last(const Model& m, const Agent& a) {
+  if (!a.last || a.last > m.nLasts) return nullptr;
+  const LastDone& l = m.lasts[a.last - 1];
+  return (l.agentHash == a.idHash && l.title[0]) ? &l : nullptr;
+}

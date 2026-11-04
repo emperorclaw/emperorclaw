@@ -251,7 +251,14 @@ void actor_draw(int i, int x, int footY, int s, bool seated) {
       drawMagnifier(hx, hy, s);
       break;
     case ACT_THINKING: drawThinkPuff(x, headY, s); break;
-    case ACT_TALKING: drawSpeech(x + 8 * s, headY + s, s); break;
+    case ACT_TALKING: {
+      // Three dots only while there is nothing real to show yet, and only briefly:
+      // once the agent has words (step text, thought or label), the bubble types them.
+      char say[8];
+      bool waiting = app_speech(app.model, a, say, sizeof(say)) == SPEECH_NONE && app.now - an.actSince < 8000;
+      if (waiting && moments_bubbleAgent() != an.idHash) drawSpeech(x + 8 * s, headY + s, s);
+      break;
+    }
     case ACT_BLOCKED: drawAlert(x, headY - 8); break;
     case ACT_NAP: drawZzz(x, headY, s); break;
     case ACT_COFFEE: drawMug(hx, hy, s); break;
@@ -332,12 +339,14 @@ void throne_draw(bool director) {
   }
 
   // Names under the desks when there is room.
+  // The full name when it fits the space between desks, else the first name.
   if (m.nAgents <= 12) {
-    char label[16];
+    char label[28];
+    int maxW = m.nAgents <= 3 ? 84 : m.nAgents <= 5 ? 66 : m.nAgents <= 8 ? 52 : 40;
     for (int i = 0; i < m.nAgents; i++) {
       const AgentAnim& an = app.anim[i];
-      app_label(m.agents[i], label, sizeof(label), true);
-      text(label, an.deskX, an.deskY + 5 * s + 6, c(an.ramp, 11), F_TINY);
+      app_nameFit(m.agents[i], label, sizeof(label), maxW, F_TINY);
+      textFit(label, an.deskX, an.deskY + 5 * s + 6, maxW, c(an.ramp, 11), F_TINY);
     }
   }
   drawParticles();

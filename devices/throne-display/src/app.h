@@ -101,6 +101,20 @@ void app_setCamSafe(bool on);
 void app_label(const Agent& a, char* out, size_t cap, bool shortName);
 // Initials of any name ("Ada Researcher" -> "A.R.").
 void app_initials(const char* name, char* out, size_t cap);
+// The agent's proper name for a space maxW px wide in font f: the full name when it
+// fits, else the first name (short); initials when camera-safe.
+void app_nameFit(const Agent& a, char* out, size_t cap, int maxW, uint8_t font);
+// Seconds since the agent's current step started (aged locally), -1 = no running step.
+int32_t app_stepSec(const Agent& a);
+// What the agent is doing right now, in its own words where the feed allows:
+//   SPEECH_TEXT  - real text: the step's detail ("Running terminal: npm test", or the
+//                  thought itself for a Thinking step), else its latest thought;
+//   SPEECH_LABEL - only a generic real label ("Running terminal", "Thinking");
+//   SPEECH_NONE  - nothing (out is "").
+enum Speech : uint8_t { SPEECH_NONE = 0, SPEECH_LABEL, SPEECH_TEXT };
+uint8_t app_speech(const Model& m, const Agent& a, char* out, size_t cap);
+// "45s", "3m 05s", "1h 02m".
+void fmtDur(char* out, size_t cap, int32_t sec);
 // Pose for an agent's resolved act / mood at its current spot.
 Pose app_pose(int i);
 // True on the frames where a knocking agent's fist hits the glass.

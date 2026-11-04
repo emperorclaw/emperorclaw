@@ -156,6 +156,18 @@ void clearThought(Model& m, int i) {
   a.thought = 0;
 }
 
+// Demo step labels, the same generic kinds the server sends (feed 2.1 `step`).
+const char* stepLabelFor(uint8_t act) {
+  switch (act) {
+    case ACT_TALKING: return "Writing the reply";
+    case ACT_THINKING: return "Thinking";
+    case ACT_REVIEWING: return "Running browser";
+    case ACT_PRESENTING: return "Delegating";
+    case ACT_WRITING: return "Running write_file";
+    default: return "Running terminal";
+  }
+}
+
 void setWorking(Model& m, int i, uint8_t act) {
   Agent& a = m.agents[i];
   a.act = act;
@@ -165,6 +177,11 @@ void setWorking(Model& m, int i, uint8_t act) {
   if (!a.taskHash) setTask(m, i);
   s_actIdx[i]++;
   setActivity(m, i);
+  // A terminal step carries a sample command; the others show their label with the
+  // agent's thought (as a screen without step text would).
+  static const char* const kCommands[] = {"npm test", "git diff --stat", "pnpm build", "pytest -q"};
+  model_setStep(m, i, stepLabelFor(act), act == ACT_TYPING ? kCommands[pick(4)] : nullptr, 0);
+  model_clearLast(m, i);
 }
 
 void setIdle(Model& m, int i) {
@@ -175,6 +192,8 @@ void setIdle(Model& m, int i) {
   if (a.health != H_ATTENTION) a.health = H_IDLE;
   strlcpy(a.activity, "Taking a short break", sizeof(a.activity));
   clearThought(m, i);
+  model_clearStep(m, i);
+  model_setLast(m, i, kAgents[i].tasks[(s_taskIdx[i] + 2) % 3], 60 + pick(3000));
 }
 
 void pushMessage(Model& m, int agentIdx, const char* text) {
@@ -354,6 +373,8 @@ void demo_init(Model& m) {
   m.agents[4].health = H_DOWN;
   m.agents[4].act = ACT_OFFLINE;
   m.agents[4].lastSeenSec = 340;
+  model_clearStep(m, 4);
+  model_setLast(m, 4, kAgents[4].tasks[s_taskIdx[4] % 3], 5400);
   s_downUntil[4] = now + 25000;
   m.s.tasksOverdue = 0;
   {
@@ -407,6 +428,9 @@ bool demo_tick(Model& m, uint32_t now) {
     for (int i = 0; i < m.nMsgs; i++) m.msgs[i].ageSec++;
     for (int i = 0; i < m.nThoughts; i++)
       if (m.thoughts[i].ageSec < 0x7FFFFFFF) m.thoughts[i].ageSec++;
+    for (int i = 0; i < m.nLasts; i++) m.lasts[i].ageSec++;
+    for (int i = 0; i < m.nAgents; i++)
+      if (m.agents[i].step[0]) m.agents[i].stepSec++;
     for (int i = 0; i < m.nEvents; i++) m.events[i].ageSec++;
     while (m.nEvents && m.events[m.nEvents - 1].ageSec > 600) m.nEvents--;
     for (int i = 0; i < m.nAgents; i++) {
@@ -489,6 +513,7 @@ bool demo_tick(Model& m, uint32_t now) {
       a.health = H_DOWN;
       a.act = ACT_OFFLINE;
       clearThought(m, i);
+      model_clearStep(m, i);
       s_downUntil[i] = now + range(15000, 25000);
     }
     changed = true;
