@@ -1,9 +1,9 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import type { RunEventSource } from "../../src/lib/run-events";
-import { screenAscii, screenStepsFromRuns, STEP_LABEL_MAX, STEP_TEXT_MAX, type RunThoughtRow } from "../../src/lib/run-thoughts";
+import { PRIVATE_ACTIVITY, screenAscii, screenStepsFromRuns, screenThoughtsFromRuns, SCREEN_RUN_FRESH_MS, STEP_LABEL_MAX, STEP_TEXT_MAX, type RunThoughtRow } from "../../src/lib/run-thoughts";
 import { fitThoughtsToBudget, LIVE_MIN_THOUGHTS, LIVE_PAYLOAD_BUDGET_BYTES } from "../../src/lib/live-feed-v2";
-import { LAST_TITLE_MAX, lastDoneOf, liveFeedEtag, type LiveFeed } from "../../src/lib/live-feed";
+import { capScreenExtras, LAST_TITLE_MAX, lastDoneOf, LIVE_MAX_LASTS, LIVE_MAX_STEP_TEXTS, liveFeedEtag, type LiveFeed } from "../../src/lib/live-feed";
 
 /**
  * 2.1 device feed: per-agent `step` (the running run's current step) and
@@ -45,16 +45,22 @@ test("a bare beat or a generic line is a label without text, never a placeholder
     assert.deepEqual(steps([row([ev(1, "tool.end", { toolName: "web", status: "ok" })])]).get(AGENT), { label: "web done", sec: 59 });
 });
 
-test("a run the screen may not read, or a token without thoughts, gets only the generic label", () => {
+test("a run the screen may not read is only 'Working in a private chat'; a readable one without thoughts gets the generic label", () => {
     const events = [ev(1, "tool.start", { toolName: "terminal", summary: "cat salary.csv" })];
     const otherMembersChat = row(events, { threadId: "33333333-3333-4333-8333-333333333333", threadType: "direct", viewerInThread: true, viewerOwnsThread: false });
-    assert.deepEqual(steps([otherMembersChat]).get(AGENT), { label: "Running terminal", sec: 59 });
+    assert.deepEqual(steps([otherMembersChat]).get(AGENT), { label: PRIVATE_ACTIVITY, sec: 59 }, "no tool name for a private run");
+    assert.deepEqual(steps([otherMembersChat], false).get(AGENT), { label: PRIVATE_ACTIVITY, sec: 59 });
+    const workLog = row(events, { threadId: "55555555-5555-4555-8555-555555555555", threadType: "direct", viewerInThread: true });
+    assert.deepEqual(steps([workLog]).get(AGENT), { label: PRIVATE_ACTIVITY, sec: 59 }, "the shared Work log is private to a screen");
     assert.deepEqual(steps([row(events)], false).get(AGENT), { label: "Running terminal", sec: 59 });
+    const team = row(events, { threadId: "66666666-6666-4666-8666-666666666666", threadType: "team" });
+    assert.deepEqual(steps([team], false).get(AGENT), { label: "Running terminal", sec: 59 }, "a team run on a token without thoughts: label, no text");
+    assert.ok(Array.from(PRIVATE_ACTIVITY).length <= STEP_LABEL_MAX, "the private label fits the device");
 
     const notice = [ev(1, "notice", { summary: "Quoting the customer's private note" })];
     assert.deepEqual(steps([row(notice)], false).get(AGENT), { label: "Working", sec: 59 }, "notices never become a label");
     const reasoning = [ev(1, "reasoning", { summary: "The payroll numbers" })];
-    assert.deepEqual(steps([otherMembersChat].map((r) => ({ ...r, events: reasoning }))).get(AGENT), { label: "Thinking", sec: 59 });
+    assert.deepEqual(steps([otherMembersChat].map((r) => ({ ...r, events: reasoning }))).get(AGENT), { label: PRIVATE_ACTIVITY, sec: 59 });
 
     const ownChat = row(reasoning, { threadId: "44444444-4444-4444-8444-444444444444", threadType: "direct", viewerOwnsThread: true });
     assert.equal(steps([ownChat]).get(AGENT)?.text, "The payroll numbers", "the creator's own private chat is readable");
@@ -126,4 +132,45 @@ test("the ETag ignores step and last clocks but tracks their text", () => {
     assert.equal(liveFeedEtag(a), liveFeedEtag(b));
     b.agents[0].step!.text = "other";
     assert.notEqual(liveFeedEtag(a), liveFeedEtag(b));
+});
+
+test("a run whose newest event is older than 10 minutes gives no step and no thought (a crashed bridge's leftover)", () => {
+    const old = (seq: number) => ({ ...ev(seq, "tool.start", { toolName: "terminal", summary: "npm test" }), ts: new Date(NOW - SCREEN_RUN_FRESH_MS - 1_000) });
+    assert.equal(steps([row([old(1)])]).size, 0);
+    assert.equal(screenThoughtsFromRuns([row([old(1)])], { nowMs: NOW, includePairThreads: true }).size, 0);
+    const fresh = { ...old(2), ts: new Date(NOW - 5_000) };
+    assert.equal(steps([row([old(1), fresh])]).get(AGENT)?.label, "Running terminal", "one recent event keeps the run live");
+});
+
+test("the step's identity rides along for the ETag only: a new step with the same label changes it", () => {
+    const first = steps([row([ev(1, "tool.start", { toolName: "terminal", summary: "npm test" })])]).get(AGENT)!;
+    const next = steps([row([ev(1, "tool.start", { toolName: "terminal", summary: "npm test" }), ev(2, "tool.start", { toolName: "terminal", summary: "npm test" })])]).get(AGENT)!;
+    assert.ok(first.key && next.key && first.key !== next.key);
+    assert.ok(!JSON.stringify(first).includes("key"), "never serialized to the device");
+    const a = heavyFeed();
+    const b = heavyFeed();
+    Object.defineProperty(a.agents[0].step!, "key", { value: "run:1", enumerable: false });
+    Object.defineProperty(b.agents[0].step!, "key", { value: "run:1", enumerable: false });
+    b.agents[0].step!.sec = 0;
+    assert.equal(liveFeedEtag(a), liveFeedEtag(b), "the ticking sec is ignored");
+    b.agents[0].step = Object.defineProperty({ ...b.agents[0].step! }, "key", { value: "run:2", enumerable: false });
+    assert.notEqual(liveFeedEtag(a), liveFeedEtag(b), "same label and text, new step: new ETag");
+});
+
+test("only the 6 most recent step texts and last-done titles are sent; every label stays", () => {
+    const feed = heavyFeed();
+    capScreenExtras(feed.agents);
+    const texts = feed.agents.filter((a) => a.step?.text);
+    assert.equal(texts.length, LIVE_MAX_STEP_TEXTS);
+    assert.deepEqual(texts.map((a) => a.step!.sec), [0, 1, 2, 3, 4, 5], "the freshest steps keep their text");
+    assert.ok(feed.agents.every((a) => a.step?.label));
+    const lasts = feed.agents.filter((a) => a.last);
+    assert.equal(lasts.length, LIVE_MAX_LASTS);
+    assert.deepEqual(lasts.map((a) => a.last!.ageSec), [1000, 1001, 1002, 1003, 1004, 1005]);
+});
+
+test("last-done titles are redacted", () => {
+    const last = lastDoneOf({ title: "Rotate key sk-abcdefghijklmnopqrstuvwxyz0123456789", taskType: "ops", doneAt: new Date(NOW) }, NOW)!;
+    assert.ok(!last.title.includes("sk-abcdefghijklmnopqrstuvwxyz0123456789"), last.title);
+    assert.ok(last.title.startsWith("Rotate key"));
 });

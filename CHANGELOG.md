@@ -17,11 +17,14 @@ ships in the release notes.
   (`GET /api/mcp/live`) adds a per-agent `step` (`label`, `text`, `sec`): the
   step of the agent's running run, the same line as the dashboard ("Running
   terminal · npm test"), whenever it has one, not only while it types. Every
-  screen gets the generic label ("Thinking", "Running terminal"); the step's
-  real text only reaches screens with **Show agent thoughts**, and only for
-  runs a screen may read (the same rule as thoughts). Idle and offline agents
-  carry `last`, the task they most recently finished this week. Both fields are
-  optional and older firmware ignores them.
+  screen gets the generic label ("Thinking", "Running terminal"), or just
+  "Working in a private chat" for a run it may not read; the step's real text
+  only reaches screens with **Show agent thoughts**, and only for runs a screen
+  may read (the same rule as thoughts). A run with no event for 10 minutes, or
+  of an offline agent, is not shown as live work. Idle and offline agents carry
+  `last`, the task they most recently finished this week. Both fields are
+  optional and older firmware ignores them. Task titles on screens are now
+  redacted like thoughts.
 - **Throne Display firmware 2.1.0.** Agents show their full name when it fits.
   The Throne Room types out each working agent's real step text in its bubble,
   in turn, with its name (three dots only briefly, while there is nothing to
