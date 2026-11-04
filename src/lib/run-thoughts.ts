@@ -186,8 +186,8 @@ export function screenThoughtsFromRuns(rows: readonly RunThoughtRow[], options: 
     return out;
 }
 
-/** `step.label` on a screen: a short generic headline ("Running terminal"). */
-export const STEP_LABEL_MAX = 32;
+/** `step.label` on a screen: a short generic headline ("Running terminal"); the device stores 24 chars. */
+export const STEP_LABEL_MAX = 24;
 /** `step.text` on a screen: the step's own detail (reasoning, tool target). */
 export const STEP_TEXT_MAX = 100;
 
