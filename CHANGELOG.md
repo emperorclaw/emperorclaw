@@ -9,6 +9,20 @@ tagged (e.g. `## [1.2.0] — 2026-07-22`). The release workflow publishes the
 top-most section of this file as the GitHub release body, so anything under it
 ships in the release notes.
 
+## [Unreleased]
+
+### Fixed
+
+- **Desk displays show what agents are really thinking again.** The screen feed
+  (`GET /api/mcp/live`) only read the reasoning older bridges attached to
+  messages, which current bridges no longer send, so thought bubbles stayed
+  empty. It now reads each agent's live run step, the same line the dashboard
+  shows: team and group chats, task work, and the screen creator's own private
+  chats (only on a screen allowed to show them). A screen is stricter than the
+  dashboard: an agent's shared chat, the Work log in private mode, never
+  reaches it, since it carries other people's task wakes and routines. A
+  private run, or a bare "Thinking…" with no text, shows no bubble at all.
+
 ## [0.28.0] — 2026-11-03
 
 ### Added

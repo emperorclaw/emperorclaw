@@ -484,3 +484,68 @@ maybe("v2: look, act, mood, thought, events and needs, with private threads kept
     assert.equal("thought" in byId(onFeed.agents, cy.id), false);
     assert.ok(!onRaw.includes("salary"));
 });
+
+maybe("thought comes from the live run step, never from a private or empty one", async () => {
+    await resetDb();
+    const { companyId } = await seedCompanyWithToken();
+    const db = await getDb();
+    const { messageThreads, agentRuns, agentRunEvents } = await getSchema();
+    const now = Date.now();
+    const ago = (sec: number) => new Date(now - sec * 1000);
+    const creator = await seedMember(companyId, "owner");
+    const ada = await seedAgent(companyId, { name: "Ada", lastSeenAt: new Date() });
+    const bob = await seedAgent(companyId, { name: "Bob", lastSeenAt: new Date() });
+    const cy = await seedAgent(companyId, { name: "Cy", lastSeenAt: new Date() });
+    const dee = await seedAgent(companyId, { name: "Dee", lastSeenAt: new Date() });
+
+    const [team] = await db.insert(messageThreads).values({ companyId, type: "team", title: "Team" }).returning();
+    // Private direct chats (the default): Bob's chat belongs to another member.
+    const other = await seedMember(companyId);
+    const { ensureDirectThread } = await import("@/lib/control-plane");
+    const bobDirect = await ensureDirectThread(companyId, bob.id, other);
+    // The agent's shared chat (the Work log in private mode): every member takes part.
+    const eve = await seedAgent(companyId, { name: "Eve", lastSeenAt: new Date() });
+    const eveWorkLog = await ensureDirectThread(companyId, eve.id);
+    const fay = await seedAgent(companyId, { name: "Fay", lastSeenAt: new Date() });
+    const fayMine = await ensureDirectThread(companyId, fay.id, creator);
+
+    const run = async (agentId: string, threadId: string | null, events: { kind: string; toolName?: string; summary?: string }[]) => {
+        const id = randomUUID();
+        await db.insert(agentRuns).values({ id, companyId, agentId, threadId, status: "running", startedAt: ago(60) });
+        if (events.length) {
+            await db.insert(agentRunEvents).values(events.map((e, i) => ({
+                id: randomUUID(), companyId, runId: id, agentId, threadId, seq: i + 1, ts: ago(30 - i), kind: e.kind,
+                toolName: e.toolName ?? null, summary: e.summary ?? null,
+            })));
+        }
+    };
+    // Ada thinks in team chat; Dee runs a tool for a task; Bob thinks in a
+    // direct chat the creator is not part of; Cy has only a bare reasoning beat.
+    await run(ada.id, team.id, [{ kind: "reasoning", summary: "Comparing the two supplier quotes before replying" }]);
+    await run(dee.id, null, [{ kind: "tool.start", toolName: "terminal", summary: "npm test" }]);
+    await run(bob.id, bobDirect.id, [{ kind: "reasoning", summary: "The salary question from the other member" }]);
+    await run(cy.id, team.id, [{ kind: "reasoning" }]);
+    await run(eve.id, eveWorkLog.id, [{ kind: "reasoning", summary: "Routine wake from another member about payroll" }]);
+    await run(fay.id, fayMine.id, [{ kind: "reasoning", summary: "Answering the creator about the launch date" }]);
+
+    const screen = await seedScreenToken(companyId, creator, true, true);
+    const noThoughts = await seedScreenToken(companyId, creator, true, false);
+
+    const raw = await (await getLive(screen)).text();
+    const feed = JSON.parse(raw);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const byId = (id: string) => feed.agents.find((a: { id: string }) => a.id === id) as Record<string, any>;
+    assert.equal(byId(ada.id).thought, "Comparing the two supplier quotes before replying");
+    assert.ok(byId(ada.id).thoughtAgeSec >= 29 && byId(ada.id).thoughtAgeSec < 120);
+    assert.equal(byId(dee.id).thought, "Running terminal: npm test");
+    assert.equal("thought" in byId(bob.id), false, "another member's direct chat stays off the screen");
+    assert.equal("thought" in byId(cy.id), false, "a bare Thinking… is not shown as a thought");
+    assert.equal("thought" in byId(eve.id), false, "the shared Work log is not the creator's own chat");
+    assert.equal(byId(fay.id).thought, "Answering the creator about the launch date");
+    assert.ok(!raw.includes("salary"));
+    assert.ok(!raw.includes("payroll"));
+    assert.ok(!raw.includes("Thinking"));
+
+    const plain = JSON.parse(await (await getLive(noThoughts)).text());
+    assert.ok(plain.agents.every((a: Record<string, unknown>) => !("thought" in a)), "thoughts stay opt-in per token");
+});

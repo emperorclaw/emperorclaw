@@ -11,6 +11,7 @@ import {
 import { lastReasoningLine, stepHeadline } from "../../src/lib/live-activity";
 import { dashboardLiveFromRows, runThoughtsFromRows, runThoughtVisible, type RunThoughtRow } from "../../src/lib/dashboard-live";
 import { holdThoughts } from "../../src/lib/live-office";
+import { screenThoughtsFromRuns } from "../../src/lib/run-thoughts";
 import type { ReasoningRow } from "../../src/lib/live-feed-v2";
 import type { SceneThought } from "../../src/lib/team-scene";
 
@@ -140,6 +141,30 @@ test("live run steps win over legacy reasoning; legacy remains the fallback", ()
     assert.equal(byKey.get("agent:bob")?.text, "Old bridge thinking about the deploy plan");
     assert.equal(byKey.get("agent:bob")?.label, undefined);
     assert.equal(byKey.has("agent:stranger"), false, "agents off the roster never get a bubble");
+});
+
+test("a screen shows the real run step, and nothing for a private or empty one", () => {
+    const thinking = [ev(1, "reasoning", { summary: "Comparing the two supplier quotes before replying" })];
+    const tool = [ev(1, "tool.start", { toolName: "terminal", summary: "npm test" })];
+    const out = screenThoughtsFromRuns([
+        runRow("team", "team", thinking),
+        runRow("task", null, tool),
+        runRow("direct-outsider", "direct", thinking),
+        runRow("direct-creator", "direct", thinking, { viewerInThread: true, viewerOwnsThread: true }),
+        runRow("work-log", "direct", thinking, { viewerInThread: true }),
+        runRow("bare", "team", [ev(1, "reasoning")]),
+        runRow("tool-done", "team", [ev(1, "tool.end", { toolName: "terminal" })]),
+        runRow("quiet", "team", []),
+    ], { nowMs: NOW, includePairThreads: true });
+
+    assert.deepEqual(out.get("team"), { thought: "Comparing the two supplier quotes before replying", ageSec: 9 });
+    assert.equal(out.get("task")?.thought, "Running terminal: npm test");
+    assert.equal(out.has("direct-outsider"), false, "another member's direct chat never reaches a screen, not even as a label");
+    assert.equal(out.get("direct-creator")?.thought, "Comparing the two supplier quotes before replying");
+    assert.equal(out.has("work-log"), false, "a shared direct chat (every member takes part) is not the creator's own");
+    assert.equal(out.has("bare"), false, "a bare Thinking… is a placeholder, not a thought");
+    assert.equal(out.has("tool-done"), false, "a step without text gives no thought");
+    assert.equal(out.has("quiet"), false);
 });
 
 test("held thoughts stay until a newer one arrives and leave with the work", () => {

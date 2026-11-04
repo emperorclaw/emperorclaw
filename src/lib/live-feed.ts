@@ -5,6 +5,7 @@ import { db } from "@/db";
 import { approvals, companies, companyMembers, incidents, messageThreads, taskEvents, tasks, threadMessageReasoning, threadMessages, threadParticipants } from "@/db/schema";
 import { computeCompanyHealth, scoreAgent, type CompanyHealth, type HealthStatus } from "@/lib/agent-health";
 import { taskTitle } from "@/lib/emperor-entities";
+import { loadRunThoughtRows, screenThoughtsFromRuns, type RunThoughtRow } from "@/lib/run-thoughts";
 import { AGENT_PAIR_DESCRIPTION } from "@/lib/groups";
 import { SLA_TRACKED_TASK_STATES, TASK_STATES } from "@/lib/task-state";
 import {
@@ -648,8 +649,15 @@ export async function buildLiveFeed(companyId: string, options: {
     const reasoningPromise: Promise<ReasoningRow[]> = options.agentThoughts
         ? privateChatsPromise.then((chats) => loadRecentReasoning(companyId, since, creatorReplyIdsOf(chats)))
         : Promise.resolve([]);
+    // Live run steps (0.9 bridges), read like the dashboard with the screen's
+    // creator as viewer - only once their private chats are known to be
+    // allowed, so a direct chat they take part in counts only on an opted-in
+    // screen whose creator is still an admin.
+    const runThoughtPromise: Promise<RunThoughtRow[]> = options.agentThoughts
+        ? privateChatsPromise.then((chats) => loadRunThoughtRows(companyId, { now, viewerUserId: chats ? options.privateChatsUserId ?? null : null }))
+        : Promise.resolve([]);
     const [health, companyRows, taskCounts, agentTasks, approvalCount, typingRows, messageRows, privateChats,
-        reasoningRows, handoffRows, transitionRows, approvalRows, incidentRows] = await Promise.all([
+        reasoningRows, runThoughtRows, handoffRows, transitionRows, approvalRows, incidentRows] = await Promise.all([
         getCachedHealth(companyId, now),
         db.select({ name: companies.name }).from(companies).where(eq(companies.id, companyId)).limit(1),
         db.select({
@@ -709,6 +717,7 @@ export async function buildLiveFeed(companyId: string, options: {
                 .limit(messageLimit + 10),
         privateChatsPromise,
         reasoningPromise,
+        runThoughtPromise,
         loadRecentAgentMessages(companyId, since),
         loadRecentTransitions(companyId, since),
         loadPendingApprovals(companyId),
@@ -832,8 +841,11 @@ export async function buildLiveFeed(companyId: string, options: {
     // creator that `dm` is built from. Never another member's direct chat.
     const creatorReplyIds = new Set(creatorReplyIdsOf(privateChats));
     const thoughts = pickThoughts(reasoningRows.filter((r) => shownIds.has(r.agentId)), { nowMs: now.getTime(), creatorReplyIds });
+    // A live run step wins over legacy reasoning, as on the dashboard. Pair
+    // threads stay readable here, as they always were for legacy reasoning.
+    const runThoughts = screenThoughtsFromRuns(runThoughtRows.filter((r) => shownIds.has(r.agentId)), { nowMs: now.getTime(), includePairThreads: true });
     for (const agent of shown) {
-        const t = thoughts.get(agent.id);
+        const t = runThoughts.get(agent.id) ?? thoughts.get(agent.id);
         if (t) {
             agent.thought = t.thought;
             agent.thoughtAgeSec = t.ageSec;
