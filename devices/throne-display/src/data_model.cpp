@@ -122,11 +122,15 @@ void asciiCopy(char* dst, size_t cap, const char* src) {
     p++;
     for (int i = 0; i < extra && (*p & 0xC0) == 0x80; i++) cp = (cp << 6) | (*p++ & 0x3F);
     switch (cp) {
-      case 0x2018: case 0x2019: put('\''); break;
-      case 0x201C: case 0x201D: put('"'); break;
-      case 0x2013: case 0x2014: put('-'); break;
+      case 0x2018: case 0x2019: case 0x201A: case 0x2032: case 0x2039: case 0x203A: put('\''); break;
+      case 0x201C: case 0x201D: case 0x201E: case 0x2033: put('"'); break;
+      case 0x2010: case 0x2011: case 0x2012: case 0x2013: case 0x2014: case 0x2015: case 0x2212: put('-'); break;
+      case 0x00B7: case 0x2022: case 0x2027: case 0x22C5: put('-'); break;  // middle dot, bullets
       case 0x2026: put('.'); put('.'); put('.'); break;
-      case 0x00A0: put(' '); break;
+      case 0x2192: case 0x27F6: case 0x279C: put('-'); put('>'); break;  // arrows
+      case 0x2190: case 0x27F5: put('<'); put('-'); break;
+      case 0x21D2: put('='); put('>'); break;
+      case 0x00A0: case 0x2002: case 0x2003: case 0x2009: case 0x200A: case 0x202F: put(' '); break;
       case 0x00A1: put('!'); break;
       case 0x00BF: put('?'); break;
       case 0x00AB: case 0x00BB: put('"'); break;

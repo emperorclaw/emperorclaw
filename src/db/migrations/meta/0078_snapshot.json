@@ -1,5 +1,5 @@
 {
-  "id": "124d9b93-176d-463b-af6e-9960bd412b14",
+  "id": "189d06a8-1e14-4363-8c06-86cb95c5162c",
   "prevId": "6bc87770-7e93-4f72-8044-4f025ba89854",
   "version": "7",
   "dialect": "postgresql",
@@ -9808,6 +9808,28 @@
           "concurrently": false,
           "method": "btree",
           "with": {}
+        },
+        "task_events_completed_idx": {
+          "name": "task_events_completed_idx",
+          "columns": [
+            {
+              "expression": "company_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "created_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "where": "\"task_events\".\"event_type\" = 'task_done' OR (\"task_events\".\"event_type\" IN ('task_updated', 'task_reassigned') AND \"task_events\".\"payload_json\" ->> 'state' = 'done')",
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
         }
       },
       "foreignKeys": {
@@ -10040,40 +10062,6 @@
             }
           ],
           "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
-        "tasks_agent_last_done_idx": {
-          "name": "tasks_agent_last_done_idx",
-          "columns": [
-            {
-              "expression": "company_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "assigned_agent_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "updated_at",
-              "isExpression": false,
-              "asc": false,
-              "nulls": "last"
-            },
-            {
-              "expression": "id",
-              "isExpression": false,
-              "asc": false,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "where": "\"tasks\".\"state\" = 'done' AND \"tasks\".\"deleted_at\" IS NULL AND \"tasks\".\"assigned_agent_id\" IS NOT NULL",
           "concurrently": false,
           "method": "btree",
           "with": {}

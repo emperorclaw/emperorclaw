@@ -40,7 +40,7 @@ static uint8_t s_transTarget = 0;
 static bool s_transSwitched = false;
 
 static uint32_t s_lastTouchMs = 0;
-static uint32_t s_lastTapMs = 0;     // double-tap detection (Director: camera-safe ON)
+static uint32_t s_lastTapMs = 0;     // double-tap detection (LIVE: camera-safe ON)
 static uint32_t s_modeSince = 0;     // when the current mode became active
 static uint32_t s_bootMs = 0;
 static int s_backlight = 0;
@@ -118,8 +118,8 @@ static int transitionStep() {
 
 // ---------------------------------------------------------------- overlays
 
-// Director keeps the frame clean for filming: chrome fades out after a moment.
-static bool directorClean() { return app.mode == MODE_DIRECTOR && s_transDir == 0 && app.now - s_modeSince > 2500; }
+// LIVE keeps the frame clean: chrome fades out after a moment.
+static bool directorClean() { return app.mode == MODE_LIVE && s_transDir == 0 && app.now - s_modeSince > 2500; }
 
 
 static void drawStatusDot() {
@@ -182,8 +182,8 @@ static void drawHoldProgress() {
   int a = (int)((h - 500) * 1024 / 4500);
   if (a > 1023) a = 1023;
   arc(CX, CY, 116, 119, ANG_TOP, ANG_TOP + a, h >= 1500 ? c(pal::GOLD, 13) : pal::WHITE);
-  // In Director with camera-safe on, the 1.5 s hold turns camera-safe off instead.
-  bool safeOff = app.mode == MODE_DIRECTOR && app_camSafe();
+  // In LIVE with camera-safe on, the 1.5 s hold turns camera-safe off instead.
+  bool safeOff = app.mode == MODE_LIVE && app_camSafe();
   const char* msg = h < 1500 ? "keep holding"
                              : (h < 5000 ? (safeOff ? "release: camera-safe off"
                                                     : (net_demo() ? "release: live mode" : "release: demo mode"))
@@ -194,17 +194,19 @@ static void drawHoldProgress() {
 }
 
 static void drawDemoTag() {
-  if (!app.model.demo || app.mode == MODE_DIRECTOR) return;
+  // LIVE and TODAY label demo data themselves (their own tag / caption), where the
+  // bottom of the screen carries content.
+  if (!app.model.demo || app.mode == MODE_LIVE || app.mode == MODE_TODAY) return;
   text("DEMO", CX, 222 - 8, c(pal::VIOLET, 12), F_TINY);
   uint32_t t = app.now - s_bootMs;
   bool hint = t < 20000 || (t % 60000) < 5000;
   if (hint && touch_holdMs() < 500) arcText("hold 5s for setup", 96, ANG_BOTTOM, c(pal::NEUTRAL, 9), F_TINY, false);
 }
 
-// Camera-safe: a small badge at the 10:30 position (Director shows its own), and a
+// Camera-safe: a small badge at the 10:30 position (LIVE shows its own), and a
 // short confirmation in the middle after a toggle.
 static void drawCamSafe() {
-  if (app_camSafe() && app.mode != MODE_DIRECTOR) {
+  if (app_camSafe() && app.mode != MODE_LIVE) {
     int x, y;
     polar(100, ANG_TOP - 128, x, y);
     fillRoundRect(x - 13, y - 6, 27, 12, 6, c(pal::GOLD, 4));
@@ -316,7 +318,7 @@ static void handleGesture(const TouchEvent& ev) {
       if (app.mode == MODE_FOCUS) focus_step(-1);
       break;
     case G_TAP:
-      if (app.mode == MODE_DIRECTOR && s_transDir == 0) {
+      if (app.mode == MODE_LIVE && s_transDir == 0) {
         // A single tap opens / closes the needs card. A double-tap can only turn
         // camera-safe ON, and only when neither tap touched the card: turning it OFF
         // takes the deliberate 1.5 s hold (or the serial `camsafe` command).
@@ -336,7 +338,7 @@ static void handleGesture(const TouchEvent& ev) {
       else if (app.mode == MODE_FOCUS && s_transDir == 0) focus_openChat(true);
       break;
     case G_HOLD_2S:
-      if (app.mode == MODE_DIRECTOR && app_camSafe()) {
+      if (app.mode == MODE_LIVE && app_camSafe()) {
         app_setCamSafe(false);  // deliberate gesture, confirmed on screen
       } else if (net_demo() && !config_complete()) {
         Serial.println("[ui] no configuration yet: staying in demo (hold 5 s for setup)");
@@ -379,7 +381,7 @@ static void handleSerial() {
     }
     if (!strcmp(cmd, "help")) {
       Serial.println("commands: status | stats | version | scan | provision <base64> | demo | live | setup |"
-                     " reset | touch | mode <0-4> | camsafe | ssid <v> | pass <v> | server <url> | token <v> | save");
+                     " reset | touch | mode <0-5> (0 live, 1 today, 2 focus, 3 feed, 4 pulse, 5 throne) | camsafe | ssid <v> | pass <v> | server <url> | token <v> | save");
     } else if (!strcmp(cmd, "version")) {
       Serial.println("[version] " FW_VERSION);
     } else if (!strcmp(cmd, "scan")) {
@@ -545,12 +547,13 @@ void loop() {
     uint32_t r0 = micros();
     int bright = transitionStep();
     pal::apply(s_canvas, bright);
-    if (app.mode == MODE_THRONE || app.mode == MODE_DIRECTOR) ox += moments_nudgeX();  // knock on the glass
+    if (app.mode == MODE_THRONE || app.mode == MODE_LIVE) ox += moments_nudgeX();  // knock on the glass
     switch (app.mode) {
       case MODE_FOCUS: focus_draw(); break;
       case MODE_PULSE: pulse_draw(); break;
       case MODE_FEED: feed_draw(); break;
-      case MODE_DIRECTOR: director_draw(); break;
+      case MODE_LIVE: director_draw(); break;
+      case MODE_TODAY: today_draw(); break;
       default: throne_draw(false); break;
     }
     ox = oy = 0;

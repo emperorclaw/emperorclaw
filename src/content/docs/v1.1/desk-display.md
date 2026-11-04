@@ -23,7 +23,11 @@ The display's chip has no 5 GHz radio. It can't see or join a 5 GHz-only network
 
 ## What agents show
 
-While an agent works, the display shows its full name and the step it is on, the same line as the dashboard: **Thinking**, **Running terminal** and so on. With **Show agent thoughts**, it also shows that step's detail (what the agent is thinking, the command it runs), but only for work anyone in the company could see: team chat, groups and task work. An idle agent shows the last task it finished this week.
+The display starts on **LIVE**: a camera that moves from one working agent to the next and shows, under its full name, what it is doing right now, in plain words: **Thinking**, **Using terminal**, **Searching the web**, **Reading**, **Writing the reply** and so on. With **Show agent thoughts**, it also shows the detail (what the agent is thinking, the command it runs, what it searches for), but only for work anyone in the company could see: team chat, groups and task work. Work in someone's private chat only ever reads "Working in a private chat". When nobody is working, LIVE shows "All quiet" and the last task an agent finished.
+
+Swipe left for **TODAY**: what your agents cost today (from midnight in your company's timezone), how many runs and tokens, how many tasks they finished, and who spent the most. It counts only work the screen may show: task work, team chat and groups (and your own private chats, on a screen allowed to show them). Other people's private chats never count, not even in the totals. When your agents' runtime doesn't report costs, the cost shows as "-". Further swipes show one agent at a time (Focus), the latest messages, a health radar and the Throne Room overview.
+
+Camera-safe (scrambled text for filming) is off by default. Double-tap LIVE to turn it on; hold for 1.5 seconds and release to turn it off.
 
 ## Private chats
 

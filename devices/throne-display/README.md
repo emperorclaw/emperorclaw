@@ -95,7 +95,7 @@ If the port still drops, use a shorter or better cable, plug into a port on the 
 
 ## First boot: demo mode
 
-When the display has no configuration, it starts in **demo mode**. A scripted company of 7 agents, each with its own look, acts out its work and thinks out loud. A handoff paper plane flies every ~8 s and a task finishes (confetti and a crown flash) every ~15 s. Every ~45 s an agent knocks on the glass because it needs you, and gets answered ~18 s later. Every ~33 s an agent gets blocked. Agents also take coffee, stretch and nap breaks, go down and come back, and chat. The first handoff, task done and needs-you all play within 15 seconds, so demo mode is also the easiest thing to film. A small **DEMO** tag appears at the bottom (hidden in Director).
+When the display has no configuration, it starts in **demo mode**. A scripted company of 7 agents, each with its own look, acts out its work and thinks out loud. A handoff paper plane flies every ~8 s and a task finishes (confetti and a crown flash) every ~15 s. Every ~45 s an agent knocks on the glass because it needs you, and gets answered ~18 s later. Every ~33 s an agent gets blocked. Agents also take coffee, stretch and nap breaks, go down and come back, and chat. The first handoff, task done and needs-you all play within 15 seconds, so demo mode is also the easiest thing to film. A small **DEMO** tag appears at the bottom; in LIVE the top tag reads **DEMO** instead of **LIVE**, and TODAY shows a sample day.
 
 ## Setup without a browser: captive portal
 
@@ -124,7 +124,7 @@ Settings are stored in the chip's NVS (Preferences). Saved secrets are never sho
 | `demo` / `live` | Switch data source (saved) |
 | `setup` | Open the setup portal |
 | `ssid <v>`, `pass <v>`, `server <url>`, `token <v>`, then `save` | Configure without the portal |
-| `mode <0-4>` | Jump to a mode (0 Throne, 1 Focus, 2 Pulse, 3 Feed, 4 Director) |
+| `mode <0-5>` | Jump to a mode (0 LIVE, 1 TODAY, 2 Focus, 3 Feed, 4 Pulse, 5 Throne). Firmware before 2.2.0 numbered them 0 Throne, 1 Focus, 2 Pulse, 3 Feed, 4 Director |
 | `camsafe` | Toggle camera-safe |
 | `touch` | Toggle touch debug logging |
 | `reset` | Erase all settings and restart |
@@ -143,16 +143,17 @@ The line buffer is 768 bytes and is wiped after every command, because a line ca
 
 ## Modes and gestures
 
-Swipe **left / right** to change mode. Dots along the bottom edge show which mode is active.
+Swipe **left / right** to change mode. Dots along the bottom edge show which mode is active. The display starts in **LIVE**; the order is LIVE, TODAY, Focus, Feed, Pulse, Throne Room: what the agents are doing and what the day cost come first, then one agent at a time and the lists, and the overview last.
 
 | Mode | What you see |
 |---|---|
-| **Throne Room** (default) | A round "tiny living office" seen from above. The Emperor sits on a throne in the middle. Agents look like they do on the web (robot or human, hair, skin, glasses / headset / cap / bow), sit at desks around the throne and act out what they are doing (see [Acting](#acting)). Every few seconds one working agent's own words type out in a cloud above its head, with its name: the real text of its current step or its latest **thought**, else the step's label ("Running terminal"). Agents take turns, so every working agent gets the cloud. Three dots appear only briefly while an agent has nothing to show yet. Desks show full names when they fit. **Attention**: red "!" above the head. A gold **envelope** next to an agent's head means a private message in the last 10 minutes. **Tap an agent** to open it in Focus. Tap the outer ring, or an agent at the glass, to read what needs you. |
+| **LIVE** (default) | An automatic camera over the agents at work (earlier firmware called it Director). It pushes in on each working agent in turn and its bubble types out what the agent is doing, in the server's words, at reading speed, then holds about 3 s: "Thinking: comparing both quotes", "Using terminal: npm test", "Searching the web: desk lamps", "Writing the reply", "Working in a private chat". The caption is the agent's full name and how long it has been on the step. Every moment (handoff, task done, needs you, blocked) interrupts the cycle and gets framed. When nobody works the camera stays wide: "All quiet" with the last finished task ("last: Ada finished Q3 summary", and when). To keep the frame clean, the status dot and mode dots fade out after 2.5 s; the **LIVE** tag (**DEMO** in demo mode) stays. **Double-tap** turns camera-safe on; **hold 1.5 s and release** turns it off. A single tap shows what needs you. |
+| **TODAY** | The day at a glance, since midnight in the company's timezone (UTC when none is set), for the agents on this screen: what it cost (big, in dollars; "-" when no run reported a cost), runs, tokens and tasks finished today, the three agents that spent the most, and how many approvals wait for you. It counts only work the screen may see: task runs, team chat and groups, and your own private chats on a screen allowed to show them; other people's private chats never count, not even as totals. In demo mode it shows a sample day, marked DEMO SAMPLE. |
+| **Throne Room** | A round "tiny living office" seen from above. The Emperor sits on a throne in the middle. Agents look like they do on the web (robot or human, hair, skin, glasses / headset / cap / bow), sit at desks around the throne and act out what they are doing (see [Acting](#acting)). Every few seconds one working agent's own words type out in a cloud above its head, with its name: the real text of its current step or its latest **thought**, else the step's label ("Running terminal"). Agents take turns, so every working agent gets the cloud. Three dots appear only briefly while an agent has nothing to show yet. Desks show full names when they fit. **Attention**: red "!" above the head. A gold **envelope** next to an agent's head means a private message in the last 10 minutes. **Tap an agent** to open it in Focus. Tap the outer ring, or an agent at the glass, to read what needs you. |
 | **Focus** | One agent per page. **Swipe up / down** to move between agents. Shows a large character acting out what it is doing, the name curved along the top, a state chip, the current step with its timer ("Running terminal  1m 05s") and the step's text or the latest thought typing out in a cloud (or the current activity; long text scrolls), the task title, and when the agent was last seen. An idle agent shows "Idle" and its last finished task; an offline one "Not responding". The outer ring is the health color, and its progress arc tracks how long the agent has been in its current state (one turn per minute). A gold envelope beside the character means a private message in the last 10 minutes. **Tap** to open the agent's private chat. |
 | **Focus: private chat** | Your direct messages with that agent, as bubbles inside the circle: yours on the right in gold, the agent's on the left in its own color, newest at the bottom, each with its age. A padlock in the header marks it as private. "No private messages" when there are none (or the token does not include private chats). **Swipe down** for older messages, **swipe up** for newer ones. **Tap**, or swipe left / right, to go back to the agent page. |
 | **Pulse** | A health radar. Each agent gets one arc segment around the edge, colored by health, and lights up as the rotating sweep passes over it. The center shows healthy/total, plus working, in progress, overdue and pending approvals. Tap a segment to focus that agent. |
 | **Feed** | The latest messages as chat bubbles, each with the sender's mini character. New messages slide in from the bottom. |
-| **Director** | An automatic camera for filming, one swipe right from the Throne Room. It cycles through shots: the wide room, an eased 2x push-in on the busiest agent while its thought types out, then a pull back to the next agent. Every moment (handoff, task done, needs you, blocked) interrupts the cycle and gets framed. A caption gives the agent's name and its current step ("Ada Lovelace - Running terminal: npm test"; the step text is hidden while camera-safe). To keep the frame clean, the status dot, mode dots and DEMO tag fade out after 2.5 s; a **LIVE** tag and the camera-safe badge stay. **Double-tap** turns camera-safe on; **hold 1.5 s and release** turns it off. A single tap shows what needs you. |
 
 Gesture map:
 
@@ -166,11 +167,11 @@ Gesture map:
 | Private chat | Swipe down / up | Older / newer messages |
 | Private chat | Tap | Back to the agent page |
 | Throne Room | Tap the outer ring, or an agent at the glass | Show what needs you (tap again to close, or wait 6 s) |
-| Director | Double-tap | Turn camera-safe on (saved) |
-| Director | Hold 1.5 s, then release (camera-safe on) | Turn camera-safe off (saved); the hold hint reads "release: camera-safe off" |
-| Director | Tap | Show what needs you |
+| LIVE | Double-tap | Turn camera-safe on (saved) |
+| LIVE | Hold 1.5 s, then release (camera-safe on) | Turn camera-safe off (saved); the hold hint reads "release: camera-safe off" |
+| LIVE | Tap | Show what needs you |
 
-To get from Focus back to the Throne Room, swipe right. (Earlier firmware used a tap for this; the tap now opens the private chat.)
+From Focus, swipe right to go back to TODAY and LIVE, or left to Feed, Pulse and the Throne Room. (Earlier firmware used a tap for this; the tap now opens the private chat.)
 
 Long press anywhere:
 
@@ -181,7 +182,7 @@ Overlays that appear in every mode:
 
 - **Red pulsing rim**: at least one agent is down.
 - **Gold pulsing ring**: there are pending approvals. While the feed lists `needs`, the ring is brighter, thicker and faster until they are answered.
-- **SAFE badge** (at about the 10:30 position, or next to LIVE in Director): camera-safe is on.
+- **SAFE badge** (at about the 10:30 position, or next to the LIVE tag in LIVE): camera-safe is on.
 - **Status dot**: violet means demo, green means live, gold means connecting or stale data, red means error. It brightens during a fetch.
 - **Backlight**: dims after 2 minutes with no touch and no data change. It wakes on touch or when new data arrives.
 
@@ -221,7 +222,7 @@ Servers without events (v1) still trigger confetti when an agent's task id chang
 
 Camera-safe is for filming without leaking client data. Thought, message, activity, task and request text turns into unreadable scribbles of the same width. Agent names become initials ("A.R."), and the company name in Feed becomes "Team feed".
 
-Until you first toggle it, camera-safe is on in Director only. In Director, double-tap to turn it on, or hold 1.5 s and release to turn it off (while it is on, that hold does not switch demo / live). A tap that opens or closes the needs card never counts toward a double-tap. The serial `camsafe` command toggles it. From then on your choice applies to every mode: Throne, Focus, private chat, Feed and Director. It is saved in NVS (namespace `throne-ui`), so it survives restarts and firmware updates.
+Camera-safe is **off** until you turn it on (firmware before 2.2.0 had it on in Director by default, which drew the agents' words as scribbles). In LIVE, double-tap to turn it on, or hold 1.5 s and release to turn it off (while it is on, that hold does not switch demo / live). A tap that opens or closes the needs card never counts toward a double-tap. The serial `camsafe` command toggles it. From then on your choice applies to every mode: LIVE, TODAY, Focus, private chat, Feed and Throne. It is saved in NVS (namespace `throne-ui`), so it survives restarts and firmware updates.
 
 Agent colors are health-coded in rings and segments: green healthy, orange attention, red down, blue idle. Each character's body color comes from the agent's `hue`.
 
@@ -244,7 +245,8 @@ The fields it uses:
 - Feed 2.1 additions (firmware 2.1.0, still `"v": 2`, all optional):
   - `agents[].step.{label, text, sec}`: the current step of the agent's running run. `label` is generic ("Thinking", "Running terminal", at most 26 chars), and only "Working in a private chat" for a run the screen may not read; `text` is the step's real detail, sent only to screens with **Show agent thoughts** for runs the screen may read, and only for the 6 most recent steps; `sec` is how long the agent has been on it. A run with no event for 10 minutes, or of an offline agent, gives no step. `last` is sent for the 6 most recently finished agents. An agent with a step acts out working even without a task.
   - `agents[].last.{title, ageSec}`: an idle or offline agent's latest finished task from the last 7 days.
-  - Names: `name` is the full name and `short` the first word. The firmware shows `name` wherever it fits (desk labels, bubbles, Director captions) and falls back to `short`.
+  - Feed 2.2 (firmware 2.2.0): `step.label` is narrated by the server ("Thinking", "Using terminal", "Searching the web", "Reading", "Editing", "Writing the reply", "Delegating to Bob", "Working in a private chat"); the firmware shows `label` or `label: text`. `today.{cost, runs, tokensK, done, top[].{agentId, cost}}` is the day's usage of the agents on the screen, counting only runs the screen may read (`cost` in cents, null when no run reported a cost above zero; `tokensK` in thousands; `done` counts tasks whose completion happened today); TODAY shows it. `last` is the newest task completion of the last 7 days (an edit to an old done task does not move it).
+  - Names: `name` is the full name and `short` the first word. The firmware shows `name` wherever it fits (desk labels, bubbles, LIVE captions, TODAY) and falls back to `short`.
 
 Assumptions the firmware makes about the server:
 
@@ -279,7 +281,7 @@ The ESP32-C3 has no PSRAM, and Wi-Fi plus TLS need roughly 50 KB of heap. These 
 - **Background networking.** Fetching, parsing and the demo simulation run on their own FreeRTOS task. Each finished snapshot is copied under a mutex into a shared slot. The render loop copies it into its own fixed-size `Model`, so drawing never waits on I/O and never allocates.
 - **Bounded JSON parsing.** ArduinoJson parses straight from the socket with a filter document, so only the needed fields are kept.
 - **Procedural characters.** Each agent is drawn every frame from its `look` on a 16x20 grid, with a 1-pixel outline, a pose and an expression. The scale is 2 in the Throne Room (1 with more than 8 agents) and 3 in Focus. Nothing is stored per agent, which removed the old 12x12 sprite buffers (about 14 KB). Skin and hair colors are mapped to the nearest palette entries at boot.
-- **Director zoom without a second buffer.** The scene is drawn at 1x, then the 8-bit frame is zoomed in place (nearest neighbour). The rows are processed in an order that never reads a row that was already overwritten. Text overlays are drawn after the zoom, so they stay sharp.
+- **LIVE zoom without a second buffer.** The scene is drawn at 1x, then the 8-bit frame is zoomed in place (nearest neighbour). The rows are processed in an order that never reads a row that was already overwritten. Text overlays are drawn after the zoom, so they stay sharp.
 
 Measured on the device with firmware 1.1.0 (demo mode, 7 agents). Not yet re-measured for v2:
 

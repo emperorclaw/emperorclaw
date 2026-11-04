@@ -227,7 +227,7 @@ void focus_draw() {
     }
     uint32_t elapsed = app.now - s_thoughtStart;
     if (elapsed > 60000) elapsed = 60000;  // fully typed long before; avoids overflow
-    typed = (int)(elapsed * 30 / 1000);
+    typed = (int)(elapsed * 20 / 1000);  // reading speed, as in LIVE
     // Cloud behind the text, with two puffs rising from the character (not over a step header).
     if (stepSec < 0) {
       fillCircle(CX + 22, 116, 2, c(an.ramp, 3));

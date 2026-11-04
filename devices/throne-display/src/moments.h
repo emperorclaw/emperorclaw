@@ -20,7 +20,7 @@ struct Moment {
 
 void moments_sync(bool firstSync);  // after app.model was replaced
 void moments_update();              // once per frame (called by app_update)
-// World space (inside the throne room, before a Director zoom): paper planes, glass ripples.
+// World space (inside the throne room, before a LIVE zoom): paper planes, glass ripples.
 void moments_drawWorld();
 // The Throne Room's own rotating thought bubble.
 void moments_drawThroneBubble();
@@ -37,7 +37,7 @@ int moments_crownFlash();
 // True while the Emperor knocks on the glass (a need without a requesting agent);
 // *hit is set on the frames where the knock lands.
 bool moments_emperorKnock(bool* hit);
-// Tap in the throne room / Director. Opens (or closes) the needs card when the tap
+// Tap in the throne room / LIVE. Opens (or closes) the needs card when the tap
 // hits the outer ring, a waiting agent, or anywhere when `anywhere`. True if consumed.
 bool moments_tap(int x, int y, bool anywhere);
 bool moments_cardOpen();

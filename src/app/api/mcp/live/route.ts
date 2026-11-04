@@ -24,7 +24,16 @@ import { moduleGuard } from "@/lib/modules-server";
  * thread-less task runs, or the creator's own private chat when private chats
  * are included). Per-agent `last` ({ title, ageSec }) is an idle or offline
  * agent's latest finished task from the last 7 days. Both are removed with
- * their agent by scopeLiveFeed below.
+ * their agent by scopeLiveFeed below. Step labels are narrated
+ * (step-phrases.ts: "Using terminal", "Searching the web"); a run the screen
+ * may not read only says "Working in a private chat".
+ *
+ * `today` ({ cost, runs, tokensK, done, top }) is the usage since local
+ * midnight (company timezone, else UTC) of the agents on the screen;
+ * scopeLiveFeed re-sums it for a narrower viewer. It counts only runs the
+ * screen may read (the step / thought rule: no other member's private chat,
+ * no Work log) and tasks by their completion event. `cost` is null when no
+ * run reported a cost above zero.
  */
 export async function GET(req: NextRequest) {
     const auth = await verifyMcpToken(req, { allowReadOnlyScope: true });

@@ -161,10 +161,10 @@ const char* stepLabelFor(uint8_t act) {
   switch (act) {
     case ACT_TALKING: return "Writing the reply";
     case ACT_THINKING: return "Thinking";
-    case ACT_REVIEWING: return "Running browser";
+    case ACT_REVIEWING: return "Browsing the web";
     case ACT_PRESENTING: return "Delegating";
-    case ACT_WRITING: return "Running write_file";
-    default: return "Running terminal";
+    case ACT_WRITING: return "Editing";
+    default: return "Using terminal";
   }
 }
 
@@ -264,6 +264,7 @@ void taskDone(Model& m) {
   snprintf(buf, sizeof(buf), "Done: %s", a.task);
   pushMessage(m, i, buf);
   pushEvent(m, EV_TASK_DONE, i, -1, a.task);
+  m.today.done++;
   a.taskHash = 0;
   a.task[0] = 0;
   s_taskIdx[i]++;
@@ -402,6 +403,21 @@ void demo_init(Model& m) {
   pushMessage(m, 1, "Billing webhook refactor is 80% done.");
   pushMessage(m, 6, "Launch post outline is ready for review.");
   for (int i = 0; i < m.nMsgs; i++) m.msgs[i].ageSec = (m.nMsgs - i) * 45;
+  // Sample day for the TODAY screen (demo only).
+  m.today.has = true;
+  m.today.cost = 1842;
+  m.today.runs = 64;
+  m.today.tokensK = 912;
+  m.today.done = 7;
+  static const struct {
+    uint8_t agent;
+    int32_t cost;
+  } kTop[] = {{1, 731}, {0, 512}, {3, 288}};
+  for (const auto& t : kTop) {
+    m.today.top[m.today.nTop].agentHash = m.agents[t.agent].idHash;
+    m.today.top[m.today.nTop].cost = t.cost;
+    m.today.nTop++;
+  }
   model_recount(m);
   s_nextHandoff = now + 3000;
   s_nextDone = now + 7000;

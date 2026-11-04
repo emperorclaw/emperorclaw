@@ -7,12 +7,15 @@
 #include "character.h"
 #include "data_model.h"
 
-// Director is last so the serial `mode <n>` numbers of the v1 modes stay the same;
-// one swipe right from the Throne Room (the default) reaches it.
-enum Mode : uint8_t { MODE_THRONE = 0, MODE_FOCUS, MODE_PULSE, MODE_FEED, MODE_DIRECTOR, MODE_COUNT };
+// Swipe order (2.2.0). LIVE, the automatic camera over the agents at work, is the
+// boot screen: it is what a desk display is for. TODAY (spend and output) is one
+// swipe away, then the per-agent and list views; the Throne Room overview is last.
+// The serial `mode <n>` numbers follow this order.
+enum Mode : uint8_t { MODE_LIVE = 0, MODE_TODAY, MODE_FOCUS, MODE_FEED, MODE_PULSE, MODE_THRONE, MODE_COUNT };
 
-// Camera-safe preference (NVS "throne-ui"/"camsafe"). AUTO (never toggled) = on in
-// Director only; after a double-tap it is explicitly on or off in every mode.
+// Camera-safe preference (NVS "throne-ui"/"camsafe"). AUTO (never toggled) = off:
+// a desk display shows the real text. A double-tap in LIVE (or the serial `camsafe`
+// command) turns it on, explicitly, in every mode, for filming.
 enum CamSafe : uint8_t { CAMSAFE_OFF = 0, CAMSAFE_ON = 1, CAMSAFE_AUTO = 255 };
 
 struct AgentAnim {
@@ -136,4 +139,5 @@ void pulse_draw();
 bool pulse_tap(int x, int y);
 void feed_draw();
 void director_enter();
-void director_draw();
+void director_draw();  // the LIVE screen
+void today_draw();

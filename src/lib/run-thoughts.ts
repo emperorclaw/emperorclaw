@@ -3,6 +3,7 @@ import { db } from "@/db";
 import { agentRunEvents, agentRuns, messageThreads, threadParticipants } from "@/db/schema";
 import { AGENT_PAIR_DESCRIPTION } from "@/lib/groups";
 import { cleanSnippet, LIVE_RECENT_MS, THOUGHT_MAX } from "@/lib/live-feed-v2";
+import { humanStep } from "@/lib/step-phrases";
 import { buildRunLive, deriveActivityLine, isTerminalRunEventKind, publicActivityLine, RUN_LIVE_MAX_AGE_MS, type RunEventSource } from "@/lib/run-events";
 
 /**
@@ -248,6 +249,21 @@ function stepLabel(value: string): string {
     return cleanSnippet(screenAscii(value).replace(/\s*\.{2,}$/, ""), STEP_LABEL_MAX);
 }
 
+/**
+ * Fixed, content-free lines a status step can carry; publicActivityLine folds
+ * them all into "Working", but they say what the agent does without quoting
+ * anything, so any screen may show them.
+ */
+const GENERIC_STATUS_LINES: ReadonlySet<string> = new Set(["Writing the reply…", "Tidying memory…", "Memory tidied", "Proceeding with best judgment"]);
+
+/** publicActivityLine, except that a fixed generic status line ("Writing the reply…") is kept. */
+function genericLabelOf(event: RunEventSource): string {
+    const pub = publicActivityLine(event);
+    if (pub !== "Working") return pub;
+    const line = deriveActivityLine(event);
+    return line && GENERIC_STATUS_LINES.has(line) ? line : pub;
+}
+
 function withKey(step: Omit<ScreenStep, "key">, key: string): ScreenStep {
     return Object.defineProperty(step, "key", { value: key, enumerable: false }) as ScreenStep;
 }
@@ -283,9 +299,9 @@ export function screenStepsFromRuns(rows: readonly RunThoughtRow[], options: { n
             out.set(row.agentId, withKey({ label: PRIVATE_ACTIVITY, sec }, key));
             continue;
         }
-        const publicLabel = stepLabel(event ? publicActivityLine(event) : "Working") || "Working";
+        const publicLabel = stepLabel(event ? genericLabelOf(event) : "Working") || "Working";
         if (!options.allowText) {
-            out.set(row.agentId, withKey({ label: publicLabel, sec }, key));
+            out.set(row.agentId, withKey({ ...humanStep(publicLabel), sec }, key));
             continue;
         }
         const line = live.current.summary;
@@ -294,7 +310,7 @@ export function screenStepsFromRuns(rows: readonly RunThoughtRow[], options: { n
         const detail = split >= 0 ? line.slice(split + 3) : line;
         const text = cleanSnippet(screenAscii(detail), STEP_TEXT_MAX);
         const sameAsLabel = stepLabel(detail).toLowerCase() === label.toLowerCase();
-        out.set(row.agentId, withKey(text && !sameAsLabel ? { label, text, sec } : { label, sec }, key));
+        out.set(row.agentId, withKey({ ...humanStep(label, text && !sameAsLabel ? text : undefined), sec }, key));
     }
     return out;
 }

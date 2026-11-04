@@ -104,18 +104,24 @@ void app_syncAnim(bool firstSync) {
 
 // A running run (feed 2.1 `step`) is real work even without a task or a typing row:
 // the character acts out the kind of step instead of idling.
+static bool startsWith(const char* s, const char* p) { return strncmp(s, p, strlen(p)) == 0; }
+
 static uint8_t stepAct(const Agent& a) {
-  if (strncmp(a.step, "Thinking", 8) == 0) return ACT_THINKING;
-  if (strncmp(a.step, "Writing", 7) == 0) return ACT_WRITING;
-  if (strncmp(a.step, "Delegating", 10) == 0) return ACT_PRESENTING;
+  const char* s = a.step;
+  if (startsWith(s, "Thinking") || startsWith(s, "Planning")) return ACT_THINKING;
+  if (startsWith(s, "Writing the reply") || startsWith(s, "Sending")) return ACT_TALKING;
+  if (startsWith(s, "Writing") || startsWith(s, "Editing")) return ACT_WRITING;
+  if (startsWith(s, "Reading") || startsWith(s, "Browsing") || startsWith(s, "Searching") || startsWith(s, "Checking"))
+    return ACT_REVIEWING;
+  if (startsWith(s, "Delegating")) return ACT_PRESENTING;
   return ACT_TYPING;
 }
 
 static uint8_t baseAct(const Agent& a) {
   if (a.health == H_DOWN || a.state == S_OFFLINE) return ACT_OFFLINE;
-  bool idleAct = a.act == ACT_IDLE || a.act == ACT_COFFEE || a.act == ACT_NAP || a.act == ACT_STRETCH ||
-                 (a.act == ACT_AUTO && a.state == S_IDLE);
-  if (a.step[0] && idleAct) return stepAct(a);
+  // The live step decides the pose (it is what the screen narrates), except when the
+  // agent is blocked or waiting on a human.
+  if (a.step[0] && a.act != ACT_BLOCKED && a.act != ACT_WAITING) return stepAct(a);
   if (a.act != ACT_AUTO) return a.act;
   switch (a.state) {
     case S_TYPING: return ACT_TALKING;  // v1 "typing" = writing a chat message
@@ -466,7 +472,8 @@ void app_loadPrefs() {
 }
 
 bool app_camSafe() {
-  if (app.camSafePref == CAMSAFE_AUTO) return app.mode == MODE_DIRECTOR;
+  // Off unless explicitly turned on: scrambled text on a desk looks like a broken glyph.
+  if (app.camSafePref == CAMSAFE_AUTO) return false;
   return app.camSafePref == CAMSAFE_ON;
 }
 
@@ -527,9 +534,8 @@ uint8_t app_speech(const Model& m, const Agent& a, char* out, size_t cap) {
   out[0] = 0;
   const char* st = model_stepText(m, a);
   if (st) {
-    // A Thinking step's detail is the thought itself; a tool step reads "label: target".
-    if (strcmp(a.step, "Thinking") == 0) strlcpy(out, st, cap);
-    else snprintf(out, cap, "%s: %s", a.step, st);
+    // The server narrates the step ("Thinking", "Using terminal"); its detail follows.
+    snprintf(out, cap, "%s: %s", a.step, st);
     return SPEECH_TEXT;
   }
   const Thought* th = model_thought(m, a);
