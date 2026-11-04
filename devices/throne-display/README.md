@@ -242,7 +242,7 @@ The fields it uses:
   - `events[].{id, t, a, b, title, ageSec}`, where `t` is `handoff`, `task_done`, `needs_you` or `blocked`
   - `needs[].{agentId, title}` (`agentId` can be empty)
 - Feed 2.1 additions (firmware 2.1.0, still `"v": 2`, all optional):
-  - `agents[].step.{label, text, sec}`: the current step of the agent's running run. `label` is generic ("Thinking", "Running terminal", at most 24 chars); `text` is the step's real detail, sent only to screens with **Show agent thoughts** for runs the screen may read; `sec` is how long the agent has been on it. An agent with a step acts out working even without a task.
+  - `agents[].step.{label, text, sec}`: the current step of the agent's running run. `label` is generic ("Thinking", "Running terminal", at most 26 chars), and only "Working in a private chat" for a run the screen may not read; `text` is the step's real detail, sent only to screens with **Show agent thoughts** for runs the screen may read, and only for the 6 most recent steps; `sec` is how long the agent has been on it. A run with no event for 10 minutes, or of an offline agent, gives no step. `last` is sent for the 6 most recently finished agents. An agent with a step acts out working even without a task.
   - `agents[].last.{title, ageSec}`: an idle or offline agent's latest finished task from the last 7 days.
   - Names: `name` is the full name and `short` the first word. The firmware shows `name` wherever it fits (desk labels, bubbles, Director captions) and falls back to `short`.
 

@@ -25,7 +25,7 @@ constexpr int TITLE_TEXT = 57;
 // Feed 2.1: per-agent `step` (label inline, text in a shared pool like thoughts) and
 // `last` (latest finished task, shared pool: only idle / offline agents carry one).
 // The Model is held three times (producer, shared, render), so these stay small.
-constexpr int STEP_LABEL = 25;  // server caps labels at 24 chars
+constexpr int STEP_LABEL = 27;  // server caps labels at 26 chars ("Working in a private chat")
 constexpr int MAX_STEP_TEXTS = 6;
 constexpr int STEP_TEXT = 101;
 constexpr int MAX_LASTS = 6;
