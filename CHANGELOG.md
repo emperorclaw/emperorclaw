@@ -25,7 +25,10 @@ ships in the release notes.
   agents on the screen cost today (from midnight in the company's timezone,
   else UTC), runs, tokens, tasks done, the three agents that spent the most and
   approvals waiting. The feed carries it as `today`; a cost no run reported
-  shows as "-", never $0.00. Screens scoped to some agents count only theirs.
+  shows as "-", never $0.00. It counts only work the screen may see (other
+  members' private chats never count, not even in totals), and tasks by when
+  they were finished, not last edited. Screens scoped to some agents count
+  only theirs.
 
 ### Changed
 

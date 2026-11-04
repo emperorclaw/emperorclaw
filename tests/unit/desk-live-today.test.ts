@@ -26,6 +26,16 @@ test("tool steps read as what the agent is doing, never adding words the step di
     assert.deepEqual(humanStep("Delegating"), { label: "Delegating" });
     assert.deepEqual(humanStep(PRIVATE_ACTIVITY), { label: PRIVATE_ACTIVITY });
     assert.equal(prettyToolName("functions.web_fetch"), "web fetch");
+    // Whole words only: a tool that merely contains a family's letters keeps its own name.
+    assert.equal(toolVerb("example_x"), "Using example x");
+    assert.equal(toolVerb("catalog"), "Using catalog");
+    assert.equal(toolVerb("lsp_hover"), "Using lsp hover");
+    assert.equal(toolVerb("process_invoice"), "Using process invoice");
+    assert.equal(toolVerb("org_lookup"), "Using org lookup");
+    assert.equal(toolVerb("explain_plan"), "Using explain plan");
+    assert.equal(toolVerb("ls"), "Reading");
+    assert.equal(toolVerb("Bash"), "Using terminal");
+    assert.equal(toolVerb("mcp__brave__brave_search"), "Searching the web");
     assert.equal(toolVerb(""), "Using a tool");
     assert.ok(humanStep(`Running ${"very_long_tool_name_".repeat(4)}`).label.length <= 26);
 });

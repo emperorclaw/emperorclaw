@@ -748,24 +748,35 @@ export const LIVE_LAST_DONE_MS = 7 * 24 * 60 * 60 * 1000;
 export const LAST_TITLE_MAX = 56;
 
 /**
- * Each agent's most recently finished (done) task from the last 7 days, ONE
- * row per agent (DISTINCT ON), in one query for the company.
+ * A task_events row that finished a task: `task_done`, or an update or
+ * reassignment that set the state to done (the transitions loadRecentTransitions
+ * reads). Matches the partial index task_events_completed_idx exactly.
  */
-function loadLastDoneTasks(companyId: string, now: Date) {
-    return db.selectDistinctOn([tasks.assignedAgentId], {
-        agentId: tasks.assignedAgentId,
-        title: sql<string | null>`${tasks.inputJson}->>'title'`,
-        taskType: tasks.taskType,
-        doneAt: tasks.updatedAt,
-    }).from(tasks)
-        .where(and(
-            eq(tasks.companyId, companyId),
-            eq(tasks.state, TASK_STATES.done),
-            isNull(tasks.deletedAt),
-            isNotNull(tasks.assignedAgentId),
-            gt(tasks.updatedAt, new Date(now.getTime() - LIVE_LAST_DONE_MS)),
-        ))
-        .orderBy(tasks.assignedAgentId, desc(tasks.updatedAt), desc(tasks.id));
+const COMPLETION_EVENT = sql`(e.event_type = 'task_done' OR (e.event_type IN ('task_updated', 'task_reassigned') AND e.payload_json ->> 'state' = 'done'))`;
+
+/** `to_timestamp` of a JS instant as a UTC `timestamp` (columns are timestamp without time zone, in UTC). */
+function utcTimestamp(at: Date) {
+    return sql`(to_timestamp(${at.getTime()}::double precision / 1000) AT TIME ZONE 'UTC')`;
+}
+
+/**
+ * Each agent's most recently finished task from the last 7 days, ONE row per
+ * agent (DISTINCT ON), in one query for the company. "Finished" is the
+ * completion event's time, not tasks.updated_at (an edit to an old done task
+ * must not make it look new); the task must still be done and assigned to
+ * the agent. Reads task_events_completed_idx.
+ */
+async function loadLastDoneTasks(companyId: string, now: Date) {
+    const result = await db.execute<{ agent_id: string; title: string | null; task_type: string | null; done_ms: number | string }>(sql`
+        SELECT DISTINCT ON (tk.assigned_agent_id) tk.assigned_agent_id AS agent_id, tk.input_json ->> 'title' AS title,
+               tk.task_type, extract(epoch from e.created_at) * 1000 AS done_ms
+          FROM ${taskEvents} e
+          JOIN ${tasks} tk ON tk.id = e.task_id AND tk.company_id = ${companyId}
+         WHERE e.company_id = ${companyId} AND e.created_at > ${utcTimestamp(new Date(now.getTime() - LIVE_LAST_DONE_MS))}
+           AND ${COMPLETION_EVENT}
+           AND tk.state = ${TASK_STATES.done} AND tk.deleted_at IS NULL AND tk.assigned_agent_id IS NOT NULL
+         ORDER BY tk.assigned_agent_id, e.created_at DESC, e.id DESC`);
+    return result.rows.map((r) => ({ agentId: r.agent_id, title: r.title, taskType: r.task_type, doneAt: new Date(Math.round(Number(r.done_ms))) }));
 }
 
 /** Pure: `last` for one agent — an ASCII title of at most LAST_TITLE_MAX chars, or undefined. */
@@ -779,23 +790,39 @@ export function lastDoneOf(row: { title: string | null; taskType: string | null;
 /**
  * Each agent's usage since `since` (local midnight) in ONE query: runs,
  * tokens and cost from agent_runs (agent_runs_company_started_idx range) and
- * tasks finished from tasks (tasks_agent_last_done_idx), one row per agent.
+ * tasks finished today from their completion events (task_events_completed_idx),
+ * one row per agent.
+ *
+ * Only runs the screen may read count, by the same rule as screenRunVisible
+ * (and the same thread join as loadRunThoughtRows): thread-less task runs,
+ * team and group threads (agent pair threads included, as on screens), and a
+ * direct chat only when it is the viewer's own private chat. `viewerUserId`
+ * is set only on an opted-in screen whose creator may show private chats.
+ * Other members' chats and the shared Work log never count, so a screen's
+ * totals cannot reveal when someone else talks to an agent. A cost counts only
+ * when a run reported one (cost_cents > 0); runtimes that report none leave
+ * `costed` at 0, so the screen shows "-", not $0.00.
  */
-async function loadTodayRows(companyId: string, since: Date): Promise<TodayRow[]> {
-    const sinceSql = sql`(to_timestamp(${since.getTime()}::double precision / 1000) AT TIME ZONE 'UTC')`;
+async function loadTodayRows(companyId: string, since: Date, viewerUserId: string | null): Promise<TodayRow[]> {
+    const sinceSql = utcTimestamp(since);
+    const ownChat = viewerUserId ? sql`(t.is_private AND t.owner_user_id = ${viewerUserId})` : sql`false`;
     const result = await db.execute<{ agent_id: string; runs: number | string | null; tokens: number | string | null; cost: number | string | null; costed: number | string | null; done: number | string | null }>(sql`
         WITH r AS (
             SELECT ar.agent_id, count(*) AS runs,
                    sum(coalesce(ar.input_tokens, 0) + coalesce(ar.output_tokens, 0)) AS tokens,
-                   sum(ar.cost_cents) AS cost, count(ar.cost_cents) AS costed
+                   sum(ar.cost_cents) FILTER (WHERE ar.cost_cents > 0) AS cost,
+                   count(*) FILTER (WHERE ar.cost_cents > 0) AS costed
               FROM ${agentRuns} ar
+              LEFT JOIN ${messageThreads} t ON t.id = ar.thread_id AND t.company_id = ${companyId} AND t.archived_at IS NULL
              WHERE ar.company_id = ${companyId} AND ar.started_at >= ${sinceSql} AND ar.agent_id IS NOT NULL
+               AND (ar.thread_id IS NULL OR t.type IN ('team', 'group') OR (t.type = 'direct' AND ${ownChat}))
              GROUP BY ar.agent_id
         ), t AS (
-            SELECT tk.assigned_agent_id AS agent_id, count(*) AS done
-              FROM ${tasks} tk
-             WHERE tk.company_id = ${companyId} AND tk.state = 'done' AND tk.deleted_at IS NULL
-               AND tk.assigned_agent_id IS NOT NULL AND tk.updated_at >= ${sinceSql}
+            SELECT tk.assigned_agent_id AS agent_id, count(DISTINCT e.task_id) AS done
+              FROM ${taskEvents} e
+              JOIN ${tasks} tk ON tk.id = e.task_id AND tk.company_id = ${companyId}
+             WHERE e.company_id = ${companyId} AND e.created_at >= ${sinceSql} AND ${COMPLETION_EVENT}
+               AND tk.state = ${TASK_STATES.done} AND tk.deleted_at IS NULL AND tk.assigned_agent_id IS NOT NULL
              GROUP BY tk.assigned_agent_id
         )
         SELECT coalesce(r.agent_id, t.agent_id) AS agent_id, r.runs, r.tokens, r.cost, r.costed, t.done
@@ -849,7 +876,9 @@ export async function buildLiveFeed(companyId: string, options: {
     const privateChatsPromise = loadPrivateChats(companyId, options.privateChatsUserId);
     const companyPromise = db.select({ name: companies.name, agentRoutineJson: companies.agentRoutineJson }).from(companies).where(eq(companies.id, companyId)).limit(1);
     // Today is counted from midnight in the company's timezone (the agent routine's), else UTC.
-    const todayPromise = companyPromise.then((rows) => loadTodayRows(companyId, localMidnight(now, companyTimezoneFrom(rows[0]?.agentRoutineJson))));
+    // Its runs follow the screen's run visibility (the same viewer as the run rows).
+    const todayPromise = Promise.all([companyPromise, privateChatsPromise]).then(([rows, chats]) =>
+        loadTodayRows(companyId, localMidnight(now, companyTimezoneFrom(rows[0]?.agentRoutineJson)), options.agentThoughts && chats ? options.privateChatsUserId ?? null : null));
     // Thoughts wait for the private chats: direct rows are filtered to the
     // creator's own replies in SQL, so other DMs never crowd out the top rows.
     const reasoningPromise: Promise<ReasoningRow[]> = options.agentThoughts

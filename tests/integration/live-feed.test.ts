@@ -587,11 +587,19 @@ maybe("step: label and text on a readable run, label only on a private one; last
     await run(otto.id, team.id, [{ kind: "tool.start", toolName: "terminal", summary: "npm run ghost" }]);
 
     const [project] = await db.insert(projects).values({ companyId, goal: "Ops", status: "active" }).returning();
-    await db.insert(tasks).values([
-        { companyId, projectId: project.id, taskType: "report", state: "done", assignedAgentId: ivy.id, inputJson: { title: "Older report" }, updatedAt: ago(7200) },
+    const [older, cafe, ancient] = await db.insert(tasks).values([
+        // Finished two hours ago, edited a minute ago: the edit does not make it the newest.
+        { companyId, projectId: project.id, taskType: "report", state: "done", assignedAgentId: ivy.id, inputJson: { title: "Older report" }, updatedAt: ago(60) },
         { companyId, projectId: project.id, taskType: "report", state: "done", assignedAgentId: ivy.id, inputJson: { title: "Publish the café menu" }, updatedAt: ago(600) },
         { companyId, projectId: project.id, taskType: "report", state: "done", assignedAgentId: ivy.id, inputJson: { title: "Ancient work" }, updatedAt: ago(8 * 24 * 3600) },
         { companyId, projectId: project.id, taskType: "ops", state: "in_progress", assignedAgentId: ada.id, inputJson: { title: "Rotate key sk-abcdefghijklmnopqrstuvwxyz0123456789" } },
+    ]).returning();
+    const { taskEvents } = await getSchema();
+    await db.insert(taskEvents).values([
+        { companyId, taskId: older.id, eventType: "task_done", actorType: "agent", actorId: ivy.id, createdAt: ago(7200) },
+        { companyId, taskId: older.id, eventType: "task_updated", payloadJson: { title: "Older report" }, actorType: "human", createdAt: ago(60) },
+        { companyId, taskId: cafe.id, eventType: "task_updated", payloadJson: { state: "done" }, actorType: "agent", actorId: ivy.id, createdAt: ago(600) },
+        { companyId, taskId: ancient.id, eventType: "task_done", actorType: "agent", actorId: ivy.id, createdAt: ago(8 * 24 * 3600) },
     ]);
 
     const screen = await seedScreenToken(companyId, creator, true, true);
@@ -640,7 +648,7 @@ maybe("today: cost, runs, tokens and tasks done since midnight, for the screen's
     await resetDb();
     const { companyId } = await seedCompanyWithToken();
     const db = await getDb();
-    const { agentRuns, projects, tasks, companies } = await getSchema();
+    const { agentRuns, projects, tasks, companies, taskEvents, messageThreads } = await getSchema();
     const { eq } = await import("drizzle-orm");
     // Midnight in UTC for this company, and "now" well after it.
     await db.update(companies).set({ agentRoutineJson: { timezone: "UTC" } }).where(eq(companies.id, companyId));
@@ -650,27 +658,50 @@ maybe("today: cost, runs, tokens and tasks done since midnight, for the screen's
     const creator = await seedMember(companyId, "owner");
     const ana = await seedAgent(companyId, { name: "Ana Analyst", lastSeenAt: new Date() });
     const ben = await seedAgent(companyId, { name: "Ben Builder", lastSeenAt: new Date() });
+    const [team] = await db.insert(messageThreads).values({ companyId, type: "team", title: "Team" }).returning();
+    const other = await seedMember(companyId);
+    const { ensureDirectThread } = await import("@/lib/control-plane");
+    const othersChat = await ensureDirectThread(companyId, ana.id, other);
+    const workLog = await ensureDirectThread(companyId, ana.id);
+    const creatorsChat = await ensureDirectThread(companyId, ben.id, creator);
     await db.insert(agentRuns).values([
-        { id: randomUUID(), companyId, agentId: ana.id, status: "succeeded", startedAt: afterMidnight(1), inputTokens: 1500, outputTokens: 600, costCents: 120 },
+        { id: randomUUID(), companyId, agentId: ana.id, threadId: team.id, status: "succeeded", startedAt: afterMidnight(1), inputTokens: 1500, outputTokens: 600, costCents: 120 },
         { id: randomUUID(), companyId, agentId: ana.id, status: "succeeded", startedAt: afterMidnight(2), inputTokens: 400, outputTokens: 100, costCents: 35 },
-        { id: randomUUID(), companyId, agentId: ben.id, status: "succeeded", startedAt: afterMidnight(3), inputTokens: 2000, outputTokens: 0, costCents: null },
+        // A runtime that reports no cost (null or 0) never turns into $0.00.
+        { id: randomUUID(), companyId, agentId: ben.id, status: "succeeded", startedAt: afterMidnight(3), inputTokens: 1500, outputTokens: 0, costCents: null },
+        { id: randomUUID(), companyId, agentId: ben.id, status: "succeeded", startedAt: afterMidnight(3), inputTokens: 500, outputTokens: 0, costCents: 0 },
+        // Another member's private chat and the shared Work log: never on a screen, not even as totals.
+        { id: randomUUID(), companyId, agentId: ana.id, threadId: othersChat.id, status: "succeeded", startedAt: afterMidnight(2), inputTokens: 50_000, outputTokens: 0, costCents: 500 },
+        { id: randomUUID(), companyId, agentId: ana.id, threadId: workLog.id, status: "succeeded", startedAt: afterMidnight(2), inputTokens: 50_000, outputTokens: 0, costCents: 500 },
+        // The screen creator's own private chat: counted only on a screen allowed to show it.
+        { id: randomUUID(), companyId, agentId: ben.id, threadId: creatorsChat.id, status: "succeeded", startedAt: afterMidnight(2), inputTokens: 1000, outputTokens: 0, costCents: 7 },
         // Yesterday: not today.
         { id: randomUUID(), companyId, agentId: ana.id, status: "succeeded", startedAt: new Date(midnight.getTime() - 60_000), inputTokens: 9000, outputTokens: 9000, costCents: 999 },
     ]);
     const [project] = await db.insert(projects).values({ companyId, goal: "Ops", status: "active" }).returning();
-    await db.insert(tasks).values([
+    const [shipped, old] = await db.insert(tasks).values([
         { companyId, projectId: project.id, taskType: "report", state: "done", assignedAgentId: ben.id, inputJson: { title: "Ship it" }, updatedAt: afterMidnight(4) },
-        { companyId, projectId: project.id, taskType: "report", state: "done", assignedAgentId: ben.id, inputJson: { title: "Old" }, updatedAt: new Date(midnight.getTime() - 60_000) },
+        // Finished yesterday, edited today: not done today.
+        { companyId, projectId: project.id, taskType: "report", state: "done", assignedAgentId: ben.id, inputJson: { title: "Old" }, updatedAt: afterMidnight(5) },
+    ]).returning();
+    await db.insert(taskEvents).values([
+        { companyId, taskId: shipped.id, eventType: "task_done", actorType: "agent", actorId: ben.id, createdAt: afterMidnight(4) },
+        // A second completion of the same task counts once.
+        { companyId, taskId: shipped.id, eventType: "task_updated", payloadJson: { state: "done" }, actorType: "agent", actorId: ben.id, createdAt: afterMidnight(4) },
+        { companyId, taskId: old.id, eventType: "task_done", actorType: "agent", actorId: ben.id, createdAt: new Date(midnight.getTime() - 60_000) },
+        { companyId, taskId: old.id, eventType: "task_updated", payloadJson: { title: "Old (edited)" }, actorType: "human", createdAt: afterMidnight(5) },
     ]);
 
     const raw = await (await getLive(await seedScreenToken(companyId, creator, false))).text();
     const feed = JSON.parse(raw);
-    assert.deepEqual(feed.today, { cost: 155, runs: 3, tokensK: 5, done: 1, top: [{ agentId: ana.id, cost: 155 }] });
+    assert.deepEqual(feed.today, { cost: 155, runs: 4, tokensK: 5, done: 1, top: [{ agentId: ana.id, cost: 155 }] });
     assert.ok(!raw.includes("\"rows\""), "per-agent rows never reach the device");
+    const opted = JSON.parse(await (await getLive(await seedScreenToken(companyId, creator, true, true))).text());
+    assert.deepEqual(opted.today, { cost: 162, runs: 5, tokensK: 6, done: 1, top: [{ agentId: ana.id, cost: 155 }, { agentId: ben.id, cost: 7 }] }, "the creator's own chat counts on their opted-in screen");
 
     // A narrower viewer (member scope / limited agents) sees only its agents' day.
     const { buildLiveFeed, scopeLiveFeed } = await import("@/lib/live-feed");
     const built = await buildLiveFeed(companyId, { now });
-    assert.deepEqual(scopeLiveFeed(built, [ben.id]).today, { cost: null, runs: 1, tokensK: 2, done: 1, top: [] }, "Ben's runs reported no cost: null, not 0");
+    assert.deepEqual(scopeLiveFeed(built, [ben.id]).today, { cost: null, runs: 2, tokensK: 2, done: 1, top: [] }, "Ben's runs reported no cost: null, not 0");
     assert.deepEqual(scopeLiveFeed(built, [ana.id]).today, { cost: 155, runs: 2, tokensK: 3, done: 0, top: [{ agentId: ana.id, cost: 155 }] });
 });

@@ -15,19 +15,30 @@ export interface HumanStep {
     text?: string;
 }
 
-/** Tool name families, checked in order against the normalized tool name. */
-const TOOL_VERBS: readonly { test: RegExp; verb: string }[] = [
-    { test: /^(web ?search|search ?web|google|bing|serp|search engine|tavily|exa|brave search|perplexity)/, verb: "Searching the web" },
-    { test: /(browser|navigate|web ?fetch|fetch url|scrape|crawl|http|curl|open url|visit)/, verb: "Browsing the web" },
-    { test: /^(terminal|shell|bash|zsh|sh|exec|execute|run command|command|process|powershell|cmd)\b/, verb: "Using terminal" },
-    { test: /(grep|search files|find files|glob|ripgrep|rg)\b/, verb: "Searching files" },
-    { test: /^(read|view|cat|open file|file read|read file|list dir|ls|list files|get file)/, verb: "Reading" },
-    { test: /^(write|edit|patch|apply patch|str replace|create file|file write|file edit|replace)/, verb: "Editing" },
-    { test: /(send message|post message|reply|notify|slack|email|telegram|discord)/, verb: "Sending a message" },
-    { test: /(delegate|subagent|spawn agent|task agent)/, verb: "Delegating" },
-    { test: /(memory|remember|recall|knowledge|notes?)\b/, verb: "Checking notes" },
-    { test: /(todo|plan|checklist)/, verb: "Planning" },
+/**
+ * Tool name families, checked in order. A family matches only when one of its
+ * phrases appears as whole words in the normalized tool name ("read file" in
+ * "read file", "browser" in "browser navigate"), so "catalog", "lsp",
+ * "process invoice" or "example x" never borrow a verb; anything unsure falls
+ * back to the generic "Using <tool>".
+ */
+const TOOL_VERBS: readonly { phrases: readonly string[]; verb: string }[] = [
+    { phrases: ["web search", "websearch", "search web", "google search", "bing search", "brave search", "tavily search", "exa search", "serp", "perplexity"], verb: "Searching the web" },
+    { phrases: ["browser", "browse", "navigate", "web fetch", "webfetch", "fetch url", "open url", "scrape", "crawl", "http request", "curl"], verb: "Browsing the web" },
+    { phrases: ["terminal", "shell", "bash", "zsh", "powershell", "exec", "execute command", "run command", "run shell", "command line"], verb: "Using terminal" },
+    { phrases: ["grep", "ripgrep", "glob", "search files", "find files", "file search"], verb: "Searching files" },
+    { phrases: ["read", "read file", "file read", "view file", "open file", "get file", "cat", "list dir", "list directory", "list files", "ls"], verb: "Reading" },
+    { phrases: ["write", "write file", "file write", "edit", "edit file", "file edit", "patch", "apply patch", "str replace", "create file", "multi edit"], verb: "Editing" },
+    { phrases: ["send message", "post message", "send email", "send slack message", "send telegram", "notify"], verb: "Sending a message" },
+    { phrases: ["delegate", "delegate task", "subagent", "spawn agent"], verb: "Delegating" },
+    { phrases: ["memory", "remember", "recall", "knowledge", "search knowledge", "notes"], verb: "Checking notes" },
+    { phrases: ["todo", "todo write", "todos", "update plan", "checklist"], verb: "Planning" },
 ];
+
+/** Whether `phrase` appears in `name` as whole words. */
+function hasPhrase(name: string, phrase: string): boolean {
+    return ` ${name} `.includes(` ${phrase} `);
+}
 
 const LABEL_MAX = 26;
 
@@ -47,7 +58,7 @@ export function prettyToolName(tool: string): string {
 /** The narrating verb for a tool ("Using terminal"), or "Using <tool>" for an unknown one. */
 export function toolVerb(tool: string): string {
     const name = prettyToolName(tool);
-    for (const { test, verb } of TOOL_VERBS) if (test.test(name)) return verb;
+    for (const { phrases, verb } of TOOL_VERBS) if (phrases.some((p) => hasPhrase(name, p))) return verb;
     return name ? `Using ${name}` : "Using a tool";
 }
 

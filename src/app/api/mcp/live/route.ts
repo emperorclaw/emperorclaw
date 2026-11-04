@@ -30,8 +30,10 @@ import { moduleGuard } from "@/lib/modules-server";
  *
  * `today` ({ cost, runs, tokensK, done, top }) is the usage since local
  * midnight (company timezone, else UTC) of the agents on the screen;
- * scopeLiveFeed re-sums it for a narrower viewer. `cost` is null when no run
- * reported one.
+ * scopeLiveFeed re-sums it for a narrower viewer. It counts only runs the
+ * screen may read (the step / thought rule: no other member's private chat,
+ * no Work log) and tasks by their completion event. `cost` is null when no
+ * run reported a cost above zero.
  */
 export async function GET(req: NextRequest) {
     const auth = await verifyMcpToken(req, { allowReadOnlyScope: true });

@@ -563,9 +563,6 @@ export const tasks = pgTable("tasks", {
 }, (table) => [
     check("tasks_single_assignee", sql`${table.assignedAgentId} IS NULL OR ${table.assignedMemberId} IS NULL`),
     index("tasks_assigned_member_idx").on(table.companyId, table.assignedMemberId),
-    // Desk screens' `last`: each agent's newest done task (live-feed.ts loadLastDoneTasks).
-    index("tasks_agent_last_done_idx").on(table.companyId, table.assignedAgentId, table.updatedAt.desc(), table.id.desc())
-        .where(sql`${table.state} = 'done' AND ${table.deletedAt} IS NULL AND ${table.assignedAgentId} IS NOT NULL`),
 ]);
 
 export const approvals = pgTable("approvals", {
@@ -631,6 +628,10 @@ export const taskEvents = pgTable("task_events", {
     // and company + actor_id + created_at; without these it falls back to scans.
     companyCreatedIdx: index("task_events_company_created_idx").on(table.companyId, table.createdAt),
     companyActorCreatedIdx: index("task_events_company_actor_created_idx").on(table.companyId, table.actorId, table.createdAt),
+    // Completions only (task_done, or an update / reassignment to done): desk screens'
+    // `last` and `today.done` (live-feed.ts COMPLETION_EVENT) and the live feed's transitions.
+    completedIdx: index("task_events_completed_idx").on(table.companyId, table.createdAt)
+        .where(sql`${table.eventType} = 'task_done' OR (${table.eventType} IN ('task_updated', 'task_reassigned') AND ${table.payloadJson} ->> 'state' = 'done')`),
 }));
 
 export const artifacts = pgTable("artifacts", {
