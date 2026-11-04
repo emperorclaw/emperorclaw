@@ -1,0 +1,1 @@
+CREATE INDEX "tasks_agent_last_done_idx" ON "tasks" USING btree ("company_id","assigned_agent_id","updated_at" DESC NULLS LAST,"id" DESC NULLS LAST) WHERE "tasks"."state" = 'done' AND "tasks"."deleted_at" IS NULL AND "tasks"."assigned_agent_id" IS NOT NULL;

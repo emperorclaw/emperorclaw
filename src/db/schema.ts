@@ -563,6 +563,9 @@ export const tasks = pgTable("tasks", {
 }, (table) => [
     check("tasks_single_assignee", sql`${table.assignedAgentId} IS NULL OR ${table.assignedMemberId} IS NULL`),
     index("tasks_assigned_member_idx").on(table.companyId, table.assignedMemberId),
+    // Desk screens' `last`: each agent's newest done task (live-feed.ts loadLastDoneTasks).
+    index("tasks_agent_last_done_idx").on(table.companyId, table.assignedAgentId, table.updatedAt.desc(), table.id.desc())
+        .where(sql`${table.state} = 'done' AND ${table.deletedAt} IS NULL AND ${table.assignedAgentId} IS NOT NULL`),
 ]);
 
 export const approvals = pgTable("approvals", {
