@@ -599,7 +599,7 @@ maybe("step: label and text on a readable run, label only on a private one; last
     const feed = JSON.parse(raw);
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const byId = (f: any, id: string) => f.agents.find((a: { id: string }) => a.id === id) as Record<string, any>;
-    assert.deepEqual({ ...byId(feed, ada.id).step, sec: 0 }, { label: "Running terminal", text: "npm test", sec: 0 });
+    assert.deepEqual({ ...byId(feed, ada.id).step, sec: 0 }, { label: "Using terminal", text: "npm test", sec: 0 });
     assert.ok(byId(feed, ada.id).step.sec >= 29 && byId(feed, ada.id).step.sec < 120);
     assert.deepEqual(Object.keys(byId(feed, bob.id).step).sort(), ["label", "sec"], "another member's private chat: label only");
     assert.equal(byId(feed, bob.id).step.label, "Working in a private chat", "not even the tool name");
@@ -624,7 +624,7 @@ maybe("step: label and text on a readable run, label only on a private one; last
     const plainRaw = await (await getLive(await seedScreenToken(companyId, creator, false, false))).text();
     const plain = JSON.parse(plainRaw);
     assert.deepEqual(Object.keys(byId(plain, ada.id).step).sort(), ["label", "sec"]);
-    assert.equal(byId(plain, ada.id).step.label, "Running terminal");
+    assert.equal(byId(plain, ada.id).step.label, "Using terminal");
     assert.equal(byId(plain, bob.id).step.label, "Working in a private chat", "a direct run on a token without thoughts");
     assert.ok(!plainRaw.includes("salary") && !plainRaw.includes("payroll"));
     assert.ok(!plainRaw.includes("npm test"));
@@ -634,4 +634,43 @@ maybe("step: label and text on a readable run, label only on a private one; last
     const { scopeLiveFeed } = await import("@/lib/live-feed");
     const scoped = scopeLiveFeed(feed, [ivy.id]);
     assert.ok(!JSON.stringify(scoped).includes("npm test"));
+});
+
+maybe("today: cost, runs, tokens and tasks done since midnight, for the screen's agents only", async () => {
+    await resetDb();
+    const { companyId } = await seedCompanyWithToken();
+    const db = await getDb();
+    const { agentRuns, projects, tasks, companies } = await getSchema();
+    const { eq } = await import("drizzle-orm");
+    // Midnight in UTC for this company, and "now" well after it.
+    await db.update(companies).set({ agentRoutineJson: { timezone: "UTC" } }).where(eq(companies.id, companyId));
+    const now = new Date();
+    const midnight = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
+    const afterMidnight = (sec: number) => new Date(Math.min(now.getTime() - 1000, midnight.getTime() + sec * 1000));
+    const creator = await seedMember(companyId, "owner");
+    const ana = await seedAgent(companyId, { name: "Ana Analyst", lastSeenAt: new Date() });
+    const ben = await seedAgent(companyId, { name: "Ben Builder", lastSeenAt: new Date() });
+    await db.insert(agentRuns).values([
+        { id: randomUUID(), companyId, agentId: ana.id, status: "succeeded", startedAt: afterMidnight(1), inputTokens: 1500, outputTokens: 600, costCents: 120 },
+        { id: randomUUID(), companyId, agentId: ana.id, status: "succeeded", startedAt: afterMidnight(2), inputTokens: 400, outputTokens: 100, costCents: 35 },
+        { id: randomUUID(), companyId, agentId: ben.id, status: "succeeded", startedAt: afterMidnight(3), inputTokens: 2000, outputTokens: 0, costCents: null },
+        // Yesterday: not today.
+        { id: randomUUID(), companyId, agentId: ana.id, status: "succeeded", startedAt: new Date(midnight.getTime() - 60_000), inputTokens: 9000, outputTokens: 9000, costCents: 999 },
+    ]);
+    const [project] = await db.insert(projects).values({ companyId, goal: "Ops", status: "active" }).returning();
+    await db.insert(tasks).values([
+        { companyId, projectId: project.id, taskType: "report", state: "done", assignedAgentId: ben.id, inputJson: { title: "Ship it" }, updatedAt: afterMidnight(4) },
+        { companyId, projectId: project.id, taskType: "report", state: "done", assignedAgentId: ben.id, inputJson: { title: "Old" }, updatedAt: new Date(midnight.getTime() - 60_000) },
+    ]);
+
+    const raw = await (await getLive(await seedScreenToken(companyId, creator, false))).text();
+    const feed = JSON.parse(raw);
+    assert.deepEqual(feed.today, { cost: 155, runs: 3, tokensK: 5, done: 1, top: [{ agentId: ana.id, cost: 155 }] });
+    assert.ok(!raw.includes("\"rows\""), "per-agent rows never reach the device");
+
+    // A narrower viewer (member scope / limited agents) sees only its agents' day.
+    const { buildLiveFeed, scopeLiveFeed } = await import("@/lib/live-feed");
+    const built = await buildLiveFeed(companyId, { now });
+    assert.deepEqual(scopeLiveFeed(built, [ben.id]).today, { cost: null, runs: 1, tokensK: 2, done: 1, top: [] }, "Ben's runs reported no cost: null, not 0");
+    assert.deepEqual(scopeLiveFeed(built, [ana.id]).today, { cost: 155, runs: 2, tokensK: 3, done: 0, top: [{ agentId: ana.id, cost: 155 }] });
 });

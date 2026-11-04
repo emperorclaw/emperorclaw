@@ -2,11 +2,12 @@ import { resolveAppearance } from "@/lib/character/model";
 import { createHash } from "crypto";
 import { and, count, desc, eq, gt, inArray, isNotNull, isNull, lt, lte, or, sql } from "drizzle-orm";
 import { db } from "@/db";
-import { approvals, companies, companyMembers, incidents, messageThreads, taskEvents, tasks, threadMessageReasoning, threadMessages, threadParticipants } from "@/db/schema";
+import { agentRuns, approvals, companies, companyMembers, incidents, messageThreads, taskEvents, tasks, threadMessageReasoning, threadMessages, threadParticipants } from "@/db/schema";
 import { computeCompanyHealth, scoreAgent, type CompanyHealth, type HealthStatus } from "@/lib/agent-health";
 import { taskTitle } from "@/lib/emperor-entities";
 import { loadRunThoughtRows, PRIVATE_ACTIVITY, screenAscii, screenStepsFromRuns, screenThoughtsFromRuns, type RunThoughtRow } from "@/lib/run-thoughts";
 import { AGENT_PAIR_DESCRIPTION } from "@/lib/groups";
+import { companyTimezoneFrom } from "@/lib/pipeline-schedule";
 import { SLA_TRACKED_TASK_STATES, TASK_STATES } from "@/lib/task-state";
 import {
     approvalTitle, cleanSnippet, deriveActs, deriveEvents, deriveNeeds, fitThoughtsToBudget, isLiveProblemIncident, LIVE_RECENT_MS, packLook, pickThoughts,
@@ -146,6 +147,91 @@ export interface LiveFeed {
     events: LiveEvent[];
     /** v2: up to 3 pending approvals waiting on a human. */
     needs: LiveNeed[];
+    /** 2.2: today's usage of the agents on this screen (since local midnight). */
+    today?: LiveToday;
+}
+
+/**
+ * Today's usage, since midnight in the company's timezone (the agent
+ * routine's), else UTC — only the runs and finished tasks of the agents the
+ * screen shows. Rounded so the ETag does not churn: cost in whole cents,
+ * tokens in thousands.
+ */
+export interface LiveToday {
+    /** Sum of agent_runs.cost_cents; null when no run today reported a cost. */
+    cost: number | null;
+    runs: number;
+    /** Input + output tokens, in thousands (rounded). */
+    tokensK: number;
+    /** Tasks finished today by these agents. */
+    done: number;
+    /** Up to 3 agents by cost today (cost > 0), highest first. */
+    top: { agentId: string; cost: number }[];
+}
+
+/** One agent's usage today, as loaded (the per-agent rows `today` is summed from). */
+export interface TodayRow {
+    agentId: string;
+    runs: number;
+    tokens: number;
+    /** Sum of cost_cents over the runs that reported one. */
+    cost: number;
+    /** How many runs reported a cost. */
+    costed: number;
+    done: number;
+}
+
+const TODAY_TOP = 3;
+
+/**
+ * Pure: `today` from per-agent rows, counting only `agentIds`. The rows ride
+ * along non-enumerably (never serialized) so scopeLiveFeed can re-sum them
+ * for a narrower viewer.
+ */
+export function shapeToday(rows: readonly TodayRow[], agentIds: ReadonlySet<string>): LiveToday {
+    const mine = rows.filter((r) => agentIds.has(r.agentId));
+    const sum = (pick: (r: TodayRow) => number) => mine.reduce((acc, r) => acc + (Number(pick(r)) || 0), 0);
+    const costed = sum((r) => r.costed);
+    const today: LiveToday = {
+        cost: costed > 0 ? Math.round(sum((r) => r.cost)) : null,
+        runs: sum((r) => r.runs),
+        tokensK: Math.round(sum((r) => r.tokens) / 1000),
+        done: sum((r) => r.done),
+        top: mine.filter((r) => r.costed > 0 && r.cost > 0)
+            .sort((a, b) => b.cost - a.cost || a.agentId.localeCompare(b.agentId))
+            .slice(0, TODAY_TOP)
+            .map((r) => ({ agentId: r.agentId, cost: Math.round(r.cost) })),
+    };
+    return Object.defineProperty(today, "rows", { value: mine, enumerable: false });
+}
+
+/** The per-agent rows behind a `today` (see shapeToday), or [] for one built elsewhere. */
+function todayRowsOf(today: LiveToday): readonly TodayRow[] {
+    return (today as LiveToday & { rows?: readonly TodayRow[] }).rows ?? [];
+}
+
+/** UTC offset of `timezone` at `at`, in ms (local wall clock minus UTC). */
+function tzOffsetMs(at: Date, timezone: string): number {
+    const parts = Object.fromEntries(new Intl.DateTimeFormat("en-US", {
+        timeZone: timezone, hourCycle: "h23", year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", second: "2-digit",
+    }).formatToParts(at).map((p) => [p.type, p.value]));
+    const wall = Date.UTC(Number(parts.year), Number(parts.month) - 1, Number(parts.day), Number(parts.hour), Number(parts.minute), Number(parts.second));
+    return wall - Math.floor(at.getTime() / 1000) * 1000;
+}
+
+/** Pure: the instant of the latest local midnight at or before `now` in `timezone` (UTC when null or invalid). */
+export function localMidnight(now: Date, timezone: string | null): Date {
+    if (!timezone) return new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
+    try {
+        const local = new Date(now.getTime() + tzOffsetMs(now, timezone));
+        const wallMidnight = Date.UTC(local.getUTCFullYear(), local.getUTCMonth(), local.getUTCDate());
+        // Resolve the offset at midnight itself (DST changes during the day).
+        let instant = wallMidnight - tzOffsetMs(new Date(wallMidnight - tzOffsetMs(now, timezone)), timezone);
+        if (instant > now.getTime()) instant -= 24 * 60 * 60 * 1000;
+        return new Date(instant);
+    } catch {
+        return localMidnight(now, null);
+    }
 }
 
 /**
@@ -177,6 +263,7 @@ export function scopeLiveFeed(feed: LiveFeed, agentIds: readonly string[] | unde
         dm: feed.dm.filter((d) => allowed.has(d.agentId)),
         events: feed.events.filter((e) => allowed.has(e.a) && (!e.b || allowed.has(e.b))),
         needs: feed.needs.filter((n) => allowed.has(n.agentId)),
+        ...(feed.today ? { today: shapeToday(todayRowsOf(feed.today), new Set(agents.map((a) => a.id))) } : {}),
     };
 }
 
@@ -689,6 +776,40 @@ export function lastDoneOf(row: { title: string | null; taskType: string | null;
     return { title, ageSec: Math.max(0, Math.floor((nowMs - row.doneAt.getTime()) / 1000)) };
 }
 
+/**
+ * Each agent's usage since `since` (local midnight) in ONE query: runs,
+ * tokens and cost from agent_runs (agent_runs_company_started_idx range) and
+ * tasks finished from tasks (tasks_agent_last_done_idx), one row per agent.
+ */
+async function loadTodayRows(companyId: string, since: Date): Promise<TodayRow[]> {
+    const sinceSql = sql`(to_timestamp(${since.getTime()}::double precision / 1000) AT TIME ZONE 'UTC')`;
+    const result = await db.execute<{ agent_id: string; runs: number | string | null; tokens: number | string | null; cost: number | string | null; costed: number | string | null; done: number | string | null }>(sql`
+        WITH r AS (
+            SELECT ar.agent_id, count(*) AS runs,
+                   sum(coalesce(ar.input_tokens, 0) + coalesce(ar.output_tokens, 0)) AS tokens,
+                   sum(ar.cost_cents) AS cost, count(ar.cost_cents) AS costed
+              FROM ${agentRuns} ar
+             WHERE ar.company_id = ${companyId} AND ar.started_at >= ${sinceSql} AND ar.agent_id IS NOT NULL
+             GROUP BY ar.agent_id
+        ), t AS (
+            SELECT tk.assigned_agent_id AS agent_id, count(*) AS done
+              FROM ${tasks} tk
+             WHERE tk.company_id = ${companyId} AND tk.state = 'done' AND tk.deleted_at IS NULL
+               AND tk.assigned_agent_id IS NOT NULL AND tk.updated_at >= ${sinceSql}
+             GROUP BY tk.assigned_agent_id
+        )
+        SELECT coalesce(r.agent_id, t.agent_id) AS agent_id, r.runs, r.tokens, r.cost, r.costed, t.done
+          FROM r FULL JOIN t ON t.agent_id = r.agent_id`);
+    return result.rows.map((row) => ({
+        agentId: row.agent_id,
+        runs: Number(row.runs) || 0,
+        tokens: Number(row.tokens) || 0,
+        cost: Number(row.cost) || 0,
+        costed: Number(row.costed) || 0,
+        done: Number(row.done) || 0,
+    }));
+}
+
 /** The device keeps only this many step texts and last-done titles (its shared pools). */
 export const LIVE_MAX_STEP_TEXTS = 6;
 export const LIVE_MAX_LASTS = 6;
@@ -726,6 +847,9 @@ export async function buildLiveFeed(companyId: string, options: {
 
     const since = new Date(now.getTime() - LIVE_RECENT_MS);
     const privateChatsPromise = loadPrivateChats(companyId, options.privateChatsUserId);
+    const companyPromise = db.select({ name: companies.name, agentRoutineJson: companies.agentRoutineJson }).from(companies).where(eq(companies.id, companyId)).limit(1);
+    // Today is counted from midnight in the company's timezone (the agent routine's), else UTC.
+    const todayPromise = companyPromise.then((rows) => loadTodayRows(companyId, localMidnight(now, companyTimezoneFrom(rows[0]?.agentRoutineJson))));
     // Thoughts wait for the private chats: direct rows are filtered to the
     // creator's own replies in SQL, so other DMs never crowd out the top rows.
     const reasoningPromise: Promise<ReasoningRow[]> = options.agentThoughts
@@ -740,9 +864,9 @@ export async function buildLiveFeed(companyId: string, options: {
     const runThoughtPromise: Promise<RunThoughtRow[]> = privateChatsPromise.then((chats) =>
         loadRunThoughtRows(companyId, { now, viewerUserId: options.agentThoughts && chats ? options.privateChatsUserId ?? null : null }));
     const [health, companyRows, taskCounts, agentTasks, approvalCount, typingRows, messageRows, privateChats,
-        reasoningRows, runThoughtRows, handoffRows, transitionRows, approvalRows, incidentRows, lastDoneRows] = await Promise.all([
+        reasoningRows, runThoughtRows, handoffRows, transitionRows, approvalRows, incidentRows, lastDoneRows, todayRows] = await Promise.all([
         getCachedHealth(companyId, now),
-        db.select({ name: companies.name }).from(companies).where(eq(companies.id, companyId)).limit(1),
+        companyPromise,
         db.select({
             inProgress: sql<number>`count(*) filter (where ${tasks.state} = ${TASK_STATES.inProgress})`,
             overdue: sql<number>`count(*) filter (where ${inArray(tasks.state, [...SLA_TRACKED_TASK_STATES])} and ${lt(tasks.slaDueAt, now)})`,
@@ -806,6 +930,7 @@ export async function buildLiveFeed(companyId: string, options: {
         loadPendingApprovals(companyId),
         loadOpenAgentIncidents(companyId),
         loadLastDoneTasks(companyId, now),
+        todayPromise,
     ]);
 
     // Freshest live activity per agent. Activity from a private direct thread
@@ -984,6 +1109,7 @@ export async function buildLiveFeed(companyId: string, options: {
         dm,
         events,
         needs,
+        today: shapeToday(todayRows, shownIds),
     };
     return fitThoughtsToBudget(feed);
 }

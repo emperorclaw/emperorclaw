@@ -33,7 +33,7 @@ const steps = (rows: RunThoughtRow[], allowText = true) => screenStepsFromRuns(r
 
 test("a visible run gives the step's label and real text, with seconds since the step", () => {
     const tool = steps([row([ev(1, "reasoning", { summary: "Plan" }), ev(2, "tool.start", { toolName: "terminal", summary: "npm test" })])]).get(AGENT);
-    assert.deepEqual(tool, { label: "Running terminal", text: "npm test", sec: 58 });
+    assert.deepEqual(tool, { label: "Using terminal", text: "npm test", sec: 58 });
 
     const thinking = steps([row([ev(1, "reasoning", { summary: "Comparing the two supplier quotes" })])]).get(AGENT);
     assert.deepEqual(thinking, { label: "Thinking", text: "Comparing the two supplier quotes", sec: 59 });
@@ -42,7 +42,7 @@ test("a visible run gives the step's label and real text, with seconds since the
 test("a bare beat or a generic line is a label without text, never a placeholder text", () => {
     assert.deepEqual(steps([row([ev(1, "reasoning")])]).get(AGENT), { label: "Thinking", sec: 59 });
     assert.deepEqual(steps([row([ev(1, "turn.started")])]).get(AGENT), { label: "Working", sec: 59 });
-    assert.deepEqual(steps([row([ev(1, "tool.end", { toolName: "web", status: "ok" })])]).get(AGENT), { label: "web done", sec: 59 });
+    assert.deepEqual(steps([row([ev(1, "tool.end", { toolName: "web", status: "ok" })])]).get(AGENT), { label: "Done with web", sec: 59 });
 });
 
 test("a run the screen may not read is only 'Working in a private chat'; a readable one without thoughts gets the generic label", () => {
@@ -52,9 +52,9 @@ test("a run the screen may not read is only 'Working in a private chat'; a reada
     assert.deepEqual(steps([otherMembersChat], false).get(AGENT), { label: PRIVATE_ACTIVITY, sec: 59 });
     const workLog = row(events, { threadId: "55555555-5555-4555-8555-555555555555", threadType: "direct", viewerInThread: true });
     assert.deepEqual(steps([workLog]).get(AGENT), { label: PRIVATE_ACTIVITY, sec: 59 }, "the shared Work log is private to a screen");
-    assert.deepEqual(steps([row(events)], false).get(AGENT), { label: "Running terminal", sec: 59 });
+    assert.deepEqual(steps([row(events)], false).get(AGENT), { label: "Using terminal", sec: 59 });
     const team = row(events, { threadId: "66666666-6666-4666-8666-666666666666", threadType: "team" });
-    assert.deepEqual(steps([team], false).get(AGENT), { label: "Running terminal", sec: 59 }, "a team run on a token without thoughts: label, no text");
+    assert.deepEqual(steps([team], false).get(AGENT), { label: "Using terminal", sec: 59 }, "a team run on a token without thoughts: label, no text");
     assert.ok(Array.from(PRIVATE_ACTIVITY).length <= STEP_LABEL_MAX, "the private label fits the device");
 
     const notice = [ev(1, "notice", { summary: "Quoting the customer's private note" })];
@@ -70,7 +70,7 @@ test("no events, no step; the newest run of an agent wins", () => {
     assert.equal(steps([row([])]).size, 0);
     const older = row([ev(1, "tool.start", { toolName: "old", summary: "x" })], { runId: "a", startedAtMs: NOW - 300_000 });
     const newer = row([ev(1, "tool.start", { toolName: "new", summary: "y" })], { runId: "b", startedAtMs: NOW - 100_000 });
-    assert.equal(steps([older, newer]).get(AGENT)?.label, "Running new");
+    assert.equal(steps([older, newer]).get(AGENT)?.label, "Using new");
 });
 
 test("step text and labels are ASCII, redacted and capped", () => {
@@ -80,7 +80,7 @@ test("step text and labels are ASCII, redacted and capped", () => {
     assert.ok(/^[\x20-\x7E]*$/.test(long.text!), long.text);
     const name = "x".repeat(80);
     const label = steps([row([ev(1, "tool.start", { toolName: name })])]).get(AGENT)!.label;
-    assert.ok(label.length <= STEP_LABEL_MAX && label.startsWith("Running x"));
+    assert.ok(label.length <= STEP_LABEL_MAX && label.startsWith("Using x"));
     assert.equal(screenAscii("Zoë’s “plan” — v2…"), "Zoe's \"plan\" - v2...");
 });
 
@@ -139,7 +139,7 @@ test("a run whose newest event is older than 10 minutes gives no step and no tho
     assert.equal(steps([row([old(1)])]).size, 0);
     assert.equal(screenThoughtsFromRuns([row([old(1)])], { nowMs: NOW, includePairThreads: true }).size, 0);
     const fresh = { ...old(2), ts: new Date(NOW - 5_000) };
-    assert.equal(steps([row([old(1), fresh])]).get(AGENT)?.label, "Running terminal", "one recent event keeps the run live");
+    assert.equal(steps([row([old(1), fresh])]).get(AGENT)?.label, "Using terminal", "one recent event keeps the run live");
 });
 
 test("the step's identity rides along for the ETag only: a new step with the same label changes it", () => {
