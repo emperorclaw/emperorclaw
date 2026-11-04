@@ -29,24 +29,6 @@ ships in the release notes.
   members' private chats never count, not even in totals), and tasks by when
   they were finished, not last edited. Screens scoped to some agents count
   only theirs.
-
-### Changed
-
-- Desk display modes are ordered LIVE, TODAY, Focus, Feed, Pulse, Throne Room
-  (serial `mode <n>` numbers follow). Camera-safe is off by default.
-
-### Fixed
-
-- **Desk displays drew scribbles instead of what an agent was writing.**
-  Camera-safe was on by default in Director, so every bubble and name on that
-  screen was deliberately scrambled. It is now off until turned on. The
-  display also maps more typographic characters (middle dots, bullets, arrows,
-  dashes, quotes) to ASCII instead of dropping them.
-
-## [Unreleased]
-
-### Added
-
 - **Desk displays show every agent's real current step.** The screen feed
   (`GET /api/mcp/live`) adds a per-agent `step` (`label`, `text`, `sec`): the
   step of the agent's running run, the same line as the dashboard ("Running
@@ -66,6 +48,19 @@ ships in the release notes.
   test" instead of "Ada is typing"; Focus shows the step with its timer, or
   "Idle" with the last finished task, or "Not responding", instead of "No
   current activity".
+
+### Changed
+
+- Desk display modes are ordered LIVE, TODAY, Focus, Feed, Pulse, Throne Room
+  (serial `mode <n>` numbers follow). Camera-safe is off by default.
+
+### Fixed
+
+- **Desk displays drew scribbles instead of what an agent was writing.**
+  Camera-safe was on by default in Director, so every bubble and name on that
+  screen was deliberately scrambled. It is now off until turned on. The
+  display also maps more typographic characters (middle dots, bullets, arrows,
+  dashes, quotes) to ASCII instead of dropping them.
 
 ## [0.28.1] — 2026-11-04
 
