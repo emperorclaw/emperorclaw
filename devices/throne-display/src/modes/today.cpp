@@ -41,8 +41,8 @@ struct Slice {
   int agent;  // index in the model, -1 = Others
 };
 
-// One legend entry: color dot, name, amount (right-aligned in a 88 px column).
-void legendEntry(int x, int y, const Slice& s, bool byCost, int32_t othersN) {
+// One legend entry: color dot, name, amount (right-aligned in a w px column).
+void legendEntry(int x, int y, int w, const Slice& s, bool byCost, int32_t othersN) {
   char name[28], amount[16];
   if (s.agent >= 0) app_nameFit(app.model.agents[s.agent], name, sizeof(name), 50, F_TINY);
   else snprintf(name, sizeof(name), "Others (%ld)", (long)othersN);
@@ -50,8 +50,8 @@ void legendEntry(int x, int y, const Slice& s, bool byCost, int32_t othersN) {
   else snprintf(amount, sizeof(amount), "%ld", (long)s.value);
   fillCircle(x + 3, y, 2, s.color);
   int aw = textWidth(amount, F_TINY);
-  textFit(name, x + 9, y, 80 - aw - 12, pal::TEXT, F_TINY, lgfx::middle_left);
-  text(amount, x + 88, y, c(pal::GOLD, 12), F_TINY, lgfx::middle_right);
+  textFit(name, x + 9, y, w - aw - 12, pal::TEXT, F_TINY, lgfx::middle_left);
+  text(amount, x + w, y, c(pal::GOLD, 12), F_TINY, lgfx::middle_right);
 }
 
 }  // namespace
@@ -105,6 +105,11 @@ void today_draw() {
       a += span;
     }
   }
+  // Work happened but there are no slices to show (an older server without per-agent
+  // runs, or every slice's agent left the screen): one neutral full ring around the
+  // real total, marked as such, never an empty ring that would read as no work.
+  bool noBreakdown = total == 0 && (byCost ? t.cost > 0 : t.runs > 0);
+  if (noBreakdown && sweep > 0) arc(CX, RING_Y, R0, R1, ANG_TOP, ANG_TOP + sweep, c(pal::NEUTRAL, 6));
 
   // The total in the middle.
   char big[24];
@@ -128,11 +133,17 @@ void today_draw() {
     text("yet today", CX, RING_Y + 9, pal::TEXT_DIM, F_SMALL);
   }
   if (m.demo) text("DEMO SAMPLE", CX, RING_Y + 28, c(pal::VIOLET, 12), F_TINY);
+  else if (noBreakdown) text("no breakdown", CX, RING_Y + 28, pal::TEXT_FAINT, F_TINY);
 
-  // Legend: two columns of three, biggest first.
+  // Legend: two columns of three, biggest first. Each row's columns are fitted to
+  // the circle at the row's lower edge, so the dot on the left and the amount on the
+  // right stay at least 2 px inside the round panel (the chord narrows downwards).
   for (int k = 0; k < n; k++) {
     int col = k / 3, row = k % 3;
-    legendEntry(col ? CX + 3 : CX - 92, 174 + row * 12, slices[k], byCost, t.othersN);
+    int y = 174 + row * 12;
+    int w = chordHalf(y + 5, 2) - 3;
+    if (w > 88) w = 88;
+    legendEntry(col ? CX + 3 : CX - 3 - w, y, w, slices[k], byCost, t.othersN);
   }
 
   // Runs, tokens, tasks done.
