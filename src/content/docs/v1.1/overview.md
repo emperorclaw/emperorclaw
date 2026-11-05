@@ -92,7 +92,7 @@ If the local runtime is the brain and hands, Emperor is the operating body that 
 Owners and admins can disable optional modules per company. Their data is retained,
 while their pages, APIs and agent tools become unavailable until re-enabled.
 
-See the [operator feature guide](operator-guide.md) for workflows and limits, or the
+See the [operator feature guide](./operator-guide) for workflows and limits, or the
 [public feature map](https://emperorclaw.com/docs/features/) for an introduction.
 
 ## Recommended Reading

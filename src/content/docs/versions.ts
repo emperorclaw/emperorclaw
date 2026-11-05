@@ -17,6 +17,8 @@ export const versions: DocVersion[] = [
       { slug: 'activation', title: 'Activation Protocol', file: 'activation.md', section: 'Getting Started' },
       { slug: 'self-hosting-upgrades', title: 'Self-Hosting, Upgrades & Google Drive', file: 'self-hosting-upgrades.md', section: 'Getting Started' },
       { slug: 'emperor-operating-pipeline', title: 'Emperor Operating Pipeline', file: 'emperor-operating-pipeline.md', section: 'Getting Started' },
+      { slug: 'operator-guide', title: 'Operating an Agent Team', file: 'operator-guide.md', section: 'Getting Started' },
+      { slug: 'operator-guide-zh-cn', title: '智能体团队运营指南', file: 'operator-guide.zh-CN.md', section: 'Getting Started' },
 
       { slug: 'concepts', title: 'Core Concepts', file: 'concepts.md', section: 'Using Emperor' },
       { slug: 'lifecycle', title: 'Work Lifecycle & Approvals', file: 'lifecycle.md', section: 'Using Emperor' },

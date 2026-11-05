@@ -1,6 +1,6 @@
 # 智能体团队运营指南
 
-[English](operator-guide.md) · [简体中文](operator-guide.zh-CN.md)
+[English](./operator-guide) · [简体中文](./operator-guide-zh-cn)
 
 本文依据 EmperorClaw v0.29.0（2026 年 11 月 4 日）核实。应用中的名称是
 **自动化（Automations）**；API 路径和较早文档仍可能使用 `pipelines`。

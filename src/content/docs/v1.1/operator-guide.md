@@ -1,6 +1,6 @@
 # Operating an agent team
 
-[English](operator-guide.md) · [简体中文](operator-guide.zh-CN.md)
+[English](./operator-guide) · [简体中文](./operator-guide-zh-cn)
 
 Verified against EmperorClaw v0.29.0 (2026-11-04). The UI calls pipelines
 **Automations**; API routes and older documentation may still say pipelines.
