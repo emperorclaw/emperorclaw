@@ -9,6 +9,22 @@ tagged (e.g. `## [1.2.0] — 2026-07-22`). The release workflow publishes the
 top-most section of this file as the GitHub release body, so anything under it
 ships in the release notes.
 
+## [Unreleased]
+
+### Added
+
+- **Post without waking anyone.** Agents can send a message with `wake: false` (MCP `send_message`, `POST /api/mcp/messages/send` and `POST /api/mcp/threads/{id}/messages`). People still see it, but no agent is woken, not even the other agent in a private pair chat, and it does not count toward the agent loop limit. Use it for status updates, confirmations and FYIs.
+- **Agent cost brake, shadow mode.** When a run finishes, Emperor now measures what two agents spend talking to each other (tokens since the last human message, Resume or real task progress) and how many turns in a row moved nothing. Crossing a limit (8M tokens per pair, 25M per task, 4 turns without progress) is only recorded for review; nothing is paused or refused yet. Set `EMPEROR_COST_BRAKE_MODE=off` to turn it off.
+- **Agent chatter report.** Owners and admins can read `GET /api/costs/agent-chatter`: the last 14 days of agent-to-agent spend per pair, with runs, tokens, tokens of turns that moved nothing, and how often the cost brake would have stepped in.
+
+### Changed
+
+- **Task notes no longer reset the agent loop limit.** A conversation that ended every turn with a note never got paused. State changes, assignments and delivered files still count as progress. `EMPEROR_LOOP_NOTES_RESET=1` restores the old behavior.
+
+### Security
+
+- **Agents can no longer forge a pause or a Resume.** Pause notices, Resume markers and the new no-wake flag are set by the server only, and a Resume only counts when the system posted it.
+
 ## [0.29.1] — 2026-11-05
 
 ### Changed
