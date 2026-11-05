@@ -554,6 +554,13 @@
       "when": 1793816888004,
       "tag": "0078_desk-completions-index",
       "breakpoints": true
+    },
+    {
+      "idx": 79,
+      "version": "7",
+      "when": 1793918414594,
+      "tag": "0079_approval-chat-card",
+      "breakpoints": true
     }
   ]
 }

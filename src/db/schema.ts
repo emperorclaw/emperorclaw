@@ -584,12 +584,20 @@ export const approvals = pgTable("approvals", {
     consumedAt: timestamp("consumed_at"),
     // The exact caller + action + arguments an action-permission ask covers (lib/action-policy-rules.ts).
     argsHash: text("args_hash"),
+    // The chat thread the ask was posted in and its approval card message
+    // (lib/approval-card.ts). Null for asks with no requesting agent and for
+    // asks made before cards existed: their decision goes to the direct thread.
+    threadId: uuid("thread_id").references(() => messageThreads.id, { onDelete: 'set null' }),
+    cardMessageId: uuid("card_message_id").references(() => threadMessages.id, { onDelete: 'set null' }),
     createdAt: timestamp("created_at").defaultNow().notNull(),
 }, (table) => [
     index("approvals_requester_action_idx").on(table.companyId, table.requesterAgentId, table.actionType),
     // One pending ask per exact call: a repeat waits on the same approval.
     uniqueIndex("approvals_pending_action_ask_unique").on(table.companyId, table.actionType, table.argsHash)
         .where(sql`${table.status} = 'pending' AND ${table.argsHash} IS NOT NULL`),
+    // Deleting a thread or its messages (agent deletion) nulls these links: keep that an index lookup.
+    index("approvals_thread_idx").on(table.threadId).where(sql`${table.threadId} IS NOT NULL`),
+    index("approvals_card_message_idx").on(table.cardMessageId).where(sql`${table.cardMessageId} IS NOT NULL`),
 ]);
 
 export const approvalTaskLinks = pgTable("approval_task_links", {
