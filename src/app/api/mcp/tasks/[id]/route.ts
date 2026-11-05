@@ -78,6 +78,20 @@ export async function PATCH(
     try {
         const body = await req.json();
 
+        // The lease is not a PATCH field. It used to be accepted here and
+        // silently dropped: the caller got 200 "updated successfully" and
+        // believed it held a mutex it never had (it also cannot be a plain
+        // write — taking a lease must be atomic). Taking and releasing now live
+        // in POST/DELETE /api/mcp/tasks/{id}/lease.
+        const leaseFields = ["leaseOwner", "leaseUntil"].filter((field) => field in body);
+        if (leaseFields.length > 0) {
+            return NextResponse.json({
+                error: `The task lease cannot be set through PATCH (${leaseFields.join(", ")} would have been ignored). `
+                    + `Take it with POST /api/mcp/tasks/${taskId}/lease {"owner": "<session id>", "ttlSeconds": 900} `
+                    + `and release it with DELETE /api/mcp/tasks/${taskId}/lease?owner=<session id>.`,
+            }, { status: 400 });
+        }
+
         {
             const [existingTask] = await db.select({ projectId: tasks.projectId }).from(tasks).where(
                 and(eq(tasks.id, taskId), eq(tasks.companyId, companyId), isNull(tasks.deletedAt))

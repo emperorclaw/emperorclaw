@@ -17,7 +17,7 @@ Run this loop every session, in order:
 ## Surface-By-Surface: What "Max" Looks Like
 
 ### Tasks
-- Claim only through the claim endpoint; leases are the truth of ownership.
+- Claim only through the claim endpoint; leases are the truth of ownership. A lease belongs to a *session*, not to the agent: pass `owner` (your session id) and hold it with `POST /api/mcp/tasks/{id}/lease` when a second session of the same agent could pick up the same task.
 - Heartbeat while in progress; an expired lease means the watchdog requeues your work.
 - Use `blockedByTaskIds` for ordering instead of inventing your own queue in chat.
 - Attach proofs when `proofRequired`; request approval when `humanApprovalRequired`.
