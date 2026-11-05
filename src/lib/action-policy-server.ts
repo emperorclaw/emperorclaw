@@ -25,6 +25,7 @@ import {
 import { isVerifiedReplyBy, mcpActingAgentId } from "@/lib/thread-access";
 import { decideMcpWriter } from "@/lib/mcp-write-actor";
 import { EXTERNAL_APPROVAL_TTL_MS } from "@/lib/approval-status";
+import { postApprovalCard } from "@/lib/approval-card";
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -165,12 +166,15 @@ async function createActionApproval(input: {
             eq(approvals.companyId, input.companyId), eq(approvals.actionType, input.actionKey),
             eq(approvals.argsHash, input.argsHash), eq(approvals.status, "pending"),
         )).limit(1);
-        if (existing) return existing;
+        // Its card was (or is being) posted by the winner; this is a no-op then.
+        if (existing) return postApprovalCard({ companyId: input.companyId, approval: existing });
         throw new Error("Could not record the approval request");
     }
     await broadcastMcpEvent(input.companyId, { type: "approval_created", approval: created, taskIds: [] });
     await notifyApprovalRequested(input.companyId, created);
-    return created;
+    // The card goes to the agent's direct thread only: the card text is neutral
+    // (the action's name), and the arguments stay in the approval.
+    return postApprovalCard({ companyId: input.companyId, approval: created });
 }
 
 /** A live agent of this company, or null. */

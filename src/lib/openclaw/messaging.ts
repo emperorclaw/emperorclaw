@@ -81,6 +81,35 @@ async function ensureTargetMention(companyId: string, text: string, targetAgentI
   return `@${agent.name} ${text}`;
 }
 
+/**
+ * May this agent (null: a company-wide token acting as no agent) post in this
+ * existing thread? Throws the same errors send_message returns. Also used to
+ * validate the thread an approval card goes to (lib/approval-card.ts).
+ */
+export async function assertAgentMayPostInThread(companyId: string, thread: typeof messageThreads.$inferSelect, senderId: string | null): Promise<void> {
+  // A person's private direct thread reads as missing to anyone but its own
+  // agent. The sender is the acting agent: a bound token's own agent
+  // (enforced by the caller), or the agent a company-wide token sends as.
+  if (!agentTokenMayUseThread(thread, senderId)
+    || (isPrivateDirectThread(thread) && senderId && senderId !== thread.directAgentId)) {
+    throw new Error("Thread not found");
+  }
+
+  // A project/task thread is reachable only inside the sender's data scope.
+  if (!(await mcpMayUseThread(companyId, await mcpAccessForAgent(companyId, senderId), thread))) {
+    throw new Error("Thread not found");
+  }
+
+  // Only members talk in a group: an outside agent would never see the
+  // replies, and the members never asked for it.
+  if (thread.type === GROUP_THREAD_TYPE) {
+    if (thread.archivedAt) throw new Error("Access denied: that group is archived");
+    if (senderId && !(await isAgentGroupMember(companyId, thread.id, senderId))) {
+      throw new Error("Access denied: this agent is not a member of that group");
+    }
+  }
+}
+
 export async function sendThreadMessageFromMcp(input: {
   companyId: string;
   chatId?: string | null;
@@ -154,28 +183,12 @@ export async function sendThreadMessageFromMcp(input: {
       eq(messageThreads.companyId, input.companyId),
     )).limit(1);
 
-    // A person's private direct thread reads as missing to anyone but its own
-    // agent. The sender is the acting agent: a bound token's own agent
-    // (enforced above), or the agent a company-wide token sends as.
-    if (!existingThread || !agentTokenMayUseThread(existingThread, resolvedSenderId)
-      || (isPrivateDirectThread(existingThread) && resolvedSenderId && resolvedSenderId !== existingThread.directAgentId)) {
-      throw new Error("Thread not found");
-    }
-
-    // A project/task thread is reachable only inside the sender's data scope.
-    if (!(await mcpMayUseThread(input.companyId, await mcpAccessForAgent(input.companyId, resolvedSenderId), existingThread))) {
-      throw new Error("Thread not found");
-    }
+    if (!existingThread) throw new Error("Thread not found");
+    await assertAgentMayPostInThread(input.companyId, existingThread, resolvedSenderId);
 
     responseThread = existingThread;
 
-    // Only members talk in a group: an outside agent would never see the
-    // replies, and the members never asked for it.
     if (existingThread.type === GROUP_THREAD_TYPE) {
-      if (existingThread.archivedAt) throw new Error("Access denied: that group is archived");
-      if (resolvedSenderId && !(await isAgentGroupMember(input.companyId, existingThread.id, resolvedSenderId))) {
-        throw new Error("Access denied: this agent is not a member of that group");
-      }
       // A peer message names a recipient who must also belong to the group,
       // otherwise the handoff would be invisible to them (or leak to a
       // non-member). Never address someone who is not in the room.

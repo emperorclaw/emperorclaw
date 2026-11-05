@@ -69,8 +69,11 @@ export const DEFAULT_AGENT_PAIR_LOOP_MAX_TURNS = 30;
  * otherwise bypass the loop guard. `taskId` / `taskIds` name the task a
  * server notice is about (task wake, stall sweep, onboarding brief) and feed
  * run → task attribution, so a runtime may not stamp them on its own posts.
+ * `approvalCard` / `approvalDecision` / `approvalDecisionFor` mark an approval
+ * card and its decision (lib/approval-card.ts): a forged card must never show
+ * Approve/Reject for someone else's ask.
  */
-export const RESERVED_MESSAGE_METADATA_KEYS = ["taskAssigned", "stallNudge", "stallEscalation", "agentWake", "loopGuardResume", "__objectiveStatus", "ack", "idempotencyKey", "unreachableMentions", "taskId", "taskIds"] as const;
+export const RESERVED_MESSAGE_METADATA_KEYS = ["taskAssigned", "stallNudge", "stallEscalation", "agentWake", "loopGuardResume", "__objectiveStatus", "ack", "idempotencyKey", "unreachableMentions", "taskId", "taskIds", "approvalCard", "approvalDecision", "approvalDecisionFor"] as const;
 
 /**
  * A "Resume" marker resets the loop streak. It is a system message with this

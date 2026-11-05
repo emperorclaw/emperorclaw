@@ -9,6 +9,34 @@ tagged (e.g. `## [1.2.0] — 2026-07-22`). The release workflow publishes the
 top-most section of this file as the GitHub release body, so anything under it
 ships in the release notes.
 
+## [Unreleased]
+
+### Added
+
+- **Approvals show up in the chat they were asked from.** When an agent asks
+  for approval, an approval card appears in the conversation: in the group or
+  thread the agent names (`request_approval` and `POST /api/mcp/approvals`
+  take an optional `threadId`), in the thread of the message it is answering,
+  or otherwise in the agent's direct chat. People who may decide it see why
+  the agent asks and can Approve or Reject, with an optional note, right
+  there; the card follows the decision live. Everyone else in the thread sees
+  only who asks and for what.
+- **Decisions land in the same conversation.** The approval or rejection, with
+  the note, is posted in the card's thread and still wakes the agent that
+  asked. Approvals made before this release keep going to the direct chat.
+
+### Security
+
+- The card's message text never includes the agent's rationale or an
+  action's details (recipients, amounts, message bodies). The rationale is
+  served only to people allowed to decide the approval, with the same checks
+  as the Inbox.
+- Agents cannot fake an approval card or a decision: the message metadata
+  that marks them is reserved for the server, and only system messages render
+  as cards.
+- Two identical asks at the same moment now share one approval and one card
+  instead of creating two.
+
 ## [0.29.1] — 2026-11-05
 
 ### Changed

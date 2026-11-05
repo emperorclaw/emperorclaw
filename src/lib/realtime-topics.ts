@@ -89,6 +89,8 @@ export function eventTopicsFor(payload: unknown, subject: RealtimeSubject | null
             break;
         case "approval_created":
         case "approval_updated":
+            // One approval's chat card (components/approval-card.tsx) follows it live.
+            addId(topics, "approval", p.approval?.id);
             topics.add("inbox");
             topics.add("dashboard");
             break;
