@@ -5,7 +5,7 @@ import { agents, companies, messageThreads, threadMessages } from "@/db/schema";
 import { eq, and, gt, asc, desc, sql, ne, inArray, isNull, lte } from "drizzle-orm";
 import { SYNC_CURSOR_SLACK_MS, SYNC_PAGE_SIZE, selectSyncPage } from "@/lib/sync-page";
 import { GROUP_THREAD_TYPE, isAgentPairThread, loadGroupMembers, pairThreadPurpose } from "@/lib/groups";
-import { agentMessageWakesAgent, agentStreaks, agentLoopMaxTurnsFor, AGENT_LOOP_COOLDOWN_MS, answeredCutoffByThread, decideDelivery, filterAnsweredMessages, isLoopGuardResume, noteProgressResets, type RouteDecision } from "@/lib/message-routing";
+import { agentMessageWakesAgent, agentStreaks, agentLoopMaxTurnsFor, AGENT_LOOP_COOLDOWN_MS, answeredCutoffByThread, decideDelivery, filterAnsweredMessages, isLoopGuardResume, streakProgressTimestamps, type RouteDecision } from "@/lib/message-routing";
 import { touchAgentLiveness } from "@/lib/lifecycle";
 import { progressTimestampsForThread } from "@/lib/control-plane";
 import { recordInterestingVerdicts, type VerdictRecord } from "@/lib/run-ledger";
@@ -316,7 +316,7 @@ async function routeForAgent(
         .where(and(eq(agents.companyId, companyId), isNull(agents.deletedAt)));
 
     // Consecutive-agent streaks per thread, from the recent tail of each thread.
-    // Progress (task state changes, notes, artifacts) by the thread's agent
+    // Progress (task state changes, artifacts) by the thread's agent
     // participants resets the streak, so cooperative work never trips the guard.
     const streaks = new Map<string, number>();
     const byThread = new Map<string, Date>();
@@ -341,10 +341,10 @@ async function routeForAgent(
             id: m.id,
             senderType: m.senderType,
             createdAt: m.createdAt,
-            resumes: isLoopGuardResume(m.metadataJson),
+            resumes: isLoopGuardResume(m.metadataJson, m.senderType),
             wakesAgent: m.senderType.toLowerCase() === "agent" ? agentMessageWakesAgent(m, roster, isAgentPair) : undefined,
         }));
-        for (const [id, streak] of agentStreaks(msgs, [...core, ...noteProgressResets(msgs, notes)])) streaks.set(id, streak);
+        for (const [id, streak] of agentStreaks(msgs, streakProgressTimestamps(msgs, core, notes))) streaks.set(id, streak);
     }));
 
     const decisions = new Map<string, RouteDecision>();

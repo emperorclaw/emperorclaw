@@ -29,6 +29,8 @@ const sendMessageSchema = z.object({
     // Coalesced replies (capability "coalesced-replies: 1"): queued messages of
     // the same thread this reply also answers. Resolved together with the reply.
     alsoResolvesMessageIds: z.array(z.string().uuid()).max(20).optional(),
+    // false: an FYI/status post that wakes no agent (stored with server-set noWake).
+    wake: z.boolean().optional(),
 }).loose();
 
 type DbTx = Parameters<Parameters<typeof db.transaction>[0]>[0];
@@ -127,7 +129,7 @@ export async function POST(req: NextRequest) {
         if (parsed.error !== undefined) {
             return NextResponse.json({ error: parsed.error }, { status: 400 });
         }
-        const { chat_id, text, thread_id, from_user_id, agentId, targetAgentId, target_agent_id, thread_type, replyToMessageId, private: isPrivate, ack, alsoResolvesMessageIds } = parsed.data;
+        const { chat_id, text, thread_id, from_user_id, agentId, targetAgentId, target_agent_id, thread_type, replyToMessageId, private: isPrivate, ack, alsoResolvesMessageIds, wake } = parsed.data;
         // Only replies are made idempotent: they are what the bridge retries.
         const idempotencyKey = replyToMessageId ? idempotencyKeyFrom(req) : null;
 
@@ -166,6 +168,7 @@ export async function POST(req: NextRequest) {
             private: isPrivate === true,
             ack: ack === true,
             idempotencyKey,
+            wake: wake === false ? false : undefined,
         });
 
         // An acknowledgement answers nothing, so it never resolves coalesced messages.
@@ -253,6 +256,7 @@ export async function POST(req: NextRequest) {
             message_id: result.messageId,
             thread_id: result.threadId,
             ...("replayed" in result ? { replayed: true } : {}),
+            ...(wake === false ? { wake: false } : {}),
             ...(coalescedIds.length > 0 ? { resolvedMessageIds: coalescedResolved.map((message) => message.id) } : {}),
         });
     } catch (error) {

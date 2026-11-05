@@ -23,7 +23,7 @@ import { and, desc, eq, gte, inArray, isNull, lt, ne, notInArray, or, sql } from
 import { nextCheckinDeadline } from "./lifecycle";
 import { normalizeExecutionState, type ExecutionState } from "./project-workflow";
 import { truncateReasoningForStorage } from "./reasoning-history";
-import { agentMessageWakesAgent, agentStreakState, agentLoopMaxTurnsFor, AGENT_LOOP_COOLDOWN_MS, isLoopGuardResume, mentionedAgentIds, noteProgressResets, UNREACHABLE_MENTIONS_KEY, type AgentStreakState } from "./message-routing";
+import { agentMessageWakesAgent, agentStreakState, agentLoopMaxTurnsFor, AGENT_LOOP_COOLDOWN_MS, isLoopGuardResume, mentionedAgentIds, streakProgressTimestamps, UNREACHABLE_MENTIONS_KEY, type AgentStreakState } from "./message-routing";
 import { loadAgentScopeContext } from "./agent-scope";
 import { notifyAgentMessage, notify, companyAdminIds } from "./notifications";
 import { isAgentPairThread } from "./groups";
@@ -648,7 +648,7 @@ const STREAK_TAIL_WINDOW = 200;
 /**
  * Consecutive agent-authored messages at the end of a thread with no progress
  * (0 when the last counted message is a human's, a resume marker, or after a
- * task state change / note / artifact). System notices neither count nor reset.
+ * task state change / artifact; a note only under EMPEROR_LOOP_NOTES_RESET). System notices neither count nor reset.
  */
 export async function currentAgentStreak(companyId: string, threadId: string, window = 100): Promise<number> {
     return (await currentAgentStreakState(companyId, threadId, window)).streak;
@@ -686,10 +686,10 @@ export async function currentAgentStreakState(companyId: string, threadId: strin
         id: m.id,
         senderType: m.senderType,
         createdAt: m.createdAt,
-        resumes: isLoopGuardResume(m.metadataJson),
+        resumes: isLoopGuardResume(m.metadataJson, m.senderType),
         wakesAgent: m.senderType.toLowerCase() === "agent" ? agentMessageWakesAgent(m, roster, isAgentPair) : undefined,
     }));
-    return agentStreakState(msgs, [...core, ...noteProgressResets(msgs, notes)]);
+    return agentStreakState(msgs, streakProgressTimestamps(msgs, core, notes));
 }
 
 /**
@@ -728,6 +728,9 @@ async function postLoopGuardNoticeIfNeeded(companyId: string, threadId: string) 
                 .where(and(
                     eq(threadMessages.threadId, threadId),
                     eq(threadMessages.companyId, companyId),
+                    // Only a genuine (system) notice counts: an agent post
+                    // carrying a forged flag must not suppress the real one.
+                    eq(threadMessages.senderType, "system"),
                     sql`${threadMessages.metadataJson}->>'loopGuard' = 'true'`,
                     sql`${threadMessages.createdAt} > ${resetAt}`,
                 ))

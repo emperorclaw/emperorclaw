@@ -6,7 +6,7 @@ import { messageThreads } from "@/db/schema";
 import { appendThreadMessage, currentAgentStreak, getThreadMessages } from "@/lib/control-plane";
 import { broadcastMcpEvent } from "@/lib/pubsub";
 import { GROUP_THREAD_TYPE, isAgentGroupMember, isAgentPairThread, pairThreadCounterpart } from "@/lib/groups";
-import { agentLoopHardCap, agentPairLoopHardCap, stripReservedMetadata, unreachableMentionsOf } from "@/lib/message-routing";
+import { agentLoopHardCap, agentPairLoopHardCap, NO_WAKE_KEY, stripReservedMetadata, unreachableMentionsOf } from "@/lib/message-routing";
 import { applyStoredObjectiveStatus } from "@/lib/objective-status";
 import { agentTokenMayUseThread, isPrivateDirectThread } from "@/lib/direct-chat-mode";
 import { mcpActingAgentId, mcpThreadReadVerdict } from "@/lib/thread-access";
@@ -68,7 +68,13 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
         }
 
         const body = await req.json();
-        const { text, senderType = "agent", senderId, targetAgentId, metadataJson, mirrorToLegacyChat = false } = body;
+        const { text, senderType = "agent", senderId, targetAgentId, metadataJson, mirrorToLegacyChat = false, wake } = body;
+        if (wake !== undefined && typeof wake !== "boolean") {
+            return NextResponse.json({ error: "wake must be a boolean" }, { status: 400 });
+        }
+        // wake:false is an FYI: stored with the server-set noWake flag and no
+        // target, so it wakes no agent (pair threads included).
+        const noWake = wake === false;
 
         // A person's private direct thread: only a request acting as its agent,
         // i.e. the bound agent, or the agent sender a company-wide token names.
@@ -117,7 +123,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
                 return NextResponse.json({ error: "Access denied: this token is bound to a different agent" }, { status: 403 });
             }
         }
-        if (senderType === "agent" && thread.type !== "direct" && (await currentAgentStreak(companyId, thread.id)) >= (isAgentPair ? agentPairLoopHardCap() : agentLoopHardCap())) {
+        if (senderType === "agent" && !noWake && thread.type !== "direct" && (await currentAgentStreak(companyId, thread.id)) >= (isAgentPair ? agentPairLoopHardCap() : agentLoopHardCap())) {
             return NextResponse.json({ error: "Loop guard: too many agent messages in a row in this thread; retry after five minutes of inactivity or ask a person to write" }, { status: 429 });
         }
         const resolvedTargetAgentId = targetAgentId && !isGroup
@@ -143,9 +149,9 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
             threadId,
             senderType,
             senderId: resolvedSenderId,
-            targetAgentId: effectiveTargetAgentId,
+            targetAgentId: noWake ? null : effectiveTargetAgentId,
             text,
-            metadataJson: stripReservedMetadata(metadataJson),
+            metadataJson: { ...stripReservedMetadata(metadataJson), ...(noWake ? { [NO_WAKE_KEY]: true } : {}) },
             mirrorToLegacyChat: shouldMirrorToLegacyChat,
         });
 

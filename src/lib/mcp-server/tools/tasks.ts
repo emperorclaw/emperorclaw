@@ -147,7 +147,7 @@ export function registerTaskTools(server: McpServer, companyId: string, callerAg
 
     server.registerTool("add_task_note", {
         title: "Add Task Note",
-        description: "Record progress, a handoff, or a blocker on a task. This is the visible progress signal: it resets the loop guard and the stall sweep, so note what you actually did or what is blocking you. Use update_task for state/assignee changes, not notes. Write for a business reader in at most ~8 lines of Markdown: what changed, the evidence (numbers, links, artifact IDs), and the next step. Put technical detail under a final **Details** line.",
+        description: "Record progress, a handoff, or a blocker on a task. This is the visible progress signal for the stall sweep (it does not reset the agent loop guard; a state change or assignment does), so note what you actually did or what is blocking you. Use update_task for state/assignee changes, not notes. Write for a business reader in at most ~8 lines of Markdown: what changed, the evidence (numbers, links, artifact IDs), and the next step. Put technical detail under a final **Details** line.",
         inputSchema: {
             taskId: z.string().describe("The task's UUID"),
             note: z.string().min(1).describe("Markdown, at most ~8 lines: what changed, evidence (numbers, links), next step or blocker. Plain language; technical detail last under **Details**."),

@@ -62,8 +62,10 @@ function hasStoredReasoning(message: TeamMessage): boolean {
     return (message.metadataJson as Record<string, unknown>).hasReasoning === true;
 }
 
-// A loop-pause notice carries a "Resume" action for a human.
+// A loop-pause notice carries a "Resume" action for a human. Only a system
+// notice qualifies: an agent post carrying the flag is never a pause.
 function isLoopPauseNotice(message: TeamMessage): boolean {
+    if (message.senderType !== "system") return false;
     if (!message.metadataJson || typeof message.metadataJson !== "object") return false;
     const meta = message.metadataJson as Record<string, unknown>;
     return meta.loopGuard === true && meta.resumable === true;

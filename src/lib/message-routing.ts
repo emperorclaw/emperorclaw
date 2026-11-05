@@ -23,7 +23,8 @@ export type RouteReason =
     | "task_assigned"   // a system notice: a task was assigned to this agent
     | "not_addressed"   // shared thread, no mention of this agent
     | "loop_paused"     // too many agent messages in a row without progress
-    | "out_of_scope";   // an agent mentioned this agent but its scope does not reach it
+    | "out_of_scope"    // an agent mentioned this agent but its scope does not reach it
+    | "fyi";            // the sender posted with wake:false: visible, but wakes no agent
 
 export interface RouteDecision {
     addressedToYou: boolean;
@@ -69,18 +70,58 @@ export const DEFAULT_AGENT_PAIR_LOOP_MAX_TURNS = 30;
  * otherwise bypass the loop guard. `taskId` / `taskIds` name the task a
  * server notice is about (task wake, stall sweep, onboarding brief) and feed
  * run → task attribution, so a runtime may not stamp them on its own posts.
+ * `loopGuard` (the pause notice), `noWake` (a wake:false post) and the
+ * cost-brake keys are server-only too: a forged pause notice or Resume marker
+ * would let an agent hide or lift a pause on its own.
  */
-export const RESERVED_MESSAGE_METADATA_KEYS = ["taskAssigned", "stallNudge", "stallEscalation", "agentWake", "loopGuardResume", "__objectiveStatus", "ack", "idempotencyKey", "unreachableMentions", "taskId", "taskIds"] as const;
+export const RESERVED_MESSAGE_METADATA_KEYS = ["taskAssigned", "stallNudge", "stallEscalation", "agentWake", "loopGuard", "loopGuardResume", "noWake", "costBrake", "costBrakeResume", "convertedFrom", "__objectiveStatus", "ack", "idempotencyKey", "unreachableMentions", "taskId", "taskIds"] as const;
+
+/** Server-set metadata on a message posted with `wake: false`. */
+export const NO_WAKE_KEY = "noWake";
+
+/** Whether a stored message was posted with `wake: false` (visible, wakes no agent). */
+export function isNoWakeMessage(metadata: unknown): boolean {
+    if (!metadata || typeof metadata !== "object") return false;
+    return (metadata as Record<string, unknown>)[NO_WAKE_KEY] === true;
+}
 
 /**
  * A "Resume" marker resets the loop streak. It is a system message with this
  * metadata flag, posted by the Messages UI when a human clicks Resume on a
  * pause notice. Unlike ordinary system notices (which neither count nor reset),
- * it resets the streak so the paused agents may answer again.
+ * it resets the streak so the paused agents may answer again. Only a system
+ * (or human) message is honored: the key is reserved, and an agent message
+ * carrying it (an older row, or a path that skipped the strip) never resumes.
  */
-export function isLoopGuardResume(metadata: unknown): boolean {
+export function isLoopGuardResume(metadata: unknown, senderType: string | null | undefined): boolean {
+    const type = (senderType || "").toLowerCase();
+    if (type !== "system" && type !== "human") return false;
     if (!metadata || typeof metadata !== "object") return false;
     return (metadata as Record<string, unknown>).loopGuardResume === true;
+}
+
+/**
+ * Whether task notes may reset the loop streak (legacy behavior). Off by
+ * default since 0.30: a re-verification loop that ends every turn with a note
+ * reset itself. `EMPEROR_LOOP_NOTES_RESET=1` restores it.
+ */
+export function loopNotesResetEnabled(env: Record<string, string | undefined> = process.env): boolean {
+    const value = (env.EMPEROR_LOOP_NOTES_RESET || "").trim().toLowerCase();
+    return value === "1" || value === "true";
+}
+
+/**
+ * The progress timestamps that reset a thread's streak: core progress (state
+ * changes, assignments, artifacts) always; task notes only when
+ * {@link loopNotesResetEnabled}, and then rate-limited by {@link noteProgressResets}.
+ */
+export function streakProgressTimestamps(
+    messages: StreakMessage[],
+    core: (Date | string | number)[],
+    notes: (Date | string | number)[],
+    env: Record<string, string | undefined> = process.env,
+): (Date | string | number)[] {
+    return loopNotesResetEnabled(env) ? [...core, ...noteProgressResets(messages, notes)] : [...core];
 }
 
 /** Drop reserved internal keys from caller-supplied metadata, preserving the rest. */
@@ -228,13 +269,15 @@ export function mentionedAgentIds(text: string, roster: RosterAgent[], options: 
  * message that can form an agent loop. It does when it targets an agent, when
  * it @mentions an agent other than its sender, or when it is posted in a
  * two-agent pair thread (where every message addresses the counterpart).
- * An agent's @all does not count: it never fans out to agents.
+ * An agent's @all does not count: it never fans out to agents. A message
+ * posted with `wake: false` never wakes anyone, not even in a pair thread.
  */
 export function agentMessageWakesAgent(
     message: { senderId: string | null; targetAgentId: string | null; text: string | null; metadataJson?: unknown },
     roster: RosterAgent[],
     isAgentPair: boolean,
 ): boolean {
+    if (isNoWakeMessage(message.metadataJson)) return false;
     if (isAgentPair) return true;
     if (message.targetAgentId && message.targetAgentId !== message.senderId) return true;
     const unreachable = unreachableMentionsOf(message.metadataJson);
@@ -278,6 +321,11 @@ export function decideDelivery(input: {
     const threadType = (input.threadType || "").toLowerCase();
 
     if (senderType === "agent" && message.senderId === agentId) return { addressedToYou: false, routeReason: "self" };
+
+    // An agent's wake:false post (status, FYI, ack) addresses no agent: not by
+    // target, mention, or a pair thread's implicit handoff. Checked before every
+    // other rule so a pair thread cannot turn it back into a wake.
+    if (senderType === "agent" && isNoWakeMessage(message.metadataJson)) return { addressedToYou: false, routeReason: "fyi" };
 
     // A person never wakes an agent they may not use (0.20 "Who can use it"):
     // not by mention, @all, target or a group they share with it.
@@ -343,7 +391,8 @@ export function decideDelivery(input: {
  * message reports the streak it leaves unchanged.
  *
  * `progress` is a list of timestamps of real progress — a task state change,
- * an assignment, a task note, or a delivered artifact by a thread participant.
+ * an assignment, or a delivered artifact by a thread participant (task notes
+ * only under `EMPEROR_LOOP_NOTES_RESET`, see {@link streakProgressTimestamps}).
  * Each one resets the streak, so a long cooperative exchange that keeps making
  * progress never trips the guard. A message whose `resumes` flag is set (the
  * "Resume" marker) also resets the streak.
