@@ -190,3 +190,7 @@ Use `emperor_request` with `GET /agents` to discover the current agent roster. U
 ## License
 
 MIT
+
+## Ownership
+
+EmperorClaw is owned and maintained by [Malecu s.r.o.](https://malecu.eu).

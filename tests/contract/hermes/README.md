@@ -130,3 +130,7 @@ Probe scenarios `27_clarify_auto`, `28_steer_followup`, `29_graceful_stop_drain`
   The probe records the stop time against the 55 s budget as a soft check.
 - An admission queued in Hermes behind the draining turn is not claimed during the drain. It
   runs after the restart.
+
+## Ownership
+
+EmperorClaw is owned and maintained by [Malecu s.r.o.](https://malecu.eu).

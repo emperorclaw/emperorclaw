@@ -1,6 +1,6 @@
 # Trademark Policy
 
-"Emperor Claw" and the Emperor Claw logo are trademarks of Malecu OU. The
+"Emperor Claw" and the Emperor Claw logo are trademarks of Malecu s.r.o.. The
 source code license ([FSL-1.1-Apache-2.0](./LICENSE)) covers the code — it
 does not grant rights to the name or the logo. This policy explains what you
 can and can't do with them.
@@ -25,7 +25,7 @@ can and can't do with them.
 - **Any commercial product or hosted service.** You may not offer anything
   called "Emperor Claw", "EmperorClaw Cloud", or any confusingly similar name
   ("Emperor Claw Pro", "EmprClaw", etc.). The only party who may operate a
-  service under this name is Malecu OU.
+  service under this name is Malecu s.r.o..
 - **Domain names, company names, app-store listings, and social accounts**
   that lead with the mark or imply official status.
 

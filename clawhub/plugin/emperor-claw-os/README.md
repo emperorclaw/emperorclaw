@@ -200,3 +200,7 @@ See:
 - `references/BRIDGE-PRESERVATION-PLAN.md`
 - `references/CHANNEL-MIGRATION-PROPOSAL.md`
 - `references/CHANNEL-CONFIG.md`
+
+## Ownership
+
+EmperorClaw is owned and maintained by [Malecu s.r.o.](https://malecu.eu).

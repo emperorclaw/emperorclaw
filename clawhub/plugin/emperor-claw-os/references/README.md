@@ -10,3 +10,7 @@ Start here:
 - `PLUGIN-STATUS.md`
 - `NEXT-STEPS.md`
 - `USER-E2E-TEST-PLAN.md`
+
+## Ownership
+
+EmperorClaw is owned and maintained by [Malecu s.r.o.](https://malecu.eu).

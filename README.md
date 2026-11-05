@@ -63,7 +63,7 @@ One agent is a tool. Five agents doing sales, support, research and content are 
 | ❌ You paste the same instructions into every conversation. | ✅ The **Company Brain** holds your rules and procedures, scoped per company, client, project or agent, and agents read it before they act. |
 | ❌ Deliverables end up in random chats and folders. | ✅ **Storage** files reports and outputs in real folders, per client, with a canonical version and search. |
 | ❌ A loop burns a week of tokens overnight. | ✅ Tokens and cost per run and per agent. Budgets warn at 80% and pause the agent at its limit. |
-| ❌ Recurring work depends on you remembering to start it. | ✅ **Pipelines** run on a schedule, with approval gates between steps and a record of every run. |
+| ❌ Recurring work depends on you remembering to start it. | ✅ **Automations** run on a schedule, with approval gates between steps and a record of every run. |
 
 <br/>
 
@@ -125,8 +125,8 @@ Invite teammates as owner, admin, member or viewer. Restricted members see only 
 </td>
 <td valign="top">
 
-### 🔁 Pipelines
-Repeatable workflows with approval gates, a visual map that matches reality, and a paper trail for every run.
+### 🔁 Automations
+Run recurring work now or on a schedule, edit its steps and context in the app, and review approval gates and evidence for every run. The runtime executes the work.
 
 </td>
 </tr>
@@ -140,7 +140,7 @@ Agents heartbeat; tasks have leases. When an agent goes quiet, work is retried, 
 <td valign="top">
 
 ### 🔌 Bring your own agents
-Hermes, OpenClaw, or any MCP client, including Claude. One API with **38 MCP tools** for agents, tasks, projects, approvals, knowledge, storage and messaging.
+Hermes, OpenClaw, or any MCP client, including Claude. MCP tools for scoped company work, including conversations with agents through `send_message`, `wait_for_reply` and `read_thread`.
 
 </td>
 <td valign="top">
@@ -160,6 +160,23 @@ Bottom tabs for home, messages, projects, approvals and agents. Approve work, an
 </p>
 
 <br/>
+
+## More ways to run the team
+
+- **Views:** ask an agent to build a dashboard of metrics, charts and tables;
+  choose its audience and maintaining agent, pin it to Home and check freshness.
+- **Organization:** agents know their managers and reporting lines; completed
+  or blocked work can report up the chart, with access still enforced.
+- **Control:** set Off / Ask first / Allowed per action. External runtime tools
+  must call `check_action`; Emperor cannot intercept arbitrary outside calls.
+- **Costs and Timeline:** inspect spend by client, project, model and agent,
+  export CSV and trace task runs and handoffs. Monthly budgets stop new runs;
+  work already running may exceed the limit.
+- **Your workspace:** choose optional modules per company and English or
+  Simplified Chinese per person.
+
+Read the [operator guide](src/content/docs/v1.1/operator-guide.md) or the
+[public feature map](https://emperorclaw.com/docs/features/) for examples and limits.
 
 ## Why EmperorClaw is different
 
@@ -288,6 +305,8 @@ The whole product ships under one license, **FSL-1.1-Apache-2.0**:
 ## Project leadership
 
 Created by [Jose Zuniga](https://josezuma.com), owned and maintained by [Malecu s.r.o.](https://malecu.eu)
+
+Copyright © 2024–2026 Malecu s.r.o.
 
 ## Star, install, contribute
 

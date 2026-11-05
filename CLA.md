@@ -1,7 +1,7 @@
 # Individual Contributor License Agreement
 
 Thank you for contributing to Emperor Claw ("the Project"), maintained by
-Malecu OU ("We"/"Us"). This agreement clarifies the rights you grant Us in
+Malecu s.r.o. ("We"/"Us"). This agreement clarifies the rights you grant Us in
 your contributions. It takes one click via the CLA bot on your first pull
 request, and it exists for a concrete reason: the Project's
 [FSL license](./LICENSE) automatically converts every release to Apache 2.0

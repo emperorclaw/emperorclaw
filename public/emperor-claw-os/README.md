@@ -71,3 +71,7 @@ See [SKILL.md](SKILL.md) for full details on the schema and idempotency requirem
 ## License
 
 MIT
+
+## Ownership
+
+EmperorClaw is owned and maintained by [Malecu s.r.o.](https://malecu.eu).
