@@ -158,7 +158,7 @@ maybe("deciding from a group card posts a neutral notice there and the full deci
     assert.equal(notice.targetAgentId, null, "the notice wakes nobody");
     assert.equal(notice.deliveryState, "resolved");
     assert.equal((notice.metadataJson as Record<string, unknown>).approvalDecisionFor, approval.cardMessageId);
-    assert.equal(notice.text, `Approval ${approval.id} rejected by Olivia Owner.`);
+    assert.equal(notice.text, "Approval request rejected by Olivia Owner.");
     for (const leak of ["Add the screenshots", "emperor://task", "landing page"]) assert.ok(!notice.text.includes(leak), `notice leaks ${leak}: ${notice.text}`);
 
     const [card] = await cardsIn(w.group.id);
@@ -226,7 +226,7 @@ maybe("a group member without access to the approval's project does not see the 
     try {
         const chat = await call((await import("@/app/api/chat/route")).GET, `/api/chat?threadId=${group.id}`);
         assert.equal(chat.status, 200, chat.text);
-        assert.ok(chat.text.includes(`Approval ${approval.id} approved`), "the member sees the outcome");
+        assert.ok(chat.text.includes("Approval request approved"), "the member sees the outcome");
         for (const leak of [SECRET_NOTE, "8,100", "emperor://task", "ceo@acme.example"]) assert.ok(!chat.text.includes(leak), `group thread leaks ${leak}`);
     } finally {
         actAs(null);

@@ -44,14 +44,15 @@ export function approvalCardText(agentName: string | null | undefined, label: st
 
 /**
  * The decision notice posted in a shared card thread (a group, a task thread):
- * the outcome, who decided and the approval id. Never the resolution note or
- * task links: everyone in the thread reads it, and the note is for the agent
- * (it gets the full message in its direct thread).
+ * the outcome and who decided. People read it right under the card, so it
+ * carries no raw id (the id stays in the message metadata). Never the
+ * resolution note or task links: everyone in the thread reads it, and the note
+ * is for the agent (it gets the full message in its direct thread).
  */
 export function approvalDecisionNoticeText(input: { approvalId: string; status: string; deciderName?: string | null }): string {
-    if (input.status === "expired") return `Approval ${input.approvalId} expired without a decision.`;
+    if (input.status === "expired") return "Approval request expired without a decision.";
     const name = input.deciderName && input.deciderName.trim() ? neutralCardLine(input.deciderName, NAME_MAX) : "";
-    return name ? `Approval ${input.approvalId} ${input.status} by ${name}.` : `Approval ${input.approvalId} ${input.status}.`;
+    return name ? `Approval request ${input.status} by ${name}.` : `Approval request ${input.status}.`;
 }
 
 /**

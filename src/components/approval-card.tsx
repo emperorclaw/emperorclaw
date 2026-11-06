@@ -155,7 +155,7 @@ export function ApprovalCard({ approvalId }: { approvalId: string }) {
                             className="w-full resize-y rounded-lg border border-zinc-700 bg-zinc-950/70 px-2 py-1.5 text-xs text-zinc-200 placeholder:text-zinc-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400/70"
                         />
                     ) : null}
-                    <div className="flex flex-wrap gap-2">
+                    {pending ? <div className="flex flex-wrap gap-2">
                         <button
                             type="button"
                             onClick={() => void decide("approved")}
@@ -172,7 +172,7 @@ export function ApprovalCard({ approvalId }: { approvalId: string }) {
                         >
                             {t("reject")}
                         </button>
-                    </div>
+                    </div> : null}
                     {error ? <p role="alert" className="text-rose-300">{error}</p> : null}
                 </div>
             ) : null}
