@@ -569,9 +569,10 @@ export function AgentDetailPanel({ agentId, agentName, runtime = null }: {
                                     updateAgent({ provider: e.target.value });
                                     setEditingProvider(false);
                                 }}
-                                onBlur={() => setEditingProvider(false)}
+                                onOpenChange={(open) => { if (!open) setEditingProvider(false); }}
                                 className="h-6 rounded border border-zinc-700 bg-zinc-900 px-1.5 text-xs text-zinc-200 outline-none focus:border-cyan-400"
                                 autoFocus
+                                defaultOpen
                             >
                                 <option disabled={agent.deploymentMode === "local"} value="mcp">{t("genericMcp")}</option>
                                 {RUNTIME_OPTIONS.map((option) => (
@@ -598,9 +599,10 @@ export function AgentDetailPanel({ agentId, agentName, runtime = null }: {
                                     updateAgent({ deploymentMode: e.target.value });
                                     setEditingDeployment(false);
                                 }}
-                                onBlur={() => setEditingDeployment(false)}
+                                onOpenChange={(open) => { if (!open) setEditingDeployment(false); }}
                                 className="h-6 rounded border border-zinc-700 bg-zinc-900 px-1.5 text-xs text-zinc-200 outline-none focus:border-cyan-400"
                                 autoFocus
+                                defaultOpen
                             >
                                 <option value="remote">{t("remote")}</option>
                                 <option disabled={agent.provider !== "hermes"} value="local">{t("localThisServer")}</option>

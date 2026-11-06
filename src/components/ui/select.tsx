@@ -86,6 +86,8 @@ type SelectProps = Omit<
   /** Shown when the value matches no option. */
   placeholder?: React.ReactNode
   open?: boolean
+  /** Opens the list on mount (an inline editor shown by a click). */
+  defaultOpen?: boolean
   onOpenChange?: (open: boolean) => void
   /** Extra classes for the popup list. */
   contentClassName?: string
@@ -103,6 +105,7 @@ function Select({
   disabled,
   placeholder,
   open,
+  defaultOpen,
   onOpenChange,
   className,
   contentClassName,
@@ -151,6 +154,7 @@ function Select({
       onValueChange={handleValueChange}
       disabled={disabled}
       open={open}
+      defaultOpen={defaultOpen}
       onOpenChange={onOpenChange}
     >
       <SelectPrimitive.Trigger
@@ -176,7 +180,7 @@ function Select({
         {/* Every label sits in one grid cell (invisibly), so an auto-width trigger is as wide as its widest option, like a native select. */}
         <span className="grid min-w-0 flex-1">
           <span className="col-start-1 row-start-1 truncate">
-            <SelectPrimitive.Value placeholder={placeholder} />
+            <SelectPrimitive.Value placeholder={placeholder ?? (hasMatch ? undefined : options[0]?.label)} />
           </span>
           {options.map((option) => (
             <span key={option.value} aria-hidden className="invisible col-start-1 row-start-1 h-0 truncate">
@@ -195,7 +199,7 @@ function Select({
           sideOffset={6}
           collisionPadding={12}
           className={cn(
-            "ec-materialize relative z-[60] max-h-[min(22rem,var(--radix-select-content-available-height))] min-w-(--radix-select-trigger-width) max-w-[calc(100vw-1.5rem)] origin-(--radix-select-content-transform-origin) overflow-hidden rounded-xl border border-border bg-popover text-popover-foreground shadow-(--shadow-pop)",
+            "ec-materialize relative z-[300] max-h-[min(22rem,var(--radix-select-content-available-height))] min-w-(--radix-select-trigger-width) max-w-[calc(100vw-1.5rem)] origin-(--radix-select-content-transform-origin) overflow-hidden rounded-xl border border-border bg-popover text-popover-foreground shadow-(--shadow-pop)",
             contentClassName
           )}
         >
