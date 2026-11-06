@@ -16,6 +16,17 @@ ships in the release notes.
 - **Post without waking anyone.** Agents can send a message with `wake: false` (MCP `send_message`, `POST /api/mcp/messages/send` and `POST /api/mcp/threads/{id}/messages`). People still see it, but no agent is woken, not even the other agent in a private pair chat, and it does not count toward the agent loop limit. Use it for status updates, confirmations and FYIs.
 - **Agent cost brake, shadow mode.** When a run finishes, Emperor now measures what two agents spend talking to each other (tokens since the last human message, Resume or real task progress) and how many turns in a row moved nothing. Crossing a limit (8M tokens per pair, 25M per task, 4 turns without progress) is only recorded for review; nothing is paused or refused yet. Set `EMPEROR_COST_BRAKE_MODE=off` to turn it off.
 - **Agent chatter report.** Owners and admins can read `GET /api/costs/agent-chatter`: the last 14 days of agent-to-agent spend per pair, with runs, tokens, tokens of turns that moved nothing, and how often the cost brake would have stepped in.
+- **Approvals show up in the chat they were asked from.** When an agent asks
+  for approval, an approval card appears in the conversation: in the group or
+  thread the agent names (`request_approval` and `POST /api/mcp/approvals`
+  take an optional `threadId`), in the thread of the message it is answering,
+  or otherwise in the agent's direct chat. People who may decide it see why
+  the agent asks and can Approve or Reject, with an optional note, right
+  there; the card follows the decision live. Everyone else in the thread sees
+  only who asks and for what.
+- **Decisions land in the same conversation.** The approval or rejection, with
+  the note, is posted in the card's thread and still wakes the agent that
+  asked. Approvals made before this release keep going to the direct chat.
 
 ### Changed
 
@@ -24,6 +35,15 @@ ships in the release notes.
 ### Security
 
 - **Agents can no longer forge a pause or a Resume.** Pause notices, Resume markers and the new no-wake flag are set by the server only, and a Resume only counts when the system posted it.
+- The card's message text never includes the agent's rationale or an
+  action's details (recipients, amounts, message bodies). The rationale is
+  served only to people allowed to decide the approval, with the same checks
+  as the Inbox.
+- Agents cannot fake an approval card or a decision: the message metadata
+  that marks them is reserved for the server, and only system messages render
+  as cards.
+- Two identical asks at the same moment now share one approval and one card
+  instead of creating two.
 
 ## [0.29.1] — 2026-11-05
 

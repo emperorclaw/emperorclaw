@@ -73,8 +73,11 @@ export const DEFAULT_AGENT_PAIR_LOOP_MAX_TURNS = 30;
  * `loopGuard` (the pause notice), `noWake` (a wake:false post) and the
  * cost-brake keys are server-only too: a forged pause notice or Resume marker
  * would let an agent hide or lift a pause on its own.
+ * `approvalCard` / `approvalDecision` / `approvalDecisionFor` mark an approval
+ * card and its decision (lib/approval-card.ts): a forged card must never show
+ * Approve/Reject for someone else's ask.
  */
-export const RESERVED_MESSAGE_METADATA_KEYS = ["taskAssigned", "stallNudge", "stallEscalation", "agentWake", "loopGuard", "loopGuardResume", "noWake", "costBrake", "costBrakeResume", "convertedFrom", "__objectiveStatus", "ack", "idempotencyKey", "unreachableMentions", "taskId", "taskIds"] as const;
+export const RESERVED_MESSAGE_METADATA_KEYS = ["taskAssigned", "stallNudge", "stallEscalation", "agentWake", "loopGuard", "loopGuardResume", "noWake", "costBrake", "costBrakeResume", "convertedFrom", "__objectiveStatus", "ack", "idempotencyKey", "unreachableMentions", "taskId", "taskIds", "approvalCard", "approvalDecision", "approvalDecisionFor"] as const;
 
 /** Server-set metadata on a message posted with `wake: false`. */
 export const NO_WAKE_KEY = "noWake";

@@ -8,6 +8,8 @@ import { useFormatter, useTranslations } from "next-intl";
 import { useCopy } from "@/lib/i18n/use-copy";
 import { IconArrowUp, IconPaperclip, IconPlayerStop, IconRobot, IconMicrophone, IconSend, IconSquare, IconTrash, IconUser } from "@tabler/icons-react";
 import { DeliveryInspector } from "@/components/delivery-inspector";
+import { ApprovalCard } from "@/components/approval-card";
+import { approvalCardIdOf } from "@/lib/approval-card-copy";
 import { isPersistedUuid } from "@/lib/run-ledger-copy";
 import { cn } from "@/lib/utils";
 import { MarkdownRenderer } from "@/components/markdown-renderer";
@@ -803,6 +805,7 @@ export function AgentDirectChat({
                             const message = messages[i];
                             const isHuman = message.senderType === "human";
                             const isControl = message.senderType === "system" && Boolean((message.metadataJson as Record<string, unknown> | null)?.runtimeControl);
+                            const approvalCardId = approvalCardIdOf(message);
                             // System messages say who they are from: a request names its
                             // source platform; anything else comes from Emperor itself.
                             const senderLabel = message.senderType === "system" ? (requestSourceLabel(message.metadataJson) ? render(requestSourceCopy(message.metadataJson), requestSourceLabel(message.metadataJson)!) : "Emperor") : agentName;
@@ -872,6 +875,7 @@ export function AgentDirectChat({
                                                 {isControl && <p className="mt-2 text-xs text-zinc-400">
                                                     {message.deliveryState === "resolved" ? t("runtimeConfirmed") : t("waitingHermes")}
                                                 </p>}
+                                                {approvalCardId && <ApprovalCard approvalId={approvalCardId} />}
                                                 {messageAttachments.length > 0 && (
                                                     <div className="mt-2 flex flex-col gap-1.5">
                                                         {messageAttachments.map((att) => (

@@ -36,7 +36,8 @@ export async function POST(req: NextRequest) {
     try {
         const companyId = auth.companyToken!.companyId;
         const body = await req.json();
-        const { taskIds, taskId, requesterAgentId, rationale, confidence = 0, actionType = "task_done" } = body;
+        // threadId / replyToMessageId: where the ask was made; its approval card goes there (lib/approval-card.ts).
+        const { taskIds, taskId, requesterAgentId, rationale, confidence = 0, actionType = "task_done", threadId, replyToMessageId } = body;
 
         // The token's bound agent is the requester; an operator token may name one.
         const resolvedRequesterAgentId = await resolveBoundAgentId(companyId, auth.companyToken!, requesterAgentId || null);
@@ -55,6 +56,8 @@ export async function POST(req: NextRequest) {
             rationale,
             confidence,
             actionType,
+            threadId,
+            replyToMessageId,
         });
 
         return NextResponse.json({ approval }, { status: 201 });

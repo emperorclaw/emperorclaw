@@ -1584,7 +1584,7 @@ def register(ctx: Any) -> None:
         "emperor_add_task_note",
         TOOLSET,
         _schema(
-            "Add a progress, blocker, observation, or handoff note to an Emperor task. Counts as visible progress (resets the loop guard and the stall sweep).",
+            "Add a progress, blocker, observation, or handoff note to an Emperor task. Counts as visible progress for the stall sweep (it does not reset the agent loop guard).",
             {
                 "taskId": {"type": "string"},
                 "note": {"type": "string"},

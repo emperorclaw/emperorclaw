@@ -13,6 +13,8 @@ import { EVERYONE_MENTION, MentionTextarea } from "@/components/mention-textarea
 import { AttachmentChip, isAttachmentRef, type AttachmentRef } from "@/components/chat-attachments";
 import { MessageReasoningDisclosure } from "@/components/message-reasoning-disclosure";
 import { DeliveryInspector } from "@/components/delivery-inspector";
+import { ApprovalCard } from "@/components/approval-card";
+import { approvalCardIdOf } from "@/lib/approval-card-copy";
 import { isPersistedUuid } from "@/lib/run-ledger-copy";
 import { agentAvatarSrc } from "@/lib/avatar";
 import { cn } from "@/lib/utils";
@@ -585,6 +587,7 @@ export function AgentTeamChat({
                             const messageAttachments = getMessageAttachments(msg);
                             const isRich = !isHuman && hasRichBlocks(msg.text);
                             const isPauseNotice = isLoopPauseNotice(msg);
+                            const approvalCardId = approvalCardIdOf(msg);
 
                             return (
                                 <div
@@ -662,6 +665,7 @@ export function AgentTeamChat({
                                                         {t("resume")}
                                                     </button>
                                                 )}
+                                                {approvalCardId && <ApprovalCard approvalId={approvalCardId} />}
                                                 {messageAttachments.length > 0 && (
                                                     <div className="mt-2 flex flex-col gap-1.5">
                                                         {messageAttachments.map((att) => (
