@@ -1,4 +1,4 @@
-// Typing reveal (0.31): a new agent reply that arrives live in a chat is shown
+// Typing reveal (0.30.1): a new agent reply that arrives live in a chat is shown
 // word by word for a moment, like streaming, then rendered exactly as before.
 // Pure timing rules here (unit-tested in tests/unit/typing-reveal.test.ts);
 // the registry below remembers which messages arrived live and when, so a

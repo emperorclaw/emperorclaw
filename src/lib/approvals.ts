@@ -109,19 +109,18 @@ export async function resolveApproval(input: {
   status: ApprovalDecision;
   resolutionNote?: string | null;
   /**
-   * "Always allow" (0.31): also set the requesting agent's own permission for
+   * "Always allow" (0.30.1): also set the requesting agent's own permission for
    * this action to "allowed". The caller (PATCH /api/approvals/[id]) checks it
    * is an action ask and the person may change the agent's permissions.
    */
   alwaysAllow?: boolean;
 }) {
   const alwaysAllow = input.alwaysAllow === true && input.status === "approved";
-  const [approval] = await db.update(approvals).set({
+  let [approval] = await db.update(approvals).set({
     status: input.status,
     resolverUserId: input.resolverUserId || null,
     resolutionNote: input.resolutionNote || null,
     resolvedAt: new Date(),
-    ...(alwaysAllow ? { metadataJson: sql`${approvals.metadataJson} || ${JSON.stringify({ [ALWAYS_ALLOWED_KEY]: true })}::jsonb` } : {}),
   }).where(and(
     eq(approvals.companyId, input.companyId),
     eq(approvals.id, input.approvalId),
@@ -135,6 +134,9 @@ export async function resolveApproval(input: {
   }
 
   // Only the request that decided it changes the permission (a repeat is a no-op above).
+  // The approval is marked "always allowed" only once the permission is saved,
+  // so the card and the agent's message never claim a permission that failed:
+  // on failure it stays an ordinary one-use approval.
   if (alwaysAllow && approval.requesterAgentId && input.resolverUserId) {
     try {
       await updateActionPolicies({
@@ -143,6 +145,11 @@ export async function resolveApproval(input: {
         changes: { [approval.actionType]: "allowed" },
         actorUserId: input.resolverUserId,
       });
+      const [marked] = await db.update(approvals)
+        .set({ metadataJson: sql`${approvals.metadataJson} || ${JSON.stringify({ [ALWAYS_ALLOWED_KEY]: true })}::jsonb` })
+        .where(and(eq(approvals.companyId, input.companyId), eq(approvals.id, approval.id)))
+        .returning();
+      if (marked) approval = marked;
     } catch (error) {
       console.warn("[approvals] could not save always-allow:", error instanceof Error ? error.message : error);
     }

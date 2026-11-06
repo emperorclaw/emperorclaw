@@ -136,7 +136,7 @@ export function isActionApproval(approval: { metadataJson: unknown }): boolean {
     return meta.kind === ACTION_APPROVAL_KIND;
 }
 
-/** metadata_json flag set when a person approved an ask with "Always allow" (0.31). */
+/** metadata_json flag set when a person approved an ask with "Always allow" (0.30.1). */
 export const ALWAYS_ALLOWED_KEY = "alwaysAllowed";
 
 /**

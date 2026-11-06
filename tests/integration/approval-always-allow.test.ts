@@ -1,5 +1,5 @@
 /**
- * "Always allow" on an approval card (0.31): an owner or admin approves an
+ * "Always allow" on an approval card (0.30.1): an owner or admin approves an
  * action ask and sets the requesting agent's own permission for that action
  * to "allowed" in one PATCH. Members and viewers cannot; task closes are not
  * permissions; the company defaults are untouched.

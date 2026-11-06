@@ -48,7 +48,7 @@ export async function PATCH(
         if (status !== "approved" && status !== "rejected" && status !== "dismissed") {
             return NextResponse.json({ error: "status must be approved, rejected, or dismissed" }, { status: 400 });
         }
-        // "Always allow" (0.31): approve and set the requesting agent's permission to "allowed".
+        // "Always allow" (0.30.1): approve and set the requesting agent's permission to "allowed".
         const alwaysAllow = body.alwaysAllow === true;
         if (body.alwaysAllow !== undefined && typeof body.alwaysAllow !== "boolean") {
             return NextResponse.json({ error: "alwaysAllow must be a boolean" }, { status: 400 });

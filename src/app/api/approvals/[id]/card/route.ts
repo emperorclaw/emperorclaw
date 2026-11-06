@@ -45,10 +45,10 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
             requestedAt: approval.requestedAt,
             resolvedAt: approval.resolvedAt,
             mayDecide,
-            // "Always allow" (0.31): offered on a pending action ask to people who may change the agent's permissions.
+            // "Always allow" (0.30.1): offered on a pending action ask to people who may change the agent's permissions.
             mayAlwaysAllow: mayDecide && approval.status === "pending" && (await alwaysAllowRefusal(access.ctx, approval)) === null,
-            alwaysAllowed: approval.status === "approved" && wasAlwaysAllowed(approval.metadataJson),
             ...(mayDecide ? {
+                alwaysAllowed: approval.status === "approved" && wasAlwaysAllowed(approval.metadataJson),
                 resolverName: resolver ? resolver.displayName || resolver.email : null,
                 rationale: approval.rationale,
                 resolutionNote: approval.resolutionNote,
