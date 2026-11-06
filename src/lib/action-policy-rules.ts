@@ -6,6 +6,7 @@
 
 import { createHash } from "crypto";
 import { redactSensitive, REDACT_INPUT_MAX } from "@/lib/redact-sensitive";
+import { isActionKey } from "@/lib/action-policy";
 
 /** metadata_json.kind of an approval created by an "ask" action permission. */
 export const ACTION_APPROVAL_KIND = "action_policy";
@@ -133,6 +134,24 @@ export type ActionCall = { agentId: string | null; actionKey: string; argsHash: 
 export function isActionApproval(approval: { metadataJson: unknown }): boolean {
     const meta = approval.metadataJson && typeof approval.metadataJson === "object" ? approval.metadataJson as Record<string, unknown> : {};
     return meta.kind === ACTION_APPROVAL_KIND;
+}
+
+/** metadata_json flag set when a person approved an ask with "Always allow" (0.31). */
+export const ALWAYS_ALLOWED_KEY = "alwaysAllowed";
+
+/**
+ * May an ask be answered with "Always allow" (approve it and set the
+ * requesting agent's permission for that action to "allowed")? Only an
+ * action-permission ask by an agent, for an action in the catalog. Task
+ * closes and other human-decided approvals are not permissions.
+ */
+export function isAlwaysAllowableAsk(approval: { metadataJson: unknown; actionType: string; requesterAgentId: string | null }): boolean {
+    return isActionApproval(approval) && Boolean(approval.requesterAgentId) && isActionKey(approval.actionType);
+}
+
+/** Was this approval decided with "Always allow"? */
+export function wasAlwaysAllowed(metadata: unknown): boolean {
+    return Boolean(metadata && typeof metadata === "object" && (metadata as Record<string, unknown>)[ALWAYS_ALLOWED_KEY] === true);
 }
 
 /** Does this approval belong to exactly this caller, action and argument set? */

@@ -3,6 +3,9 @@ import { roleGte, type GuardContext } from "@/lib/roles";
 import { getApprovalDetail } from "@/lib/approvals";
 import { memberMaySeeApproval, memberVisibleProjectIds } from "@/lib/member-scope";
 import { recordResource, resourceWriteDenied } from "@/lib/resource-access";
+import { canAdmin } from "@/lib/role-matrix";
+import { agentUseFor } from "@/lib/agent-access-server";
+import { isAlwaysAllowableAsk } from "@/lib/action-policy-rules";
 
 export type ApprovalDetail = NonNullable<Awaited<ReturnType<typeof getApprovalDetail>>>;
 
@@ -29,4 +32,19 @@ export async function approvalDecisionAccess(ctx: GuardContext, approvalId: stri
         if (denied) return { detail, denied };
     }
     return { detail, denied: null };
+}
+
+/**
+ * May this person answer an ask with "Always allow" (approve it and set the
+ * requesting agent's permission for the action to "allowed")? Changing a
+ * permission follows PUT /api/agents/[id]/action-policies: owners and admins
+ * only, and loosening needs full use of the agent. null = yes.
+ */
+export async function alwaysAllowRefusal(ctx: GuardContext, approval: ApprovalDetail["approval"]): Promise<{ error: string; status: number } | null> {
+    if (!canAdmin(ctx.role)) return { error: "Only owners and admins can always allow an action.", status: 403 };
+    if (!isAlwaysAllowableAsk(approval)) return { error: "Always allow applies only to an agent's request for an action permission.", status: 400 };
+    if ((await agentUseFor(ctx, approval.requesterAgentId)) !== "full") {
+        return { error: "This agent is limited to other people: you can't loosen its permissions.", status: 403 };
+    }
+    return null;
 }

@@ -24,6 +24,10 @@ type CardState = {
     label: string;
     requesterName: string | null;
     mayDecide: boolean;
+    /** "Always allow" is offered (a pending action ask, and this person may change the agent's permissions). */
+    mayAlwaysAllow?: boolean;
+    /** Approved with "Always allow". */
+    alwaysAllowed?: boolean;
     rationale?: string | null;
     resolutionNote?: string | null;
     resolverName?: string | null;
@@ -48,6 +52,7 @@ export function ApprovalCard({ approvalId }: { approvalId: string }) {
     const [note, setNote] = useState("");
     const [busy, setBusy] = useState(false);
     const [error, setError] = useState<string | null>(null);
+    const [confirmAlways, setConfirmAlways] = useState(false);
 
     const load = useCallback(async () => {
         try {
@@ -73,17 +78,20 @@ export function ApprovalCard({ approvalId }: { approvalId: string }) {
     const topics = useMemo(() => [`approval:${approvalId}`], [approvalId]);
     useRealtimeTopics(topics, () => { void load(); });
 
-    const decide = async (status: "approved" | "rejected") => {
+    const decide = async (status: "approved" | "rejected", alwaysAllow = false) => {
         setBusy(true);
         setError(null);
         try {
             const res = await fetch(`/api/approvals/${approvalId}`, {
                 method: "PATCH",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ status, resolutionNote: note.trim() || null }),
+                body: JSON.stringify({ status, resolutionNote: note.trim() || null, ...(alwaysAllow ? { alwaysAllow: true } : {}) }),
             });
             if (!res.ok) setError(t("decideFailed"));
-            else setNote("");
+            else {
+                setNote("");
+                setConfirmAlways(false);
+            }
             await load();
         } catch {
             setError(t("decideFailed"));
@@ -135,6 +143,9 @@ export function ApprovalCard({ approvalId }: { approvalId: string }) {
                     ))}
                 </div>
             ) : null}
+            {card.alwaysAllowed ? (
+                <p className="mt-2 text-emerald-300">{t("alwaysAllowedFor", { name: card.requesterName ?? t("unknownAgent") })}</p>
+            ) : null}
             {!pending && card.mayDecide ? (
                 <p className="mt-2 text-zinc-400">
                     {card.resolverName ? t("decidedBy", { status: statusLabel, name: card.resolverName }) : statusLabel}
@@ -172,7 +183,40 @@ export function ApprovalCard({ approvalId }: { approvalId: string }) {
                         >
                             {t("reject")}
                         </button>
+                        {card.mayAlwaysAllow && !confirmAlways ? (
+                            <button
+                                type="button"
+                                onClick={() => setConfirmAlways(true)}
+                                disabled={busy}
+                                className="inline-flex items-center rounded-lg border border-zinc-600 bg-zinc-800/60 px-3 py-1.5 font-semibold text-zinc-200 transition-colors hover:bg-zinc-700/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400/70 disabled:cursor-not-allowed disabled:opacity-40"
+                            >
+                                {t("alwaysAllow")}
+                            </button>
+                        ) : null}
                     </div> : null}
+                    {pending && card.mayAlwaysAllow && confirmAlways ? (
+                        <div className="rounded-lg border border-emerald-500/30 bg-emerald-500/5 p-2">
+                            <p className="text-zinc-200">{t("alwaysAllowConfirm", { name: card.requesterName ?? t("unknownAgent"), action: card.label })}</p>
+                            <div className="mt-2 flex flex-wrap gap-2">
+                                <button
+                                    type="button"
+                                    onClick={() => void decide("approved", true)}
+                                    disabled={busy}
+                                    className="inline-flex items-center rounded-lg border border-emerald-500/40 bg-emerald-500/10 px-3 py-1.5 font-semibold text-emerald-300 transition-colors hover:bg-emerald-500/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400/70 disabled:cursor-not-allowed disabled:opacity-40"
+                                >
+                                    {t("alwaysAllowYes")}
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => setConfirmAlways(false)}
+                                    disabled={busy}
+                                    className="inline-flex items-center rounded-lg border border-zinc-600 px-3 py-1.5 font-semibold text-zinc-300 transition-colors hover:bg-zinc-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400/70 disabled:cursor-not-allowed disabled:opacity-40"
+                                >
+                                    {t("cancel")}
+                                </button>
+                            </div>
+                        </div>
+                    ) : null}
                     {error ? <p role="alert" className="text-rose-300">{error}</p> : null}
                 </div>
             ) : null}

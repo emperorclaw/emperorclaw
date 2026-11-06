@@ -3342,6 +3342,11 @@
     "decideFailed": "Couldn't record the decision. Try again.",
     "decidedBy": "{status} by {name}",
     "note": "Note: {note}",
+    "alwaysAllow": "Always allow",
+    "alwaysAllowConfirm": "Always allow {name} to {action}? Future requests won't ask.",
+    "alwaysAllowYes": "Yes, always allow",
+    "cancel": "Cancel",
+    "alwaysAllowedFor": "Approved · always allowed for {name}",
     "status": {
       "pending": "Waiting for a decision",
       "approved": "Approved",

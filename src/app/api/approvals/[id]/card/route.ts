@@ -3,7 +3,8 @@ import { and, eq } from "drizzle-orm";
 import { db } from "@/db";
 import { agents, users } from "@/db/schema";
 import { companyRouteAccess } from "@/lib/company-access";
-import { approvalDecisionAccess } from "@/lib/approval-access";
+import { alwaysAllowRefusal, approvalDecisionAccess } from "@/lib/approval-access";
+import { wasAlwaysAllowed } from "@/lib/action-policy-rules";
 import { approvalCardLabelFor } from "@/lib/approval-card";
 
 /**
@@ -44,6 +45,9 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
             requestedAt: approval.requestedAt,
             resolvedAt: approval.resolvedAt,
             mayDecide,
+            // "Always allow" (0.31): offered on a pending action ask to people who may change the agent's permissions.
+            mayAlwaysAllow: mayDecide && approval.status === "pending" && (await alwaysAllowRefusal(access.ctx, approval)) === null,
+            alwaysAllowed: approval.status === "approved" && wasAlwaysAllowed(approval.metadataJson),
             ...(mayDecide ? {
                 resolverName: resolver ? resolver.displayName || resolver.email : null,
                 rationale: approval.rationale,

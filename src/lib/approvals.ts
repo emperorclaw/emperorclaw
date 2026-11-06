@@ -1,6 +1,7 @@
 import { randomUUID } from "crypto";
 import { and, desc, eq, inArray, isNull, lt, ne, notExists, or, sql } from "drizzle-orm";
-import { ACTION_APPROVAL_KIND, isActionApproval } from "./action-policy-rules";
+import { ACTION_APPROVAL_KIND, ALWAYS_ALLOWED_KEY, isActionApproval, wasAlwaysAllowed } from "./action-policy-rules";
+import { updateActionPolicies } from "./action-policy-server";
 import { actionLabel } from "./action-policy";
 import { db } from "@/db";
 import { approvalTaskLinks, approvals, companyMembers, projects, taskEvents, tasks, users } from "@/db/schema";
@@ -107,12 +108,20 @@ export async function resolveApproval(input: {
   resolverUserId?: string | null;
   status: ApprovalDecision;
   resolutionNote?: string | null;
+  /**
+   * "Always allow" (0.31): also set the requesting agent's own permission for
+   * this action to "allowed". The caller (PATCH /api/approvals/[id]) checks it
+   * is an action ask and the person may change the agent's permissions.
+   */
+  alwaysAllow?: boolean;
 }) {
+  const alwaysAllow = input.alwaysAllow === true && input.status === "approved";
   const [approval] = await db.update(approvals).set({
     status: input.status,
     resolverUserId: input.resolverUserId || null,
     resolutionNote: input.resolutionNote || null,
     resolvedAt: new Date(),
+    ...(alwaysAllow ? { metadataJson: sql`${approvals.metadataJson} || ${JSON.stringify({ [ALWAYS_ALLOWED_KEY]: true })}::jsonb` } : {}),
   }).where(and(
     eq(approvals.companyId, input.companyId),
     eq(approvals.id, input.approvalId),
@@ -123,6 +132,20 @@ export async function resolveApproval(input: {
   if (!approval) {
     const [existing] = await db.select().from(approvals).where(and(eq(approvals.companyId, input.companyId), eq(approvals.id, input.approvalId))).limit(1);
     return existing ?? null;
+  }
+
+  // Only the request that decided it changes the permission (a repeat is a no-op above).
+  if (alwaysAllow && approval.requesterAgentId && input.resolverUserId) {
+    try {
+      await updateActionPolicies({
+        companyId: input.companyId,
+        agentId: approval.requesterAgentId,
+        changes: { [approval.actionType]: "allowed" },
+        actorUserId: input.resolverUserId,
+      });
+    } catch (error) {
+      console.warn("[approvals] could not save always-allow:", error instanceof Error ? error.message : error);
+    }
   }
 
   const linkedTaskRows = await loadLinkedTasks(input.companyId, approval.id);
@@ -453,7 +476,9 @@ export async function requestApprovalForTasks(input: {
 function actionDecisionMessage(approval: typeof approvals.$inferSelect): { text: string; deliveryState: "queued" } {
   const label = actionLabel(approval.actionType);
   const note = approval.resolutionNote?.trim() ? `: "${approval.resolutionNote.trim()}"` : ".";
-  const text = approval.status === "approved"
+  const text = approval.status === "approved" && wasAlwaysAllowed(approval.metadataJson)
+    ? `Approval ${approval.id} granted for "${label}"${note}\n\nRepeat the call now, and you may now do this without asking: "${label}" is always allowed for you from now on.`
+    : approval.status === "approved"
     ? `Approval ${approval.id} granted for "${label}"${note}\n\nRepeat the exact same call once now (same arguments; for check_action, the same details). It is good for one use within 24 hours.`
     : approval.status === "expired"
       ? `Approval ${approval.id} for "${label}" expired without a decision — do NOT do it. Ask again only if it is still needed.`
