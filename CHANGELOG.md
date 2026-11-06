@@ -9,7 +9,7 @@ tagged (e.g. `## [1.2.0] — 2026-07-22`). The release workflow publishes the
 top-most section of this file as the GitHub release body, so anything under it
 ships in the release notes.
 
-## [Unreleased]
+## [0.31.0] — 2026-11-06
 
 ### Changed
 
@@ -18,6 +18,8 @@ ships in the release notes.
 - **Motion that follows your hand.** Buttons, links and tabs react the moment you press them; the sidebar highlight glides to the item under the pointer and back; pages, dialogs, menus and the command palette ease in from where you opened them; new chat messages slide in (history never animates); a decided approval card folds down to its result; and switching light and dark cross-fades. On phones the tab bar is translucent and content scrolls beneath it, chats run edge to edge, and the task actions sheet can be dragged down to close.
 - **Everything enters and leaves with motion.** Dialogs, menus, popovers, the mobile menu (now growing out of its corner button), pickers, side drawers and toasts leave the way they came, a little faster than they arrived. Disclosures (Performance & reported costs, More filters, sidebar sections, reasoning, run steps) open and close smoothly; inbox items, approvals, notifications, agents, board cards and attachment chips fade out while the rest slide into place; tab and section switches (dashboard views, Costs, agent tabs, Settings, inbox filters) glide their indicator and slide the new panel in from the side you picked; switching conversations or agents crossfades; on phones a conversation pushes in from the right and slides back out. Unread badges, "Jump to latest", delivery receipts and approval status changes animate too. Nothing waits for an animation before reacting.
 - **Right-click menus.** Right-click (or long-press on touch) an agent on the dashboard scene, in the Agents directory or in Messages for Open details, Message, Scopes, Instructions, Memory, Work log and runs, and Copy agent ID. Inbox items offer Open, Mark as read/unread and Archive; conversations and groups Open, Settings and Copy link; customers Open and their projects; project cards their board and Copy link; task cards add Copy link and now open for viewers too.
+- **New dropdowns.** Every dropdown in the app is now a custom picker instead of the browser's own: it opens from its button, marks the current choice with a check, supports typing to jump and arrow keys, and has larger rows on touch screens.
+- **Clearer current page in dark mode.** The sidebar highlight for the page you're on is brighter, and hovered items stay a step lighter so the current page always stands out. Menu highlights use a lighter neutral grey.
 - **Dashboard scene in light mode.** The live office has a daylit floor, light desks and dark labels in light mode; dark mode is unchanged.
 - **Automations layout.** The list, header, details and flow map share one radius and padding and stretch to line up.
 - **Accessibility.** With reduced motion on, movement becomes short fades instead of switching everything off, and presses stop scaling. Reduced transparency makes the translucent bars solid, and increased contrast adds a visible edge.
