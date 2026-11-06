@@ -12,6 +12,7 @@ import { loadCompanyModules } from "@/lib/modules-server";
 import { ModulesProvider } from "@/components/modules-provider";
 import { getLocale, getNow, getTimeZone } from "next-intl/server";
 import { AppIntlProvider } from "@/components/app-intl-provider";
+import { MotionProvider } from "@/components/motion-provider";
 import { localeNeedsSync } from "@/i18n/request";
 import pkg from "@/../package.json" assert { type: "json" };
 
@@ -42,6 +43,7 @@ export default async function AppLayout({
     return (
         <AppIntlProvider {...intl}>
             {langScript}
+            <MotionProvider>
             <div className="emperor-app-shell flex h-dvh flex-col overflow-hidden md:flex-row">
                 <AutoRefresh intervalMs={15000} />
                 <InteractiveTour modules={modules} />
@@ -56,6 +58,7 @@ export default async function AppLayout({
                 </main>
                 <MobileTabBar modules={modules} />
             </div>
+            </MotionProvider>
         </AppIntlProvider>
     );
 }

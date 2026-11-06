@@ -19,7 +19,8 @@ import {
 import { cn } from "@/lib/utils";
 import { RichText } from "@/components/rich-text";
 import { projectTitle } from "@/lib/project-title";
-import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
+import { Dialog, DialogDescription, DialogTitle } from "@/components/ui/dialog";
+import { BottomSheetContent } from "@/components/ui/bottom-sheet";
 import { fixAudience } from "@/lib/failure-cause";
 import type { StoryEntry } from "@/lib/task-story";
 import type { TaskStoryView } from "@/lib/task-story-reads";
@@ -370,11 +371,11 @@ ${project.description}` : project.name;
 
             {canEdit && (
                 <Dialog open={sheetOpen} onOpenChange={setSheetOpen}>
-                    <DialogContent className="top-auto bottom-0 left-0 max-h-[85dvh] max-w-none translate-x-0 translate-y-0 overflow-y-auto rounded-b-none rounded-t-2xl p-5 pb-[max(1.25rem,env(safe-area-inset-bottom))] data-[state=open]:slide-in-from-bottom-8 sm:max-w-none lg:hidden">
-                        <DialogTitle className="text-base">{t("taskActions")}</DialogTitle>
+                    <BottomSheetContent className="lg:hidden" onDismiss={() => setSheetOpen(false)}
+                        header={<DialogTitle className="text-base">{t("taskActions")}</DialogTitle>}>
                         <DialogDescription className="sr-only">{t("taskActionsDescription")}</DialogDescription>
                         <TaskActions story={story} onDone={() => setSheetOpen(false)} />
-                    </DialogContent>
+                    </BottomSheetContent>
                 </Dialog>
             )}
         </div>

@@ -687,7 +687,7 @@ export default function ResourcesClient({
   const newFolderLocation = [newFolderScopeLabel, newFolderParentPath].filter(Boolean).join(" / ");
 
   return (
-    <div className="mx-auto flex min-h-0 max-w-[1800px] flex-col gap-4 animate-in fade-in duration-500 lg:h-[calc(100vh-8rem)]">
+    <div className="mx-auto flex min-h-0 max-w-[1800px] flex-col gap-4 lg:h-[calc(100vh-8rem)]">
       <PageHeader
         eyebrow={t("eyebrow")}
         title={t("title")}

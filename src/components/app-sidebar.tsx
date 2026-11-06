@@ -1,11 +1,13 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useSession } from "next-auth/react";
 import { useTranslations } from "next-intl";
 import { createPortal } from "react-dom";
+import { LayoutGroup, motion } from "framer-motion";
+import { Collapse, PopPresence } from "@/components/ui/motion";
 import {
     IconBook, IconBuildingStore, IconChevronDown, IconCoin, IconDeviceSdCard, IconFileText, IconFolder, IconGitBranch, IconHierarchy2, IconHistory, IconHome, IconInbox, IconKey,
     IconLayoutDashboard, IconLayoutSidebarLeftCollapse, IconLayoutSidebarLeftExpand, IconLogout, IconMenu2, IconMessage, IconPlus, IconRobot, IconSearch, IconServerCog, IconTimeline, IconUser, IconUsers,
@@ -34,7 +36,10 @@ function cn(...inputs: ClassValue[]) {
 
 const SIDEBAR_COLLAPSE_KEY = "emperor-sidebar-collapsed";
 
-const UTILITY_BUTTON = "flex h-6 w-6 cursor-pointer items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-accent hover:text-foreground";
+const UTILITY_BUTTON = "flex h-6 w-6 cursor-pointer items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring";
+
+/** The neutral fill behind the active (or hovered) nav item: one shared surface that glides between items. */
+const GLIDE_FILL = "bg-black/[0.055] dark:bg-white/[0.07]";
 
 const NAV_ICONS: Record<NavId, typeof IconFolder> = {
     home: IconHome,
@@ -103,6 +108,8 @@ export function AppSidebar({ isPlatformAdmin = false, isCompanyAdmin = false, ca
     const badges = useNavBadges();
     const [hoveredNav, setHoveredNav] = useState<string | null>(null);
     const [tooltipPos, setTooltipPos] = useState<{ top: number; left: number } | null>(null);
+    // The nav item under the pointer (or keyboard focus); the glide pill follows it and settles back on the active item.
+    const [glideId, setGlideId] = useState<NavId | null>(null);
 
     useEffect(() => {
         // Deliberately deferred to an effect: localStorage isn't available
@@ -124,12 +131,13 @@ export function AppSidebar({ isPlatformAdmin = false, isCompanyAdmin = false, ca
 
     // Persist last known user identity across SPA navigations to prevent
     // the sidebar flashing "U User" while the session rehydrates.
-    const lastUserRef = useRef<{ email: string; name: string }>({ email: "", name: "" });
-    if (session?.user?.email) {
-        lastUserRef.current = { email: session.user.email, name: session.user.name || "" };
+    // (Previous-value-in-state pattern: updated during render, no ref reads.)
+    const [lastUser, setLastUser] = useState<{ email: string; name: string }>({ email: "", name: "" });
+    if (session?.user?.email && (session.user.email !== lastUser.email || (session.user.name || "") !== lastUser.name)) {
+        setLastUser({ email: session.user.email, name: session.user.name || "" });
     }
-    const userEmail = session?.user?.email || lastUserRef.current.email || "";
-    const userName = session?.user?.name || lastUserRef.current.name || userEmail.split("@")[0] || "User";
+    const userEmail = session?.user?.email || lastUser.email || "";
+    const userName = session?.user?.name || lastUser.name || userEmail.split("@")[0] || "User";
     const userInitial = (userName[0] || "U").toUpperCase();
 
     // docs/roadmap/product-decisions.md section 3: the attention cluster
@@ -137,6 +145,7 @@ export function AppSidebar({ isPlatformAdmin = false, isCompanyAdmin = false, ca
     const sections = navSections({ isCompanyAdmin, isPlatformAdmin, modules });
     const allItems = sections.flatMap((section) => section.items);
     const activeHref = activeNavHref(pathname, allItems);
+    const glideTarget = glideId ?? allItems.find((item) => item.href === activeHref)?.id ?? null;
     const isFolded = (id: string, defaultCollapsed = false) => {
         // The section holding the current page always shows it.
         const section = sections.find((s) => s.id === id);
@@ -164,28 +173,30 @@ export function AppSidebar({ isPlatformAdmin = false, isCompanyAdmin = false, ca
                 href={link.href}
                 aria-current={isActive ? "page" : undefined}
                 onMouseEnter={(e) => {
+                    setGlideId(link.id);
                     if (!collapsed) return;
                     const rect = e.currentTarget.getBoundingClientRect();
                     setTooltipPos({ top: rect.top + rect.height / 2, left: rect.right + 12 });
                     setHoveredNav(badge ? t("tooltipWithBadge", { name, badge: badge.text }) : name);
                 }}
                 onMouseLeave={() => { setHoveredNav(null); setTooltipPos(null); }}
+                onFocus={() => setGlideId(link.id)}
+                onBlur={() => setGlideId(null)}
                 className={cn(
-                    "relative flex items-center rounded-xl px-2.5 py-[7px] text-sm font-medium transition-colors duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400/70",
+                    "relative isolate flex items-center rounded-lg px-2.5 py-[7px] text-sm transition-colors duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
                     collapsed ? "justify-center gap-0" : "gap-3",
-                    isActive
-                        ? "border border-primary/20 bg-primary/10 text-foreground shadow-sm"
-                        : "border border-transparent text-muted-foreground hover:bg-accent hover:text-foreground"
+                    isActive ? "font-semibold text-foreground" : "font-medium text-muted-foreground hover:text-foreground"
                 )}
             >
+                {glideTarget === link.id && (
+                    <motion.span layoutId="sidebar-glide" aria-hidden className={cn("absolute inset-0 -z-10", GLIDE_FILL)} style={{ borderRadius: 8 }} />
+                )}
                 <span className="relative shrink-0">
                     <Icon className={cn("h-4 w-4", isActive ? "text-primary" : "text-muted-foreground")} />
-                    {badge && collapsed && (
-                        <span aria-hidden className={cn("absolute -right-1.5 -top-1.5 h-2 w-2 rounded-full ring-2 ring-sidebar", DOT_TONE[badge.tone])} />
-                    )}
+                    <PopPresence show={!!badge && collapsed} className={cn("absolute -right-1.5 -top-1.5 h-2 w-2 rounded-full ring-2 ring-sidebar", badge && DOT_TONE[badge.tone])}>{null}</PopPresence>
                 </span>
                 <span className={cn("hidden min-w-0 flex-1 truncate", collapsed ? "" : "md:inline")}>{name}</span>
-                {badge && !collapsed && <span className="hidden md:inline-flex"><NavBadge badge={badge} /></span>}
+                <PopPresence show={!!badge && !collapsed} className="hidden md:inline-flex">{badge && <NavBadge badge={badge} />}</PopPresence>
                 {badge && collapsed && <span className="sr-only">{badge.label}</span>}
             </Link>
         );
@@ -193,27 +204,28 @@ export function AppSidebar({ isPlatformAdmin = false, isCompanyAdmin = false, ca
 
     return (
         <>
-        <header className="flex shrink-0 items-center justify-between gap-2 border-b border-border bg-sidebar px-4 py-2 md:hidden" style={{ paddingTop: "max(0.5rem, env(safe-area-inset-top))" }}>
+        <header className="ec-material relative z-30 flex shrink-0 items-center justify-between gap-2 border-b border-border px-4 py-2 md:hidden" style={{ paddingTop: "max(0.5rem, env(safe-area-inset-top))" }}>
             <Link href="/" lang="en" className="flex min-h-11 items-center gap-2 text-sm font-semibold"><CustomLogo className="h-7 w-7" /> Emperor Claw</Link>
             <div className="flex items-center gap-2">
-                <button type="button" onClick={openCommandPalette} aria-label={t("searchAndJump")} className="flex min-h-11 min-w-11 items-center justify-center rounded-xl border border-border text-muted-foreground hover:text-foreground"><IconSearch className="h-5 w-5" /></button>
+                <button type="button" onClick={openCommandPalette} aria-label={t("searchAndJump")} className="flex min-h-11 min-w-11 items-center justify-center rounded-xl border border-border text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"><IconSearch className="h-5 w-5" /></button>
                 <Dialog>
                     <DialogTrigger asChild>
-                        <button aria-label={t("openNavigation")} className="flex min-h-11 min-w-11 items-center justify-center rounded-xl border border-border"><IconMenu2 className="h-5 w-5" /></button>
+                        <button aria-label={t("openNavigation")} className="flex min-h-11 min-w-11 items-center justify-center rounded-xl border border-border focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"><IconMenu2 className="h-5 w-5" /></button>
                     </DialogTrigger>
-                    <DialogContent className="max-h-[85dvh] overflow-y-auto border-border bg-popover text-foreground dark:bg-zinc-950/95">
+                    <DialogContent className="ec-corner top-[calc(max(0.5rem,env(safe-area-inset-top))+3.25rem)] right-3 left-auto w-[min(22rem,calc(100%-1.5rem))] max-h-[calc(100dvh-5rem)] origin-top-right translate-x-0 translate-y-0 overflow-y-auto border-border bg-popover text-foreground dark:bg-zinc-950/95">
                         <DialogTitle className="text-foreground">{t("navigation")}</DialogTitle>
                         <DialogDescription className="sr-only">{t("navigationDescription")}</DialogDescription>
                         <nav aria-label={t("mobileNavigation")} className="space-y-3">
                             {sections.map((section) => <div key={section.id}>
-                                {section.title && <p className="mb-1 px-1 text-[11px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">{sectionTitle(section.id)}</p>}
+                                {section.title && <p className="mb-1 px-1 text-[11px] font-semibold uppercase tracking-[0.06em] text-muted-foreground">{sectionTitle(section.id)}</p>}
                                 {section.items.map((link) => {
                                     const Icon = NAV_ICONS[link.id] ?? IconFolder;
                                     const badge = badgeFor(link.badge, badges, t);
+                                    const isActive = activeHref === link.href;
                                     return (
                                         <DialogClose asChild key={link.id}>
-                                            <Link href={link.href} aria-current={activeHref === link.href ? "page" : undefined} className={cn("flex min-h-11 items-center gap-3 rounded-xl px-3 text-sm", activeHref === link.href ? "bg-primary/10 text-primary" : "text-foreground")}>
-                                                <Icon className="h-5 w-5 shrink-0" /><span className="flex-1">{tNav(link.id)}</span>
+                                            <Link href={link.href} aria-current={isActive ? "page" : undefined} className={cn("flex min-h-11 items-center gap-3 rounded-lg px-3 text-sm text-foreground", isActive && cn(GLIDE_FILL, "font-semibold"))}>
+                                                <Icon className={cn("h-5 w-5 shrink-0", isActive ? "text-primary" : "text-muted-foreground")} /><span className="flex-1">{tNav(link.id)}</span>
                                                 {badge && <NavBadge badge={badge} />}
                                             </Link>
                                         </DialogClose>
@@ -226,7 +238,7 @@ export function AppSidebar({ isPlatformAdmin = false, isCompanyAdmin = false, ca
                 </Dialog>
             </div>
         </header>
-        <aside className={cn("hidden md:flex h-full w-16 shrink-0 flex-col overflow-hidden border-r border-border bg-sidebar shadow-2xl shadow-black/10 backdrop-blur-2xl transition-[width] duration-300 ease-in-out sm:w-20", collapsed ? "md:w-20" : "md:w-64")}>
+        <aside className={cn("hidden md:flex h-full w-16 shrink-0 flex-col overflow-hidden border-r border-border bg-sidebar transition-[width] duration-(--duration-spring) ease-(--ease-spring) motion-reduce:transition-none sm:w-20", collapsed ? "md:w-20" : "md:w-64")}>
             <div className={cn("flex h-14 shrink-0 items-center border-b border-border", collapsed ? "justify-center px-2" : "px-3 sm:px-5")}>
                 {collapsed ? (
                     <CustomLogo className="h-7 w-7" />
@@ -249,7 +261,7 @@ export function AppSidebar({ isPlatformAdmin = false, isCompanyAdmin = false, ca
                     aria-keyshortcuts="Control+K Meta+K"
                     title={collapsed ? t("searchTitle", { key: modKey }) : undefined}
                     className={cn(
-                        "group flex h-9 items-center rounded-xl border border-border bg-muted/40 text-sm text-muted-foreground transition-colors hover:border-primary/30 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400/70 dark:bg-white/[0.03]",
+                        "group flex h-9 items-center rounded-lg border border-border bg-muted/40 text-sm text-muted-foreground transition-colors hover:border-primary/30 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring dark:bg-white/[0.03]",
                         collapsed ? "w-9 justify-center" : "min-w-0 flex-1 gap-2 px-2.5",
                     )}
                 >
@@ -262,14 +274,15 @@ export function AppSidebar({ isPlatformAdmin = false, isCompanyAdmin = false, ca
                         href="/projects?new=task"
                         aria-label={t("newTask")}
                         title={t("newTask")}
-                        className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-primary text-primary-foreground shadow-sm shadow-primary/20 transition hover:brightness-110 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400/70"
+                        className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-primary text-primary-foreground transition-colors hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-sidebar"
                     >
                         <IconPlus className="h-4 w-4" stroke={2.4} />
                     </Link>
                 )}
             </div>
 
-            <nav aria-label={t("mainNavigation")} className="flex-1 overflow-y-auto overflow-x-visible px-1.5 py-2 sm:px-3">
+            <LayoutGroup id="sidebar-nav">
+            <motion.nav layoutScroll aria-label={t("mainNavigation")} onPointerLeave={() => setGlideId(null)} className="fade-y flex-1 overflow-y-auto overflow-x-visible px-1.5 py-2 sm:px-3">
                 {sections.map((section) => {
                     const sectionFolded = !collapsed && section.collapsible ? isFolded(section.id, section.defaultCollapsed) : false;
                     const listId = `nav-section-${section.id}`;
@@ -281,25 +294,26 @@ export function AppSidebar({ isPlatformAdmin = false, isCompanyAdmin = false, ca
                                     onClick={() => toggleSection(section.id, section.defaultCollapsed)}
                                     aria-expanded={!sectionFolded}
                                     aria-controls={listId}
-                                    className="group hidden w-full items-center gap-1 rounded-md px-2.5 pb-1 pt-2 text-[10px] font-bold uppercase tracking-[0.14em] text-muted-foreground/85 transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400/70 md:flex"
+                                    className="group hidden w-full items-center gap-1 rounded-md px-2.5 pb-1 pt-2 text-[10px] font-semibold uppercase tracking-[0.08em] text-muted-foreground/85 transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring md:flex"
                                 >
                                     <span className="flex-1 text-left">{sectionTitle(section.id)}</span>
                                     <IconChevronDown className={cn("h-3 w-3 opacity-0 transition-[transform,opacity] group-hover:opacity-100 group-focus-visible:opacity-100", sectionFolded && "-rotate-90 opacity-100")} />
                                 </button>
                             )}
                             {collapsed && section.title && <div className="mx-auto my-1.5 h-px w-6 bg-border" aria-hidden />}
-                            {!sectionFolded && <div id={listId} className="space-y-0.5">{section.items.map(renderLink)}</div>}
+                            <Collapse open={!sectionFolded} snappy><div id={listId} className="space-y-0.5">{section.items.map(renderLink)}</div></Collapse>
                         </div>
                     );
                 })}
-            </nav>
+            </motion.nav>
+            </LayoutGroup>
 
             <div className={cn("space-y-1.5 border-t border-border", collapsed ? "p-1.5" : "p-2 sm:p-3")}>
                     <NotificationBell collapsed={collapsed} />
                     <DropdownMenu>
                         <DropdownMenuTrigger asChild>
                             <button className={cn(
-                                "group relative flex w-full cursor-pointer items-center rounded-xl border border-border bg-muted/40 text-left transition-colors hover:border-border hover:bg-accent",
+                                "group relative flex w-full cursor-pointer items-center rounded-lg border border-border bg-muted/40 text-left transition-colors hover:border-border hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
                                 collapsed ? "justify-center px-1.5 py-1.5" : "justify-center gap-2.5 px-1.5 py-1.5 md:justify-start md:px-2"
                             )}
                                 title={collapsed ? `${userName}\n${userEmail}` : undefined}
@@ -313,7 +327,7 @@ export function AppSidebar({ isPlatformAdmin = false, isCompanyAdmin = false, ca
                                 </div>
                             </button>
                         </DropdownMenuTrigger>
-                        <DropdownMenuContent align="start" className="w-56 border-border bg-popover text-foreground shadow-2xl shadow-black/20">
+                        <DropdownMenuContent align="start" className="w-56 border-border bg-popover text-foreground">
                             <DropdownMenuItem asChild className="gap-2 text-foreground focus:bg-accent">
                                 <Link href="/settings">
                                     <IconUser className="h-4 w-4 text-muted-foreground" />

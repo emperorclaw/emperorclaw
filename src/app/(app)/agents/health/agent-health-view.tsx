@@ -140,7 +140,7 @@ export function AgentHealthView({ initial }: { initial: CompanyHealth }) {
     const t = health.totals;
     const down = health.agents.filter((a) => a.status === "down").length;
     return (
-        <div className="mx-auto max-w-[1400px] space-y-5 animate-in fade-in duration-300">
+        <div className="mx-auto max-w-[1400px] space-y-5">
             <div className="flex flex-wrap items-end justify-between gap-3">
                 <div>
                     <Link href="/agents" className="inline-flex items-center gap-1 text-xs text-zinc-500 hover:text-zinc-300"><IconArrowLeft className="h-3.5 w-3.5" />{tr("back")}</Link>

@@ -11,7 +11,7 @@ export function DisabledReason({ reason, children, className }: { reason: string
     const id = useId();
     if (!reason) return <>{children}</>;
     return (
-        <span title={reason} tabIndex={0} aria-describedby={id} className={className ?? "inline-flex cursor-not-allowed rounded-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400/60"}>
+        <span title={reason} tabIndex={0} aria-describedby={id} className={className ?? "inline-flex cursor-not-allowed rounded-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"}>
             {children}
             <span id={id} className="sr-only">{reason}</span>
         </span>

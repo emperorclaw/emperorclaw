@@ -2,6 +2,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
 import { useEffect, useRef, useState } from "react";
+import { motion } from "framer-motion";
 import Link from "next/link";
 import { useFormatter, useTranslations } from "next-intl";
 import {
@@ -22,6 +23,7 @@ import { getArtifactClassLabel } from "@/lib/artifact-taxonomy";
 import { blockedReason, sentenceCase, taskBriefMarkdown, type BoardTask } from "@/lib/project-board-model";
 import type { ProjectTitle } from "@/lib/project-title";
 import { taskHref } from "@/lib/task-story";
+import { useDrawerMotion, useScrimMotion } from "@/components/ui/motion";
 import { cn } from "@/lib/utils";
 import { OwnerAvatar, SignalIcons, type TaskView } from "./task-card";
 import { PRIORITY_CHOICES, TASK_STATES as DRAWER_STATES, useBoardLabels } from "./board-labels";
@@ -134,6 +136,8 @@ export function TaskDrawer({
     const [note, setNote] = useState("");
     const [sending, setSending] = useState(false);
     const panelRef = useRef<HTMLDivElement>(null);
+    const drawerMotion = useDrawerMotion();
+    const scrimMotion = useScrimMotion();
     const brief = taskBriefMarkdown(task);
     const reason = blockedReason(task);
     const ownerValue = task.assignedMemberId ? `human:${task.assignedMemberId}` : task.assignedAgentId ? `agent:${task.assignedAgentId}` : "";
@@ -162,12 +166,13 @@ export function TaskDrawer({
 
     return (
         <>
-            <button type="button" aria-label={t("closeTask")} onClick={onClose} className="fixed inset-0 z-40 bg-black/50 lg:bg-black/25 motion-safe:animate-in motion-safe:fade-in" />
-            <aside
+            <motion.button {...scrimMotion} type="button" aria-label={t("closeTask")} onClick={onClose} className="fixed inset-0 z-40 bg-black/50 lg:bg-black/25" />
+            <motion.aside
+                {...drawerMotion}
                 ref={panelRef}
                 tabIndex={-1}
                 aria-labelledby="task-drawer-title"
-                className="fixed inset-y-0 right-0 z-50 flex w-full flex-col border-l border-zinc-800 bg-zinc-950 shadow-[-24px_0_48px_-24px_rgba(0,0,0,0.6)] outline-none sm:w-[min(38rem,92vw)] motion-safe:animate-in motion-safe:slide-in-from-right-6 motion-safe:duration-200"
+                className="fixed inset-y-0 right-0 z-50 flex w-full flex-col border-l border-zinc-800 bg-zinc-950 shadow-[-24px_0_48px_-24px_rgba(0,0,0,0.6)] outline-none sm:w-[min(38rem,92vw)]"
             >
                 <div className="flex items-center gap-2 border-b border-zinc-800/80 px-4 py-2.5 sm:px-5">
                     <span className="hidden font-mono text-[11px] text-zinc-500 sm:inline">TASK-{String(task.id).slice(0, 8).toUpperCase()}</span>
@@ -326,7 +331,7 @@ export function TaskDrawer({
                         </div>
                     </div>
                 )}
-            </aside>
+            </motion.aside>
         </>
     );
 }

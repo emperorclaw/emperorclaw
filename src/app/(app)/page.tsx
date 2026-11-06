@@ -402,7 +402,7 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
     });
 
     return (
-        <div className="mx-auto max-w-[1600px] space-y-5 animate-in fade-in duration-500">
+        <div className="mx-auto max-w-[1600px] space-y-5">
             {/* First-run setup: owners and admins, until they finish or skip it
                 (an established team settles it; see setup above). */}
             {!currentUser?.onboardingCompletedAt && !currentUser?.onboardingDismissedAt && setup && (

@@ -26,6 +26,8 @@ export function DeleteAgentDialog({
     redirectToAgents = false,
     host = null,
     trigger,
+    open: openProp,
+    onOpenChange,
     onDeleted,
 }: {
     agentId: string;
@@ -33,14 +35,22 @@ export function DeleteAgentDialog({
     redirectToAgents?: boolean;
     /** The runtime host it runs on (0.22): owners/admins may also remove its profile there (default on). */
     host?: { name: string; canRemove: boolean } | null;
-    /** A custom trigger (the default is the "Delete Agent" button). */
-    trigger?: ReactNode;
+    /** A custom trigger (the default is the "Delete Agent" button); `null` renders none (open it with `open`). */
+    trigger?: ReactNode | null;
+    /** Controlled open state, e.g. when a menu item opens the dialog. */
+    open?: boolean;
+    onOpenChange?: (open: boolean) => void;
     onDeleted?: () => void;
 }) {
     const t = useTranslations("agents.delete");
     const tc = useTranslations("common");
     const router = useRouter();
-    const [open, setOpen] = useState(false);
+    const [openState, setOpenState] = useState(false);
+    const open = openProp ?? openState;
+    const setOpen = (next: boolean) => {
+        setOpenState(next);
+        onOpenChange?.(next);
+    };
     const [confirmation, setConfirmation] = useState("");
     const [isDeleting, setIsDeleting] = useState(false);
     const [error, setError] = useState<string | null>(null);
@@ -106,14 +116,16 @@ export function DeleteAgentDialog({
                 setError(null);
             }
         }}>
-            <DialogTrigger asChild>
-                {trigger ?? (
-                    <Button type="button" variant="destructive" size="sm" className="bg-rose-600/90 hover:bg-rose-500">
-                        <IconTrash className="w-4 h-4" />
-                        {t("button")}
-                    </Button>
-                )}
-            </DialogTrigger>
+            {trigger !== null && (
+                <DialogTrigger asChild>
+                    {trigger ?? (
+                        <Button type="button" variant="destructive" size="sm" className="bg-rose-600/90 hover:bg-rose-500">
+                            <IconTrash className="w-4 h-4" />
+                            {t("button")}
+                        </Button>
+                    )}
+                </DialogTrigger>
+            )}
             <DialogContent className="sm:max-w-[480px] bg-zinc-950 border-zinc-800 text-zinc-200">
                 <DialogHeader>
                     <DialogTitle className="text-zinc-100">{t("title", { name: agentName })}</DialogTitle>

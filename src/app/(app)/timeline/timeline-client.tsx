@@ -19,6 +19,7 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { formatCost, type RunOutcome } from "@/lib/task-story";
 import { formatRunDuration, formatTokenCount } from "@/lib/run-ledger-copy";
 import { useLivePoll, type LivePollRun } from "@/lib/use-realtime";
+import { Collapse } from "@/components/ui/motion";
 import { cn } from "@/lib/utils";
 import { useIsDarkTheme } from "@/lib/use-is-dark-theme";
 import {
@@ -1364,7 +1365,7 @@ function TimeSpentProjectRow({ project }: { project: TimeSpentProject }) {
                 </span>
                 <span className="shrink-0 truncate text-xs tabular-nums text-zinc-500">· {timeSpentMeta(project)}</span>
             </button>
-            {open && (
+            <Collapse open={open} snappy>
                 <ul className="mb-1 ml-6 space-y-1 border-l border-zinc-800 pl-3">
                     {project.tasks.map((task) => (
                         <li key={task.taskId} className="flex min-w-0 items-baseline gap-2 text-sm">
@@ -1373,7 +1374,7 @@ function TimeSpentProjectRow({ project }: { project: TimeSpentProject }) {
                         </li>
                     ))}
                 </ul>
-            )}
+            </Collapse>
         </li>
     );
 }

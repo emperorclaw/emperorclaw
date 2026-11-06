@@ -9,6 +9,7 @@ import { useFormatter, useTranslations } from "next-intl";
 import { PageHeader } from "@/components/page-header";
 import { SampleDataCard } from "@/components/sample-client";
 import { Button } from "@/components/ui/button";
+import { SegmentPill, Swap, useTabDirection } from "@/components/ui/motion";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 import { UpdateSettingsTab } from "@/components/update-settings-tab";
@@ -198,6 +199,7 @@ export default function SettingsClient({
     const sections = settingsSections({isAdmin,instanceAdmin:instanceRole === 'instance_admin',modules});
     const activeTab = resolveSettingsTab(searchParams.get('tab'),{isAdmin,instanceAdmin:instanceRole === 'instance_admin',modules});
     const currentSection = sections.flatMap(section => section.items).find(item => item.id === activeTab)!;
+    const sectionDirection = useTabDirection(activeTab, sections.flatMap(section => section.items.map(item => item.id)));
     const setActiveTab = (tab:SettingsTab) => {
         const params = new URLSearchParams(searchParams.toString()); params.set('tab',tab);
         router.push(`${pathname}?${params}`,{scroll:false});
@@ -335,18 +337,20 @@ export default function SettingsClient({
     };
 
     return (
-        <div className="mx-auto min-w-0 max-w-[1440px] @container space-y-6 animate-in fade-in duration-500">
+        <div className="mx-auto min-w-0 max-w-[1440px] @container space-y-6">
             <PageHeader eyebrow={t("page.eyebrow")} title={t("page.title")} description={t("page.description")} />
             {isAdmin && <SampleDataCard />}
             <div className="grid min-w-0 gap-6 @min-[900px]:grid-cols-[200px_minmax(0,1fr)]">
                 <aside className="min-w-0">
                     <label className="block space-y-2 @min-[900px]:hidden"><span className="text-sm font-medium">{t("page.section")}</span><select aria-label={t("page.section")} value={activeTab} onChange={event => setActiveTab(event.target.value as SettingsTab)} className="min-h-11 w-full rounded-xl border border-border bg-card px-3 text-base">{sections.map(section => <optgroup key={section.id} label={tSettings(`sections.${section.id}`)}>{section.items.map(item => <option key={item.id} value={item.id}>{tSettings(`items.${settingsItemKey(item.id)}`)}</option>)}</optgroup>)}</select></label>
                     <nav aria-label={t("page.sections")} className="hidden space-y-5 @min-[900px]:block">
-                        {sections.map(section => <div key={section.id}><p className="mb-3 flex items-center gap-3 px-3 text-[11px] font-bold uppercase tracking-[0.16em] text-muted-foreground"><span>{tSettings(`sections.${section.id}`)}</span><span aria-hidden="true" className="h-px flex-1 bg-border" /></p><div className="space-y-1">{section.items.map(item => <Link key={item.id} href={`${pathname}?tab=${item.id}`} scroll={false} aria-current={activeTab === item.id ? 'page' : undefined} className={cn('flex min-h-11 items-center rounded-xl px-3 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',activeTab === item.id ? 'bg-primary/10 text-primary' : 'text-muted-foreground hover:bg-muted hover:text-foreground')}>{tSettings(`items.${settingsItemKey(item.id)}`)}</Link>)}</div></div>)}
+                        {sections.map(section => <div key={section.id}><p className="mb-3 flex items-center gap-3 px-3 text-[11px] font-bold uppercase tracking-[0.16em] text-muted-foreground"><span>{tSettings(`sections.${section.id}`)}</span><span aria-hidden="true" className="h-px flex-1 bg-border" /></p><div className="space-y-1">{section.items.map(item => <Link key={item.id} href={`${pathname}?tab=${item.id}`} scroll={false} aria-current={activeTab === item.id ? 'page' : undefined} className={cn('relative isolate flex min-h-11 items-center rounded-xl px-3 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',activeTab === item.id ? 'text-primary' : 'text-muted-foreground hover:bg-muted hover:text-foreground')}>{activeTab === item.id && <SegmentPill layoutId="settings-section" radius={12} className="bg-primary/10" />}{tSettings(`items.${settingsItemKey(item.id)}`)}</Link>)}</div></div>)}
                         {isPlatformAdmin && <Link href="/ops" className="flex min-h-11 items-center rounded-xl border-t border-border px-3 text-sm text-muted-foreground hover:text-foreground">{t("page.platformOps")}</Link>}
                     </nav>
                 </aside>
-                <div className="min-w-0 space-y-5" aria-label={tSettings(`items.${settingsItemKey(currentSection.id)}`)}>
+                <div className="min-w-0" aria-label={tSettings(`items.${settingsItemKey(currentSection.id)}`)}>
+                    <Swap id={activeTab} direction={sectionDirection}>
+                    <div className="space-y-5">
                     <p className="text-sm leading-6 text-muted-foreground">{tSettings(`items.${settingsItemKey(currentSection.id)}Description`)}</p>
             {activeTab === "profile" && (
                 <ProfileTab
@@ -683,6 +687,8 @@ export default function SettingsClient({
                     customersData={customersData}
                 />
             )}
+                    </div>
+                    </Swap>
                 </div>
             </div>
         </div>

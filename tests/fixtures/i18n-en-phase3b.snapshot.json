@@ -822,5 +822,30 @@
       "dismissed": "Dismissed",
       "expired": "Expired"
     }
+  },
+  "common": {
+    "moreActions": "More actions"
+  },
+  "contextMenu": {
+    "openDetails": "Open details",
+    "message": "Message",
+    "scopes": "Scopes",
+    "instructions": "Instructions",
+    "memory": "Memory",
+    "runs": "Work log and runs",
+    "copyAgentId": "Copy agent ID",
+    "agentIdCopied": "Agent ID copied",
+    "open": "Open",
+    "board": "Board",
+    "settings": "Settings",
+    "copyLink": "Copy link",
+    "linkCopied": "Link copied",
+    "copyFailed": "Couldn't copy to the clipboard",
+    "changeStatus": "Change status",
+    "markRead": "Mark as read",
+    "markUnread": "Mark as unread",
+    "archive": "Archive",
+    "moveBack": "Move back to inbox",
+    "projects": "Projects"
   }
 }

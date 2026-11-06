@@ -19,6 +19,7 @@ import {
 import { EmptyState } from "@/components/ui/empty-state";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import type { BoardColumnKey } from "@/lib/project-board-model";
+import { MotionItem, MotionList } from "@/components/ui/motion";
 import { cn } from "@/lib/utils";
 import { RecurringCard, TaskCard, TaskRow, type TaskView } from "./task-card";
 
@@ -153,17 +154,22 @@ export function BoardLane({ lane, handlers, dragging }: { lane: Lane; handlers: 
                 <LaneMenu lane={lane} />
             </header>
             {lane.header && <div className="px-3 pb-2">{lane.header}</div>}
-            <div className="custom-scrollbar min-h-0 flex-1 space-y-2 overflow-y-auto px-2 pb-2">
+            {/* Cards that arrive (a move, a new task) rise in; a card that leaves pops out and the rest slide up. */}
+            <div className="custom-scrollbar relative min-h-0 flex-1 space-y-2 overflow-y-auto px-2 pb-2">
+                <MotionList>
                 {count === 0 ? (
-                    <EmptyState compact className="rounded-lg" title={<span className="text-xs font-normal text-muted-foreground">{lane.emptyText}</span>} />
-                ) : (
-                    <>
-                        {lane.definitions?.map(({ definition, projectName, ownerName }) => (
-                            <RecurringCard key={definition.id} definition={definition} projectName={projectName} ownerName={ownerName} />
-                        ))}
-                        {lane.views.map((view) => (
+                    <MotionItem key="empty">
+                        <EmptyState compact className="rounded-lg" title={<span className="text-xs font-normal text-muted-foreground">{lane.emptyText}</span>} />
+                    </MotionItem>
+                ) : [
+                        ...(lane.definitions ?? []).map(({ definition, projectName, ownerName }) => (
+                            <MotionItem key={definition.id}>
+                                <RecurringCard definition={definition} projectName={projectName} ownerName={ownerName} />
+                            </MotionItem>
+                        )),
+                        ...lane.views.map((view) => (
+                            <MotionItem key={view.task.id}>
                             <TaskCard
-                                key={view.task.id}
                                 view={view}
                                 canEdit={handlers.canEdit}
                                 selected={handlers.selectedId === view.task.id}
@@ -172,9 +178,10 @@ export function BoardLane({ lane, handlers, dragging }: { lane: Lane; handlers: 
                                 onSetState={(state) => handlers.onSetState(view.task, state)}
                                 onArchive={view.task.state === "done" ? () => handlers.onArchive(view.task) : undefined}
                             />
-                        ))}
-                    </>
-                )}
+                            </MotionItem>
+                        )),
+                    ]}
+                </MotionList>
             </div>
         </section>
     );

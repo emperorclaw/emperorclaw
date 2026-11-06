@@ -11,6 +11,7 @@ import { DeliveryInspector } from "@/components/delivery-inspector";
 import { ApprovalCard } from "@/components/approval-card";
 import { TypingReveal } from "@/components/typing-reveal";
 import { markLiveReveal } from "@/lib/typing-reveal";
+import { useLiveArrivals } from "@/lib/use-live-arrivals";
 import { approvalCardIdOf } from "@/lib/approval-card-copy";
 import { isPersistedUuid } from "@/lib/run-ledger-copy";
 import { cn } from "@/lib/utils";
@@ -24,13 +25,14 @@ import { takeChatDraft } from "@/lib/chat-draft";
 import { AgentGoalControls } from "@/components/agent-goal-controls";
 import { requestSourceCopy, requestSourceLabel } from "@/lib/request-label";
 import { LiveStatusRow } from "@/components/live-status-row";
+import { MotionItem, MotionList, Presence, TextSwap } from "@/components/ui/motion";
 import { LiveRunSteps, ReplyRunFooter, type ReplyRun } from "@/components/run-timeline";
 import { chatPollDelayMs, eventsSinceParam, formatElapsed, isTimedStepKind, lastReasoningCopy, lastReasoningLine, mergeLiveRuns, runningRun, type ClientLiveRun } from "@/lib/live-activity";
 import { useLivePoll } from "@/lib/use-realtime";
 import { summarizeAlsoWorking, type RunningRun } from "@/lib/agent-visibility";
 import type { RunLive } from "@/lib/run-events";
 
-const composerIconButton = "flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-zinc-400 transition-colors hover:bg-zinc-800 hover:text-zinc-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500/70 disabled:opacity-50";
+const composerIconButton = "flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-zinc-400 transition-colors hover:bg-zinc-800 hover:text-zinc-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50";
 
 const CHAT_PAGE_SIZE = 25;
 
@@ -206,6 +208,7 @@ export function AgentDirectChat({
     // Disable the browser's second anchoring mechanism on the scroll container.
     rowVirtualizer.shouldAdjustScrollPositionOnItemSizeChange = (item, _delta, instance) =>
         !isAtBottomRef.current && item.start < (instance.scrollOffset ?? 0);
+    const isLiveArrival = useLiveArrivals(messages);
 
 
     const loadMessages = useCallback(async ({ since, before }: { since?: string | null; before?: string | null } = {}) => {
@@ -523,7 +526,7 @@ export function AgentDirectChat({
             const secs = recordingSecs;
             const mins = Math.floor(secs / 60);
             const durationLabel = mins > 0 ? `${mins}:${String(secs % 60).padStart(2, "0")}` : `${secs}s`;
-            const text = `🎤 Voice message (${durationLabel})`;
+            const text = `Voice message (${durationLabel})`;
 
             // Sent as a real attachment (same path as file uploads) so the
             // agent can find and download it via the artifact id — a raw URL
@@ -752,7 +755,7 @@ export function AgentDirectChat({
 
     return (
         <RichMessageActionsContext.Provider value={richActions}>
-        <div className={cn("relative bg-zinc-900/50 border border-zinc-800 rounded-xl overflow-hidden h-full flex flex-col", hideHeader && "bg-transparent border-none rounded-none shadow-none")}>
+        <div className={cn("relative flex h-full flex-col overflow-hidden rounded-2xl border border-border bg-card", hideHeader && "bg-transparent border-none rounded-none shadow-none")}>
             {!hideHeader && (
                 <div className="flex items-center justify-between gap-4 p-5 border-b border-zinc-800 bg-zinc-900/40">
                     <div>
@@ -775,7 +778,7 @@ export function AgentDirectChat({
                 </div>
             )}
 
-            <div ref={scrollRef} onScroll={handleScroll} style={{ overflowAnchor: "none" }} className="relative flex-1 overflow-y-auto bg-[radial-gradient(circle_at_top,_rgba(16,185,129,0.08),_transparent_35%),linear-gradient(180deg,var(--chat-gradient-start),var(--chat-gradient-end))] p-3 sm:p-5">
+            <div ref={scrollRef} onScroll={handleScroll} style={{ overflowAnchor: "none" }} className="fade-y relative flex-1 overflow-y-auto p-3 sm:p-5">
                 {isLoading ? (
                     <div className="h-full flex items-center justify-center text-sm text-zinc-500 animate-pulse">
                         {t("loading")}
@@ -844,31 +847,26 @@ export function AgentDirectChat({
                                         isContinuation ? "mt-0.5" : "mt-3"
                                     )}>
                                         <div className={cn("flex min-w-0 max-w-[88%] flex-col sm:max-w-[80%]", isHuman ? "items-end" : "items-start", isRich && "w-full max-w-full sm:max-w-[min(92%,880px)]")}>
-                                            {/* Agent name label — only on group-start agent messages */}
-                                            {!isHuman && !isContinuation && (
-                                                <span className="text-[10px] font-medium text-zinc-400 mb-1 ml-1">{senderLabel}</span>
+                                            {/* Sender label on group-start only; your own messages need none (the side says it). */}
+                                            {!isContinuation && !isOwn && (
+                                                <span className={cn("mb-1 flex items-center gap-1 text-[10px] font-medium text-muted-foreground", isHuman ? "mr-1" : "ml-1")}>
+                                                    {isHuman ? <IconUser className="h-3 w-3" aria-hidden /> : <IconRobot className="h-3 w-3" aria-hidden />}
+                                                    {isHuman ? getMessageSenderName(message) || tTeam("member") : senderLabel}
+                                                </span>
                                             )}
 
                                             <div className={cn(
-                                                `min-w-0 max-w-full rounded-2xl border px-4 py-3 shadow-sm`,
+                                                // Both chats: your bubble is a neutral raised surface, the agent's a quieter
+                                                // outlined one; the tail corner sits on the speaker's side of the last bubble.
+                                                "min-w-0 max-w-full rounded-2xl border px-4 py-3",
+                                                isLiveArrival(message.id) && "ec-message-in",
                                                 isRich && "w-full",
                                                 isHuman
-                                                    ? "bg-emerald-500 text-emerald-950 border-emerald-400/40"
-                                                    : "bg-zinc-950/85 text-zinc-200 border-zinc-800",
-                                                isLastInGroup && isHuman && "rounded-br-none",
-                                                isLastInGroup && !isHuman && "rounded-bl-none"
+                                                    ? "border-transparent bg-secondary text-secondary-foreground"
+                                                    : "border-border bg-background/60 text-foreground",
+                                                isLastInGroup && isHuman && "rounded-br-md",
+                                                isLastInGroup && !isHuman && "rounded-bl-md"
                                             )}>
-                                                {/* Header row — only on group-start */}
-                                                {!isContinuation && (
-                                                    <div className="flex items-center gap-2 mb-2">
-                                                        <div className={cn("w-5 h-5 rounded-full flex items-center justify-center", isHuman ? "bg-emerald-950/15" : "bg-zinc-800")}>
-                                                            {isHuman ? <IconUser className="w-3 h-3" /> : <IconRobot className="w-3 h-3 text-emerald-400" />}
-                                                        </div>
-                                                        <span className={cn("text-[10px] uppercase tracking-wider font-bold", isHuman ? "text-emerald-950/70" : "text-zinc-500")}>
-                                                            {isHuman ? (isOwn ? tTeam("you") : getMessageSenderName(message) || tTeam("member")) : senderLabel}
-                                                        </span>
-                                                    </div>
-                                                )}
                                                 {!isHuman && hasChoicesBlock(message.text) ? (
                                                     <RichMessageActionsContext.Provider value={{ sendPrompt: sendWidgetPrompt, laterReplies: laterHumanTexts(messages, i) }}>
                                                         <MessageContent text={message.text} isHuman={isHuman} />
@@ -893,13 +891,12 @@ export function AgentDirectChat({
                                                                     controls
                                                                     src={`/api/ui/artifacts/${att.id}/download?disposition=inline`}
                                                                     className="w-full max-w-[220px] h-8"
-                                                                    style={{ accentColor: isHuman ? "#6ee7b7" : "#6366f1" }}
+                                                                    style={{ accentColor: "var(--primary)" }}
                                                                 />
                                                             ) : (
                                                                 <AttachmentChip
                                                                     key={att.id}
                                                                     attachment={att}
-                                                                    tone={isHuman ? "light" : "dark"}
                                                                     href={`/api/ui/artifacts/${att.id}/download`}
                                                                 />
                                                             )
@@ -912,41 +909,43 @@ export function AgentDirectChat({
                                                 {message.senderType === "agent" && replyRuns[message.id] && (
                                                     <ReplyRunFooter run={replyRuns[message.id]} />
                                                 )}
-                                                {isPersistedUuid(message.id) && (message.senderType === "human" || message.senderType === "agent") && (
-                                                    <div className="mt-1.5">
-                                                        <DeliveryInspector messageId={message.id} tone={isHuman ? "light" : "dark"} />
-                                                    </div>
-                                                )}
-                                                {/* Timestamp — bottom-right of bubble, on every message */}
-                                                <div className={cn("text-[10px] mt-1.5 text-right opacity-50", isHuman ? "text-emerald-950" : "text-zinc-400")}>
-                                                    {format.dateTime(new Date(message.createdAt), { hour: "2-digit", minute: "2-digit" })}
+                                                {/* One footer line: the delivery inspector, the delivery state (per
+                                                    message while pending, so a batch of queued messages each show their
+                                                    own real state, then the group-level Read/Sent receipt once resolved)
+                                                    and the time. */}
+                                                <div className="mt-1.5 flex items-center justify-end gap-1.5 text-[10px] text-muted-foreground">
+                                                    {isPersistedUuid(message.id) && (message.senderType === "human" || message.senderType === "agent") && (
+                                                        <span className="mr-auto shrink-0">
+                                                            <DeliveryInspector messageId={message.id} />
+                                                        </span>
+                                                    )}
+                                                    {isHuman && message.deliveryState && message.deliveryState !== "resolved" ? (
+                                                        <span className="flex min-w-0 items-center gap-1">
+                                                            <span aria-hidden className={cn(
+                                                                "h-1.5 w-1.5 shrink-0 rounded-full",
+                                                                message.deliveryState === "acting" ? "bg-emerald-500 animate-pulse" : "bg-muted-foreground/60"
+                                                            )} />
+                                                            <span className={cn(
+                                                                "truncate font-medium",
+                                                                message.deliveryState === "acting" ? "text-emerald-600 dark:text-emerald-400" : runtimeFailureOf(message) ? "text-rose-500 dark:text-rose-400" : ""
+                                                            )} title={runtimeFailureOf(message)?.reason ?? undefined}>
+                                                                <TextSwap id={message.deliveryState}>{message.deliveryState === "cancelled" ? (failureLabel(message) ?? t("cancelled")) : message.deliveryState === "acting" ? t("beingHandled") : t("queued")}</TextSwap>
+                                                            </span>
+                                                            <span aria-hidden>·</span>
+                                                        </span>
+                                                    ) : isHuman && isLastInGroup ? (
+                                                        <span className="flex items-center gap-1">
+                                                            <span className={cn("font-medium transition-colors", isRead && "text-emerald-600 dark:text-emerald-400")}>
+                                                                <TextSwap id={isRead ? "read" : "sent"}>{isRead ? t("read") : t("sent")}</TextSwap>
+                                                            </span>
+                                                            <span aria-hidden>·</span>
+                                                        </span>
+                                                    ) : null}
+                                                    <time dateTime={new Date(message.createdAt).toISOString()} className="shrink-0 whitespace-nowrap tabular-nums">
+                                                        {format.dateTime(new Date(message.createdAt), { hour: "2-digit", minute: "2-digit" })}
+                                                    </time>
                                                 </div>
                                             </div>
-
-                                            {/* Delivery/read status — per-message while pending (so a batch of
-                                                queued messages each show their own real state), collapsing
-                                                back to the group-level Read/Sent receipt once resolved. */}
-                                            {isHuman && message.deliveryState && message.deliveryState !== "resolved" ? (
-                                                <div className="mt-1 flex items-center gap-1 px-1">
-                                                    <div className={cn(
-                                                        "w-1.5 h-1.5 rounded-full",
-                                                        message.deliveryState === "acting" ? "bg-emerald-500 animate-pulse" : "bg-zinc-600"
-                                                    )} />
-                                                    <span className={cn(
-                                                        "text-[10px] font-medium",
-                                                        message.deliveryState === "acting" ? "text-emerald-500" : runtimeFailureOf(message) ? "text-rose-400" : "text-zinc-600"
-                                                    )} title={runtimeFailureOf(message)?.reason ?? undefined}>
-                                                        {message.deliveryState === "cancelled" ? (failureLabel(message) ?? t("cancelled")) : message.deliveryState === "acting" ? t("beingHandled") : t("queued")}
-                                                    </span>
-                                                </div>
-                                            ) : isHuman && isLastInGroup && (
-                                                <div className="mt-1 flex items-center gap-1 px-1">
-                                                    <span className={cn("text-[10px] font-medium transition-colors", isRead ? "text-emerald-500" : "text-zinc-600")}>
-                                                        {isRead ? t("read") : t("sent")}
-                                                    </span>
-                                                    {isRead && <div className="w-1 h-1 rounded-full bg-emerald-500" />}
-                                                </div>
-                                            )}
                                         </div>
                                     </div>
                                 </div>
@@ -969,24 +968,22 @@ export function AgentDirectChat({
                             stepStartedAt={liveRun && isTimedStepKind(liveRun.current.kind) ? liveRun.currentStartedAt : null}
                             detail={liveRun ? render(lastReasoningCopy(liveRun), lastReasoningLine(liveRun) ?? "") || null : null}
                         />
-                        {liveActive && liveRun && (
-                            <div className="mt-1 max-w-[88%] pl-4 sm:max-w-[80%]">
-                                <LiveRunSteps steps={liveRun.steps} usage={liveRun.usage} />
-                            </div>
-                        )}
+                        <Presence show={Boolean(liveActive && liveRun)} snappy className="mt-1 max-w-[88%] pl-4 sm:max-w-[80%]">
+                            {liveRun && <LiveRunSteps steps={liveRun.steps} usage={liveRun.usage} />}
+                        </Presence>
                     </div>
                 )}
             </div>
 
-            {unreadCount > 0 && !isAtBottom && (
+            <Presence show={unreadCount > 0 && !isAtBottom} snappy scale y={8} className="absolute bottom-24 left-1/2 z-10 -translate-x-1/2">
                 <button
                     type="button"
                     onClick={scrollToLatest}
-                    className="absolute bottom-24 left-1/2 z-10 -translate-x-1/2 rounded-full border border-emerald-500/30 bg-zinc-900/95 px-3 py-1.5 text-xs font-medium text-emerald-300 shadow-lg transition-colors hover:bg-zinc-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400/70"
+                    className="rounded-full border border-border bg-popover px-3 py-1.5 text-xs font-medium text-foreground shadow-(--shadow-pop) transition-colors hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                 >
                     {tTeam("jumpToLatest", { count: unreadCount })}
                 </button>
-            )}
+            </Presence>
 
             {canSend && <div className="space-y-2 border-t border-zinc-800 bg-zinc-950/80 p-2 sm:p-4">
                 {alsoWorking.primary && (
@@ -1110,7 +1107,7 @@ export function AgentDirectChat({
                             type="button"
                             onClick={sendVoice}
                             disabled={isSending}
-                            className="inline-flex items-center gap-2 rounded-full bg-emerald-500 px-4 py-2.5 text-sm font-semibold text-emerald-950 hover:bg-emerald-400 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                            className="inline-flex items-center gap-2 rounded-full bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                         >
                             <IconSend className="w-4 h-4" />
                             {t("send")}
@@ -1128,13 +1125,17 @@ export function AgentDirectChat({
                                 {attachError}
                             </div>
                         )}
-                        {pendingAttachments.length > 0 && (
+                        <Presence show={pendingAttachments.length > 0} snappy>
                             <div className="flex flex-wrap gap-2">
+                                <MotionList>
                                 {pendingAttachments.map((att) => (
-                                    <AttachmentChip key={att.id} attachment={att} onRemove={() => removePendingAttachment(att.id)} />
+                                    <MotionItem key={att.id}>
+                                        <AttachmentChip attachment={att} onRemove={() => removePendingAttachment(att.id)} />
+                                    </MotionItem>
                                 ))}
+                                </MotionList>
                             </div>
-                        )}
+                        </Presence>
                     </div>
                 )}
                 <div className="relative rounded-2xl border border-zinc-800 bg-zinc-900 transition-colors focus-within:border-zinc-600">
@@ -1159,7 +1160,7 @@ export function AgentDirectChat({
                         aria-label={t("messageLabel", { name: agentName })}
                         aria-describedby="direct-message-shortcut"
                         rows={1}
-                        className="block max-h-40 min-h-11 w-full resize-none overflow-y-auto bg-transparent px-3 pt-3 pb-1 text-base leading-5 text-zinc-200 placeholder:text-zinc-600 focus:outline-none sm:px-4 sm:text-sm"
+                        className="block max-h-40 min-h-11 w-full resize-none overflow-y-auto bg-transparent px-3 pt-3 pb-1 text-base leading-5 text-zinc-200 placeholder:overflow-hidden placeholder:text-ellipsis placeholder:whitespace-nowrap placeholder:text-zinc-600 focus:outline-none sm:px-4 sm:text-sm"
                     />
                     <div className="flex items-center gap-1 px-1.5 pb-1.5 sm:px-2 sm:pb-2">
                         <button
@@ -1182,7 +1183,7 @@ export function AgentDirectChat({
                         </button>
                         <AgentGoalControls agentId={agentId} />
                         <select aria-label={t("nextPromptBehavior")} title={t("busyBehavior")} value={sendMode} onChange={e => setSendMode(e.target.value as "queue" | "replace")}
-                            className="h-8 min-w-0 max-w-[7rem] cursor-pointer sm:max-w-[9.5rem] truncate rounded-full border border-transparent bg-transparent px-2 text-xs text-zinc-400 hover:border-zinc-700 hover:text-zinc-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500/70">
+                            className="h-8 min-w-0 max-w-[7rem] cursor-pointer sm:max-w-[9.5rem] truncate rounded-full border border-transparent bg-transparent px-2 text-xs text-zinc-400 hover:border-zinc-700 hover:text-zinc-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-ring">
                             <option value="queue">{t("queueAfter")}</option>
                             <option value="replace">{t("replaceCurrent")}</option>
                         </select>
@@ -1196,7 +1197,7 @@ export function AgentDirectChat({
                                 type="submit"
                                 disabled={(!draft.trim() && pendingAttachments.length === 0) || isSending}
                                 aria-label={isSending ? t("sending") : t("sendMessage")}
-                                className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-emerald-500 text-emerald-950 transition-colors hover:bg-emerald-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-300 disabled:cursor-not-allowed disabled:bg-zinc-700 disabled:text-zinc-400"
+                                className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-primary text-primary-foreground transition-colors hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background disabled:cursor-not-allowed disabled:bg-muted disabled:text-muted-foreground"
                             >
                                 <IconArrowUp className="h-4 w-4" stroke={2.5} />
                             </button>
@@ -1280,7 +1281,9 @@ function QueueItem({
     );
 }
 
-function MessageContent({ text, isHuman }: { text: string; isHuman: boolean }) {
+function MessageContent({ text: rawText, isHuman }: { text: string; isHuman: boolean }) {
+    // Older voice notes were sent as "🎤 Voice message (…)"; show them like new ones (no emoji).
+    const text = isHuman ? rawText.replace(/^\u{1F3A4}\s*/u, "") : rawText;
     // Legacy format from before voice messages became real attachments —
     // matches both absolute URLs and the app's own relative paths (the bug:
     // this used to only match https?:// and silently fell through to
@@ -1298,12 +1301,12 @@ function MessageContent({ text, isHuman }: { text: string; isHuman: boolean }) {
     const audioSrc = audioMatch[1];
     return (
         <div className="space-y-2">
-            {before && <p className={`text-sm font-medium ${isHuman ? "text-emerald-950/80" : "text-zinc-400"}`}>{before}</p>}
+            {before && <p className="text-sm font-medium text-muted-foreground">{before}</p>}
             <audio
                 controls
                 src={audioSrc}
                 className="w-full max-w-[220px] h-8"
-                style={{ accentColor: isHuman ? "#6ee7b7" : "#6366f1" }}
+                style={{ accentColor: "var(--primary)" }}
             />
         </div>
     );

@@ -26,6 +26,8 @@ import type { AttentionEntry } from "@/lib/team-scene";
 import { useTimeAgo } from "@/lib/i18n/format";
 import { useCopy } from "@/lib/i18n/use-copy";
 import { useSceneCopy } from "@/components/team-dashboard/use-scene-copy";
+import { MotionItem, MotionList, SegmentPill } from "@/components/ui/motion";
+import { EntityContextMenu, MENU_ICONS, type EntityMenuEntry } from "@/components/entity-context-menu";
 import { cn } from "@/lib/utils";
 import { useModuleEnabled } from "@/components/modules-provider";
 
@@ -67,6 +69,7 @@ export function InboxClient({ entries, archived, agents, generatedAt, canAct, fi
     const listRef = useRef<HTMLDivElement>(null);
     const inbox = useInboxState(entries, archived);
     const { markRead: markSeen } = inbox;
+    const tMenu = useTranslations("contextMenu");
     const showingArchived = filter === "archived";
 
     const live = useMemo(() => inbox.active.filter((e) => !done.has(e.id)), [inbox.active, done]);
@@ -183,6 +186,15 @@ export function InboxClient({ entries, archived, agents, generatedAt, canAct, fi
         else requestAnimationFrame(() => focusRowRef.current(next.id));
     }, [ordered, showingArchived, inbox]);
 
+    // Right-click / long-press on a row: the same actions as its buttons and keys.
+    const rowMenu = (entry: AttentionEntry): EntityMenuEntry[] => [
+        { key: "open", label: tMenu("open"), icon: MENU_ICONS.open, href: entry.href },
+        ...(showingArchived ? [] : [inbox.isRead(entry)
+            ? { key: "unread", label: tMenu("markUnread"), icon: MENU_ICONS.unread, onSelect: () => inbox.markUnread(entry) }
+            : { key: "read", label: tMenu("markRead"), icon: MENU_ICONS.read, onSelect: () => inbox.markRead(entry) }]),
+        { key: "archive", label: showingArchived ? tMenu("moveBack") : tMenu("archive"), icon: MENU_ICONS.archive, onSelect: () => toggleArchive(entry), separated: true },
+    ];
+
     // j/k move, Enter opens (native on the focused link), e archives, a/r decide approvals.
     const focusRow = useCallback((id: string) => {
         const entry = ordered.find((e) => e.id === id);
@@ -230,7 +242,7 @@ export function InboxClient({ entries, archived, agents, generatedAt, canAct, fi
     }, [ordered, selectedId, canAct, busyId, decide, focusRow, toggleArchive, t]);
 
     return (
-        <div className="mx-auto max-w-[1100px] space-y-5 pb-20 animate-in fade-in duration-500">
+        <div className="mx-auto max-w-[1100px] space-y-5 pb-20">
             <PageHeader
                 eyebrow={t("eyebrow")}
                 title={t("title", { count: needsYou })}
@@ -260,8 +272,9 @@ export function InboxClient({ entries, archived, agents, generatedAt, canAct, fi
                         <Fragment key={id}>
                             {id === "fyi" && <span aria-hidden className="mx-1 my-1.5 hidden w-px bg-border sm:block" />}
                             <button type="button" aria-pressed={active} title={t(`filters.${id}Hint`)} onClick={() => setFilter(id)}
-                                className={cn("flex min-h-12 min-w-0 flex-col-reverse items-center justify-center gap-0.5 rounded-lg px-1 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400 sm:min-h-9 sm:flex-row sm:gap-2 sm:px-3.5 sm:text-sm",
-                                    active ? "bg-background text-foreground shadow-sm ring-1 ring-border dark:bg-white/[0.07]" : "text-muted-foreground hover:text-foreground")}>
+                                className={cn("relative isolate flex min-h-12 min-w-0 flex-col-reverse items-center justify-center gap-0.5 rounded-lg px-1 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400 sm:min-h-9 sm:flex-row sm:gap-2 sm:px-3.5 sm:text-sm",
+                                    active ? "text-foreground" : "text-muted-foreground hover:text-foreground")}>
+                                {active && <SegmentPill layoutId="inbox-filter" radius={8} className="bg-background shadow-sm ring-1 ring-border dark:bg-white/[0.07]" />}
                                 <span className="truncate">{t(`filters.${id}`)}</span>
                                 <span className={cn("rounded-md px-1.5 text-sm font-semibold tabular-nums sm:text-[11px]", active ? "bg-primary/15 text-primary" : "text-foreground/80 sm:bg-muted sm:text-muted-foreground sm:dark:bg-white/[0.05]")}>{n}</span>
                             </button>
@@ -293,10 +306,14 @@ export function InboxClient({ entries, archived, agents, generatedAt, canAct, fi
             </div>
 
             <div ref={listRef} className="space-y-6">
+                <MotionList>
                 {grouped.length === 0 ? (
-                    <EmptyState filter={filter} query={query} fyiCount={filterCount("fyi")} onShow={setFilter} onClearSearch={() => setQuery("")} />
+                    <MotionItem key="empty">
+                        <EmptyState filter={filter} query={query} fyiCount={filterCount("fyi")} onShow={setFilter} onClearSearch={() => setQuery("")} />
+                    </MotionItem>
                 ) : grouped.map(({ group, items }) => (
-                    <section key={group} aria-labelledby={`inbox-${group}`}>
+                    <MotionItem key={group}>
+                    <section aria-labelledby={`inbox-${group}`}>
                         <header className="mb-2.5 flex items-baseline gap-2 px-1">
                             <h2 id={`inbox-${group}`} className={cn("text-sm font-semibold", group === "blocked" ? "text-rose-600 dark:text-rose-300" : group === "decide" ? "text-foreground" : "text-muted-foreground")}>
                                 {t(`groups.${group}`)}
@@ -305,6 +322,7 @@ export function InboxClient({ entries, archived, agents, generatedAt, canAct, fi
                             <span className="hidden truncate text-xs text-muted-foreground/80 sm:inline">{t(`groups.${group}Hint`)}</span>
                         </header>
                         <ul className="space-y-2">
+                            <MotionList>
                             {items.map((entry) => (
                                 <InboxRow
                                     key={entry.id}
@@ -326,11 +344,15 @@ export function InboxClient({ entries, archived, agents, generatedAt, canAct, fi
                                     onRestart={restart}
                                     onReassign={reassign}
                                     onMarkRead={markRead}
+                                    menu={rowMenu(entry)}
                                 />
                             ))}
+                            </MotionList>
                         </ul>
                     </section>
+                    </MotionItem>
                 ))}
+                </MotionList>
             </div>
 
             {ordered.length > 0 && (
@@ -411,7 +433,11 @@ function Meta({ icon: Icon, children, title }: { icon: typeof IconRobot; childre
     );
 }
 
-function InboxRow({ entry, now, selected, unread, archivedView, onSelect, onArchive, canAct, busy, anyBusy, agents, rejecting, setRejecting, onDecide, onResume, onRestart, onReassign, onMarkRead }: {
+function InboxRow({ ref, menu, entry, now, selected, unread, archivedView, onSelect, onArchive, canAct, busy, anyBusy, agents, rejecting, setRejecting, onDecide, onResume, onRestart, onReassign, onMarkRead }: {
+    /** From MotionList: lets a leaving row pop out of the flow while it fades. */
+    ref?: React.Ref<HTMLElement>;
+    /** Right-click / long-press menu (open, read state, archive). */
+    menu: EntityMenuEntry[];
     entry: AttentionEntry;
     now: Date;
     selected: boolean;
@@ -448,7 +474,9 @@ function InboxRow({ entry, now, selected, unread, archivedView, onSelect, onArch
         </button>
     );
     return (
-        <li
+        <EntityContextMenu ref={ref} entries={menu}>
+        <MotionItem
+            as="li"
             data-entry-id={entry.id}
             onFocus={onSelect}
             onClick={onSelect}
@@ -519,7 +547,8 @@ function InboxRow({ entry, now, selected, unread, archivedView, onSelect, onArch
                     {canAct && rejecting && <RejectForm entry={entry} busy={busy} onCancel={() => setRejecting(false)} onSend={(note) => onDecide(entry, "rejected", note)} />}
                 </div>
             </div>
-        </li>
+        </MotionItem>
+        </EntityContextMenu>
     );
 }
 

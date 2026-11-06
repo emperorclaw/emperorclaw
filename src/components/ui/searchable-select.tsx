@@ -19,6 +19,8 @@ export type SearchableSelectOption = {
 const LIST_MAX_HEIGHT = 288;
 /** Used for the first placement, before the open menu can be measured. */
 const ESTIMATED_MENU_HEIGHT = 330;
+/** Matches the `.ec-materialize` closed animation (160 ms). */
+const MENU_EXIT_MS = 160;
 
 export function SearchableSelect({
     value,
@@ -39,6 +41,9 @@ export function SearchableSelect({
     const [open, setOpen] = useState(false);
     const [query, setQuery] = useState("");
     const [position, setPosition] = useState<(MenuPosition & { listMaxHeight: number }) | null>(null);
+    // The menu stays mounted briefly after closing so it can play its exit.
+    const [leaving, setLeaving] = useState(false);
+    const leaveTimer = useRef<number | null>(null);
     const rootRef = useRef<HTMLDivElement>(null);
     // The menu renders in a portal on document.body so board columns and cards
     // (their own stacking contexts) can never paint over it.
@@ -55,8 +60,16 @@ export function SearchableSelect({
     const close = useCallback(() => {
         setOpen(false);
         setQuery("");
-        setPosition(null);
+        setLeaving(true);
+        if (leaveTimer.current) window.clearTimeout(leaveTimer.current);
+        leaveTimer.current = window.setTimeout(() => {
+            leaveTimer.current = null;
+            setLeaving(false);
+            setPosition(null);
+        }, MENU_EXIT_MS);
     }, []);
+
+    useEffect(() => () => { if (leaveTimer.current) window.clearTimeout(leaveTimer.current); }, []);
 
     /** Place the menu against the trigger; `menuHeight` defaults to the open menu's natural height. */
     const reposition = useCallback((menuHeight?: number) => {
@@ -120,20 +133,24 @@ export function SearchableSelect({
                 type="button"
                 onClick={() => {
                     if (open) { close(); return; }
+                    if (leaveTimer.current) { window.clearTimeout(leaveTimer.current); leaveTimer.current = null; }
+                    setLeaving(false);
                     setOpen(true);
                     reposition(ESTIMATED_MENU_HEIGHT);
                 }}
-                className="flex h-10 w-full cursor-pointer items-center justify-between gap-3 rounded-xl border border-zinc-800 bg-zinc-950/80 px-3 text-left text-sm text-zinc-100 outline-none transition-colors hover:border-zinc-700 focus:border-cyan-400 focus:ring-1 focus:ring-cyan-400/60"
+                className="flex h-10 w-full cursor-pointer items-center justify-between gap-3 rounded-xl border border-zinc-800 bg-zinc-950/80 px-3 text-left text-sm text-zinc-100 outline-none transition-colors hover:border-zinc-700 focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/30"
             >
                 <span title={selected?.label} className={cn("truncate", !selected && "text-zinc-400")}>{selected?.label || placeholder}</span>
                 <IconChevronDown className="h-4 w-4 shrink-0 text-zinc-500" />
             </button>
-            {open && position && createPortal(
+            {(open || leaving) && position && createPortal(
                 <div
                     ref={menuRef}
                     data-placement={position.placement}
+                    data-state={open ? "open" : "closed"}
+                    inert={!open || undefined}
                     style={{ position: "fixed", top: position.top, bottom: position.bottom, left: position.left, width: position.width }}
-                    className="z-[60] overflow-hidden rounded-xl border border-zinc-800 bg-zinc-950 shadow-2xl shadow-black/40"
+                    className="ec-materialize origin-top data-[placement=above]:origin-bottom data-[state=closed]:pointer-events-none z-[60] overflow-hidden rounded-xl border border-zinc-800 bg-zinc-950 shadow-2xl shadow-black/40"
                 >
                     <label ref={headerRef} className="flex items-center gap-2 border-b border-zinc-800 px-3 py-2 text-sm text-zinc-400">
                         <IconSearch className="h-4 w-4" />

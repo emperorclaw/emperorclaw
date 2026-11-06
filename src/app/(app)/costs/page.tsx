@@ -11,7 +11,7 @@ import { PageHeader } from "@/components/page-header";
 import { BudgetClient } from "@/components/budget-client";
 import { costsSearch, drillDown, isoDay, parseCostsQuery, DAY_MS } from "@/lib/costs";
 import { loadCostsView } from "@/lib/costs-reads";
-import { CostsClient, CostsTabs } from "./costs-client";
+import { CostsClient, CostsPanel, CostsTabs } from "./costs-client";
 
 export const dynamic = "force-dynamic";
 
@@ -58,11 +58,11 @@ export default async function CostsPage({ searchParams }: { searchParams: Promis
 
     const t = await getTranslations("costs");
     return (
-        <div className="mx-auto max-w-[1400px] space-y-6 animate-in fade-in duration-500">
+        <div className="mx-auto max-w-[1400px] space-y-6">
             <PageHeader eyebrow={t("eyebrow")} title={t("title")}
                 description={query.tab === "budgets" ? t("budgetsDescription") : t("description")} />
             <CostsTabs active={query.tab} range={rangeView} />
-            {body}
+            <CostsPanel tab={query.tab}>{body}</CostsPanel>
         </div>
     );
 }

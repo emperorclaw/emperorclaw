@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useFormatter, useTranslations } from "next-intl";
 import { IconArrowDown, IconArrowUp, IconCoin, IconDownload, IconX } from "@tabler/icons-react";
 import { EmptyState } from "@/components/ui/empty-state";
+import { SegmentPill, Swap, useTabDirection } from "@/components/ui/motion";
 import { cn } from "@/lib/utils";
 import {
     COST_TABS,
@@ -42,14 +43,21 @@ export function CostsTabs({ active, range }: { active: CostTab; range: RangeView
                 params.set("tab", tab);
                 return (
                     <Link key={tab} href={`/costs?${params.toString()}`} aria-current={tab === active ? "page" : undefined}
-                        className={cn("-mb-px inline-flex min-h-10 items-center border-b-2 px-3 text-sm transition-colors",
-                            tab === active ? "border-primary font-medium text-foreground" : "border-transparent text-muted-foreground hover:text-foreground")}>
+                        className={cn("relative isolate -mb-px inline-flex min-h-10 items-center border-b-2 border-transparent px-3 text-sm transition-colors",
+                            tab === active ? "font-medium text-foreground" : "text-muted-foreground hover:text-foreground")}>
+                        {tab === active && <SegmentPill layoutId="costs-tab" radius={1} className="top-auto -bottom-0.5 z-0 h-0.5 bg-primary" />}
                         {t(`tabs.${tab}`)}
                     </Link>
                 );
             })}
         </nav>
     );
+}
+
+/** The active tab's content: crossfades and slides toward the tab that was picked. */
+export function CostsPanel({ tab, children }: { tab: CostTab; children: React.ReactNode }) {
+    const direction = useTabDirection(tab, COST_TABS);
+    return <Swap id={tab} direction={direction}>{children}</Swap>;
 }
 
 type GroupRow = CostGroup & { href: string | null };

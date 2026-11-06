@@ -32,7 +32,8 @@ export function EmptyState({
         <div
             role="status"
             className={cn(
-                "flex flex-col items-center text-center",
+                // Fades and rises in whenever it replaces content (globals.css).
+                "ec-appear flex flex-col items-center text-center",
                 compact ? "gap-1 px-3 py-5" : "gap-1.5 px-5 py-10 sm:py-12",
                 bordered && "rounded-2xl border border-dashed border-border bg-card/60",
                 className,

@@ -17,7 +17,7 @@ export default async function OpsLayout({
 
     const t = await getTranslations("ops");
     return (
-        <div className="mx-auto max-w-[1800px] space-y-8 animate-in fade-in duration-500">
+        <div className="mx-auto max-w-[1800px] space-y-8">
             <PageHeader
                 eyebrow={t("eyebrow")}
                 title={t("title")}

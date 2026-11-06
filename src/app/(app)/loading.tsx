@@ -3,7 +3,7 @@ import { useTranslations } from "next-intl";
 export default function Loading() {
     const t = useTranslations("errors");
     return (
-        <div className="min-h-screen w-full bg-gradient-to-br from-zinc-950 via-zinc-900 to-zinc-950 text-zinc-200">
+        <div className="ec-skeleton-in min-h-screen w-full bg-gradient-to-br from-zinc-950 via-zinc-900 to-zinc-950 text-zinc-200">
             <div className="max-w-6xl mx-auto px-8 py-10">
                 <div className="flex items-center justify-between mb-10">
                     <div className="space-y-2">

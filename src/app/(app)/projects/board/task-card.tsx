@@ -38,6 +38,7 @@ import {
 } from "@/lib/project-board-model";
 import { taskHref } from "@/lib/task-story";
 import { cn } from "@/lib/utils";
+import { absoluteUrl, useCopyToClipboard } from "@/components/entity-context-menu";
 import { PRIORITY_CHOICES, useBoardLabels, useShortDateTime } from "./board-labels";
 
 /** Everything a card or list row shows, computed once per task by the board. */
@@ -138,6 +139,8 @@ export function TaskCardMenu({ view, open, onOpenChange, onSetPriority, onSetSta
     onArchive?: () => void;
 }) {
     const t = useTranslations("tasks.card");
+    const tMenu = useTranslations("contextMenu");
+    const copy = useCopyToClipboard();
     const labels = useBoardLabels();
     const { task } = view;
     return (
@@ -160,6 +163,9 @@ export function TaskCardMenu({ view, open, onOpenChange, onSetPriority, onSetSta
             <DropdownMenuContent align="end" className="w-52 border-zinc-800 bg-zinc-950 text-zinc-100" onClick={(event) => event.stopPropagation()} onPointerDown={(event) => event.stopPropagation()} onKeyDown={(event) => event.stopPropagation()}>
                 <DropdownMenuItem asChild>
                     <Link href={taskHref(task.id)}><IconArrowUpRight className="mr-2 h-4 w-4" />{t("openFullPage")}</Link>
+                </DropdownMenuItem>
+                <DropdownMenuItem onSelect={() => void copy(absoluteUrl(taskHref(task.id)), tMenu("linkCopied"))}>
+                    <IconLink className="mr-2 h-4 w-4" />{tMenu("copyLink")}
                 </DropdownMenuItem>
                 {onSetState && (
                     <DropdownMenuSub>
@@ -228,9 +234,9 @@ export function TaskCard({ view, canEdit, onOpen, onSetPriority, onSetState, onA
     selected?: boolean;
 }) {
     const t = useTranslations("tasks.card");
-    const draggable = useDraggable({ id: view.task.id, disabled: overlay || !canEdit });
+    const { setNodeRef, listeners, attributes, transform, isDragging } = useDraggable({ id: view.task.id, disabled: overlay || !canEdit });
     const [menuOpen, setMenuOpen] = useState(false);
-    const style = overlay ? undefined : { transform: CSS.Translate.toString(draggable.transform) };
+    const style = overlay ? undefined : { transform: CSS.Translate.toString(transform) };
 
     if (overlay) {
         return (
@@ -242,16 +248,18 @@ export function TaskCard({ view, canEdit, onOpen, onSetPriority, onSetState, onA
 
     return (
         <div
-            ref={draggable.setNodeRef}
+            ref={setNodeRef}
             style={style}
-            {...draggable.listeners}
-            {...draggable.attributes}
+            {...listeners}
+            {...attributes}
             role="button"
+            // A drag source must not shrink on press: DragOverlay measures it on pointer-down.
+            data-no-press={canEdit || undefined}
             tabIndex={0}
             aria-roledescription={canEdit ? t("draggable") : undefined}
             aria-label={view.title}
             onClick={onOpen}
-            onContextMenu={canEdit ? (event) => { event.preventDefault(); setMenuOpen(true); } : undefined}
+            onContextMenu={(event) => { event.preventDefault(); setMenuOpen(true); }}
             onKeyDown={(event) => {
                 if (event.target !== event.currentTarget) return;
                 if (event.key === "Enter" || event.key === " ") {
@@ -264,12 +272,12 @@ export function TaskCard({ view, canEdit, onOpen, onSetPriority, onSetState, onA
                 "hover:border-zinc-700 hover:bg-zinc-900/70 focus-visible:border-cyan-400/60 focus-visible:ring-2 focus-visible:ring-cyan-400/40",
                 selected ? "border-cyan-400/50 bg-zinc-900/80" : "border-zinc-800/80",
                 canEdit ? "cursor-grab active:cursor-grabbing" : "cursor-pointer",
-                draggable.isDragging && "opacity-30",
+                isDragging && "opacity-30",
             )}
         >
             <CardBody
                 view={view}
-                menu={canEdit ? <TaskCardMenu view={view} open={menuOpen} onOpenChange={setMenuOpen} onSetPriority={onSetPriority} onSetState={onSetState} onArchive={onArchive} /> : undefined}
+                menu={<TaskCardMenu view={view} open={menuOpen} onOpenChange={setMenuOpen} onSetPriority={canEdit ? onSetPriority : undefined} onSetState={canEdit ? onSetState : undefined} onArchive={canEdit ? onArchive : undefined} />}
             />
         </div>
     );

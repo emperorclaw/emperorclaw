@@ -15,10 +15,13 @@ import {
     IconPencil,
     IconRefresh,
     IconHistory,
+    IconDots,
+    IconTrash,
 } from "@tabler/icons-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { runtimeSetupOf } from "@/lib/runtime-setup";
 import { providerTroubleHeadlineCopy, providerTroubleLabel, providerTroubleLabelCopy, type ProviderTrouble } from "@/lib/provider-trouble";
 import { useCopy } from "@/lib/i18n/use-copy";
@@ -153,6 +156,7 @@ export function AgentDetailPanel({ agentId, agentName, runtime = null }: {
     const t = useTranslations("agents.detail");
     const tc = useTranslations("common");
     const tStatus = useTranslations("agents.status");
+    const tDelete = useTranslations("agents.delete");
     const render = useCopy();
     const format = useFormatter();
     const llmLabel = (value: string) => value === CUSTOM_LLM_PROVIDER ? t("customEndpoint") : LLM_PROVIDER_LABELS[value] || value;
@@ -203,6 +207,7 @@ export function AgentDetailPanel({ agentId, agentName, runtime = null }: {
     const [llmError, setLlmError] = useState<string | null>(null);
     const [recreating, setRecreating] = useState(false);
     const [confirmRecreate, setConfirmRecreate] = useState(false);
+    const [deleteOpen, setDeleteOpen] = useState(false);
     const [recreateResult, setRecreateResult] = useState<{ success: boolean; message: string; outputs: SetupOutputEntry[] } | null>(null);
     const [pricingOpts, setPricingOpts] = useState<{ model: string; label: string; provider: string; inputPricePer1k: number; outputPricePer1k: number; active: boolean }[]>([]);
 
@@ -218,7 +223,7 @@ export function AgentDetailPanel({ agentId, agentName, runtime = null }: {
 
     if (loading) {
         return (
-            <main className="emperor-panel rounded-2xl p-6 flex items-center justify-center min-h-[400px]">
+            <main className="ec-skeleton-in emperor-panel rounded-2xl p-6 flex items-center justify-center min-h-[400px]">
                 <div className="flex flex-col items-center gap-3 text-zinc-500">
                     <div className="h-8 w-8 animate-spin rounded-full border-2 border-zinc-700 border-t-cyan-400" />
                     <span className="text-sm">{t("loading")}</span>
@@ -370,7 +375,7 @@ export function AgentDetailPanel({ agentId, agentName, runtime = null }: {
     };
 
     return (
-        <main className="emperor-panel rounded-2xl overflow-hidden">
+        <main className="ec-appear emperor-panel rounded-2xl overflow-hidden">
             {/* Header */}
             <div className="flex flex-wrap items-start justify-between gap-3 p-4 sm:p-5 border-b border-zinc-800/80">
                 <div className="flex min-w-0 items-center gap-3 sm:gap-4">
@@ -453,7 +458,21 @@ export function AgentDetailPanel({ agentId, agentName, runtime = null }: {
                         <RestartAgentButton hostId={data.runtimeHost.id} agentId={agent.id} agentName={agent.name}
                             topology={data.runtimeHost.topology} sharedAgents={data.runtimeHost.sharedAgents} hostOnline={data.runtimeHost.status === "online"} />
                     )}
-                    <DeleteAgentDialog agentId={agent.id} agentName={agent.name}
+                    {/* Deleting is rare and destructive: a quiet overflow item, not a red header button. */}
+                    <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                            <Button type="button" variant="ghost" size="icon-sm" aria-label={tc("moreActions")} title={tc("moreActions")}>
+                                <IconDots className="h-4 w-4" />
+                            </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end" className="min-w-44">
+                            <DropdownMenuItem variant="destructive" onSelect={() => setDeleteOpen(true)}>
+                                <IconTrash />
+                                {tDelete("button")}
+                            </DropdownMenuItem>
+                        </DropdownMenuContent>
+                    </DropdownMenu>
+                    <DeleteAgentDialog agentId={agent.id} agentName={agent.name} trigger={null} open={deleteOpen} onOpenChange={setDeleteOpen}
                         host={data.runtimeHost ? { name: data.runtimeHost.name, canRemove: canAdmin } : null} />
                 </div>
             </div>

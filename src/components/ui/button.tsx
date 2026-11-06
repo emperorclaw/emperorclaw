@@ -5,13 +5,15 @@ import { Slot } from "radix-ui";
 import { cn } from "@/lib/utils";
 
 const buttonVariants = cva(
-  "inline-flex shrink-0 cursor-pointer items-center justify-center gap-2 whitespace-nowrap rounded-xl text-sm font-semibold transition-all duration-200 disabled:pointer-events-none disabled:cursor-not-allowed disabled:opacity-50 [&_svg]:pointer-events-none [&_svg:not([class*='size-'])]:size-4 [&_svg]:shrink-0 outline-none focus-visible:ring-2 focus-visible:ring-cyan-300/60 focus-visible:ring-offset-2 focus-visible:ring-offset-zinc-950 aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40 aria-invalid:border-destructive",
+  // Press: scale down at once on pointer-down (no layout shift); inside the app
+  // shell a global rule adds the spring back on release (globals.css).
+  "inline-flex shrink-0 cursor-pointer items-center justify-center gap-2 whitespace-nowrap rounded-xl text-sm font-semibold transition-[color,background-color,border-color,box-shadow,opacity,scale] duration-150 ease-out active:not-disabled:scale-[0.97] disabled:pointer-events-none disabled:cursor-not-allowed disabled:opacity-50 [&_svg]:pointer-events-none [&_svg:not([class*='size-'])]:size-4 [&_svg]:shrink-0 outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40 aria-invalid:border-destructive",
   {
     variants: {
       variant: {
-        default: "border border-cyan-400/25 bg-cyan-400/12 text-cyan-50 shadow-sm shadow-cyan-950/20 hover:border-cyan-300/45 hover:bg-cyan-400/18",
+        default: "border border-transparent bg-primary text-primary-foreground hover:bg-primary/90",
         destructive:
-          "border border-red-500/25 bg-red-500/12 text-red-50 shadow-sm shadow-red-950/20 hover:border-red-400/45 hover:bg-red-500/18 focus-visible:ring-red-300/50",
+          "border border-red-500/25 bg-red-500/12 text-red-50 shadow-sm shadow-red-950/20 hover:border-red-400/45 hover:bg-red-500/18 focus-visible:ring-destructive/60",
         outline:
           "border border-border bg-black/[0.02] dark:bg-white/[0.035] text-zinc-100 shadow-sm hover:border-zinc-600 hover:bg-black/[0.05] dark:hover:bg-white/[0.065]",
         secondary:

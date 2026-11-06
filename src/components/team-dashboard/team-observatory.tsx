@@ -236,7 +236,7 @@ export function TeamObservatory({ agents, teams, communications, thoughts, liveE
                 </button>
             </div>
         </div>
-        <div className="observatory-stage force-dark relative isolate overflow-hidden rounded-2xl border border-cyan-400/20 px-2 pb-16 pt-2 sm:px-4 sm:pb-4">
+        <div className="observatory-stage relative isolate overflow-hidden rounded-2xl border border-cyan-600/15 dark:border-cyan-400/20 px-2 pb-16 pt-2 sm:px-4 sm:pb-4">
             <div className="observatory-stars pointer-events-none absolute inset-0" aria-hidden="true" />
             <div className="living-floor-glow pointer-events-none absolute inset-x-0 bottom-0 top-24" aria-hidden="true" />
             <div className="relative flex justify-center"><Throne pending={pendingActions} onOpen={onOpenInbox} still={still} leader={leader} leaderAgent={leaderAgent} actionKeys={actionKeys} ghost={leaderGhost} selected={Boolean(leaderKey && selectedKey === leaderKey)} onSelectLeader={onSelect} /></div>
@@ -257,10 +257,10 @@ export function TeamObservatory({ agents, teams, communications, thoughts, liveE
                         onSelect={onSelect} onPoint={(key) => pointDesk(key, actions > 0)} />;
                 })}
                 {hidden > 0 && <li className="flex min-h-[140px] items-center justify-center">
-                    <button type="button" onClick={onShowAll} className="flex h-full w-full flex-col items-center justify-center gap-1 rounded-xl border border-dashed border-cyan-300/30 px-2 text-center text-slate-200 hover:bg-white/[0.04] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300">
-                        <IconLayoutList className="h-5 w-5 text-cyan-300" aria-hidden="true" />
+                    <button type="button" onClick={onShowAll} className="flex h-full w-full flex-col items-center justify-center gap-1 rounded-xl border border-dashed border-cyan-600/30 px-2 text-center text-slate-700 hover:bg-slate-900/[0.04] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-500 dark:border-cyan-300/30 dark:text-slate-200 dark:hover:bg-white/[0.04] dark:focus-visible:ring-cyan-300">
+                        <IconLayoutList className="h-5 w-5 text-cyan-600 dark:text-cyan-300" aria-hidden="true" />
                         <span className="text-[13px] font-semibold">{t("more", { count: hidden })}</span>
-                        <span className="text-xs text-slate-400">{t("openList")}</span>
+                        <span className="text-xs text-slate-500 dark:text-slate-400">{t("openList")}</span>
                     </button>
                 </li>}
             </ol>
@@ -270,7 +270,7 @@ export function TeamObservatory({ agents, teams, communications, thoughts, liveE
                     <svg viewBox="-12 -9 24 18" className="h-5 w-6"><path d="M-11 -1 L11 -8 L4 8 L1 2 Z" fill="#ecfeff" /><path d="M1 2 L11 -8 L-3 3 Z" fill="#67e8f9" /></svg>
                 </span>)}
             </div>}
-            {shown.length === 0 && <p className="py-10 text-center text-sm text-slate-300">{t("empty")}</p>}
+            {shown.length === 0 && <p className="py-10 text-center text-sm text-slate-600 dark:text-slate-300">{t("empty")}</p>}
         </div>
         {(message || team) && <div className="mt-3 flex items-start gap-2 rounded-xl border border-border bg-muted/20 px-3 py-3 text-xs text-muted-foreground"><IconMessageCircle className="mt-0.5 h-4 w-4 shrink-0 text-cyan-600 dark:text-cyan-300" aria-hidden="true" /><div className="min-w-0 flex-1">{message ? <><span className="font-semibold text-foreground">{agents.find((a) => a.member.key === message.actorKey)?.member.name}</span>{message.teamId && <span>{t("messageIn", { team: teams.find((candidate) => candidate.id === message.teamId)?.name ?? t("teamChatFallback") })}</span>}{message.targetKey && <span> → {agents.find((a) => a.member.key === message.targetKey)?.member.name}</span>}<p className="mt-1 line-clamp-2">{sceneMessagePreview(message.text)}</p><Link href={message.href} className="mt-1 inline-flex min-h-11 items-center font-medium text-cyan-700 dark:text-cyan-300">{t("openConversation")}</Link></> : <><span className="font-medium text-foreground">{t("channel")}</span><p className="mt-1">{t("channelHint")}</p></>}</div>{team && <Link href={`/messages?group=${team.id}`} className="inline-flex min-h-11 shrink-0 items-center text-cyan-700 dark:text-cyan-300">{t("teamChatLink")}</Link>}</div>}
     </div>;

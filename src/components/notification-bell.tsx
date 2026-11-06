@@ -18,6 +18,7 @@ import {
     DropdownMenuContent,
     DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { MotionItem, MotionList, PopPresence, Presence } from "@/components/ui/motion";
 import { cn } from "@/lib/utils";
 import { richMessagePreview } from "@/lib/rich-preview";
 import { EmptyState } from "@/components/ui/empty-state";
@@ -107,15 +108,13 @@ export function NotificationBell({ collapsed, variant = "sidebar" }: { collapsed
                 >
                     <IconBell className={cn(header ? "h-5 w-5" : "h-4 w-4", unread > 0 && "text-cyan-300")} />
                     <span className={cn("flex-1 text-left", collapsed ? "hidden" : "hidden md:inline")}>{t("label")}</span>
-                    {unread > 0 && header && <span className="absolute right-2 top-2 h-2 w-2 rounded-full bg-rose-500 ring-2 ring-background" />}
-                    {unread > 0 && !header && (
-                        <span className={cn(
-                            "rounded-full bg-cyan-400 px-1.5 py-0.5 text-center text-[10px] font-bold leading-none text-cyan-950",
-                            collapsed ? "absolute right-1 top-1" : "min-w-5",
-                        )}>
-                            {unread > 99 ? "99+" : unread}
-                        </span>
-                    )}
+                    <PopPresence show={unread > 0 && !!header} className="absolute right-2 top-2 h-2 w-2 rounded-full bg-rose-500 ring-2 ring-background">{null}</PopPresence>
+                    <PopPresence show={unread > 0 && !header} className={cn(
+                        "rounded-full bg-cyan-400 px-1.5 py-0.5 text-center text-[10px] font-bold leading-none text-cyan-950",
+                        collapsed ? "absolute right-1 top-1" : "min-w-5",
+                    )}>
+                        {unread > 99 ? "99+" : unread}
+                    </PopPresence>
                 </button>
             </DropdownMenuTrigger>
             <DropdownMenuContent side={header ? "bottom" : "right"} align="end" sideOffset={header ? 8 : 12} className="w-[22rem] max-w-[calc(100vw-2rem)] rounded-xl border-zinc-800 bg-zinc-950 p-0 text-zinc-200 shadow-2xl shadow-black/50">
@@ -139,14 +138,15 @@ export function NotificationBell({ collapsed, variant = "sidebar" }: { collapsed
                     </span>
                 </div>
                 <div className="max-h-[60vh] overflow-y-auto p-1">
-                    {items.length === 0 && (
+                    <Presence show={items.length === 0}>
                         <EmptyState compact bordered={false} icon={IconBell} title={t("emptyTitle")} description={t("emptyDescription")} className="py-8" />
-                    )}
+                    </Presence>
+                    <MotionList>
                     {items.map((item) => {
                         const Icon = KIND_ICON[item.kind] ?? IconBell;
                         return (
+                            <MotionItem key={item.id}>
                             <button
-                                key={item.id}
                                 type="button"
                                 onClick={() => openItem(item)}
                                 className={cn(
@@ -166,11 +166,13 @@ export function NotificationBell({ collapsed, variant = "sidebar" }: { collapsed
                                 </span>
                                 <span className="flex shrink-0 flex-col items-end gap-1.5">
                                     <span className="text-[10px] text-zinc-600">{ago(item.createdAt)}</span>
-                                    {!item.readAt && <span className="h-2 w-2 rounded-full bg-cyan-400" aria-label={t("unread")} />}
+                                    <PopPresence show={!item.readAt} className="h-2 w-2 rounded-full bg-cyan-400"><span className="sr-only">{t("unread")}</span></PopPresence>
                                 </span>
                             </button>
+                            </MotionItem>
                         );
                     })}
+                    </MotionList>
                 </div>
             </DropdownMenuContent>
         </DropdownMenu>
