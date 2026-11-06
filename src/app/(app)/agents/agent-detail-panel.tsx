@@ -49,6 +49,7 @@ import { planLlmEndpointEdit } from "@/lib/llm-endpoint-edit";
 import { installerDownloadCommand } from "@/lib/runtime-hosts/connect-command";
 import { RestartAgentButton } from "@/components/runtime-hosts/restart-agent-button";
 import { HostSetupBanner, type ProvisioningView } from "@/components/runtime-hosts/host-setup-banner";
+import { Select } from "@/components/ui/select";
 
 
 /** A Hermes profile name suggestion for an agent: lowercase, dashes, no spaces. */
@@ -561,7 +562,7 @@ export function AgentDetailPanel({ agentId, agentName, runtime = null }: {
                     <span className="text-zinc-500 inline-flex items-center gap-1.5">
                         {t("providerLabel")}{" "}
                         {editingProvider ? (
-                            <select
+                            <Select
                                 value={agent.provider || "mcp"}
                                 disabled={saving}
                                 onChange={(e) => {
@@ -576,7 +577,7 @@ export function AgentDetailPanel({ agentId, agentName, runtime = null }: {
                                 {RUNTIME_OPTIONS.map((option) => (
                                     <option key={option.value} disabled={option.value !== "hermes" && agent.deploymentMode === "local"} value={option.value}>{option.label}</option>
                                 ))}
-                            </select>
+                            </Select>
                         ) : (
                             <>
                                 <span className="text-zinc-300 font-medium">{(provider && PROVIDER_EMOJI[provider.id]) ?? "🔌"} {provider?.name || t("genericMcpName")}</span>
@@ -590,7 +591,7 @@ export function AgentDetailPanel({ agentId, agentName, runtime = null }: {
                     <span className="text-zinc-500 inline-flex items-center gap-1.5">
                         {t("deploymentLabel")}{" "}
                         {editingDeployment ? (
-                            <select
+                            <Select
                                 value={agent.deploymentMode || "remote"}
                                 disabled={saving}
                                 onChange={(e) => {
@@ -603,7 +604,7 @@ export function AgentDetailPanel({ agentId, agentName, runtime = null }: {
                             >
                                 <option value="remote">{t("remote")}</option>
                                 <option disabled={agent.provider !== "hermes"} value="local">{t("localThisServer")}</option>
-                            </select>
+                            </Select>
                         ) : (
                             <>
                                 <span className="text-zinc-300 font-medium">{agent.deploymentMode === "local" ? t("local") : t("remote")}</span>
@@ -618,7 +619,7 @@ export function AgentDetailPanel({ agentId, agentName, runtime = null }: {
                         {t("llmLabel")}{" "}
                         {editingLlm && canAdmin ? (
                             <span className="inline-flex items-center gap-1.5">
-                                <select
+                                <Select
                                     value={llmDraft.provider}
                                     disabled={saving}
                                     aria-label={t("llmProvider")}
@@ -632,7 +633,7 @@ export function AgentDetailPanel({ agentId, agentName, runtime = null }: {
                                     <option value="">{t("none")}</option>
                                     {Object.entries(LLM_PROVIDER_LABELS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
                                     <option value={CUSTOM_LLM_PROVIDER}>{t("customEndpoint")}</option>
-                                </select>
+                                </Select>
                                 <button
                                     type="button"
                                     disabled={saving}

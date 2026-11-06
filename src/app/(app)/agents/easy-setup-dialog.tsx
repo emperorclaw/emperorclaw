@@ -21,6 +21,7 @@ import { CUSTOM_LLM_PROVIDER, normalizeLlmBaseUrl } from "@/lib/llm-endpoint";
 import { useHireHosts, useHireReasonLabel, type HostChoice } from "@/components/runtime-hosts/host-picker";
 import { JobProgress } from "@/components/runtime-hosts/job-progress";
 import { DEFAULT_HOST_MODEL, isHostLlmProvider, isValidHostModel } from "@/lib/runtime-hosts/commands";
+import { Select } from "@/components/ui/select";
 
 // Matches MAX_EASY_SETUP_AGENTS in src/app/api/agents/easy-setup/route.ts — kept
 // as a local constant (not imported) so this client component doesn't pull in
@@ -463,7 +464,7 @@ export function EasySetupDialog({
                             <p className="text-sm text-muted-foreground">{t("team.includes", { count: specs.length })}</p>
                             <div className="grid grid-cols-2 gap-2">{TEAM_TEMPLATES.map(team => <button type="button" key={team.id} aria-pressed={team.id === teamTemplateId} onClick={() => chooseTeam(team.id)} className={cn("min-h-14 rounded-lg border p-3 text-left", team.id === teamTemplateId ? "border-primary bg-primary/10" : "border-border hover:bg-muted")}><span className="block text-sm font-medium">{team.icon} {t(`teams.${team.id}.label`)}</span><span className="text-xs text-muted-foreground">{t(`teams.${team.id}.hint`)}</span></button>)}</div>
                             <label className="block text-sm">{t("team.name")}<input value={teamName} maxLength={80} onChange={event => setTeamName(event.target.value)} className="mt-1 min-h-11 w-full rounded-lg border border-border bg-background px-3" /></label>
-                            <label className="block text-sm">{t("team.leader")}<select aria-label={t("team.leader")} value={teamLeadSpecId} onChange={event => setTeamLeadSpecId(event.target.value)} className="mt-1 min-h-11 w-full rounded-lg border border-border bg-background px-3">{specs.map(spec => <option key={spec.id} value={spec.id}>{spec.name || spec.role}</option>)}</select></label>
+                            <label className="block text-sm">{t("team.leader")}<Select aria-label={t("team.leader")} value={teamLeadSpecId} onChange={event => setTeamLeadSpecId(event.target.value)} className="mt-1 min-h-11 w-full rounded-lg border border-border bg-background px-3">{specs.map(spec => <option key={spec.id} value={spec.id}>{spec.name || spec.role}</option>)}</Select></label>
                             <p className="text-xs text-muted-foreground">{t("team.reportingHint")}</p>
                         </div>}
                         {!teamTemplateId && <details className="text-sm text-muted-foreground">
@@ -541,10 +542,10 @@ export function EasySetupDialog({
                     <div className="space-y-4 py-2">
                         <label className="block space-y-1.5 text-sm text-foreground">
                             {t("modelProvider")}
-                            <select value={hostTarget.llmProvider} className="block w-full rounded-lg border border-border bg-muted p-2"
+                            <Select value={hostTarget.llmProvider} className="block w-full rounded-lg border border-border bg-muted p-2"
                                 onChange={(e) => { const next = e.target.value; if (isHostLlmProvider(next)) setHostTarget({ ...hostTarget, llmProvider: next, model: DEFAULT_HOST_MODEL[next] }); }}>
                                 {chosenHost.hire.providers.map((p) => <option key={p} value={p}>{p}</option>)}
-                            </select>
+                            </Select>
                             <span className="block text-xs text-muted-foreground">{t("onlyProviders", { host: chosenHost.name })}</span>
                         </label>
                         <label className="block space-y-1.5 text-sm text-foreground">
@@ -563,10 +564,10 @@ export function EasySetupDialog({
                         {configurations.length > 0 && (
                             <label className="block space-y-2 text-sm text-foreground">
                                 {t("llmConnection")}
-                                <select value={sourceAgentId} onChange={e => setSourceAgentId(e.target.value)} className="block w-full rounded-lg border border-border bg-muted p-2">
+                                <Select value={sourceAgentId} onChange={e => setSourceAgentId(e.target.value)} className="block w-full rounded-lg border border-border bg-muted p-2">
                                     <option value="">{t("enterKey")}</option>
                                     {configurations.map(c => <option key={c.id} value={c.id}>{t("reuse", { name: c.name, provider: c.llmProvider })}</option>)}
-                                </select>
+                                </Select>
                                 <span className="block text-xs text-muted-foreground">{sourceAgentId ? t("reuseHint") : t("newKeyHint")}</span>
                             </label>
                         )}

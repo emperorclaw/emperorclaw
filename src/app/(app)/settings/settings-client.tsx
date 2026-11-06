@@ -22,6 +22,7 @@ import { ModulesSettingsTab } from "./modules-settings-tab";
 import { RuntimeHostsTab } from "./runtime-hosts-tab";
 import { ProfileTab } from "./profile-tab";
 import type { ModuleState } from "@/lib/modules";
+import { Select } from "@/components/ui/select";
 
 type SettingsToken = {
     id: string;
@@ -342,7 +343,7 @@ export default function SettingsClient({
             {isAdmin && <SampleDataCard />}
             <div className="grid min-w-0 gap-6 @min-[900px]:grid-cols-[200px_minmax(0,1fr)]">
                 <aside className="min-w-0">
-                    <label className="block space-y-2 @min-[900px]:hidden"><span className="text-sm font-medium">{t("page.section")}</span><select aria-label={t("page.section")} value={activeTab} onChange={event => setActiveTab(event.target.value as SettingsTab)} className="min-h-11 w-full rounded-xl border border-border bg-card px-3 text-base">{sections.map(section => <optgroup key={section.id} label={tSettings(`sections.${section.id}`)}>{section.items.map(item => <option key={item.id} value={item.id}>{tSettings(`items.${settingsItemKey(item.id)}`)}</option>)}</optgroup>)}</select></label>
+                    <label className="block space-y-2 @min-[900px]:hidden"><span className="text-sm font-medium">{t("page.section")}</span><Select aria-label={t("page.section")} value={activeTab} onChange={event => setActiveTab(event.target.value as SettingsTab)} className="min-h-11 w-full rounded-xl border border-border bg-card px-3 text-base">{sections.map(section => <optgroup key={section.id} label={tSettings(`sections.${section.id}`)}>{section.items.map(item => <option key={item.id} value={item.id}>{tSettings(`items.${settingsItemKey(item.id)}`)}</option>)}</optgroup>)}</Select></label>
                     <nav aria-label={t("page.sections")} className="hidden space-y-5 @min-[900px]:block">
                         {sections.map(section => <div key={section.id}><p className="mb-3 flex items-center gap-3 px-3 text-[11px] font-bold uppercase tracking-[0.16em] text-muted-foreground"><span>{tSettings(`sections.${section.id}`)}</span><span aria-hidden="true" className="h-px flex-1 bg-border" /></p><div className="space-y-1">{section.items.map(item => <Link key={item.id} href={`${pathname}?tab=${item.id}`} scroll={false} aria-current={activeTab === item.id ? 'page' : undefined} className={cn('relative isolate flex min-h-11 items-center rounded-xl px-3 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',activeTab === item.id ? 'text-primary' : 'text-muted-foreground hover:bg-muted hover:text-foreground')}>{activeTab === item.id && <SegmentPill layoutId="settings-section" radius={12} className="bg-primary/10" />}{tSettings(`items.${settingsItemKey(item.id)}`)}</Link>)}</div></div>)}
                         {isPlatformAdmin && <Link href="/ops" className="flex min-h-11 items-center rounded-xl border-t border-border px-3 text-sm text-muted-foreground hover:text-foreground">{t("page.platformOps")}</Link>}
@@ -464,7 +465,7 @@ export default function SettingsClient({
                             </label>
                             <label className="block space-y-2">
                                 <span className="text-sm font-medium text-foreground">{t("tokens.accessLevel")}</span>
-                                <select
+                                <Select
                                     value={newTokenScope}
                                     onChange={(event) => setNewTokenScope(event.target.value as TokenScope)}
                                     className="h-10 w-full rounded-xl border border-border bg-muted/30 px-3 text-sm text-foreground outline-none focus:border-cyan-300/60 focus:ring-2 focus:ring-cyan-300/20"
@@ -473,7 +474,7 @@ export default function SettingsClient({
                                     <option value="mcp_danger">{t("tokens.options.mcp_danger")}</option>
                                     <option value="requests">{t("tokens.options.requests")}</option>
                                     <option value="read_only">{t("tokens.options.read_only")}</option>
-                                </select>
+                                </Select>
                                 <p className="text-xs leading-5 text-muted-foreground">{t(`tokens.help.${newTokenScope}`)}</p>
                             </label>
                             {newTokenScope === "requests" && (

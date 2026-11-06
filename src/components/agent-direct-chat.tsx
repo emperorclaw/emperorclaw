@@ -31,6 +31,7 @@ import { chatPollDelayMs, eventsSinceParam, formatElapsed, isTimedStepKind, last
 import { useLivePoll } from "@/lib/use-realtime";
 import { summarizeAlsoWorking, type RunningRun } from "@/lib/agent-visibility";
 import type { RunLive } from "@/lib/run-events";
+import { Select } from "@/components/ui/select";
 
 const composerIconButton = "flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-zinc-400 transition-colors hover:bg-zinc-800 hover:text-zinc-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50";
 
@@ -1182,11 +1183,11 @@ export function AgentDirectChat({
                             <IconMicrophone className="h-4 w-4" />
                         </button>
                         <AgentGoalControls agentId={agentId} />
-                        <select aria-label={t("nextPromptBehavior")} title={t("busyBehavior")} value={sendMode} onChange={e => setSendMode(e.target.value as "queue" | "replace")}
+                        <Select aria-label={t("nextPromptBehavior")} title={t("busyBehavior")} value={sendMode} onChange={e => setSendMode(e.target.value as "queue" | "replace")}
                             className="h-8 min-w-0 max-w-[7rem] cursor-pointer sm:max-w-[9.5rem] truncate rounded-full border border-transparent bg-transparent px-2 text-xs text-zinc-400 hover:border-zinc-700 hover:text-zinc-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-ring">
                             <option value="queue">{t("queueAfter")}</option>
                             <option value="replace">{t("replaceCurrent")}</option>
-                        </select>
+                        </Select>
                         <div className="ml-auto flex items-center gap-1.5">
                             <button type="button" onClick={stopAgent} disabled={isSending}
                                 title={t("stopTitle")} aria-label={t("stopLabel")}

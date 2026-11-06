@@ -17,6 +17,7 @@ import { toast } from "sonner";
 import { useTranslations } from "next-intl";
 import { copy } from "@/lib/coded-copy";
 import { useCopy } from "@/lib/i18n/use-copy";
+import { Select } from "@/components/ui/select";
 
 type Step = "role" | "provider" | "name" | "progress";
 
@@ -416,7 +417,7 @@ export function CreateAgentDialog({
                             <p className="text-[10px] text-zinc-400 -mt-0.5">
                                 {t("llmProviderHint")}
                             </p>
-                            <select
+                            <Select
                                 value={llmProvider}
                                 onChange={(event) => {
                                     const nextProvider = event.target.value;
@@ -428,7 +429,7 @@ export function CreateAgentDialog({
                             >
                                 <option value="">{t("none")}</option>
                                 {LLM_PROVIDER_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
-                            </select>
+                            </Select>
                         </div>
                         )}
 

@@ -6,6 +6,7 @@ import { useTranslations } from "next-intl";
 import { toast } from "sonner";
 import { IconLanguage, IconUsers } from "@tabler/icons-react";
 import type { Locale } from "@/i18n/config";
+import { Select } from "@/components/ui/select";
 
 /** Settings → Your profile: name, role and the person's language. */
 export function ProfileTab({ displayName, setDisplayName, roleTitle, setRoleTitle, onSave, saving, onLoad, loaded, error, onRetry, locale, onLocaleChange }: {
@@ -95,7 +96,7 @@ function LanguageSetting({ locale, disabled, onChange }: { locale: Locale | null
             <p className="mb-4 text-sm text-muted-foreground">{t("description")}</p>
             <label className="block">
                 <span className="text-sm font-medium text-foreground">{t("label")}</span>
-                <select
+                <Select
                     value={locale ?? AUTOMATIC}
                     disabled={disabled || saving}
                     onChange={(event) => void save(event.target.value)}
@@ -104,7 +105,7 @@ function LanguageSetting({ locale, disabled, onChange }: { locale: Locale | null
                     <option value={AUTOMATIC}>{t("automatic")}</option>
                     <option value="en" lang="en">{tNames("en")}</option>
                     <option value="zh-CN" lang="zh-CN">{tNames("zhCN")}</option>
-                </select>
+                </Select>
             </label>
         </section>
     );

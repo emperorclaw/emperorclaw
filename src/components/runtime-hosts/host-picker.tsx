@@ -9,6 +9,7 @@ import { DEFAULT_HOST_MODEL, isHostLlmProvider, type HostLlmProvider } from "@/l
 import { hireReasonCopy, type HireReadiness } from "@/lib/runtime-hosts/hire";
 import { useCopy } from "@/lib/i18n/use-copy";
 import { JobProgress } from "./job-progress";
+import { Select } from "@/components/ui/select";
 
 /** A host as the hire dialog needs it (GET /api/runtime-hosts). */
 export type HireHost = {
@@ -155,13 +156,13 @@ export function HostPicker({ hosts, forbidden, value, onChange }: {
                 <div className="grid gap-2 sm:grid-cols-2">
                     <label className="space-y-1">
                         <span className="text-[10px] font-bold uppercase tracking-wider text-zinc-400">{t("modelProvider")}</span>
-                        <select value={value.llmProvider} className="h-9 w-full rounded-lg border border-zinc-800 bg-zinc-900 px-2 text-xs text-zinc-200 outline-none focus:border-cyan-400"
+                        <Select value={value.llmProvider} className="h-9 w-full rounded-lg border border-zinc-800 bg-zinc-900 px-2 text-xs text-zinc-200 outline-none focus:border-cyan-400"
                             onChange={(e) => {
                                 const next = e.target.value;
                                 if (isHostLlmProvider(next)) onChange({ ...value, llmProvider: next, model: DEFAULT_HOST_MODEL[next] });
                             }}>
                             {selected.hire.providers.map((p) => <option key={p} value={p}>{PROVIDER_LABEL[p]}</option>)}
-                        </select>
+                        </Select>
                     </label>
                     <label className="space-y-1">
                         <span className="text-[10px] font-bold uppercase tracking-wider text-zinc-400">{t("model")}</span>

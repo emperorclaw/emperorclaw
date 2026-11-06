@@ -61,7 +61,7 @@ export function MobileTabBar({ modules }: { modules?: ModuleState | null }) {
                         )}
                     >
                         {/* One shared indicator that glides to the active tab. */}
-                        {active && <motion.span layoutId="mobile-tab-indicator" aria-hidden className="absolute inset-x-1.5 inset-y-1 -z-10 bg-black/[0.055] dark:bg-white/[0.08]" style={{ borderRadius: 10 }} />}
+                        {active && <motion.span layoutId="mobile-tab-indicator" aria-hidden className="absolute inset-x-1.5 inset-y-1 -z-10 bg-black/[0.06] dark:bg-white/[0.11]" style={{ borderRadius: 10 }} />}
                         <span className="relative">
                             <Icon className={cn("h-5 w-5", active && "text-primary")} />
                             <PopPresence show={count > 0} className={cn(

@@ -27,6 +27,7 @@ import { useDrawerMotion, useScrimMotion } from "@/components/ui/motion";
 import { cn } from "@/lib/utils";
 import { OwnerAvatar, SignalIcons, type TaskView } from "./task-card";
 import { PRIORITY_CHOICES, TASK_STATES as DRAWER_STATES, useBoardLabels } from "./board-labels";
+import { Select } from "@/components/ui/select";
 
 type DrawerT = ReturnType<typeof useTranslations<"tasks.drawer">>;
 type BoardLabels = ReturnType<typeof useBoardLabels>;
@@ -214,23 +215,23 @@ export function TaskDrawer({
                         <div className="grid grid-cols-3 gap-2 sm:gap-3">
                             <label className="grid gap-1.5 text-xs text-zinc-400">
                                 <span>{t("state")}</span>
-                                <select value={task.state === "queued" ? "inbox" : task.state ?? "inbox"} disabled={busy} onChange={(event) => onSetState(event.target.value)} className={selectClass}>
+                                <Select value={task.state === "queued" ? "inbox" : task.state ?? "inbox"} disabled={busy} onChange={(event) => onSetState(event.target.value)} className={selectClass}>
                                     {DRAWER_STATES.map((state) => <option key={state} value={state}>{labels.state(state)}</option>)}
-                                </select>
+                                </Select>
                             </label>
                             <label className="grid gap-1.5 text-xs text-zinc-400">
                                 <span>{t("owner")}</span>
-                                <select value={ownerValue} disabled={busy} onChange={(event) => onAssign(event.target.value)} className={selectClass}>
+                                <Select value={ownerValue} disabled={busy} onChange={(event) => onAssign(event.target.value)} className={selectClass}>
                                     <option value="">{t("noOwner")}</option>
                                     {agents.length > 0 && <optgroup label={t("agents")}>{agents.map((agent) => <option key={agent.id} value={`agent:${agent.id}`}>{agent.name}</option>)}</optgroup>}
                                     {members.length > 0 && <optgroup label={t("people")}>{members.map((member) => <option key={member.id} value={`human:${member.id}`}>{member.displayName || member.email}</option>)}</optgroup>}
-                                </select>
+                                </Select>
                             </label>
                             <label className="grid gap-1.5 text-xs text-zinc-400">
                                 <span>{t("priority")}</span>
-                                <select value={PRIORITY_CHOICES.reduce((best, choice) => ((task.priority ?? 0) >= choice.value ? choice : best), PRIORITY_CHOICES[0]).value} disabled={busy} onChange={(event) => onSetPriority(Number(event.target.value) || 0)} className={selectClass}>
+                                <Select value={PRIORITY_CHOICES.reduce((best, choice) => ((task.priority ?? 0) >= choice.value ? choice : best), PRIORITY_CHOICES[0]).value} disabled={busy} onChange={(event) => onSetPriority(Number(event.target.value) || 0)} className={selectClass}>
                                     {PRIORITY_CHOICES.map((choice) => <option key={choice.value} value={choice.value}>{labels.priority(choice.tone)}</option>)}
-                                </select>
+                                </Select>
                             </label>
                         </div>
                     ) : (

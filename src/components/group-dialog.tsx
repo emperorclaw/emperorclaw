@@ -8,6 +8,7 @@ import { cn } from "@/lib/utils";
 import { agentAvatarSrc } from "@/lib/avatar";
 import { teamCoordinator } from "@/lib/team-coordination";
 import { GROUP_ICONS, GroupIcon } from "@/components/group-icon";
+import { Select } from "@/components/ui/select";
 
 export type GroupDialogAgent = { id: string; name: string; role: string | null; avatarUrl: string | null; status: string };
 export type GroupDialogHuman = { id: string; name: string };
@@ -285,11 +286,11 @@ export function GroupDialog({
                     </div>
                     <label className="block">
                         <span className="text-sm font-medium text-zinc-300">{t("coordinator")} <span className="font-normal text-zinc-500">{t("optional")}</span></span>
-                        <select value={selectedCoordinator} onChange={(e) => setCoordinator(e.target.value)} className="mt-2 min-h-11 w-full rounded-lg border border-zinc-700 bg-zinc-900 px-3 text-base text-zinc-100 focus:outline-none focus:ring-2 focus:ring-cyan-400/60">
+                        <Select value={selectedCoordinator} onChange={(e) => setCoordinator(e.target.value)} className="mt-2 min-h-11 w-full rounded-lg border border-zinc-700 bg-zinc-900 px-3 text-base text-zinc-100 focus:outline-none focus:ring-2 focus:ring-cyan-400/60">
                             <option value="">{t("noCoordinator")}</option>
                             {agents.filter((a) => agentIds.has(a.id)).map((a) => <option key={a.id} value={`agent:${a.id}`}>{t("agentOption", { name: a.name })}</option>)}
                             {humans.filter((h) => humanIds.has(h.id) || (!editing && h.id === currentUserId)).map((h) => <option key={h.id} value={`human:${h.id}`}>{t("humanOption", { name: h.name })}</option>)}
-                        </select>
+                        </Select>
                         <span className="mt-1.5 block text-xs leading-relaxed text-zinc-400">{t("coordinatorHint")}</span>
                     </label>
                     {error && <div role="alert" className="rounded-lg border border-rose-500/30 bg-rose-500/10 px-3 py-2 text-xs text-rose-200">{error}</div>}

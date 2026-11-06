@@ -7,6 +7,7 @@ import { ModelSearchSelect, type ModelOption, type ModelSelection } from "@/comp
 import { DisabledReason } from "@/components/ui/disabled-reason";
 import { toast } from "sonner";
 import { useTranslations } from "next-intl";
+import { Select } from "@/components/ui/select";
 
 /** Providers offered when adding a price (brand names: never translated). */
 const PRICING_PROVIDERS = [["openai", "OpenAI"], ["anthropic", "Anthropic"], ["google", "Google"], ["deepseek", "DeepSeek"], ["grok", "Grok"], ["openrouter", "OpenRouter"]] as const;
@@ -213,7 +214,7 @@ function AddModelRow({ onSaved }: { onSaved: () => void }) {
     if (!open) return (<tr className="text-xs"><td colSpan={5} className="px-5 py-2"><button onClick={() => setOpen(true)} className="text-zinc-500 hover:text-cyan-300 text-xs">{t("addPricing")}</button></td></tr>);
     return (
         <tr className="text-xs bg-emerald-500/5">
-            <td className="px-3 py-1.5"><select value={prov} onChange={e => setProv(e.target.value)} className="bg-zinc-800 border border-zinc-700 rounded px-1.5 py-1 text-[10px] text-zinc-100 outline-none focus:border-cyan-400">{PRICING_PROVIDERS.map(([value, name]) => <option key={value} value={value}>{name}</option>)}</select></td>
+            <td className="px-3 py-1.5"><Select value={prov} onChange={e => setProv(e.target.value)} className="bg-zinc-800 border border-zinc-700 rounded px-1.5 py-1 text-[10px] text-zinc-100 outline-none focus:border-cyan-400">{PRICING_PROVIDERS.map(([value, name]) => <option key={value} value={value}>{name}</option>)}</Select></td>
             <td className="px-3 py-1.5"><input type="text" placeholder={MODEL_ID_HINT} value={model} onChange={e => setModel(e.target.value)} className="w-28 bg-zinc-800 border border-zinc-700 rounded px-1.5 py-1 text-[10px] text-zinc-100 outline-none focus:border-cyan-400 placeholder:text-zinc-600" /></td>
             <td className="px-3 py-1.5"><input type="text" placeholder={t("labelPlaceholder")} value={label} onChange={e => setLabel(e.target.value)} className="w-16 bg-zinc-800 border border-zinc-700 rounded px-1.5 py-1 text-[10px] text-zinc-100 outline-none focus:border-cyan-400 placeholder:text-zinc-600" /></td>
             <td className="px-3 py-1.5"><input type="number" step="0.01" min="0" placeholder={PRICE_HINT} value={inP} onChange={e => setInP(e.target.value)} className="w-16 bg-zinc-800 border border-zinc-700 rounded px-1.5 py-1 text-[10px] text-zinc-100 text-right outline-none focus:border-cyan-400 placeholder:text-zinc-600" /></td>

@@ -14,6 +14,7 @@ import { cn } from "@/lib/utils";
 import { useIsDarkTheme } from "@/lib/use-is-dark-theme";
 import { toast } from "sonner";
 import { useTranslations } from "next-intl";
+import { Select } from "@/components/ui/select";
 
 const ForceGraph2D = dynamic(() => import("react-force-graph-2d"), { ssr: false });
 const MarkdownLiveEditor = dynamic(() => import("@/components/markdown-live-editor").then((mod) => mod.MarkdownLiveEditor), { ssr: false });
@@ -892,10 +893,10 @@ export default function ResourcesClient({
 
                     <div className="mt-3">
                       <label className="text-[11px] font-medium uppercase tracking-wider text-zinc-500">{t("publicationStatus")}</label>
-                      <select value={publicationStatus} onChange={(event) => setPublicationStatus(event.target.value === "draft" ? "draft" : "active")} className="mt-1 h-9 w-full rounded-md border border-zinc-800 bg-zinc-950 px-2 text-sm text-zinc-100 outline-none focus:border-cyan-400/60">
+                      <Select value={publicationStatus} onChange={(event) => setPublicationStatus(event.target.value === "draft" ? "draft" : "active")} className="mt-1 h-9 w-full rounded-md border border-zinc-800 bg-zinc-950 px-2 text-sm text-zinc-100 outline-none focus:border-cyan-400/60">
                         <option value="draft">{t("statusDraft")}</option>
                         <option value="active">{t("statusPublished")}</option>
-                      </select>
+                      </Select>
                       <button onClick={() => void updatePublicationStatus(publicationStatus === "draft" ? "active" : "draft")} disabled={isSaving} className={cn("mt-2 inline-flex w-full cursor-pointer items-center justify-center gap-2 rounded-md border px-3 py-2 text-xs font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-50", publicationStatus === "draft" ? "border-emerald-400/30 bg-emerald-400/10 text-emerald-200 hover:bg-emerald-400/15" : "border-amber-400/25 bg-amber-400/10 text-amber-200 hover:bg-amber-400/15")}>
                         <IconCheck className="h-3.5 w-3.5" />
                         {publicationStatus === "draft" ? t("publishNote") : t("moveBackToDraft")}
@@ -903,17 +904,17 @@ export default function ResourcesClient({
                       <p className="mt-1 text-[11px] leading-4 text-zinc-500">{t("publishedHint")}</p>
 
                       <label className="mt-3 block text-[11px] font-medium uppercase tracking-wider text-zinc-600">{t("scopeLabel")}</label>
-                      <select value={draftScopeType} onChange={(event) => setDraftScopeType(event.target.value)} className="mt-1 h-9 w-full rounded-md border border-zinc-800 bg-zinc-950 px-2 text-sm text-zinc-100 outline-none focus:border-cyan-400/60">
+                      <Select value={draftScopeType} onChange={(event) => setDraftScopeType(event.target.value)} className="mt-1 h-9 w-full rounded-md border border-zinc-800 bg-zinc-950 px-2 text-sm text-zinc-100 outline-none focus:border-cyan-400/60">
                         <option value="company">{t("scopes.company")}</option>
                         <option value="customer">{t("scopes.customer")}</option>
                         <option value="project">{t("scopes.project")}</option>
                         <option value="agent">{t("scopes.agent")}</option>
-                      </select>
+                      </Select>
                       {draftScopeType !== "company" && (
-                        <select value={draftScopeId} onChange={(event) => setDraftScopeId(event.target.value)} className="mt-2 h-9 w-full rounded-md border border-zinc-800 bg-zinc-950 px-2 text-sm text-zinc-100 outline-none focus:border-cyan-400/60">
+                        <Select value={draftScopeId} onChange={(event) => setDraftScopeId(event.target.value)} className="mt-2 h-9 w-full rounded-md border border-zinc-800 bg-zinc-950 px-2 text-sm text-zinc-100 outline-none focus:border-cyan-400/60">
                           <option value="">{t("chooseScope", { scope: scopeLabel(draftScopeType).toLowerCase() })}</option>
                           {(scopeOptions[draftScopeType as "customer" | "project" | "agent"] || []).map((option) => <option key={option.id} value={option.id}>{option.name}</option>)}
-                        </select>
+                        </Select>
                       )}
                       <div className="mt-3">
                         <span className="block text-[11px] font-medium uppercase tracking-wider text-zinc-600">{t("agentContext")}</span>

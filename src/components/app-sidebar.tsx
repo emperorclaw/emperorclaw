@@ -38,8 +38,11 @@ const SIDEBAR_COLLAPSE_KEY = "emperor-sidebar-collapsed";
 
 const UTILITY_BUTTON = "flex h-6 w-6 cursor-pointer items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring";
 
-/** The neutral fill behind the active (or hovered) nav item: one shared surface that glides between items. */
-const GLIDE_FILL = "bg-black/[0.055] dark:bg-white/[0.07]";
+/** The neutral fill behind the active nav item: one shared surface that glides between items. */
+const GLIDE_FILL = "bg-black/[0.06] dark:bg-white/[0.11]";
+
+/** The same pill while it rests on a hovered (not active) item: a lighter touch than the active fill. */
+const GLIDE_HOVER_FILL = "bg-black/[0.04] dark:bg-white/[0.07]";
 
 const NAV_ICONS: Record<NavId, typeof IconFolder> = {
     home: IconHome,
@@ -189,7 +192,7 @@ export function AppSidebar({ isPlatformAdmin = false, isCompanyAdmin = false, ca
                 )}
             >
                 {glideTarget === link.id && (
-                    <motion.span layoutId="sidebar-glide" aria-hidden className={cn("absolute inset-0 -z-10", GLIDE_FILL)} style={{ borderRadius: 8 }} />
+                    <motion.span layoutId="sidebar-glide" aria-hidden className={cn("absolute inset-0 -z-10", isActive ? GLIDE_FILL : GLIDE_HOVER_FILL)} style={{ borderRadius: 8 }} />
                 )}
                 <span className="relative shrink-0">
                     <Icon className={cn("h-4 w-4", isActive ? "text-primary" : "text-muted-foreground")} />

@@ -21,6 +21,7 @@ import { VisibilityMenu } from "@/components/views/visibility-menu";
 import { VIEW_DESCRIPTION_MAX, VIEW_TITLE_MAX, viewRefreshDirective } from "@/lib/view-spec";
 import { chatDraftKey } from "@/lib/chat-draft";
 import type { ViewDetail } from "@/lib/views";
+import { Select } from "@/components/ui/select";
 
 type Person = { type: string; id: string | null; name: string | null };
 type Named = { id: string; name: string | null };
@@ -161,10 +162,10 @@ export function ViewDetailClient({ view, canEdit, canManage, canChangeVisibility
                         {canEdit && !view.archived && (
                             <div className="flex items-center gap-1.5">
                                 {!ownerAgentId && agents.length > 0 && (
-                                    <select aria-label={t("refreshAgent")} value={refreshAgent} onChange={(e) => setRefreshAgent(e.target.value)}
+                                    <Select aria-label={t("refreshAgent")} value={refreshAgent} onChange={(e) => setRefreshAgent(e.target.value)}
                                         className="h-8 max-w-[11rem] rounded-lg border border-border bg-card px-2 text-sm text-foreground">
                                         {agents.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
-                                    </select>
+                                    </Select>
                                 )}
                                 <Button size="sm" onClick={refresh} disabled={!refreshAgent || busy === "refresh"}
                                     title={ownerAgentId ? t("refreshTitle", { name: maintainer ?? t("theMaintainingAgent") }) : t("refreshTitleAny")}>
@@ -347,11 +348,11 @@ function MaintainerDialog({ view, onClose }: { view: ViewDetail; onClose: () => 
                     ) : (
                         <div className="grid gap-1.5">
                             <Label htmlFor="view-maintainer">{t("maintainerAgent")}</Label>
-                            <select id="view-maintainer" value={chosen} onChange={(e) => setChosen(e.target.value)} disabled={agents === null}
+                            <Select id="view-maintainer" value={chosen} onChange={(e) => setChosen(e.target.value)} disabled={agents === null}
                                 className="h-10 rounded-xl border border-border bg-card px-3 text-sm text-foreground">
                                 <option value="">{t("noAgent")}</option>
                                 {options.map((a) => <option key={a.id} value={a.id}>{a.name ?? t("theAgent")}</option>)}
-                            </select>
+                            </Select>
                             {agents === null && <p className="text-xs text-muted-foreground">{t("loading")}</p>}
                             {agents !== null && agents.length === 0 && <p className="text-xs text-muted-foreground">{t("noAgentsCoverScope")}</p>}
                         </div>
@@ -434,10 +435,10 @@ function TransferDialog({ view, people, onClose }: { view: ViewDetail; people: N
                     </DialogHeader>
                     <div className="grid gap-1.5">
                         <Label htmlFor="transfer-to">{t("newOwner")}</Label>
-                        <select id="transfer-to" value={to} onChange={(e) => setTo(e.target.value)} required
+                        <Select id="transfer-to" value={to} onChange={(e) => setTo(e.target.value)} required
                             className="h-10 rounded-xl border border-border bg-card px-3 text-sm text-foreground">
                             {candidates.map((p) => <option key={p.id} value={p.id}>{p.name ?? t("someone")}</option>)}
-                        </select>
+                        </Select>
                     </div>
                     {candidates.length === 0 && <p className="text-sm text-muted-foreground">{t("nobodyCanSeeScope")}</p>}
                     <DialogFooter>
@@ -488,10 +489,10 @@ function EditDialog({ view, onClose, onSave }: {
                     </div>
                     <div className="grid gap-1.5">
                         <Label htmlFor="edit-view-refresh">{t("expectedRefresh")}</Label>
-                        <select id="edit-view-refresh" value={refresh ?? ""} onChange={(e) => setRefresh(e.target.value ? Number(e.target.value) : null)}
+                        <Select id="edit-view-refresh" value={refresh ?? ""} onChange={(e) => setRefresh(e.target.value ? Number(e.target.value) : null)}
                             className="h-10 rounded-xl border border-border bg-card px-3 text-sm text-foreground">
                             {choices.map((c) => <option key={c.value ?? "none"} value={c.value ?? ""}>{c.label}</option>)}
-                        </select>
+                        </Select>
                         <p className="text-xs text-muted-foreground">{t("expectedRefreshHint")}</p>
                     </div>
                     <DialogFooter>

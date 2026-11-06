@@ -20,6 +20,7 @@ import { BUSINESS_TYPES, COMFORTABLE_AGENT_COUNT, DEFAULT_AGENT_NAMES, MAX_WIZAR
 import { cn } from "@/lib/utils";
 import { CUSTOM_LLM_PROVIDER, normalizeLlmBaseUrl } from "@/lib/llm-endpoint";
 import { COMPANY_TEMPLATES, DEFAULT_COMPANY_TEMPLATE, type CompanyTemplateId } from "@/lib/modules";
+import { Select } from "@/components/ui/select";
 
 /**
  * First-run setup, modelled on an OS setup assistant: one focused screen per
@@ -696,11 +697,11 @@ export function SetupWizard({ initialCompanyName, initialBusinessType = "", prof
                                 <div>
                                     <div className="mb-2 flex items-center justify-between">
                                         <h2 className="text-sm font-medium text-foreground">{t("team.yourAgents")} <span className="font-normal text-muted-foreground">({team.length})</span></h2>
-                                        <select aria-label={t("team.addSpecialist")} value="" onChange={(e) => addRole(e.target.value)}
+                                        <Select aria-label={t("team.addSpecialist")} value="" onChange={(e) => addRole(e.target.value)}
                                             className="h-11 rounded-lg border border-border bg-background px-2 text-xs text-muted-foreground outline-none focus:border-cyan-300/60">
                                             <option value="">{t("team.addAgent")}</option>
                                             {addable.map((role) => <option key={role.id} value={role.id}>{role.title}</option>)}
-                                        </select>
+                                        </Select>
                                     </div>
                                     <ul className="space-y-2">
                                         {team.map((m) => {

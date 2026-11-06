@@ -28,6 +28,7 @@ import { LiveRunBlock, strongestStall, useNow, useStallLabel, useTaskLive, useTi
 import { useBoardLabels } from "../../board/board-labels";
 import { TaskStoryTimeline } from "./task-story-timeline";
 import { useModuleEnabled } from "@/components/modules-provider";
+import { Select } from "@/components/ui/select";
 
 const STATE_TONE: Record<string, string> = {
     inbox: "border-zinc-700 bg-zinc-800/60 text-zinc-300",
@@ -155,10 +156,10 @@ function TaskActions({ story, onDone }: { story: Story; onDone?: () => void }) {
             <div className="grid gap-3">
                 <label className="grid gap-1.5">
                     <span className="text-xs font-medium text-zinc-400">{t("state")}</span>
-                    <select value={choosingBlocked ? "blocked" : task.state} disabled={disabled} onChange={(event) => onState(event.target.value)} className={selectClass}>
+                    <Select value={choosingBlocked ? "blocked" : task.state} disabled={disabled} onChange={(event) => onState(event.target.value)} className={selectClass}>
                         {!(EDITABLE_STATES as readonly string[]).includes(task.state) && <option value={task.state}>{labels.state(task.state)}</option>}
                         {EDITABLE_STATES.map((state) => <option key={state} value={state}>{labels.state(state)}</option>)}
-                    </select>
+                    </Select>
                 </label>
                 {choosingBlocked && (
                     <div className="grid gap-2 rounded-xl border border-rose-500/20 bg-rose-500/[0.05] p-3">
@@ -175,7 +176,7 @@ function TaskActions({ story, onDone }: { story: Story; onDone?: () => void }) {
                 {canAssign && (
                     <label className="grid gap-1.5">
                         <span className="text-xs font-medium text-zinc-400">{t("owner")}</span>
-                        <select value={ownerValue} disabled={disabled} onChange={(event) => onAssignee(event.target.value)} className={selectClass}>
+                        <Select value={ownerValue} disabled={disabled} onChange={(event) => onAssignee(event.target.value)} className={selectClass}>
                             <option value="">{t("unassigned")}</option>
                             {task.owner && !assignees.agents.some((a) => `agent:${a.id}` === ownerValue) && !assignees.members.some((m) => `human:${m.id}` === ownerValue) && (
                                 <option value={ownerValue}>{task.owner.name}</option>
@@ -190,7 +191,7 @@ function TaskActions({ story, onDone }: { story: Story; onDone?: () => void }) {
                                     {assignees.members.map((member) => <option key={member.id} value={`human:${member.id}`}>{member.name}</option>)}
                                 </optgroup>
                             )}
-                        </select>
+                        </Select>
                     </label>
                 )}
             </div>

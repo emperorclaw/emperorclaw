@@ -25,6 +25,7 @@ import { useTranslations } from "next-intl";
 import { Button } from "@/components/ui/button";
 import { captureExportedBlob } from "./download-capture";
 import type { OfficeEditorProps } from "./types";
+import { Select } from "@/components/ui/select";
 
 const DOCX_MIME = "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
 const ZOOM_LEVELS = [60, 75, 90, 100, 110, 125, 150, 175, 200];
@@ -91,18 +92,18 @@ export default function DocxArtifactEditor(props: OfficeEditorProps) {
                 <ToolbarButton label={t("toolbar.undo")} disabled={!editor.canUndo} onClick={editor.undo}><IconArrowBackUp /></ToolbarButton>
                 <ToolbarButton label={t("toolbar.redo")} disabled={!editor.canRedo} onClick={editor.redo}><IconArrowForwardUp /></ToolbarButton>
                 <Divider />
-                <select aria-label={t("toolbar.paragraphStyle")} className="h-8 rounded-md border border-border bg-muted/30 px-2 text-xs text-foreground" value={editor.selectedParagraphStyleId || "Normal"} onChange={(event) => editor.setParagraphStyle(event.target.value)}>
+                <Select aria-label={t("toolbar.paragraphStyle")} className="h-8 rounded-md border border-border bg-muted/30 px-2 text-xs text-foreground" value={editor.selectedParagraphStyleId || "Normal"} onChange={(event) => editor.setParagraphStyle(event.target.value)}>
                     <option value="Normal">{t("styles.body")}</option>
                     <option value="Heading1">{t("styles.heading1")}</option>
                     <option value="Heading2">{t("styles.heading2")}</option>
                     <option value="Heading3">{t("styles.heading3")}</option>
-                </select>
-                <select aria-label={t("toolbar.fontFamily")} className="h-8 w-32 rounded-md border border-border bg-muted/30 px-2 text-xs text-foreground" value={editor.selectedRunStyle?.fontFamily || "Calibri"} onChange={(event) => editor.setFontFamily(event.target.value)}>
+                </Select>
+                <Select aria-label={t("toolbar.fontFamily")} className="h-8 w-32 rounded-md border border-border bg-muted/30 px-2 text-xs text-foreground" value={editor.selectedRunStyle?.fontFamily || "Calibri"} onChange={(event) => editor.setFontFamily(event.target.value)}>
                     {['Calibri', 'Arial', 'Times New Roman', 'Georgia', 'Courier New'].map((font) => <option key={font} value={font}>{font}</option>)}
-                </select>
-                <select aria-label={t("toolbar.fontSize")} className="h-8 w-16 rounded-md border border-border bg-muted/30 px-2 text-xs text-foreground" value={String(editor.selectedRunStyle?.fontSizePt || 11)} onChange={(event) => editor.setFontSize(Number(event.target.value))}>
+                </Select>
+                <Select aria-label={t("toolbar.fontSize")} className="h-8 w-16 rounded-md border border-border bg-muted/30 px-2 text-xs text-foreground" value={String(editor.selectedRunStyle?.fontSizePt || 11)} onChange={(event) => editor.setFontSize(Number(event.target.value))}>
                     {[8, 9, 10, 11, 12, 14, 16, 18, 20, 24, 28, 32, 36, 48].map((size) => <option key={size} value={size}>{size}</option>)}
-                </select>
+                </Select>
                 <ToolbarButton label={t("toolbar.bold")} onClick={editor.toggleBold}><IconBold /></ToolbarButton>
                 <ToolbarButton label={t("toolbar.italic")} onClick={editor.toggleItalic}><IconItalic /></ToolbarButton>
                 <ToolbarButton label={t("toolbar.underline")} onClick={editor.toggleUnderline}><IconUnderline /></ToolbarButton>

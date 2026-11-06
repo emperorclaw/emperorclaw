@@ -15,6 +15,7 @@ import { LivingDesk, Throne } from "./living-desk";
 import { useLiveLink } from "./live-link";
 import { useSceneCopy } from "./use-scene-copy";
 import { cn } from "@/lib/utils";
+import { Select } from "@/components/ui/select";
 
 const THOUGHTS_KEY = "emperor.scene.showThoughts";
 const PLANE_MS = 1700;
@@ -225,7 +226,7 @@ export function TeamObservatory({ agents, teams, communications, thoughts, liveE
     return <div className={cn("observatory office-scene living-office", !awake && "office-paused", still && "living-still")}>
         <div className="mb-3 flex flex-wrap items-center justify-between gap-x-3 gap-y-2">
             <label className="flex min-w-0 items-center gap-2 text-xs text-muted-foreground"><IconUsersGroup className="h-4 w-4 shrink-0" aria-hidden="true" />{t("teamChat")}
-                <select aria-label={t("sceneTeam")} value={team?.id ?? "all"} onChange={(e) => setGroup(e.target.value)} className="min-h-11 max-w-52 rounded-lg border border-border bg-card px-3 text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400"><option value="all">{t("wholeCompany")}</option>{teams.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}</select>
+                <Select aria-label={t("sceneTeam")} value={team?.id ?? "all"} onChange={(e) => setGroup(e.target.value)} className="min-h-11 max-w-52 rounded-lg border border-border bg-card px-3 text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400"><option value="all">{t("wholeCompany")}</option>{teams.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}</Select>
             </label>
             <div className="flex flex-wrap items-center gap-2">
                 <span className="text-xs text-muted-foreground">{team ? t("teamSummary", { count: teamCount, team: team.name }) : t("allSummary", { count: agents.length })}</span>
