@@ -18,7 +18,9 @@ import {
     PREVIEW_MAX_FIELDS,
     actionBinding,
     hashActionArgs,
+    isAlwaysAllowableAsk,
     matchActionApproval,
+    wasAlwaysAllowed,
     previewActionArgs,
     redactForApproval,
     stableStringify,
@@ -238,4 +240,18 @@ test("approval redaction keeps digits, emails and ids exactly as written", () =>
     assert.equal(redactForApproval("to a@b.com cc c@d.com amount 1"), "to a@b.com cc c@d.com amount 1");
     assert.equal(redactForApproval("id 3f2b8c1e-1111-2222-3333-444455556666 qty 7"), "id 3f2b8c1e-1111-2222-3333-444455556666 qty 7");
     assert.match(redactForApproval("token sk-ant-abcdefghijklmnopqrstuvwxyz123456 x 9"), /\[secret\] x 9$/);
+});
+
+test("always-allow applies only to an agent's action-permission ask for a catalog action", () => {
+    const ask = { metadataJson: { kind: ACTION_APPROVAL_KIND }, actionType: "send_email", requesterAgentId: "a1" };
+    assert.equal(isAlwaysAllowableAsk(ask), true);
+    assert.equal(isAlwaysAllowableAsk({ ...ask, requesterAgentId: null }), false, "no agent to allow");
+    assert.equal(isAlwaysAllowableAsk({ ...ask, actionType: "task_done", metadataJson: {} }), false, "a task close is not a permission");
+    assert.equal(isAlwaysAllowableAsk({ ...ask, actionType: "not_in_catalog" }), false);
+    for (const irreversible of ["spend_money", "delete_data", "deploy"]) {
+        assert.equal(isAlwaysAllowableAsk({ ...ask, actionType: irreversible }), false, `${irreversible} keeps asking`);
+    }
+    assert.equal(wasAlwaysAllowed({ kind: ACTION_APPROVAL_KIND, alwaysAllowed: true }), true);
+    assert.equal(wasAlwaysAllowed({ kind: ACTION_APPROVAL_KIND }), false);
+    assert.equal(wasAlwaysAllowed(null), false);
 });

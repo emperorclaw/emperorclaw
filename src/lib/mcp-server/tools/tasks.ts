@@ -19,19 +19,20 @@ export function registerTaskTools(server: McpServer, companyId: string, callerAg
     };
     server.registerTool("request_approval", {
         title: "Request Approval",
-        description: "Ask a person to sign off before you act: spending money, sending anything outside the company (emails, posts, messages with customers), publishing, deleting, or closing a task that requires approval. Moves the task to review and notifies owners and admins; the decision and the person's note arrive in your direct chat. Status meanings: approved task_done closes the task; any other approved action comes back in_progress for you to do and then close; rejected comes back in_progress with the reason to revise; dismissed means the request is obsolete — DO NOT ACT; expired (an external action left pending more than 48h) means DO NOT ACT, ask again if still needed. Don't ask in chat instead, and don't act unless the response says mayProceed (approved).",
+        description: "Ask a person to sign off before you act: spending money, sending anything outside the company (emails, posts, messages with customers), publishing, deleting, or closing a task that requires approval. Moves the task to review and notifies owners and admins. An approval card is posted in the chat you are asking from: pass threadId (a thread you can post in, e.g. the group where the work was discussed) so the people there can decide it in place; without it the card goes to your direct chat. The decision and the person's note arrive in that same thread. Status meanings: approved task_done closes the task; any other approved action comes back in_progress for you to do and then close; rejected comes back in_progress with the reason to revise; dismissed means the request is obsolete — DO NOT ACT; expired (an external action left pending more than 48h) means DO NOT ACT, ask again if still needed. Don't ask in chat instead, and don't act unless the response says mayProceed (approved).",
         inputSchema: {
             taskId: z.string().describe("The task this approval is for"),
             rationale: z.string().min(1).describe("What exactly needs approval and why, with the evidence a person needs to decide"),
             actionType: z.string().optional().describe("e.g. task_done (default), send_email, spend, publish, delete"),
+            threadId: z.string().optional().describe("The chat thread you are asking from; the approval card and the decision go there (default: your direct chat)"),
             agentId: z.string().optional().describe("Requesting agent id or name (operator connections only)"),
         },
-    }, async ({ taskId, rationale, actionType, agentId }) => {
+    }, async ({ taskId, rationale, actionType, threadId, agentId }) => {
         try {
             await requireTask(taskId);
             const requester = callerAgentId ?? (agentId ? await resolveAgentId(companyId, agentId) : null);
-            const approval = await requestApprovalForTasks({ companyId, taskIds: [taskId], requesterAgentId: requester, rationale, actionType });
-            return jsonResult({ approval, status: "pending", next: "Wait for the decision; check it with get_task." });
+            const approval = await requestApprovalForTasks({ companyId, taskIds: [taskId], requesterAgentId: requester, rationale, actionType, threadId });
+            return jsonResult({ approval, status: "pending", cardThreadId: approval?.threadId ?? null, next: "Wait for the decision; check it with get_task." });
         } catch (e) {
             return errorResult(e);
         }
@@ -147,7 +148,7 @@ export function registerTaskTools(server: McpServer, companyId: string, callerAg
 
     server.registerTool("add_task_note", {
         title: "Add Task Note",
-        description: "Record progress, a handoff, or a blocker on a task. This is the visible progress signal: it resets the loop guard and the stall sweep, so note what you actually did or what is blocking you. Use update_task for state/assignee changes, not notes. Write for a business reader in at most ~8 lines of Markdown: what changed, the evidence (numbers, links, artifact IDs), and the next step. Put technical detail under a final **Details** line.",
+        description: "Record progress, a handoff, or a blocker on a task. This is the visible progress signal for the stall sweep (it does not reset the agent loop guard; a state change or assignment does), so note what you actually did or what is blocking you. Use update_task for state/assignee changes, not notes. Write for a business reader in at most ~8 lines of Markdown: what changed, the evidence (numbers, links, artifact IDs), and the next step. Put technical detail under a final **Details** line.",
         inputSchema: {
             taskId: z.string().describe("The task's UUID"),
             note: z.string().min(1).describe("Markdown, at most ~8 lines: what changed, evidence (numbers, links), next step or blocker. Plain language; technical detail last under **Details**."),

@@ -13,6 +13,10 @@ import { EVERYONE_MENTION, MentionTextarea } from "@/components/mention-textarea
 import { AttachmentChip, isAttachmentRef, type AttachmentRef } from "@/components/chat-attachments";
 import { MessageReasoningDisclosure } from "@/components/message-reasoning-disclosure";
 import { DeliveryInspector } from "@/components/delivery-inspector";
+import { ApprovalCard } from "@/components/approval-card";
+import { TypingReveal } from "@/components/typing-reveal";
+import { markLiveReveal } from "@/lib/typing-reveal";
+import { approvalCardIdOf } from "@/lib/approval-card-copy";
 import { isPersistedUuid } from "@/lib/run-ledger-copy";
 import { agentAvatarSrc } from "@/lib/avatar";
 import { cn } from "@/lib/utils";
@@ -62,8 +66,10 @@ function hasStoredReasoning(message: TeamMessage): boolean {
     return (message.metadataJson as Record<string, unknown>).hasReasoning === true;
 }
 
-// A loop-pause notice carries a "Resume" action for a human.
+// A loop-pause notice carries a "Resume" action for a human. Only a system
+// notice qualifies: an agent post carrying the flag is never a pause.
 function isLoopPauseNotice(message: TeamMessage): boolean {
+    if (message.senderType !== "system") return false;
     if (!message.metadataJson || typeof message.metadataJson !== "object") return false;
     const meta = message.metadataJson as Record<string, unknown>;
     return meta.loopGuard === true && meta.resumable === true;
@@ -275,6 +281,8 @@ export function AgentTeamChat({
                     const existingIds = new Set(prev.map((m) => m.id));
                     const newMessages = nextMessages.filter((m) => !existingIds.has(m.id));
                     if (newMessages.length === 0) return prev;
+                    // Agent replies arriving after the first load type themselves in (never history).
+                    if (seen) markLiveReveal(newMessages);
                     if (!isAtBottomRef.current) {
                         setUnreadCount((count) => count + newMessages.length);
                     }
@@ -583,6 +591,7 @@ export function AgentTeamChat({
                             const messageAttachments = getMessageAttachments(msg);
                             const isRich = !isHuman && hasRichBlocks(msg.text);
                             const isPauseNotice = isLoopPauseNotice(msg);
+                            const approvalCardId = approvalCardIdOf(msg);
 
                             return (
                                 <div
@@ -648,7 +657,13 @@ export function AgentTeamChat({
                                                         send={sendTeamWidgetPrompt}
                                                         laterReplies={hasChoicesBlock(msg.text) ? laterTeamReplies(messages, i, getAgentName(senderId)) : undefined}
                                                     >
-                                                        <ParsedMessage text={msg.text} />
+                                                        {msg.senderType === "agent" && !isRich ? (
+                                                            <TypingReveal messageId={msg.id} text={msg.text}>
+                                                                <ParsedMessage text={msg.text} />
+                                                            </TypingReveal>
+                                                        ) : (
+                                                            <ParsedMessage text={msg.text} />
+                                                        )}
                                                     </AgentMessageActions>
                                                 )}
                                                 {isPauseNotice && (
@@ -660,6 +675,7 @@ export function AgentTeamChat({
                                                         {t("resume")}
                                                     </button>
                                                 )}
+                                                {approvalCardId && <ApprovalCard approvalId={approvalCardId} />}
                                                 {messageAttachments.length > 0 && (
                                                     <div className="mt-2 flex flex-col gap-1.5">
                                                         {messageAttachments.map((att) => (

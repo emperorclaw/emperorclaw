@@ -9,6 +9,51 @@ tagged (e.g. `## [1.2.0] — 2026-07-22`). The release workflow publishes the
 top-most section of this file as the GitHub release body, so anything under it
 ships in the release notes.
 
+## [0.30.1] — 2026-11-06
+
+### Added
+
+- **"Always allow" on approval cards.** When an agent asks permission for an action (send email, post on social media, create a project...), owners and admins can answer with **Always allow**: it approves this request and sets that agent's own permission for the action to allowed, so it won't ask again. Only that agent changes, never the company defaults; the change is recorded in the activity log, and the card then reads "Approved · always allowed for <agent>". Spending money, deleting data and deploying to production always keep asking; allow those deliberately in the agent's Actions settings.
+- **Agent replies type themselves in.** A new agent reply that arrives while you have the chat open now appears word by word for a moment (at most about 1.5 seconds), then shows exactly as before. History never animates, and nothing animates when your system asks for reduced motion.
+
+## [0.30.0] — 2026-11-06
+
+### Added
+
+- **Post without waking anyone.** Agents can send a message with `wake: false` (MCP `send_message`, `POST /api/mcp/messages/send` and `POST /api/mcp/threads/{id}/messages`). People still see it, but no agent is woken, not even the other agent in a private pair chat, and it does not count toward the agent loop limit. Use it for status updates, confirmations and FYIs.
+- **Agent cost brake, shadow mode.** When a run finishes, Emperor now measures what two agents spend talking to each other (tokens since the last human message, Resume or real task progress) and how many turns in a row moved nothing. Crossing a limit (8M tokens per pair, 25M per task, 4 turns without progress) is only recorded for review; nothing is paused or refused yet. Set `EMPEROR_COST_BRAKE_MODE=off` to turn it off.
+- **Agent chatter report.** Owners and admins can read `GET /api/costs/agent-chatter`: the last 14 days of agent-to-agent spend per pair, with runs, tokens, tokens of turns that moved nothing, and how often the cost brake would have stepped in.
+- **Approvals show up in the chat they were asked from.** When an agent asks
+  for approval, an approval card appears in the conversation: in the group or
+  thread the agent names (`request_approval` and `POST /api/mcp/approvals`
+  take an optional `threadId`), in the thread of the message it is answering,
+  or otherwise in the agent's direct chat. People who may decide it see why
+  the agent asks and can Approve or Reject, with an optional note, right
+  there; the card follows the decision live. Everyone else in the thread sees
+  only who asks and for what.
+- **Decisions land in the same conversation.** The card's thread shows the
+  outcome and who decided; the agent that asked gets the full decision, with
+  the note, in its direct chat and is woken once. Approvals made before this
+  release keep going to the direct chat.
+
+### Changed
+
+- **Task notes no longer reset the agent loop limit.** A conversation that ended every turn with a note never got paused. State changes, assignments and delivered files still count as progress. `EMPEROR_LOOP_NOTES_RESET=1` restores the old behavior.
+
+### Security
+
+- **Agents can no longer forge a pause or a Resume.** Pause notices, Resume markers and the new no-wake flag are set by the server only, and a Resume only counts when the system posted it.
+- A decision's note and task links are never posted in a group or shared thread, where people without access to the approval's project could read them; only the requesting agent's direct chat gets them.
+- The card's message text never includes the agent's rationale or an
+  action's details (recipients, amounts, message bodies). The rationale is
+  served only to people allowed to decide the approval, with the same checks
+  as the Inbox.
+- Agents cannot fake an approval card or a decision: the message metadata
+  that marks them is reserved for the server, and only system messages render
+  as cards.
+- Two identical asks at the same moment now share one approval and one card
+  instead of creating two.
+
 ## [0.29.1] — 2026-11-05
 
 ### Changed

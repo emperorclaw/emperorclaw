@@ -3328,6 +3328,33 @@
     "noDecidedMatches": "没有已处理的审批符合该搜索。",
     "noDecisions": "还没有任何决定。你处理过的审批会显示在这里。"
   },
+  "approvalCard": {
+    "title": "审批请求",
+    "requestedBy": "发起者",
+    "unknownAgent": "一个智能体",
+    "action": "操作",
+    "rationale": "原因",
+    "tasks": "任务：",
+    "notePlaceholder": "给该智能体的备注（可选）",
+    "noteLabel": "给该智能体的备注",
+    "approve": "批准",
+    "reject": "拒绝",
+    "decideFailed": "无法记录该决定，请重试。",
+    "decidedBy": "{status}（{name}）",
+    "note": "备注：{note}",
+    "alwaysAllow": "始终允许",
+    "alwaysAllowConfirm": "始终允许 {name} 执行“{action}”？以后的同类请求将不再询问。",
+    "alwaysAllowYes": "确定，始终允许",
+    "cancel": "取消",
+    "alwaysAllowedFor": "已批准 · 已对 {name} 始终允许",
+    "status": {
+      "pending": "等待决定",
+      "approved": "已批准",
+      "rejected": "已拒绝",
+      "dismissed": "已忽略",
+      "expired": "已过期"
+    }
+  },
   "artifacts": {
     "preview": {
       "loadingSpreadsheet": "正在加载电子表格预览…",

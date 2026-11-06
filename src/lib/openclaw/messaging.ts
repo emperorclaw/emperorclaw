@@ -7,7 +7,7 @@ import { resolveAgentId } from "@/lib/mcp";
 import { BOUND_AGENT_MISMATCH, McpUnreachableAgentError, mcpAccessForAgent, mcpMayReachAgent, mcpMayUseThread } from "@/lib/mcp-access";
 import { broadcastMcpEvent } from "@/lib/pubsub";
 import { ensureAgentPairThread, GROUP_THREAD_TYPE, isAgentGroupMember, isAgentPairThread, pairThreadCounterpart } from "@/lib/groups";
-import { agentLoopHardCap, agentPairLoopHardCap, mentionedAgentIds, unreachableMentionsOf } from "@/lib/message-routing";
+import { agentLoopHardCap, agentPairLoopHardCap, mentionedAgentIds, NO_WAKE_KEY, unreachableMentionsOf } from "@/lib/message-routing";
 
 function isUuid(value: string) {
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value);
@@ -81,6 +81,35 @@ async function ensureTargetMention(companyId: string, text: string, targetAgentI
   return `@${agent.name} ${text}`;
 }
 
+/**
+ * May this agent (null: a company-wide token acting as no agent) post in this
+ * existing thread? Throws the same errors send_message returns. Also used to
+ * validate the thread an approval card goes to (lib/approval-card.ts).
+ */
+export async function assertAgentMayPostInThread(companyId: string, thread: typeof messageThreads.$inferSelect, senderId: string | null): Promise<void> {
+  // A person's private direct thread reads as missing to anyone but its own
+  // agent. The sender is the acting agent: a bound token's own agent
+  // (enforced by the caller), or the agent a company-wide token sends as.
+  if (!agentTokenMayUseThread(thread, senderId)
+    || (isPrivateDirectThread(thread) && senderId && senderId !== thread.directAgentId)) {
+    throw new Error("Thread not found");
+  }
+
+  // A project/task thread is reachable only inside the sender's data scope.
+  if (!(await mcpMayUseThread(companyId, await mcpAccessForAgent(companyId, senderId), thread))) {
+    throw new Error("Thread not found");
+  }
+
+  // Only members talk in a group: an outside agent would never see the
+  // replies, and the members never asked for it.
+  if (thread.type === GROUP_THREAD_TYPE) {
+    if (thread.archivedAt) throw new Error("Access denied: that group is archived");
+    if (senderId && !(await isAgentGroupMember(companyId, thread.id, senderId))) {
+      throw new Error("Access denied: this agent is not a member of that group");
+    }
+  }
+}
+
 export async function sendThreadMessageFromMcp(input: {
   companyId: string;
   chatId?: string | null;
@@ -102,7 +131,11 @@ export async function sendThreadMessageFromMcp(input: {
   // retried reply be recognised instead of stored twice.
   ack?: boolean;
   idempotencyKey?: string | null;
+  // `false` posts an FYI: visible to everyone, wakes no agent (stored with the
+  // server-set `noWake` flag and no target). Omitted/true keeps today's routing.
+  wake?: boolean;
 }) {
+  const noWake = input.wake === false;
   const senderId = input.fromUserId || input.agentId || input.callerAgentId || null;
   const resolvedSenderId = senderId
     ? await resolveAgentId(input.companyId, senderId)
@@ -154,28 +187,12 @@ export async function sendThreadMessageFromMcp(input: {
       eq(messageThreads.companyId, input.companyId),
     )).limit(1);
 
-    // A person's private direct thread reads as missing to anyone but its own
-    // agent. The sender is the acting agent: a bound token's own agent
-    // (enforced above), or the agent a company-wide token sends as.
-    if (!existingThread || !agentTokenMayUseThread(existingThread, resolvedSenderId)
-      || (isPrivateDirectThread(existingThread) && resolvedSenderId && resolvedSenderId !== existingThread.directAgentId)) {
-      throw new Error("Thread not found");
-    }
-
-    // A project/task thread is reachable only inside the sender's data scope.
-    if (!(await mcpMayUseThread(input.companyId, await mcpAccessForAgent(input.companyId, resolvedSenderId), existingThread))) {
-      throw new Error("Thread not found");
-    }
+    if (!existingThread) throw new Error("Thread not found");
+    await assertAgentMayPostInThread(input.companyId, existingThread, resolvedSenderId);
 
     responseThread = existingThread;
 
-    // Only members talk in a group: an outside agent would never see the
-    // replies, and the members never asked for it.
     if (existingThread.type === GROUP_THREAD_TYPE) {
-      if (existingThread.archivedAt) throw new Error("Access denied: that group is archived");
-      if (resolvedSenderId && !(await isAgentGroupMember(input.companyId, existingThread.id, resolvedSenderId))) {
-        throw new Error("Access denied: this agent is not a member of that group");
-      }
       // A peer message names a recipient who must also belong to the group,
       // otherwise the handoff would be invisible to them (or leak to a
       // non-member). Never address someone who is not in the room.
@@ -219,7 +236,7 @@ export async function sendThreadMessageFromMcp(input: {
   // In a shared team, address the recipient by name so the routing verdict is
   // "mention" for them and "not_addressed" for everyone else in the room.
   let outboundText = input.text;
-  if (isGroup && !isAgentPair && isAgentToAgent && resolvedTargetAgentId) {
+  if (!noWake && isGroup && !isAgentPair && isAgentToAgent && resolvedTargetAgentId) {
     outboundText = await ensureTargetMention(input.companyId, outboundText, resolvedTargetAgentId);
   }
 
@@ -236,8 +253,9 @@ export async function sendThreadMessageFromMcp(input: {
   // Hard backstop for runtimes that ignore the routing verdict: past this many
   // agent messages in a row in a shared thread, agent posts are refused until
   // a person writes. Compliant runtimes stop well before (routeReason "loop_paused").
+  // A wake:false post wakes nobody, so it cannot extend a loop: it is never refused.
   const hardCap = isAgentPair ? agentPairLoopHardCap() : agentLoopHardCap();
-  if (responseThread.type !== "direct" && (await currentAgentStreak(input.companyId, responseThread.id)) >= hardCap) {
+  if (!noWake && responseThread.type !== "direct" && (await currentAgentStreak(input.companyId, responseThread.id)) >= hardCap) {
     throw new Error("Loop guard: too many agent messages in a row in this thread; retry after five minutes of inactivity or ask a person to write");
   }
 
@@ -249,7 +267,8 @@ export async function sendThreadMessageFromMcp(input: {
     // A group message is addressed by @mention, never to one agent — EXCEPT a
     // pair thread, which is a two-agent handoff: keep targetAgentId set there so
     // runtimes that only understand `targeted` still route it to the counterpart.
-    targetAgentId: isGroup && !isAgentPair ? null : effectiveTargetAgentId,
+    // A wake:false post carries no target at all, so no runtime routes it.
+    targetAgentId: noWake || (isGroup && !isAgentPair) ? null : effectiveTargetAgentId,
     text: outboundText,
     metadataJson: {
       chatId: input.chatId || null,
@@ -257,6 +276,7 @@ export async function sendThreadMessageFromMcp(input: {
       ...(input.replyToMessageId ? { replyToMessageId: input.replyToMessageId } : {}),
       ...(input.ack ? { ack: true } : {}),
       ...(input.idempotencyKey ? { idempotencyKey: input.idempotencyKey } : {}),
+      ...(noWake ? { [NO_WAKE_KEY]: true } : {}),
     },
     mirrorToLegacyChat: !effectiveTargetAgentId && !isGroup,
   });
@@ -274,6 +294,7 @@ export async function sendThreadMessageFromMcp(input: {
     ok: true,
     messageId: message.id,
     threadId: targetThreadId,
+    ...(noWake ? { wake: false, wakeNotice: "Posted without waking any agent (wake:false)." } : {}),
     ...(unreachableNames.length > 0
       ? { notice: `Posted, but you can't reach ${unreachableNames.join(", ")}: ${unreachableNames.length > 1 ? "those agents are" : "that agent is"} outside your scope, so the mention did not notify ${unreachableNames.length > 1 ? "them" : "it"}.`, unreachableAgents: unreachableNames }
       : {}),

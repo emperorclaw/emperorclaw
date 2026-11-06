@@ -584,12 +584,20 @@ export const approvals = pgTable("approvals", {
     consumedAt: timestamp("consumed_at"),
     // The exact caller + action + arguments an action-permission ask covers (lib/action-policy-rules.ts).
     argsHash: text("args_hash"),
+    // The chat thread the ask was posted in and its approval card message
+    // (lib/approval-card.ts). Null for asks with no requesting agent and for
+    // asks made before cards existed: their decision goes to the direct thread.
+    threadId: uuid("thread_id").references(() => messageThreads.id, { onDelete: 'set null' }),
+    cardMessageId: uuid("card_message_id").references(() => threadMessages.id, { onDelete: 'set null' }),
     createdAt: timestamp("created_at").defaultNow().notNull(),
 }, (table) => [
     index("approvals_requester_action_idx").on(table.companyId, table.requesterAgentId, table.actionType),
     // One pending ask per exact call: a repeat waits on the same approval.
     uniqueIndex("approvals_pending_action_ask_unique").on(table.companyId, table.actionType, table.argsHash)
         .where(sql`${table.status} = 'pending' AND ${table.argsHash} IS NOT NULL`),
+    // Deleting a thread or its messages (agent deletion) nulls these links: keep that an index lookup.
+    index("approvals_thread_idx").on(table.threadId).where(sql`${table.threadId} IS NOT NULL`),
+    index("approvals_card_message_idx").on(table.cardMessageId).where(sql`${table.cardMessageId} IS NOT NULL`),
 ]);
 
 export const approvalTaskLinks = pgTable("approval_task_links", {
@@ -628,6 +636,8 @@ export const taskEvents = pgTable("task_events", {
     // and company + actor_id + created_at; without these it falls back to scans.
     companyCreatedIdx: index("task_events_company_created_idx").on(table.companyId, table.createdAt),
     companyActorCreatedIdx: index("task_events_company_actor_created_idx").on(table.companyId, table.actorId, table.createdAt),
+    // The cost brake reads one task's events over its window (cost-brake-store.ts taskHistory).
+    companyTaskCreatedIdx: index("task_events_company_task_created_idx").on(table.companyId, table.taskId, table.createdAt),
     // Completions only (task_done, or an update / reassignment to done): desk screens'
     // `last` and `today.done` (live-feed.ts COMPLETION_EVENT) and the live feed's transitions.
     completedIdx: index("task_events_completed_idx").on(table.companyId, table.createdAt)
@@ -892,7 +902,14 @@ export const opsEvents = pgTable("ops_events", {
     metadataJson: jsonb("metadata_json").default('{}').notNull(),
     stack: text("stack"),
     createdAt: timestamp("created_at").defaultNow().notNull(),
-});
+}, (table) => ({
+    // Cost brake shadow decisions (cost-brake-store.ts): the per-episode dedupe
+    // lookup and the chatter report's date range. Partial: a small slice of ops_events.
+    costBrakeDedupeIdx: index("ops_events_cost_brake_dedupe_idx").on(table.companyId, sql`(${table.metadataJson} ->> 'dedupeKey')`)
+        .where(sql`${table.category} = 'cost_brake'`),
+    costBrakeCreatedIdx: index("ops_events_cost_brake_created_idx").on(table.companyId, table.createdAt)
+        .where(sql`${table.category} = 'cost_brake'`),
+}));
 
 export const idempotencyKeys = pgTable("idempotency_keys", {
     id: uuid("id").primaryKey().defaultRandom(),
@@ -1320,6 +1337,8 @@ export const agentRuns = pgTable("agent_runs", {
     threadStartedIdx: index("agent_runs_thread_started_idx").on(table.threadId, table.startedAt.desc()),
     // The Costs page reads a company's runs over a date range, across agents.
     companyStartedIdx: index("agent_runs_company_started_idx").on(table.companyId, table.startedAt),
+    // The cost brake reads a task's a2a runs over its window (cost-brake-store.ts task scope).
+    companyTaskStartedIdx: index("agent_runs_company_task_started_idx").on(table.companyId, table.taskId, table.startedAt),
 }));
 
 // ─── Run events (0.9) ───────────────────────────────────────────────────────

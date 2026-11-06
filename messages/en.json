@@ -3328,6 +3328,33 @@
     "noDecidedMatches": "No decided approvals match that search.",
     "noDecisions": "No decisions yet. Approvals you decide show up here."
   },
+  "approvalCard": {
+    "title": "Approval request",
+    "requestedBy": "Requested by",
+    "unknownAgent": "An agent",
+    "action": "Action",
+    "rationale": "Why",
+    "tasks": "Tasks:",
+    "notePlaceholder": "Note for the agent (optional)",
+    "noteLabel": "Note for the agent",
+    "approve": "Approve",
+    "reject": "Reject",
+    "decideFailed": "Couldn't record the decision. Try again.",
+    "decidedBy": "{status} by {name}",
+    "note": "Note: {note}",
+    "alwaysAllow": "Always allow",
+    "alwaysAllowConfirm": "Always allow {name} to {action}? Future requests won't ask.",
+    "alwaysAllowYes": "Yes, always allow",
+    "cancel": "Cancel",
+    "alwaysAllowedFor": "Approved · always allowed for {name}",
+    "status": {
+      "pending": "Waiting for a decision",
+      "approved": "Approved",
+      "rejected": "Rejected",
+      "dismissed": "Dismissed",
+      "expired": "Expired"
+    }
+  },
   "artifacts": {
     "preview": {
       "loadingSpreadsheet": "Loading spreadsheet preview...",

@@ -1,9 +1,10 @@
 import { randomUUID } from "crypto";
 import { and, desc, eq, inArray, isNull, lt, ne, notExists, or, sql } from "drizzle-orm";
-import { ACTION_APPROVAL_KIND, isActionApproval } from "./action-policy-rules";
+import { ACTION_APPROVAL_KIND, ALWAYS_ALLOWED_KEY, isActionApproval, wasAlwaysAllowed } from "./action-policy-rules";
+import { updateActionPolicies } from "./action-policy-server";
 import { actionLabel } from "./action-policy";
 import { db } from "@/db";
-import { approvalTaskLinks, approvals, projects, taskEvents, tasks } from "@/db/schema";
+import { approvalTaskLinks, approvals, companyMembers, projects, taskEvents, tasks, users } from "@/db/schema";
 import { broadcastMcpEvent } from "./pubsub";
 import { TASK_STATES } from "./task-state";
 import { notifyApprovalRequested } from "./notifications";
@@ -18,6 +19,8 @@ import {
 } from "./approval-status";
 import { auditTaskTitle, humanActor, recordAudits, taskChangeEntries } from "@/lib/audit";
 import { queueTaskOutcomeReport } from "@/lib/organization-routing";
+import { ApprovalThreadError, approvalDecisionThread, markApprovalCardDecided, postApprovalCard, resolveApprovalThread } from "./approval-card";
+import { APPROVAL_DECISION_FOR_KEY, approvalDecisionNoticeText } from "./approval-card-copy";
 
 export async function createApprovalRequest(input: {
   companyId: string;
@@ -28,51 +31,74 @@ export async function createApprovalRequest(input: {
   confidence?: number;
   actionType?: string;
   metadataJson?: Record<string, unknown>;
+  // The thread for the approval card (resolveApprovalThread); omitted: the
+  // requester's direct thread. No card without a requesting agent.
+  cardThreadId?: string | null;
 }) {
-  const existingPending = await db.select({
-    approvalId: approvalTaskLinks.approvalId,
-  }).from(approvalTaskLinks)
-    .innerJoin(approvals, eq(approvals.id, approvalTaskLinks.approvalId))
-    .where(and(
-      eq(approvalTaskLinks.companyId, input.companyId),
-      inArray(approvalTaskLinks.taskId, input.taskIds),
-      eq(approvals.status, "pending"),
-    ))
-    .limit(1);
+  // One pending ask per task, also under concurrency: the check and the insert
+  // run under per-task advisory locks (sorted, so two multi-task asks cannot
+  // deadlock), so a concurrent identical ask reuses this approval instead of
+  // creating a second one (with a second card).
+  const { approval, created } = await db.transaction(async (tx) => {
+    for (const taskId of [...new Set(input.taskIds)].sort()) {
+      await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${`approval-task:${input.companyId}:${taskId}`}))`);
+    }
+    const existingPending = await tx.select({
+      approvalId: approvalTaskLinks.approvalId,
+    }).from(approvalTaskLinks)
+      .innerJoin(approvals, eq(approvals.id, approvalTaskLinks.approvalId))
+      .where(and(
+        eq(approvalTaskLinks.companyId, input.companyId),
+        inArray(approvalTaskLinks.taskId, input.taskIds),
+        eq(approvals.status, "pending"),
+      ))
+      .limit(1);
 
-  if (existingPending.length > 0) {
-    const [existing] = await db.select().from(approvals).where(
-      eq(approvals.id, existingPending[0].approvalId),
-    ).limit(1);
-    return existing || null;
+    if (existingPending.length > 0) {
+      const [existing] = await tx.select().from(approvals).where(
+        eq(approvals.id, existingPending[0].approvalId),
+      ).limit(1);
+      return { approval: existing ?? null, created: false };
+    }
+
+    const [inserted] = await tx.insert(approvals).values({
+      id: randomUUID(),
+      companyId: input.companyId,
+      projectId: input.projectId,
+      requesterAgentId: input.requesterAgentId || null,
+      actionType: input.actionType || "task_done",
+      rationale: input.rationale || null,
+      confidence: input.confidence || 0,
+      metadataJson: input.metadataJson || {},
+    }).returning();
+
+    await tx.insert(approvalTaskLinks).values(
+      input.taskIds.map((taskId) => ({
+        companyId: input.companyId,
+        approvalId: inserted.id,
+        taskId,
+      })),
+    );
+    return { approval: inserted, created: true };
+  });
+
+  if (!approval) return null;
+
+  if (created) {
+    await broadcastMcpEvent(input.companyId, {
+      type: "approval_created",
+      approval,
+      taskIds: input.taskIds,
+    });
+    await notifyApprovalRequested(input.companyId, approval);
   }
 
-  const [approval] = await db.insert(approvals).values({
-    id: randomUUID(),
-    companyId: input.companyId,
-    projectId: input.projectId,
-    requesterAgentId: input.requesterAgentId || null,
-    actionType: input.actionType || "task_done",
-    rationale: input.rationale || null,
-    confidence: input.confidence || 0,
-    metadataJson: input.metadataJson || {},
-  }).returning();
-
-  await db.insert(approvalTaskLinks).values(
-    input.taskIds.map((taskId) => ({
-      companyId: input.companyId,
-      approvalId: approval.id,
-      taskId,
-    })),
-  );
-
-  await broadcastMcpEvent(input.companyId, {
-    type: "approval_created",
-    approval,
-    taskIds: input.taskIds,
-  });
-  await notifyApprovalRequested(input.companyId, approval);
-
+  // The card, once: postApprovalCard is a no-op when the approval has one. A
+  // reused ask gets a card (an ask from before cards) only when the same
+  // agent asks again, so the thread checked for this caller is its own.
+  if (created || approval.requesterAgentId === (input.requesterAgentId || null)) {
+    return postApprovalCard({ companyId: input.companyId, approval, threadId: input.cardThreadId });
+  }
   return approval;
 }
 
@@ -82,8 +108,15 @@ export async function resolveApproval(input: {
   resolverUserId?: string | null;
   status: ApprovalDecision;
   resolutionNote?: string | null;
+  /**
+   * "Always allow" (0.30.1): also set the requesting agent's own permission for
+   * this action to "allowed". The caller (PATCH /api/approvals/[id]) checks it
+   * is an action ask and the person may change the agent's permissions.
+   */
+  alwaysAllow?: boolean;
 }) {
-  const [approval] = await db.update(approvals).set({
+  const alwaysAllow = input.alwaysAllow === true && input.status === "approved";
+  let [approval] = await db.update(approvals).set({
     status: input.status,
     resolverUserId: input.resolverUserId || null,
     resolutionNote: input.resolutionNote || null,
@@ -98,6 +131,28 @@ export async function resolveApproval(input: {
   if (!approval) {
     const [existing] = await db.select().from(approvals).where(and(eq(approvals.companyId, input.companyId), eq(approvals.id, input.approvalId))).limit(1);
     return existing ?? null;
+  }
+
+  // Only the request that decided it changes the permission (a repeat is a no-op above).
+  // The approval is marked "always allowed" only once the permission is saved,
+  // so the card and the agent's message never claim a permission that failed:
+  // on failure it stays an ordinary one-use approval.
+  if (alwaysAllow && approval.requesterAgentId && input.resolverUserId) {
+    try {
+      await updateActionPolicies({
+        companyId: input.companyId,
+        agentId: approval.requesterAgentId,
+        changes: { [approval.actionType]: "allowed" },
+        actorUserId: input.resolverUserId,
+      });
+      const [marked] = await db.update(approvals)
+        .set({ metadataJson: sql`${approvals.metadataJson} || ${JSON.stringify({ [ALWAYS_ALLOWED_KEY]: true })}::jsonb` })
+        .where(and(eq(approvals.companyId, input.companyId), eq(approvals.id, approval.id)))
+        .returning();
+      if (marked) approval = marked;
+    } catch (error) {
+      console.warn("[approvals] could not save always-allow:", error instanceof Error ? error.message : error);
+    }
   }
 
   const linkedTaskRows = await loadLinkedTasks(input.companyId, approval.id);
@@ -375,6 +430,9 @@ export async function requestApprovalForTasks(input: {
   rationale?: string | null;
   actionType?: string;
   confidence?: number;
+  // Where the ask was made (lib/approval-card.ts resolveApprovalThread).
+  threadId?: unknown;
+  replyToMessageId?: unknown;
 }) {
   const taskIds = [...new Set(input.taskIds.filter((id) => typeof id === "string" && /^[0-9a-f-]{36}$/i.test(id)))];
   if (taskIds.length === 0) throw new ApprovalRequestError("taskIds are required", 400);
@@ -385,6 +443,19 @@ export async function requestApprovalForTasks(input: {
   if (projectIds.length !== 1) throw new ApprovalRequestError("An approval covers tasks of one project", 400);
   if (!input.rationale || !input.rationale.trim()) throw new ApprovalRequestError("Say what needs approval and why (rationale)", 400);
 
+  let cardThreadId: string | null;
+  try {
+    cardThreadId = await resolveApprovalThread({
+      companyId: input.companyId,
+      requesterAgentId: input.requesterAgentId ?? null,
+      threadId: input.threadId,
+      replyToMessageId: input.replyToMessageId,
+    });
+  } catch (error) {
+    if (error instanceof ApprovalThreadError) throw new ApprovalRequestError(error.message, error.status);
+    throw error;
+  }
+
   const approval = await createApprovalRequest({
     companyId: input.companyId,
     projectId: projectIds[0],
@@ -394,6 +465,7 @@ export async function requestApprovalForTasks(input: {
     confidence: input.confidence ?? 0,
     actionType: input.actionType || "task_done",
     metadataJson: { createdBy: "agent_request" },
+    cardThreadId,
   });
 
   // Waiting on a person is the review state.
@@ -411,7 +483,9 @@ export async function requestApprovalForTasks(input: {
 function actionDecisionMessage(approval: typeof approvals.$inferSelect): { text: string; deliveryState: "queued" } {
   const label = actionLabel(approval.actionType);
   const note = approval.resolutionNote?.trim() ? `: "${approval.resolutionNote.trim()}"` : ".";
-  const text = approval.status === "approved"
+  const text = approval.status === "approved" && wasAlwaysAllowed(approval.metadataJson)
+    ? `Approval ${approval.id} granted for "${label}"${note}\n\nRepeat the call now, and you may now do this without asking: "${label}" is always allowed for you from now on.`
+    : approval.status === "approved"
     ? `Approval ${approval.id} granted for "${label}"${note}\n\nRepeat the exact same call once now (same arguments; for check_action, the same details). It is good for one use within 24 hours.`
     : approval.status === "expired"
       ? `Approval ${approval.id} for "${label}" expired without a decision — do NOT do it. Ask again only if it is still needed.`
@@ -419,17 +493,35 @@ function actionDecisionMessage(approval: typeof approvals.$inferSelect): { text:
   return { text, deliveryState: "queued" };
 }
 
+/** The display name of the person who decided, or null (expired, or no name set). */
+async function deciderName(companyId: string, approval: typeof approvals.$inferSelect): Promise<string | null> {
+  if (!approval.resolverUserId) return null;
+  const [user] = await db.select({ displayName: users.displayName }).from(users)
+    .innerJoin(companyMembers, and(eq(companyMembers.userId, users.id), eq(companyMembers.companyId, companyId)))
+    .where(eq(users.id, approval.resolverUserId)).limit(1);
+  return user?.displayName?.trim() || null;
+}
+
 /**
  * The agent learns the decision right away (it used to find out only when it
- * next looked at the task): a message in its direct thread, addressed to it,
- * with the note and what to do next.
+ * next looked at the task): a message addressed to it, with the note and what
+ * to do next, in its direct thread. When the approval card was posted in a
+ * shared thread (a group, a task thread), the people there see a neutral
+ * notice instead (outcome, who decided, approval id): the note and the task
+ * links may be private to the agent and the deciders. Only the direct message
+ * can wake the agent. An approval without a card (or whose thread is gone or
+ * archived) uses the direct thread alone, as before.
  */
 async function tellAgentAboutDecision(companyId: string, approval: typeof approvals.$inferSelect, linked: (typeof tasks.$inferSelect)[]) {
+  await markApprovalCardDecided(companyId, approval);
   try {
     const agentId = approval.requesterAgentId ?? linked.find((t) => t.assignedAgentId)?.assignedAgentId ?? null;
     if (!agentId) return;
     const { appendThreadMessage, ensureDirectThread } = await import("./control-plane");
-    const thread = await ensureDirectThread(companyId, agentId, null);
+    const cardThread = await approvalDecisionThread(companyId, approval);
+    const cardInDirect = Boolean(cardThread && cardThread.type === "direct" && cardThread.directAgentId === agentId);
+    const thread = cardThread && cardInDirect ? cardThread : await ensureDirectThread(companyId, agentId, null);
+    const sharedCardThread = cardThread && !cardInDirect ? cardThread : null;
     const refs = linked.map((t) => {
       const input = t.inputJson && typeof t.inputJson === "object" ? t.inputJson as Record<string, unknown> : {};
       const title = typeof input.title === "string" && input.title.trim() ? input.title.trim() : t.taskType;
@@ -443,7 +535,7 @@ async function tellAgentAboutDecision(companyId: string, approval: typeof approv
         refs,
         note: approval.resolutionNote,
       });
-    await appendThreadMessage({
+    const decision = await appendThreadMessage({
       companyId,
       threadId: thread.id,
       senderType: "system",
@@ -451,8 +543,32 @@ async function tellAgentAboutDecision(companyId: string, approval: typeof approv
       text: message.text,
       // Queued (the runtime acts on it) unless there is nothing left to do.
       deliveryState: message.deliveryState,
-      metadataJson: { approvalDecision: approval.status, approvalId: approval.id },
+      metadataJson: {
+        approvalDecision: approval.status,
+        approvalId: approval.id,
+        ...(cardInDirect && approval.cardMessageId ? { [APPROVAL_DECISION_FOR_KEY]: approval.cardMessageId } : {}),
+      },
     });
+    await broadcastMcpEvent(companyId, { type: "thread_message", threadId: thread.id, message: decision });
+
+    // The people in a shared card thread see the outcome right away, without the note.
+    if (sharedCardThread) {
+      const notice = await appendThreadMessage({
+        companyId,
+        threadId: sharedCardThread.id,
+        senderType: "system",
+        // Addressed to nobody and already delivered: the notice wakes no agent.
+        targetAgentId: null,
+        text: approvalDecisionNoticeText({ approvalId: approval.id, status: approval.status, deciderName: await deciderName(companyId, approval) }),
+        deliveryState: "resolved",
+        metadataJson: {
+          approvalDecision: approval.status,
+          approvalId: approval.id,
+          ...(approval.cardMessageId ? { [APPROVAL_DECISION_FOR_KEY]: approval.cardMessageId } : {}),
+        },
+      });
+      await broadcastMcpEvent(companyId, { type: "thread_message", threadId: sharedCardThread.id, message: notice });
+    }
   } catch (error) {
     console.warn("[approvals] could not tell the agent:", error instanceof Error ? error.message : error);
   }

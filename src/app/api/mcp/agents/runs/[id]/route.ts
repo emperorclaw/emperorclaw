@@ -6,6 +6,7 @@ import { resolveBoundAgentId, verifyMcpToken } from "@/lib/mcp";
 import { mcpActingAgentId, mcpTokenMayUseMessageId } from "@/lib/thread-access";
 import { consumeRateLimit } from "@/lib/rate-limit";
 import { attributeFinishedRun } from "@/lib/run-task-attribution-store";
+import { scheduleCostBrakeEvaluation } from "@/lib/cost-brake-store";
 import { clampRunTimestamp, computeRunDurationMs, finishRunSchema, finishUsageColumns, payloadTooLarge, truncateRunError } from "@/lib/run-ledger";
 
 const RUNS_PER_MINUTE = 2_000;
@@ -27,6 +28,17 @@ async function withFinishAttribution(run: RunRow): Promise<RunRow> {
         console.warn("run finish task attribution failed:", err);
         return run;
     }
+}
+
+/**
+ * A finished run's response, after task attribution. The cost brake (shadow
+ * mode, 0.30) is evaluated here because this is when the run's spend becomes
+ * known; it runs in the background, so it never delays, fails or changes the finish.
+ */
+async function finishedRunResponse(run: RunRow): Promise<NextResponse> {
+    const attributed = await withFinishAttribution(run);
+    scheduleCostBrakeEvaluation(attributed);
+    return NextResponse.json({ run: attributed });
 }
 
 /**
@@ -126,7 +138,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
                 ...(boundAgentId ? [eq(agentRuns.agentId, boundAgentId)] : []),
             ))
             .returning();
-        if (updated) return NextResponse.json({ run: await withFinishAttribution(updated) });
+        if (updated) return await finishedRunResponse(updated);
 
         // Unknown id (start lost): create the row from what the finish carries.
         const startedAt = new Date(endedAt.getTime() - (input.durationMs ?? 0));
@@ -152,7 +164,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
             })
             .onConflictDoNothing({ target: agentRuns.id })
             .returning();
-        if (inserted) return NextResponse.json({ run: await withFinishAttribution(inserted) });
+        if (inserted) return await finishedRunResponse(inserted);
 
         // Lost the race with a concurrent start/finish. The row now exists:
         // return it (terminal no-op) or report a cross-company id collision.

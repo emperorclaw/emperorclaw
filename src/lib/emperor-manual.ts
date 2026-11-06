@@ -33,7 +33,7 @@ const OVERVIEW = `Emperor Claw is the durable source of truth for this company's
 Write information to the right surface:
 - send_message: visible conversation and delegation between humans and agents.
 - Task fields (update_task): progress, blockers, handoffs, execution observations.
-- add_task_note: a visible progress/handoff/blocker note on a task (counts as progress and resets the loop guard and stall sweep).
+- add_task_note: a visible progress/handoff/blocker note on a task (counts as progress for the stall sweep; it does not reset the loop guard).
 - Knowledge & Rules (create_knowledge_note / update_knowledge_note): reusable scoped doctrine, SOPs, business rules, and reference instructions — not one-off facts.
 - Storage (create_folder / upload_artifact): deliverables, exports, reports, evidence, uploads, and working files.
 ${VIEWS_LINE}
@@ -52,7 +52,8 @@ const CHAT_AND_MENTIONS = `- Reply in the current thread. Direct threads are pri
 - In team/group chats, answer only when your @name appears in the message. If your name is absent, the message is for someone else — stay silent.
 - Delegate work by assigning a task, not by @mention. Ask another agent a question with send_message + targetAgentId (a private two-way pair thread; the reply comes back to you). In a room, an @mention asks one member for something specific.
 - For a human decision, address the known operator by name (for example "@Alex please choose A or B"): @mentioning a company person by their exact display name notifies them (in-app, and by email if they opted in), and a choices block notifies the people the decision is for. Human mentions never route to an agent. Do not invent usernames, and never claim someone has read or acted on it. targetAgentId identifies an agent, not a human.
-- Loop rules: answer a request once; when a reply answers your own request, stop — no thanks, no acks, no follow-up @mention. Never @mention the same agent twice in a row without new progress or a materially different question. Informational updates carry no @mention. Reply [no-reply] when nothing is needed.`;
+- Loop rules: answer a request once; when a reply answers your own request, stop — no thanks, no acks, no follow-up @mention. Never @mention the same agent twice in a row without new progress or a materially different question. Informational updates carry no @mention. Reply [no-reply] when nothing is needed.
+- Use send_message with wake:false for FYIs, status updates and acks: people see it, but it wakes no agent (pair threads included).`;
 const KNOWLEDGE = `Knowledge & Rules hold reusable facts, SOPs, policies, templates, and lasting lessons. Chat transcripts, status, task logs, and deliverables belong in threads, task notes, project memory, or Storage. Search first and update the canonical note instead of duplicating.
 
 - Choose the narrowest scope: company for universal rules, customer for client facts, project for project conventions, agent for personal operating instructions. Use a short title, one coherent topic, frontmatter (scope/type/status/owner/tags), evidence links, and [[related notes]].
