@@ -9,6 +9,8 @@ import { useCopy } from "@/lib/i18n/use-copy";
 import { IconArrowUp, IconPaperclip, IconPlayerStop, IconRobot, IconMicrophone, IconSend, IconSquare, IconTrash, IconUser } from "@tabler/icons-react";
 import { DeliveryInspector } from "@/components/delivery-inspector";
 import { ApprovalCard } from "@/components/approval-card";
+import { TypingReveal } from "@/components/typing-reveal";
+import { markLiveReveal } from "@/lib/typing-reveal";
 import { approvalCardIdOf } from "@/lib/approval-card-copy";
 import { isPersistedUuid } from "@/lib/run-ledger-copy";
 import { cn } from "@/lib/utils";
@@ -266,6 +268,8 @@ export function AgentDirectChat({
                     return update && JSON.stringify(update) !== JSON.stringify(message) ? update : message;
                 });
                 const appended = nextMessages.filter((message) => !existingIds.has(message.id));
+                // Agent replies arriving after the first load type themselves in (never history).
+                if (prev.length > 0) markLiveReveal(appended);
                 if (appended.length > 0 && !isAtBottomRef.current && since) {
                     setUnreadCount((count) => count + appended.length);
                 }
@@ -869,6 +873,10 @@ export function AgentDirectChat({
                                                     <RichMessageActionsContext.Provider value={{ sendPrompt: sendWidgetPrompt, laterReplies: laterHumanTexts(messages, i) }}>
                                                         <MessageContent text={message.text} isHuman={isHuman} />
                                                     </RichMessageActionsContext.Provider>
+                                                ) : message.senderType === "agent" && !isRich ? (
+                                                    <TypingReveal messageId={message.id} text={message.text}>
+                                                        <MessageContent text={message.text} isHuman={isHuman} />
+                                                    </TypingReveal>
                                                 ) : (
                                                     <MessageContent text={message.text} isHuman={isHuman} />
                                                 )}

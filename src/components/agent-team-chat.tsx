@@ -14,6 +14,8 @@ import { AttachmentChip, isAttachmentRef, type AttachmentRef } from "@/component
 import { MessageReasoningDisclosure } from "@/components/message-reasoning-disclosure";
 import { DeliveryInspector } from "@/components/delivery-inspector";
 import { ApprovalCard } from "@/components/approval-card";
+import { TypingReveal } from "@/components/typing-reveal";
+import { markLiveReveal } from "@/lib/typing-reveal";
 import { approvalCardIdOf } from "@/lib/approval-card-copy";
 import { isPersistedUuid } from "@/lib/run-ledger-copy";
 import { agentAvatarSrc } from "@/lib/avatar";
@@ -279,6 +281,8 @@ export function AgentTeamChat({
                     const existingIds = new Set(prev.map((m) => m.id));
                     const newMessages = nextMessages.filter((m) => !existingIds.has(m.id));
                     if (newMessages.length === 0) return prev;
+                    // Agent replies arriving after the first load type themselves in (never history).
+                    if (seen) markLiveReveal(newMessages);
                     if (!isAtBottomRef.current) {
                         setUnreadCount((count) => count + newMessages.length);
                     }
@@ -653,7 +657,13 @@ export function AgentTeamChat({
                                                         send={sendTeamWidgetPrompt}
                                                         laterReplies={hasChoicesBlock(msg.text) ? laterTeamReplies(messages, i, getAgentName(senderId)) : undefined}
                                                     >
-                                                        <ParsedMessage text={msg.text} />
+                                                        {msg.senderType === "agent" && !isRich ? (
+                                                            <TypingReveal messageId={msg.id} text={msg.text}>
+                                                                <ParsedMessage text={msg.text} />
+                                                            </TypingReveal>
+                                                        ) : (
+                                                            <ParsedMessage text={msg.text} />
+                                                        )}
                                                     </AgentMessageActions>
                                                 )}
                                                 {isPauseNotice && (
