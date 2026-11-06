@@ -6,7 +6,7 @@ import { resolveBoundAgentId, verifyMcpToken } from "@/lib/mcp";
 import { mcpActingAgentId, mcpTokenMayUseMessageId } from "@/lib/thread-access";
 import { consumeRateLimit } from "@/lib/rate-limit";
 import { attributeFinishedRun } from "@/lib/run-task-attribution-store";
-import { evaluateCostBrakeAfterRun } from "@/lib/cost-brake-store";
+import { scheduleCostBrakeEvaluation } from "@/lib/cost-brake-store";
 import { clampRunTimestamp, computeRunDurationMs, finishRunSchema, finishUsageColumns, payloadTooLarge, truncateRunError } from "@/lib/run-ledger";
 
 const RUNS_PER_MINUTE = 2_000;
@@ -33,11 +33,11 @@ async function withFinishAttribution(run: RunRow): Promise<RunRow> {
 /**
  * A finished run's response, after task attribution. The cost brake (shadow
  * mode, 0.30) is evaluated here because this is when the run's spend becomes
- * known; it is best-effort and never fails or changes the finish.
+ * known; it runs in the background, so it never delays, fails or changes the finish.
  */
 async function finishedRunResponse(run: RunRow): Promise<NextResponse> {
     const attributed = await withFinishAttribution(run);
-    await evaluateCostBrakeAfterRun(attributed);
+    scheduleCostBrakeEvaluation(attributed);
     return NextResponse.json({ run: attributed });
 }
 

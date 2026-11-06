@@ -178,6 +178,9 @@ async function finishRun(rawToken: string, runId: string, inputTokens: number) {
         method: "PATCH", headers: { authorization: `Bearer ${rawToken}` }, body: { status: "succeeded", inputTokens, outputTokens: 0 },
     }), { params: Promise.resolve({ id: runId }) });
     assert.equal(res.status, 200, await res.clone().text());
+    // The evaluation runs after the response; wait for it before asserting.
+    const { waitForCostBrakeEvaluations } = await import("@/lib/cost-brake-store");
+    await waitForCostBrakeEvaluations();
     return res.json();
 }
 

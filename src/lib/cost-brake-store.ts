@@ -225,6 +225,27 @@ export async function evaluateCostBrakeAfterRun(
     }
 }
 
+const pendingEvaluations = new Set<Promise<unknown>>();
+
+/**
+ * Evaluate the cost brake for a finished run in the background, so the run
+ * finish never waits on it (the server is a long-lived Node process). Never
+ * throws or rejects.
+ */
+export function scheduleCostBrakeEvaluation(run: FinishedRun): void {
+    const pending = evaluateCostBrakeAfterRun(run).catch((error: unknown) => {
+        console.warn("[cost-brake] background evaluation failed:", error instanceof Error ? error.message : error);
+        return null;
+    });
+    pendingEvaluations.add(pending);
+    void pending.finally(() => pendingEvaluations.delete(pending));
+}
+
+/** Wait for the background evaluations started so far (tests). */
+export async function waitForCostBrakeEvaluations(): Promise<void> {
+    while (pendingEvaluations.size > 0) await Promise.all([...pendingEvaluations]);
+}
+
 /**
  * Record one would-brake decision per scope episode (advisory lock + "already
  * recorded" check, like the loop-guard notice). Returns true when a new row
