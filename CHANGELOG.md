@@ -9,6 +9,13 @@ tagged (e.g. `## [1.2.0] — 2026-07-22`). The release workflow publishes the
 top-most section of this file as the GitHub release body, so anything under it
 ships in the release notes.
 
+## [Unreleased]
+
+### Added
+
+- **"Always allow" on approval cards.** When an agent asks permission for an action (send email, deploy, create a project...), owners and admins can answer with **Always allow**: it approves this request and sets that agent's own permission for the action to allowed, so it won't ask again. Only that agent changes, never the company defaults; the change is recorded in the activity log, and the card then reads "Approved · always allowed for <agent>".
+- **Agent replies type themselves in.** A new agent reply that arrives while you have the chat open now appears word by word for a moment (at most about 1.5 seconds), then shows exactly as before. History never animates, and nothing animates when your system asks for reduced motion.
+
 ## [0.30.0] — 2026-11-06
 
 ### Added
