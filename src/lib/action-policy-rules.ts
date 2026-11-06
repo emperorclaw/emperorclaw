@@ -145,8 +145,16 @@ export const ALWAYS_ALLOWED_KEY = "alwaysAllowed";
  * action-permission ask by an agent, for an action in the catalog. Task
  * closes and other human-decided approvals are not permissions.
  */
+/**
+ * Irreversible actions keep asking: one tired click on a card must not turn
+ * spending, deleting or deploying into a standing permission. Allowing them
+ * stays a deliberate change in the agent's Actions settings.
+ */
+const NEVER_ALWAYS_ALLOW: ReadonlySet<string> = new Set(["spend_money", "delete_data", "deploy"]);
+
 export function isAlwaysAllowableAsk(approval: { metadataJson: unknown; actionType: string; requesterAgentId: string | null }): boolean {
-    return isActionApproval(approval) && Boolean(approval.requesterAgentId) && isActionKey(approval.actionType);
+    return isActionApproval(approval) && Boolean(approval.requesterAgentId) && isActionKey(approval.actionType)
+        && !NEVER_ALWAYS_ALLOW.has(approval.actionType);
 }
 
 /** Was this approval decided with "Always allow"? */

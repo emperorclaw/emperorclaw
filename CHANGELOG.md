@@ -13,7 +13,7 @@ ships in the release notes.
 
 ### Added
 
-- **"Always allow" on approval cards.** When an agent asks permission for an action (send email, deploy, create a project...), owners and admins can answer with **Always allow**: it approves this request and sets that agent's own permission for the action to allowed, so it won't ask again. Only that agent changes, never the company defaults; the change is recorded in the activity log, and the card then reads "Approved · always allowed for <agent>".
+- **"Always allow" on approval cards.** When an agent asks permission for an action (send email, post on social media, create a project...), owners and admins can answer with **Always allow**: it approves this request and sets that agent's own permission for the action to allowed, so it won't ask again. Only that agent changes, never the company defaults; the change is recorded in the activity log, and the card then reads "Approved · always allowed for <agent>". Spending money, deleting data and deploying to production always keep asking; allow those deliberately in the agent's Actions settings.
 - **Agent replies type themselves in.** A new agent reply that arrives while you have the chat open now appears word by word for a moment (at most about 1.5 seconds), then shows exactly as before. History never animates, and nothing animates when your system asks for reduced motion.
 
 ## [0.30.0] — 2026-11-06

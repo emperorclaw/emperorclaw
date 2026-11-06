@@ -248,6 +248,9 @@ test("always-allow applies only to an agent's action-permission ask for a catalo
     assert.equal(isAlwaysAllowableAsk({ ...ask, requesterAgentId: null }), false, "no agent to allow");
     assert.equal(isAlwaysAllowableAsk({ ...ask, actionType: "task_done", metadataJson: {} }), false, "a task close is not a permission");
     assert.equal(isAlwaysAllowableAsk({ ...ask, actionType: "not_in_catalog" }), false);
+    for (const irreversible of ["spend_money", "delete_data", "deploy"]) {
+        assert.equal(isAlwaysAllowableAsk({ ...ask, actionType: irreversible }), false, `${irreversible} keeps asking`);
+    }
     assert.equal(wasAlwaysAllowed({ kind: ACTION_APPROVAL_KIND, alwaysAllowed: true }), true);
     assert.equal(wasAlwaysAllowed({ kind: ACTION_APPROVAL_KIND }), false);
     assert.equal(wasAlwaysAllowed(null), false);
