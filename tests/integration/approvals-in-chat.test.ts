@@ -134,8 +134,12 @@ maybe("a verified reply places the card in the thread of the message it answers"
     assert.equal((await cardsIn(w.group.id)).length, 1);
 });
 
-maybe("deciding from the card posts the decision in the same thread and updates the card", async () => {
+maybe("deciding from a group card posts a neutral notice there and the full decision to the requester's direct thread", async () => {
     const w = await world();
+    const db = await getDb();
+    const { threadMessages, users } = await getSchema();
+    const { eq } = await import("drizzle-orm");
+    await db.update(users).set({ displayName: "Olivia Owner" }).where(eq(users.id, w.owner.userId));
     const { requestApprovalForTasks } = await import("@/lib/approvals");
     const approval = (await requestApprovalForTasks({ companyId: w.companyId, taskIds: [w.task.id], requesterAgentId: w.builder.id, rationale: SECRET_RATIONALE, threadId: w.group.id }))!;
 
@@ -145,25 +149,88 @@ maybe("deciding from the card posts the decision in the same thread and updates 
     actAs(null);
     assert.equal(decided.status, 200, decided.text);
 
-    const db = await getDb();
-    const { threadMessages } = await getSchema();
-    const { eq } = await import("drizzle-orm");
+    // The group sees a neutral notice: outcome, who decided, approval id. No note, no task link, wakes nobody.
     const inGroup = await db.select().from(threadMessages).where(eq(threadMessages.threadId, w.group.id));
-    const decision = inGroup.find((m) => (m.metadataJson as Record<string, unknown>).approvalDecision === "rejected");
-    assert.ok(decision, "the decision lands in the card's thread");
-    assert.equal(decision.targetAgentId, w.builder.id, "addressed to the requester");
-    assert.equal(decision.deliveryState, "queued", "the requester is woken as before");
-    assert.equal((decision.metadataJson as Record<string, unknown>).approvalDecisionFor, approval.cardMessageId);
-    assert.ok(decision.text.includes("Add the screenshots"));
+    const notices = inGroup.filter((m) => (m.metadataJson as Record<string, unknown>).approvalDecision === "rejected");
+    assert.equal(notices.length, 1, "one notice in the card's thread");
+    const [notice] = notices;
+    assert.equal(notice.senderType, "system");
+    assert.equal(notice.targetAgentId, null, "the notice wakes nobody");
+    assert.equal(notice.deliveryState, "resolved");
+    assert.equal((notice.metadataJson as Record<string, unknown>).approvalDecisionFor, approval.cardMessageId);
+    assert.equal(notice.text, `Approval ${approval.id} rejected by Olivia Owner.`);
+    for (const leak of ["Add the screenshots", "emperor://task", "landing page"]) assert.ok(!notice.text.includes(leak), `notice leaks ${leak}: ${notice.text}`);
 
     const [card] = await cardsIn(w.group.id);
     assert.equal(((card.metadataJson as Record<string, unknown>).approvalCard as Record<string, unknown>).status, "rejected");
 
-    // Nothing went to the direct thread.
+    // The requester gets the full decision, with the note, in its direct thread, and is woken by it alone.
     const { ensureDirectThread } = await import("@/lib/control-plane");
     const direct = await ensureDirectThread(w.companyId, w.builder.id, null);
-    const inDirect = await db.select().from(threadMessages).where(eq(threadMessages.threadId, direct.id));
-    assert.equal(inDirect.filter((m) => (m.metadataJson as Record<string, unknown>).approvalDecision).length, 0);
+    const inDirect = (await db.select().from(threadMessages).where(eq(threadMessages.threadId, direct.id)))
+        .filter((m) => (m.metadataJson as Record<string, unknown>).approvalDecision);
+    assert.equal(inDirect.length, 1);
+    const [decision] = inDirect;
+    assert.equal(decision.targetAgentId, w.builder.id, "addressed to the requester");
+    assert.equal(decision.deliveryState, "queued", "the requester is woken as before");
+    assert.ok(decision.text.includes("Add the screenshots"));
+    assert.ok(decision.text.includes(`emperor://task/${w.task.id}`));
+    assert.equal((decision.metadataJson as Record<string, unknown>).approvalDecisionFor, undefined, "the card is not in the direct thread");
+
+    const woken = [...inGroup, ...inDirect].filter((m) => m.targetAgentId === w.builder.id && (m.metadataJson as Record<string, unknown>).approvalDecision);
+    assert.equal(woken.length, 1, "the agent is woken exactly once");
+});
+
+maybe("a card in the requester's direct thread gets the full decision there, once", async () => {
+    const w = await world();
+    const { requestApprovalForTasks, resolveApproval } = await import("@/lib/approvals");
+    const approval = (await requestApprovalForTasks({ companyId: w.companyId, taskIds: [w.task.id], requesterAgentId: w.builder.id, rationale: "Ready" }))!;
+    await resolveApproval({ companyId: w.companyId, approvalId: approval.id, resolverUserId: w.owner.userId, status: "rejected", resolutionNote: "Add the screenshots" });
+
+    const db = await getDb();
+    const { threadMessages } = await getSchema();
+    const { eq } = await import("drizzle-orm");
+    const decisions = (await db.select().from(threadMessages).where(eq(threadMessages.threadId, approval.threadId!)))
+        .filter((m) => (m.metadataJson as Record<string, unknown>).approvalDecision);
+    assert.equal(decisions.length, 1);
+    assert.equal(decisions[0].targetAgentId, w.builder.id);
+    assert.equal(decisions[0].deliveryState, "queued");
+    assert.ok(decisions[0].text.includes("Add the screenshots"));
+    assert.equal((decisions[0].metadataJson as Record<string, unknown>).approvalDecisionFor, approval.cardMessageId);
+});
+
+maybe("a group member without access to the approval's project does not see the resolution note", async () => {
+    await resetDb();
+    const db = await getDb();
+    const { users, companies, tasks } = await getSchema();
+    const [creator] = await db.insert(users).values({ email: `c-${randomUUID()}@example.com`, passwordHash: "x" }).returning();
+    const [company] = await db.insert(companies).values({ name: "Note Co", createdByUserId: creator.id }).returning();
+    const companyId = company.id;
+    const work = await seedTwoTenantsOfWork(companyId);
+    const agent = await seedAgent(companyId, { name: "Builder" });
+    const { eq } = await import("drizzle-orm");
+    await db.update(tasks).set({ assignedAgentId: agent.id }).where(eq(tasks.id, work.taskIn.id));
+    const owner = await seedHuman(companyId, "owner");
+    // Works with the agent, but only for the other customer: the approval's project is out of scope.
+    const outsider = await seedHuman(companyId, "member", { scope: { mode: "restricted", agentIds: [agent.id], customerIds: [work.customerOut.id] } });
+    const { createGroup } = await import("@/lib/groups");
+    const group = await createGroup(companyId, { type: "human", id: owner.userId }, { title: "Mixed", agentIds: [agent.id], humanUserIds: [outsider.userId] });
+
+    const { requestApprovalForTasks, resolveApproval } = await import("@/lib/approvals");
+    const approval = (await requestApprovalForTasks({ companyId, taskIds: [work.taskIn.id], requesterAgentId: agent.id, rationale: SECRET_RATIONALE, threadId: group.id }))!;
+    assert.equal(approval.threadId, group.id);
+    const SECRET_NOTE = "Offer floor is 8,100 EUR";
+    await resolveApproval({ companyId, approvalId: approval.id, resolverUserId: owner.userId, status: "approved", resolutionNote: SECRET_NOTE });
+
+    actAs(outsider);
+    try {
+        const chat = await call((await import("@/app/api/chat/route")).GET, `/api/chat?threadId=${group.id}`);
+        assert.equal(chat.status, 200, chat.text);
+        assert.ok(chat.text.includes(`Approval ${approval.id} approved`), "the member sees the outcome");
+        for (const leak of [SECRET_NOTE, "8,100", "emperor://task", "ceo@acme.example"]) assert.ok(!chat.text.includes(leak), `group thread leaks ${leak}`);
+    } finally {
+        actAs(null);
+    }
 });
 
 maybe("an approval from before cards still delivers its decision to the direct thread", async () => {

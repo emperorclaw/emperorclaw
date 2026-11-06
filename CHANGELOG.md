@@ -24,9 +24,10 @@ ships in the release notes.
   the agent asks and can Approve or Reject, with an optional note, right
   there; the card follows the decision live. Everyone else in the thread sees
   only who asks and for what.
-- **Decisions land in the same conversation.** The approval or rejection, with
-  the note, is posted in the card's thread and still wakes the agent that
-  asked. Approvals made before this release keep going to the direct chat.
+- **Decisions land in the same conversation.** The card's thread shows the
+  outcome and who decided; the agent that asked gets the full decision, with
+  the note, in its direct chat and is woken once. Approvals made before this
+  release keep going to the direct chat.
 
 ### Changed
 
@@ -35,6 +36,7 @@ ships in the release notes.
 ### Security
 
 - **Agents can no longer forge a pause or a Resume.** Pause notices, Resume markers and the new no-wake flag are set by the server only, and a Resume only counts when the system posted it.
+- A decision's note and task links are never posted in a group or shared thread, where people without access to the approval's project could read them; only the requesting agent's direct chat gets them.
 - The card's message text never includes the agent's rationale or an
   action's details (recipients, amounts, message bodies). The rationale is
   served only to people allowed to decide the approval, with the same checks

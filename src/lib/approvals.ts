@@ -3,7 +3,7 @@ import { and, desc, eq, inArray, isNull, lt, ne, notExists, or, sql } from "driz
 import { ACTION_APPROVAL_KIND, isActionApproval } from "./action-policy-rules";
 import { actionLabel } from "./action-policy";
 import { db } from "@/db";
-import { approvalTaskLinks, approvals, projects, taskEvents, tasks } from "@/db/schema";
+import { approvalTaskLinks, approvals, companyMembers, projects, taskEvents, tasks, users } from "@/db/schema";
 import { broadcastMcpEvent } from "./pubsub";
 import { TASK_STATES } from "./task-state";
 import { notifyApprovalRequested } from "./notifications";
@@ -19,7 +19,7 @@ import {
 import { auditTaskTitle, humanActor, recordAudits, taskChangeEntries } from "@/lib/audit";
 import { queueTaskOutcomeReport } from "@/lib/organization-routing";
 import { ApprovalThreadError, approvalDecisionThread, markApprovalCardDecided, postApprovalCard, resolveApprovalThread } from "./approval-card";
-import { APPROVAL_DECISION_FOR_KEY } from "./approval-card-copy";
+import { APPROVAL_DECISION_FOR_KEY, approvalDecisionNoticeText } from "./approval-card-copy";
 
 export async function createApprovalRequest(input: {
   companyId: string;
@@ -461,12 +461,24 @@ function actionDecisionMessage(approval: typeof approvals.$inferSelect): { text:
   return { text, deliveryState: "queued" };
 }
 
+/** The display name of the person who decided, or null (expired, or no name set). */
+async function deciderName(companyId: string, approval: typeof approvals.$inferSelect): Promise<string | null> {
+  if (!approval.resolverUserId) return null;
+  const [user] = await db.select({ displayName: users.displayName }).from(users)
+    .innerJoin(companyMembers, and(eq(companyMembers.userId, users.id), eq(companyMembers.companyId, companyId)))
+    .where(eq(users.id, approval.resolverUserId)).limit(1);
+  return user?.displayName?.trim() || null;
+}
+
 /**
  * The agent learns the decision right away (it used to find out only when it
  * next looked at the task): a message addressed to it, with the note and what
- * to do next. It lands in the thread the approval card was posted in, so the
- * people there see the outcome too; an approval without a card (or whose
- * thread is gone or archived) uses the agent's direct thread, as before.
+ * to do next, in its direct thread. When the approval card was posted in a
+ * shared thread (a group, a task thread), the people there see a neutral
+ * notice instead (outcome, who decided, approval id): the note and the task
+ * links may be private to the agent and the deciders. Only the direct message
+ * can wake the agent. An approval without a card (or whose thread is gone or
+ * archived) uses the direct thread alone, as before.
  */
 async function tellAgentAboutDecision(companyId: string, approval: typeof approvals.$inferSelect, linked: (typeof tasks.$inferSelect)[]) {
   await markApprovalCardDecided(companyId, approval);
@@ -475,7 +487,9 @@ async function tellAgentAboutDecision(companyId: string, approval: typeof approv
     if (!agentId) return;
     const { appendThreadMessage, ensureDirectThread } = await import("./control-plane");
     const cardThread = await approvalDecisionThread(companyId, approval);
-    const thread = cardThread ?? await ensureDirectThread(companyId, agentId, null);
+    const cardInDirect = Boolean(cardThread && cardThread.type === "direct" && cardThread.directAgentId === agentId);
+    const thread = cardThread && cardInDirect ? cardThread : await ensureDirectThread(companyId, agentId, null);
+    const sharedCardThread = cardThread && !cardInDirect ? cardThread : null;
     const refs = linked.map((t) => {
       const input = t.inputJson && typeof t.inputJson === "object" ? t.inputJson as Record<string, unknown> : {};
       const title = typeof input.title === "string" && input.title.trim() ? input.title.trim() : t.taskType;
@@ -500,11 +514,29 @@ async function tellAgentAboutDecision(companyId: string, approval: typeof approv
       metadataJson: {
         approvalDecision: approval.status,
         approvalId: approval.id,
-        ...(cardThread && approval.cardMessageId ? { [APPROVAL_DECISION_FOR_KEY]: approval.cardMessageId } : {}),
+        ...(cardInDirect && approval.cardMessageId ? { [APPROVAL_DECISION_FOR_KEY]: approval.cardMessageId } : {}),
       },
     });
-    // The people in the card's thread see the outcome right away.
-    if (cardThread) await broadcastMcpEvent(companyId, { type: "thread_message", threadId: cardThread.id, message: decision });
+    await broadcastMcpEvent(companyId, { type: "thread_message", threadId: thread.id, message: decision });
+
+    // The people in a shared card thread see the outcome right away, without the note.
+    if (sharedCardThread) {
+      const notice = await appendThreadMessage({
+        companyId,
+        threadId: sharedCardThread.id,
+        senderType: "system",
+        // Addressed to nobody and already delivered: the notice wakes no agent.
+        targetAgentId: null,
+        text: approvalDecisionNoticeText({ approvalId: approval.id, status: approval.status, deciderName: await deciderName(companyId, approval) }),
+        deliveryState: "resolved",
+        metadataJson: {
+          approvalDecision: approval.status,
+          approvalId: approval.id,
+          ...(approval.cardMessageId ? { [APPROVAL_DECISION_FOR_KEY]: approval.cardMessageId } : {}),
+        },
+      });
+      await broadcastMcpEvent(companyId, { type: "thread_message", threadId: sharedCardThread.id, message: notice });
+    }
   } catch (error) {
     console.warn("[approvals] could not tell the agent:", error instanceof Error ? error.message : error);
   }

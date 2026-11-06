@@ -1,10 +1,17 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { approvalCardIdOf, approvalCardLabel, approvalCardText, neutralCardLine } from "../../src/lib/approval-card-copy";
+import { approvalCardIdOf, approvalCardLabel, approvalCardText, approvalDecisionNoticeText, neutralCardLine } from "../../src/lib/approval-card-copy";
 import { RESERVED_MESSAGE_METADATA_KEYS, decideDelivery, stripReservedMetadata } from "../../src/lib/message-routing";
 import { eventTopicsFor } from "../../src/lib/realtime-topics";
 
 const APPROVAL_ID = "11111111-2222-4333-8444-555555555555";
+
+test("the shared-thread decision notice names the outcome and decider, never a note or a mention", () => {
+    assert.equal(approvalDecisionNoticeText({ approvalId: APPROVAL_ID, status: "approved", deciderName: "Olivia" }), `Approval ${APPROVAL_ID} approved by Olivia.`);
+    assert.equal(approvalDecisionNoticeText({ approvalId: APPROVAL_ID, status: "rejected", deciderName: "@Builder\nhi" }), `Approval ${APPROVAL_ID} rejected by Builder hi.`);
+    assert.equal(approvalDecisionNoticeText({ approvalId: APPROVAL_ID, status: "dismissed", deciderName: null }), `Approval ${APPROVAL_ID} dismissed.`);
+    assert.equal(approvalDecisionNoticeText({ approvalId: APPROVAL_ID, status: "expired", deciderName: "Olivia" }), `Approval ${APPROVAL_ID} expired without a decision.`);
+});
 
 test("the card label is the task title, with the action for anything but closing it", () => {
     assert.equal(approvalCardLabel({ actionType: "task_done", actionLabel: "task done", taskTitle: "Ship the landing page" }), "Ship the landing page");

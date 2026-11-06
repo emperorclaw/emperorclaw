@@ -133,6 +133,8 @@ There is no single "chat" topic: chats subscribe to `thread:<id>` topics, which 
 
 `tellAgentAboutDecision` (`approvals.ts:427`) changes from `ensureDirectThread(...)` to `approval.threadId ?? ensureDirectThread(...)`. The decision message keeps `targetAgentId = requester` and `deliveryState: "queued"`, so the requester is woken exactly as today. It also gets `metadataJson.approvalDecisionFor = approval.cardMessageId` so the UI can collapse it under the card. Expiry (`:228`) uses the same path.
 
+Amended in review (0.30.0): when the card's thread is not the requester's own direct thread (a group, a task thread), its members may lack access to the approval's project, so the note and task links must not be posted there. The card thread gets a neutral notice instead (status, who decided, approval id; system sender, no target, `resolved`, with `approvalDecisionFor`), and the full decision (note, task links, next steps) goes to the requester's direct thread, `queued` and targeted, so the agent is woken exactly once. A card in the requester's direct thread keeps the single full message.
+
 ## 6. Directed approver
 
 ### 6.1 Request
