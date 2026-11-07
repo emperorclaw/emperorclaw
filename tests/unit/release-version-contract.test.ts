@@ -43,6 +43,36 @@ test("no self-reporting route falls back to the stale package.json version", () 
     }
 });
 
+test("the managed runtime image follows the release the server itself runs", () => {
+    // The bridge and the runtime speak one protocol version, so provisioning the
+    // previous release's image is the same drift as reporting it: v0.31.1
+    // provisioned emperorclaw-hermes:v0.31.0 because this read package.json.
+    const source = read("src/lib/hermes-provisioning.ts");
+    assert.match(
+        source,
+        /export const HERMES_IMAGE = HERMES_IMAGE_OVERRIDE \|\| hermesImageForVersion\(appVersion\(\)\)/,
+        "HERMES_IMAGE must be tagged with appVersion(), not package.json",
+    );
+    assert.doesNotMatch(source, /pkg\.version/, "hermes-provisioning must not read the package.json version");
+    assert.match(source, /from "@\/lib\/app-version"/, "the release version comes from app-version.ts");
+});
+
+test("the build inlines the release tag for client components (login footer)", () => {
+    // A client component cannot read APP_VERSION at runtime, so the login footer
+    // needs the value inlined by next.config.ts — otherwise it is the one
+    // surface left reporting the stale package.json version.
+    const config = read("next.config.ts");
+    assert.match(
+        config,
+        /env:\s*\{\s*NEXT_PUBLIC_APP_VERSION:\s*process\.env\.APP_VERSION/,
+        "next.config.ts must inline APP_VERSION as NEXT_PUBLIC_APP_VERSION",
+    );
+    const login = read("src/app/(auth)/login/page.tsx");
+    assert.match(login, /process\.env\.NEXT_PUBLIC_APP_VERSION/, "the login footer must prefer the inlined tag");
+    assert.match(login, /v\{BUILD_VERSION\}/, "the login footer must render BUILD_VERSION, not pkg.version");
+    assert.doesNotMatch(login, /v\{pkg\.version\}/, "no surface renders the raw package.json version");
+});
+
 test("app-version keeps package.json as the documented fallback", () => {
     const source = read("src/lib/app-version.ts");
     assert.match(source, /process\.env\.APP_VERSION/, "the build version must be read from the environment");
