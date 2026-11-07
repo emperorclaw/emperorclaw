@@ -17,7 +17,7 @@ export async function POST(req: NextRequest) {
   if (error) return NextResponse.json({ error }, { status });
   if (cachedResponse) return NextResponse.json(cachedResponse);
 
-  const { agentId: requestedAgentId, strictOwnerRole = true, allowedRoles = [] } = await req.json();
+  const { agentId: requestedAgentId, strictOwnerRole = true, allowedRoles = [], owner } = await req.json();
   // A bound token claims only for its own agent (whose scope then applies).
   const scoped = await mcpRouteAccess(companyId, auth.companyToken!, requestedAgentId);
   if (scoped.response) return scoped.response;
@@ -33,6 +33,7 @@ export async function POST(req: NextRequest) {
       agentId,
       strictOwnerRole,
       allowedRoles,
+      owner: typeof owner === "string" ? owner : null,
     });
     await saveIdempotencyResponse(companyId, endpoint, requestHash!, res);
     return NextResponse.json(res);

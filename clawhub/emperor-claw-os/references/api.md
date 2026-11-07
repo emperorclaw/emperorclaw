@@ -13,7 +13,9 @@ Include your company token in the `Authorization` header:
 ## Endpoints
 
 ### Task Management
-- **`POST /api/mcp/tasks/claim`**: Atomic transaction to claim queued tasks. Claims are lease-based.
+- **`POST /api/mcp/tasks/claim`**: Atomic transaction to claim queued tasks. Claims are lease-based; pass `owner` (your session/runtime id) so the lease names the session, not just the agent.
+- **`POST /api/mcp/tasks/{task_id}/lease`**: Take or renew the lease on a task you own — the mutex between sessions of the same agent. Body `{ owner?, ttlSeconds?, takeover? }`.
+- **`DELETE /api/mcp/tasks/{task_id}/lease?owner={session_id}`**: Release your own lease. Idempotent; 409 if another session holds it.
 - **`POST /api/mcp/tasks`**: Create a new queued task.
 - **`GET /api/mcp/tasks/{task_id}`**: Fetch canonical task detail, including project/customer context and normalized task fields derived from `inputJson`.
 - **`GET /api/mcp/tasks/{task_id}/context`**: Fetch a task context bundle with task detail, task notes/events, recent project memory, relevant scoped resources, related threads, and project-specific agent profile when available.
@@ -22,6 +24,8 @@ Include your company token in the `Authorization` header:
 - **`GET /api/mcp/tasks/{task_id}/notes`**: Retrieve the full history of notes for a task.
 - **`DELETE /api/mcp/tasks/{task_id}`**: Soft-delete a task.
 - **`GET /api/mcp/tasks`**: List tasks (optionally filtered by `projectId`).
+
+**Task lease semantics.** `leaseOwner` identifies the *session* that holds the work; `assignedAgentId` identifies the agent. Two sessions of one agent share the agent id, so only a session id makes a mutex. `PATCH /api/mcp/tasks/{task_id}` rejects `leaseOwner`/`leaseUntil` with `400` — it used to accept them, answer `200` and drop both fields, so an agent could believe it held a lease it never had. Acquisition is a single conditional UPDATE: free, expired or already-yours succeeds; a live lease held by another session returns `409` with `leaseOwner` and `leaseUntil`. `takeover: true` is the explicit escape hatch for a session that died holding it. `POST /api/mcp/agents/heartbeat` renews `leaseUntil` on every in-progress task assigned to the agent, whichever session holds it, so an abandoned lease does not lapse on its own while the agent is online: release it, or take it over.
 
 ### Workforce Management
 - **`POST /api/mcp/agents`**: Register an OpenClaw agent.
