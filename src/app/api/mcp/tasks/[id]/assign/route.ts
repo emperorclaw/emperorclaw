@@ -21,7 +21,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   if (cachedResponse) return NextResponse.json(cachedResponse);
 
   const body = await req.json();
-  const { agentId, mode = "assign" } = body;
+  const { agentId, mode = "assign", owner } = body;
   if (!agentId) {
     return NextResponse.json({ error: "agentId is required" }, { status: 400 });
   }
@@ -39,7 +39,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     const actor = await mcpRouteAccess(companyId, auth.companyToken!, null);
     if (actor.response) return actor.response;
     await assertMcpMayAssign(companyId, actor.access, { agentId });
-    const result = await assignTaskToAgent({ companyId, taskId, agentId, mode, actorAgentId: auth.companyToken!.agentId ?? null, actor: mode === "claim" ? undefined : mcpActor(auth.companyToken!.agentId, auth.companyToken!.id) });
+    const result = await assignTaskToAgent({ companyId, taskId, agentId, mode, owner: typeof owner === "string" ? owner : null, actorAgentId: auth.companyToken!.agentId ?? null, actor: mode === "claim" ? undefined : mcpActor(auth.companyToken!.agentId, auth.companyToken!.id) });
     if ("error" in result) {
       return NextResponse.json({ error: result.error }, { status: result.status });
     }
