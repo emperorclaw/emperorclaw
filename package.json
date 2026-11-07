@@ -32,7 +32,8 @@
     "test:all": "npm run test && npm run test:integration",
     "db:migrate": "npx tsx src/db/migrate.ts",
     "storage:reconcile": "npx tsx scripts/reconcile-artifact-storage.ts",
-    "firmware:build": "npx tsx scripts/build-display-firmware.ts"
+    "firmware:build": "npx tsx scripts/build-display-firmware.ts",
+    "test:e2e": "playwright test -c tests/e2e/playwright.config.ts"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",
@@ -77,6 +78,7 @@
     "zod": "^4.3.6"
   },
   "devDependencies": {
+    "@playwright/test": "^1.64.0",
     "@types/node": "^20",
     "@types/nodemailer": "^7.0.11",
     "@types/pg": "^8.18.0",

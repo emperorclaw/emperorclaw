@@ -1007,10 +1007,12 @@
    Layered as a component default: any Tailwind transition-* utility on the
    control wins, so its own transform/translate/rotate transitions keep
    running. Framer-driven elements ([data-motion]) and drag sources
-   ([data-no-press], and anything inside one) never get it. */
+   ([data-no-press], and anything inside one) never get it.
+   Stretched links ([data-stretched-link], see below) never get it either:
+   scaling one would collapse the row-wide overlay it uses as its hit area. */
 @layer components {
   :is(.emperor-app-shell, [data-slot="dialog-content"], [data-slot="dropdown-menu-content"], [data-slot="popover-content"])
-    :is(button, a[href], [role="button"], [role="tab"], [role="menuitem"], summary):not(:disabled, [aria-disabled="true"], [data-disabled], [data-motion], [data-no-press], [data-no-press] *) {
+    :is(button, a[href], [role="button"], [role="tab"], [role="menuitem"], summary):not(:disabled, [aria-disabled="true"], [data-disabled], [data-motion], [data-no-press], [data-no-press] *, [data-stretched-link]) {
     transition:
       color 150ms ease, background-color 150ms ease, border-color 150ms ease, outline-color 150ms ease,
       text-decoration-color 150ms ease, fill 150ms ease, stroke 150ms ease, opacity 150ms ease, box-shadow 150ms ease,
@@ -1018,7 +1020,7 @@
   }
 
   :is(.emperor-app-shell, [data-slot="dialog-content"], [data-slot="dropdown-menu-content"], [data-slot="popover-content"])
-    :is(button, a[href], [role="button"], [role="tab"], [role="menuitem"], summary):not(:disabled, [aria-disabled="true"], [data-disabled], [data-motion], [data-no-press], [data-no-press] *):active {
+    :is(button, a[href], [role="button"], [role="tab"], [role="menuitem"], summary):not(:disabled, [aria-disabled="true"], [data-disabled], [data-motion], [data-no-press], [data-no-press] *, [data-stretched-link]):active {
     scale: 0.97;
     transition-duration: 100ms;
     transition-timing-function: ease-out;
@@ -1029,10 +1031,24 @@
    that utility's list, duration and easing and add `scale` to it, so the press
    eases instead of snapping. Unlayered so it extends the utility. */
 :is(.emperor-app-shell, [data-slot="dialog-content"], [data-slot="dropdown-menu-content"], [data-slot="popover-content"])
-  :is(button, a[href], [role="button"], [role="tab"], [role="menuitem"], summary).transition-colors:not(:disabled, [aria-disabled="true"], [data-disabled], [data-motion], [data-no-press], [data-no-press] *) {
+  :is(button, a[href], [role="button"], [role="tab"], [role="menuitem"], summary).transition-colors:not(:disabled, [aria-disabled="true"], [data-disabled], [data-motion], [data-no-press], [data-no-press] *, [data-stretched-link]) {
   transition-property:
     color, background-color, border-color, outline-color, text-decoration-color, fill, stroke,
     --tw-gradient-from, --tw-gradient-via, --tw-gradient-to, scale;
+}
+
+/* 2. Stretched links: a title whose `::after` is the row's click target
+   (`after:absolute after:inset-0` over a positioned row) opts out of the scale
+   press with [data-stretched-link] and marks its row [data-press-row]. A
+   non-none `scale` makes the anchor the containing block of its absolutely
+   positioned `::after`, so on pointer-down the overlay collapses from the whole
+   row to the text box, the pointer ends up outside the link, and the click is
+   dispatched to the row instead of navigating. The row answers the press
+   itself instead: a background step, no geometry change. Unlayered so it wins
+   over the row's own hover/background utility while pressed. */
+:is(.emperor-app-shell, [data-slot="dialog-content"], [data-slot="dropdown-menu-content"], [data-slot="popover-content"])
+  [data-press-row]:has(a[data-stretched-link]:active) {
+  background-color: color-mix(in oklab, var(--accent) 85%, transparent);
 }
 
 /* 3. Page arrival: route content rises 6px and fades in on the spring, with a

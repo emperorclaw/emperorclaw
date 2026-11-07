@@ -148,14 +148,14 @@ export function NeedsAttention({ entries: listed, now, onFocusMember, canAct, ag
                         const busy = busyId !== null;
                         const unread = !inbox.isRead(entry);
                         return (
-                            <li key={entry.id} onMouseEnter={() => point(entry)} onMouseLeave={() => point(null)} onFocus={() => point(entry)} onBlur={() => point(null)}
+                            <li key={entry.id} data-press-row onMouseEnter={() => point(entry)} onMouseLeave={() => point(null)} onFocus={() => point(entry)} onBlur={() => point(null)}
                                 className={cn("group relative rounded-xl border border-border/70 bg-muted/30 p-3 transition-colors hover:border-border hover:bg-muted/60 dark:bg-white/[0.02] dark:hover:bg-white/[0.04]",
                                     !watchlist && link.from === "desk" && entry.memberKey && link.key === entry.memberKey && "border-amber-400/70 bg-amber-400/10 ring-1 ring-amber-400/50 dark:bg-amber-300/[0.07]")}>
                                 <div className="flex gap-3">
                                     <span className={cn("grid h-9 w-9 shrink-0 place-items-center rounded-lg ring-1 ring-inset", style.tile)}><style.icon className="h-[18px] w-[18px]" stroke={1.8} /></span>
                                     <div className="min-w-0 flex-1">
                                         <div className="flex items-start gap-2">
-                                            <Link href={entry.href} onClick={() => inbox.markRead(entry)} className={cn("min-w-0 flex-1 break-words text-sm text-foreground after:absolute after:inset-0 after:content-[''] focus-visible:outline-none focus-visible:rounded-lg focus-visible:ring-2 focus-visible:ring-cyan-400", unread ? "font-bold" : "font-medium")}>
+                                            <Link href={entry.href} data-stretched-link onClick={() => inbox.markRead(entry)} className={cn("min-w-0 flex-1 break-words text-sm text-foreground after:absolute after:inset-0 after:content-[''] focus-visible:outline-none focus-visible:rounded-lg focus-visible:ring-2 focus-visible:ring-cyan-400", unread ? "font-bold" : "font-medium")}>
                                                 {unread && <><span aria-hidden className="mr-1.5 inline-block h-2 w-2 rounded-full bg-cyan-500 align-middle" /><span className="sr-only">{t("unreadPrefix")}</span></>}
                                                 <span className="mr-1.5 inline-flex items-center rounded bg-muted/70 px-1 py-px text-[10px] font-semibold uppercase tracking-wide text-muted-foreground dark:bg-white/[0.06]">{scene.kind(entry.kind)}</span>
                                                 {render(entry.titleCopy, entry.title)}

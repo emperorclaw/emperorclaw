@@ -129,12 +129,12 @@ export function ViewRow({ view, now, showScope = true, visibility }: { view: Vie
     const maintainer = view.maintainer?.name ?? null;
     const overdue = !metadata && viewStaleness({ lastAt: view.dataUpdatedAt, since: view.createdAt, refreshEveryMinutes: view.refreshEveryMinutes }, now).overdue;
     return (
-        <li className="relative flex flex-col gap-1.5 px-4 py-3 transition-colors focus-within:bg-accent/60 hover:bg-accent/60 sm:flex-row sm:items-center sm:gap-4">
+        <li data-press-row className="relative flex flex-col gap-1.5 px-4 py-3 transition-colors focus-within:bg-accent/60 hover:bg-accent/60 sm:flex-row sm:items-center sm:gap-4">
             <span className="min-w-0 flex-1">
                 <span className="flex min-w-0 items-center gap-1.5 text-sm font-medium text-foreground">
                     {view.archived && <IconArchive className="h-3.5 w-3.5 shrink-0 text-muted-foreground" aria-label={t("archived")} />}
                     {view.pinned && <IconPin className="h-3.5 w-3.5 shrink-0 text-primary" aria-label={t("pinned")} />}
-                    <Link href={`/views/${view.id}`} className="truncate outline-none after:absolute after:inset-0 after:content-[''] focus-visible:after:ring-2 focus-visible:after:ring-inset focus-visible:after:ring-ring">{view.title}</Link>
+                    <Link href={`/views/${view.id}`} data-stretched-link className="truncate outline-none after:absolute after:inset-0 after:content-[''] focus-visible:after:ring-2 focus-visible:after:ring-inset focus-visible:after:ring-ring">{view.title}</Link>
                 </span>
                 <span className="mt-1 flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1">
                     {visibility ? <span className="relative z-10">{visibility}</span> : <VisibilityBadge view={view} />}
