@@ -13,6 +13,7 @@ import {
 import { RunStatusChip } from "@/components/run-status-chip";
 import { RunTimeline } from "@/components/run-timeline";
 import { cacheHitPercent } from "@/lib/live-activity";
+import { Collapse } from "@/components/ui/motion";
 import { cn } from "@/lib/utils";
 import { formatCents } from "@/lib/team-scene";
 import {
@@ -501,11 +502,11 @@ function RunCards({ runs }: { runs: AgentRunRow[] }) {
                         <IconChevronRight className={cn("h-3.5 w-3.5 transition-transform", expanded.has(run.id) && "rotate-90")} aria-hidden="true" />
                         {expanded.has(run.id) ? t("hideSteps") : t("showSteps")}
                     </button>
-                    {expanded.has(run.id) && (
+                    <Collapse open={expanded.has(run.id)} snappy>
                         <div className="mt-1.5 rounded-lg border border-zinc-800/80 bg-zinc-900/60 p-2">
                             <RunTimeline runId={run.id} />
                         </div>
-                    )}
+                    </Collapse>
                 </li>
             ))}
         </ul>

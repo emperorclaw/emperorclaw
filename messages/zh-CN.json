@@ -27,7 +27,8 @@
     "copied": "已复制",
     "back": "返回",
     "creating": "正在创建…",
-    "companyNotFound": "公司未找到。"
+    "companyNotFound": "公司未找到。",
+    "moreActions": "更多操作"
   },
   "errors": {
     "title": "出了点问题",
@@ -5792,5 +5793,27 @@
       "open": "在 EmperorClaw 中打开",
       "footer": "你可以在“设置 → 通知”中更改通过电子邮件接收哪些通知。"
     }
+  },
+  "contextMenu": {
+    "openDetails": "打开详情",
+    "message": "发消息",
+    "scopes": "权限范围",
+    "instructions": "指令",
+    "memory": "记忆",
+    "runs": "工作日志与运行",
+    "copyAgentId": "复制智能体 ID",
+    "agentIdCopied": "已复制智能体 ID",
+    "open": "打开",
+    "board": "看板",
+    "settings": "设置",
+    "copyLink": "复制链接",
+    "linkCopied": "已复制链接",
+    "copyFailed": "无法复制到剪贴板",
+    "changeStatus": "更改状态",
+    "markRead": "标为已读",
+    "markUnread": "标为未读",
+    "archive": "归档",
+    "moveBack": "移回收件箱",
+    "projects": "项目"
   }
 }

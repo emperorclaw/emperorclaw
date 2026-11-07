@@ -4,24 +4,59 @@ import * as React from "react"
 import { cva, type VariantProps } from "class-variance-authority"
 import { Tabs as TabsPrimitive } from "radix-ui"
 
+import { SegmentPill } from "@/components/ui/motion"
 import { cn } from "@/lib/utils"
+
+// The active value and a per-instance id, so the active trigger's fill can
+// glide between triggers (one shared layoutId per Tabs).
+const TabsMotionContext = React.createContext<{ id: string; value: string | undefined } | null>(null)
 
 function Tabs({
   className,
   orientation = "horizontal",
+  value,
+  defaultValue,
+  onValueChange,
   ...props
 }: React.ComponentProps<typeof TabsPrimitive.Root>) {
+  const id = React.useId()
+  const rootRef = React.useRef<HTMLDivElement>(null)
+  const [uncontrolled, setUncontrolled] = React.useState(defaultValue)
+  // Which way the last switch went, by trigger order: the new panel slides in
+  // from that side (globals.css, `[data-direction]`).
+  const [direction, setDirection] = React.useState<"forward" | "back" | undefined>(undefined)
+  const current = value ?? uncontrolled
+
+  const handleValueChange = (next: string) => {
+    const root = rootRef.current
+    const triggers = root
+      ? Array.from(root.querySelectorAll<HTMLElement>('[data-slot="tabs-trigger"]')).filter((el) => el.closest('[data-slot="tabs"]') === root)
+      : []
+    const from = triggers.findIndex((el) => el.dataset.value === current)
+    const to = triggers.findIndex((el) => el.dataset.value === next)
+    setDirection(from < 0 || to < 0 || from === to ? undefined : to > from ? "forward" : "back")
+    setUncontrolled(next)
+    onValueChange?.(next)
+  }
+
   return (
-    <TabsPrimitive.Root
-      data-slot="tabs"
-      data-orientation={orientation}
-      orientation={orientation}
-      className={cn(
-        "group/tabs flex gap-2 data-[orientation=horizontal]:flex-col",
-        className
-      )}
-      {...props}
-    />
+    <TabsMotionContext.Provider value={{ id, value: current }}>
+      <TabsPrimitive.Root
+        ref={rootRef}
+        data-slot="tabs"
+        data-orientation={orientation}
+        data-direction={direction}
+        orientation={orientation}
+        value={value}
+        defaultValue={defaultValue}
+        onValueChange={handleValueChange}
+        className={cn(
+          "group/tabs flex gap-2 data-[orientation=horizontal]:flex-col",
+          className
+        )}
+        {...props}
+      />
+    </TabsMotionContext.Provider>
   )
 }
 
@@ -58,20 +93,34 @@ function TabsList({
 
 function TabsTrigger({
   className,
+  children,
   ...props
 }: React.ComponentProps<typeof TabsPrimitive.Trigger>) {
+  const motionContext = React.useContext(TabsMotionContext)
+  const active = motionContext !== null && motionContext.value === props.value
   return (
     <TabsPrimitive.Trigger
       data-slot="tabs-trigger"
+      data-value={props.value}
       className={cn(
-        "focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:outline-ring text-foreground/60 hover:text-foreground dark:text-muted-foreground dark:hover:text-foreground relative inline-flex h-[calc(100%-1px)] flex-1 items-center justify-center gap-1.5 rounded-md border border-transparent px-2 py-1 text-sm font-medium whitespace-nowrap transition-all group-data-[orientation=vertical]/tabs:w-full group-data-[orientation=vertical]/tabs:justify-start focus-visible:ring-[3px] focus-visible:outline-1 disabled:pointer-events-none disabled:opacity-50 group-data-[variant=default]/tabs-list:data-[state=active]:shadow-sm group-data-[variant=line]/tabs-list:data-[state=active]:shadow-none [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
+        "focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:outline-ring text-foreground/60 hover:text-foreground dark:text-muted-foreground dark:hover:text-foreground relative isolate inline-flex h-[calc(100%-1px)] flex-1 items-center justify-center gap-1.5 rounded-md border border-transparent px-2 py-1 text-sm font-medium whitespace-nowrap transition-[color,box-shadow] group-data-[orientation=vertical]/tabs:w-full group-data-[orientation=vertical]/tabs:justify-start focus-visible:ring-[3px] focus-visible:outline-1 disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
         "group-data-[variant=line]/tabs-list:bg-transparent group-data-[variant=line]/tabs-list:data-[state=active]:bg-transparent dark:group-data-[variant=line]/tabs-list:data-[state=active]:border-transparent dark:group-data-[variant=line]/tabs-list:data-[state=active]:bg-transparent",
-        "data-[state=active]:bg-background dark:data-[state=active]:text-foreground dark:data-[state=active]:border-input dark:data-[state=active]:bg-input/30 data-[state=active]:text-foreground",
+        // The active fill is the gliding pill below, not the trigger's own background.
+        "dark:data-[state=active]:text-foreground data-[state=active]:text-foreground",
         "after:bg-foreground after:absolute after:opacity-0 after:transition-opacity group-data-[orientation=horizontal]/tabs:after:inset-x-0 group-data-[orientation=horizontal]/tabs:after:bottom-[-5px] group-data-[orientation=horizontal]/tabs:after:h-0.5 group-data-[orientation=vertical]/tabs:after:inset-y-0 group-data-[orientation=vertical]/tabs:after:-right-1 group-data-[orientation=vertical]/tabs:after:w-0.5 group-data-[variant=line]/tabs-list:data-[state=active]:after:opacity-100",
         className
       )}
       {...props}
-    />
+    >
+      {active && motionContext && (
+        <SegmentPill
+          layoutId={`tabs-pill-${motionContext.id}`}
+          radius={6}
+          className="border border-transparent bg-background shadow-sm group-data-[variant=line]/tabs-list:hidden dark:border-input dark:bg-input/30"
+        />
+      )}
+      {children}
+    </TabsPrimitive.Trigger>
   )
 }
 

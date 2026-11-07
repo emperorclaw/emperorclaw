@@ -17,6 +17,7 @@ import dynamic from "next/dynamic";
 import { IconArrowDown, IconChevronDown, IconChevronRight, IconFile, IconFilePlus, IconFileZip, IconFileCode, IconPhoto, IconFileTypeJs, IconFileSpreadsheet, IconFileText, IconFolder, IconFolderOpen, IconFolderPlus, IconLoader2, IconArrowsMaximize, IconDots, IconPencil, IconPlus, IconQuestionMark, IconRefresh, IconDeviceFloppy, IconSearch, IconSettings, IconTrash, IconUpload } from "@tabler/icons-react";
 import { toast } from "sonner";
 import { useFormatter, useTranslations } from "next-intl";
+import { Select } from "@/components/ui/select";
 
 function PreviewLoading({ kind }: { kind: "spreadsheet" | "document" }) {
     const t = useTranslations("artifacts.preview");
@@ -1579,7 +1580,7 @@ export default function ArtifactsManager({ projects, tasks, customers }: Props) 
                         />
                     </div>
                     <div className="flex flex-wrap items-center gap-3">
-                        <select
+                        <Select
                             value={customerFilter}
                             onChange={(event) => {
                                 const nextCustomerId = event.target.value;
@@ -1599,8 +1600,8 @@ export default function ArtifactsManager({ projects, tasks, customers }: Props) 
                             {customers.map((customer) => (
                                 <option key={customer.id} value={customer.id}>{customer.name}</option>
                             ))}
-                        </select>
-                        <select
+                        </Select>
+                        <Select
                             value={projectFilter}
                             onChange={(event) => {
                                 const nextProjectId = event.target.value;
@@ -1619,7 +1620,7 @@ export default function ArtifactsManager({ projects, tasks, customers }: Props) 
                             {projects.map((project) => (
                                 <option key={project.id} value={project.id}>{project.name}</option>
                             ))}
-                        </select>
+                        </Select>
                         {hasActiveFilters && (
                             <Button
                                 variant="outline"
@@ -1635,7 +1636,7 @@ export default function ArtifactsManager({ projects, tasks, customers }: Props) 
                             {t("advancedFilters")}
                         </summary>
                         <div className="mt-3 flex flex-wrap gap-3 border-t border-zinc-800/80 pt-3">
-                            <select
+                            <Select
                                 value={taskFilter}
                                 onChange={(event) => setTaskFilter(event.target.value)}
                                 className="h-9 rounded-md border border-zinc-800 bg-zinc-900 px-3 text-sm text-zinc-200"
@@ -1644,15 +1645,15 @@ export default function ArtifactsManager({ projects, tasks, customers }: Props) 
                                 {tasks.filter((task) => !projectFilter || task.projectId === projectFilter).map((task) => (
                                     <option key={task.id} value={task.id}>{task.type}</option>
                                 ))}
-                            </select>
-                            <select
+                            </Select>
+                            <Select
                                 value={kindFilter}
                                 onChange={(event) => setKindFilter(event.target.value)}
                                 className="h-9 rounded-md border border-zinc-800 bg-zinc-900 px-3 text-sm text-zinc-200"
                             >
                                 <option value="">{t("allFileTypes")}</option>
                                 {ARTIFACT_KINDS.map((kind) => <option key={kind} value={kind}>{t(`kinds.${kind}`)}</option>)}
-                            </select>
+                            </Select>
                         </div>
                     </details>
                 </div>
@@ -2313,7 +2314,7 @@ function FolderInspector(props: {
                     />
                 </Field>
                 <Field label={t("fields.parentFolder")}>
-                    <select
+                    <Select
                         value={props.draft.parentFolderId}
                         onChange={(event) => props.onDraftChange((current) => ({ ...current, parentFolderId: event.target.value }))}
                         className="h-9 w-full rounded-md border border-zinc-800 bg-zinc-900 px-3 text-sm text-zinc-200"
@@ -2321,10 +2322,10 @@ function FolderInspector(props: {
                         {props.knownFolders.filter((folder) => folder.id !== props.folder.id).map((folder) => (
                             <option key={folder.id} value={folder.id}>{folder.pathLabel}</option>
                         ))}
-                    </select>
+                    </Select>
                 </Field>
                 <Field label={t("fields.project")}>
-                    <select
+                    <Select
                         value={props.draft.projectId}
                         onChange={(event) => props.onDraftChange((current) => ({ ...current, projectId: event.target.value }))}
                         className="h-9 w-full rounded-md border border-zinc-800 bg-zinc-900 px-3 text-sm text-zinc-200"
@@ -2333,10 +2334,10 @@ function FolderInspector(props: {
                         {props.projects.map((project) => (
                             <option key={project.id} value={project.id}>{project.name}</option>
                         ))}
-                    </select>
+                    </Select>
                 </Field>
                 <Field label={t("fields.customer")}>
-                    <select
+                    <Select
                         value={props.draft.customerId}
                         onChange={(event) => props.onDraftChange((current) => ({ ...current, customerId: event.target.value }))}
                         className="h-9 w-full rounded-md border border-zinc-800 bg-zinc-900 px-3 text-sm text-zinc-200"
@@ -2345,7 +2346,7 @@ function FolderInspector(props: {
                         {props.customers.map((customer) => (
                             <option key={customer.id} value={customer.id}>{customer.name}</option>
                         ))}
-                    </select>
+                    </Select>
                 </Field>
                 <details className="rounded-2xl border border-zinc-800 bg-zinc-950/80">
                     <summary className="cursor-pointer px-4 py-3 text-sm font-medium text-zinc-300">{t("folderMetadata.title")}</summary>
@@ -2470,17 +2471,17 @@ function ArtifactInspector(props: {
                             />
                         </Field>
                         <Field label={t("fields.visibility")}>
-                            <select
+                            <Select
                                 value={props.draft.visibility}
                                 onChange={(event) => props.onDraftChange((current) => ({ ...current, visibility: event.target.value }))}
                                 className="h-9 w-full rounded-md border border-zinc-800 bg-zinc-900 px-3 text-sm text-zinc-200"
                             >
                                 <option value="private">{t("visibility.private")}</option>
                                 <option value="company">{t("visibility.company")}</option>
-                            </select>
+                            </Select>
                         </Field>
                         <Field label={t("fields.project")}>
-                            <select
+                            <Select
                                 value={props.draft.projectId}
                                 onChange={(event) => {
                                     const nextProjectId = event.target.value;
@@ -2499,10 +2500,10 @@ function ArtifactInspector(props: {
                                 {props.projects.map((project) => (
                                     <option key={project.id} value={project.id}>{project.name}</option>
                                 ))}
-                            </select>
+                            </Select>
                         </Field>
                         <Field label={t("fields.task")}>
-                            <select
+                            <Select
                                 value={props.draft.taskId}
                                 onChange={(event) => props.onDraftChange((current) => ({ ...current, taskId: event.target.value }))}
                                 className="h-9 w-full rounded-md border border-zinc-800 bg-zinc-900 px-3 text-sm text-zinc-200"
@@ -2512,10 +2513,10 @@ function ArtifactInspector(props: {
                                 {props.tasks.filter((task) => task.projectId === props.draft.projectId).map((task) => (
                                     <option key={task.id} value={task.id}>{task.type}</option>
                                 ))}
-                            </select>
+                            </Select>
                         </Field>
                         <Field label={t("fields.customer")}>
-                            <select
+                            <Select
                                 value={props.draft.customerId}
                                 onChange={(event) => props.onDraftChange((current) => ({ ...current, customerId: event.target.value }))}
                                 className="h-9 w-full rounded-md border border-zinc-800 bg-zinc-900 px-3 text-sm text-zinc-200"
@@ -2525,7 +2526,7 @@ function ArtifactInspector(props: {
                                 {props.customers.map((customer) => (
                                     <option key={customer.id} value={customer.id}>{customer.name}</option>
                                 ))}
-                            </select>
+                            </Select>
                         </Field>
                     </div>
                     <details className="rounded-2xl border border-zinc-800 bg-zinc-950/80">
@@ -2538,7 +2539,7 @@ function ArtifactInspector(props: {
                             </p>
                             <div className="grid gap-4 sm:grid-cols-2">
                                 <Field label={t("fields.fileRole")}>
-                                    <select
+                                    <Select
                                         value={props.draft.artifactClass}
                                         onChange={(event) => props.onDraftChange((current) => ({ ...current, artifactClass: event.target.value }))}
                                         className="h-9 w-full rounded-md border border-zinc-800 bg-zinc-900 px-3 text-sm text-zinc-200"
@@ -2546,10 +2547,10 @@ function ArtifactInspector(props: {
                                         {ARTIFACT_CLASS_OPTIONS.map((option) => (
                                             <option key={option.value} value={option.value}>{taxonomy.classLabel(option.value)}</option>
                                         ))}
-                                    </select>
+                                    </Select>
                                 </Field>
                                 <Field label={t("fields.lifecycle")}>
-                                    <select
+                                    <Select
                                         value={props.draft.importance}
                                         onChange={(event) => props.onDraftChange((current) => ({ ...current, importance: event.target.value }))}
                                         className="h-9 w-full rounded-md border border-zinc-800 bg-zinc-900 px-3 text-sm text-zinc-200"
@@ -2557,7 +2558,7 @@ function ArtifactInspector(props: {
                                         {ARTIFACT_IMPORTANCE_OPTIONS.map((option) => (
                                             <option key={option.value} value={option.value}>{taxonomy.importanceLabel(option.value)}</option>
                                         ))}
-                                    </select>
+                                    </Select>
                                 </Field>
                                 <Field label={t("fields.retentionPolicy")}>
                                     <Input
@@ -2593,7 +2594,7 @@ function ArtifactInspector(props: {
                         />
                     </Field>
                     <Field label={t("fields.folder")}>
-                        <select
+                        <Select
                             value={props.locationDraft.folderId}
                             onChange={(event) => props.onLocationDraftChange((current) => ({ ...current, folderId: event.target.value }))}
                             className="h-9 w-full rounded-md border border-zinc-800 bg-zinc-900 px-3 text-sm text-zinc-200"
@@ -2601,7 +2602,7 @@ function ArtifactInspector(props: {
                             {props.knownFolders.map((folder) => (
                                 <option key={folder.id} value={folder.id}>{folder.pathLabel}</option>
                             ))}
-                        </select>
+                        </Select>
                     </Field>
                     <div className="grid gap-3 text-xs text-zinc-400 sm:grid-cols-2">
                         <InfoPill label={t("info.path")} value={props.artifact.path || "-"} />
@@ -2661,7 +2662,7 @@ function FolderDialog(props: {
                         />
                     </Field>
                     <Field label={t("fields.project")}>
-                        <select
+                        <Select
                             value={props.draft.projectId}
                             onChange={(event) => props.onDraftChange((current) => ({ ...current, projectId: event.target.value }))}
                             className="h-9 w-full rounded-md border border-zinc-800 bg-zinc-900 px-3 text-sm text-zinc-200"
@@ -2670,10 +2671,10 @@ function FolderDialog(props: {
                             {props.projects.map((project) => (
                                 <option key={project.id} value={project.id}>{project.name}</option>
                             ))}
-                        </select>
+                        </Select>
                     </Field>
                     <Field label={t("fields.customer")}>
-                        <select
+                        <Select
                             value={props.draft.customerId}
                             onChange={(event) => props.onDraftChange((current) => ({ ...current, customerId: event.target.value }))}
                             className="h-9 w-full rounded-md border border-zinc-800 bg-zinc-900 px-3 text-sm text-zinc-200"
@@ -2682,7 +2683,7 @@ function FolderDialog(props: {
                             {props.customers.map((customer) => (
                                 <option key={customer.id} value={customer.id}>{customer.name}</option>
                             ))}
-                        </select>
+                        </Select>
                     </Field>
                     <details className="rounded-2xl border border-zinc-800 bg-zinc-950/80">
                         <summary className="cursor-pointer px-4 py-3 text-sm font-medium text-zinc-300">{t("folderMetadata.title")}</summary>
@@ -2785,7 +2786,7 @@ function NewFileDialog(props: {
                     </Field>
                     <div className="grid gap-4 sm:grid-cols-2">
                         <Field label={t("fields.customer")}>
-                            <select
+                            <Select
                                 value={props.draft.customerId}
                                 onChange={(event) => props.onDraftChange((current) => ({ ...current, customerId: event.target.value }))}
                                 disabled={Boolean(props.draft.projectId)}
@@ -2793,10 +2794,10 @@ function NewFileDialog(props: {
                             >
                                 <option value="">{t("fields.companyNoCustomer")}</option>
                                 {props.customers.map((customer) => <option key={customer.id} value={customer.id}>{customer.name}</option>)}
-                            </select>
+                            </Select>
                         </Field>
                         <Field label={t("fields.project")}>
-                            <select
+                            <Select
                                 value={props.draft.projectId}
                                 onChange={(event) => {
                                     const projectId = event.target.value;
@@ -2810,7 +2811,7 @@ function NewFileDialog(props: {
                             >
                                 <option value="">{t("fields.none")}</option>
                                 {props.projects.map((project) => <option key={project.id} value={project.id}>{project.name}</option>)}
-                            </select>
+                            </Select>
                         </Field>
                     </div>
                 </div>
@@ -2930,7 +2931,7 @@ function UploadDialog(props: {
                     </Field>
                     <div className="grid gap-4 sm:grid-cols-2">
                         <Field label={t("fields.customer")}>
-                            <select
+                            <Select
                                 value={props.uploadCustomerId}
                                 onChange={(event) => props.onCustomerChange(event.target.value)}
                                 className="h-9 w-full rounded-md border border-zinc-800 bg-zinc-900 px-3 text-sm text-zinc-200"
@@ -2940,15 +2941,15 @@ function UploadDialog(props: {
                                 {props.customers.map((customer) => (
                                     <option key={customer.id} value={customer.id}>{customer.name}</option>
                                 ))}
-                            </select>
+                            </Select>
                         </Field>
                         <Field label={t("fields.project")}>
-                            <select value={props.uploadProjectId} onChange={(event) => props.onProjectChange(event.target.value)} className="h-9 w-full rounded-md border border-zinc-800 bg-zinc-900 px-3 text-sm text-zinc-200">
+                            <Select value={props.uploadProjectId} onChange={(event) => props.onProjectChange(event.target.value)} className="h-9 w-full rounded-md border border-zinc-800 bg-zinc-900 px-3 text-sm text-zinc-200">
                                 <option value="">{t("fields.none")}</option>
                                 {props.projects.map((project) => (
                                     <option key={project.id} value={project.id}>{project.name}</option>
                                 ))}
-                            </select>
+                            </Select>
                         </Field>
                     </div>
                     <details className="rounded-xl border border-zinc-800 bg-zinc-950/70">
@@ -2964,18 +2965,18 @@ function UploadDialog(props: {
                                     <Input value={props.uploadKind} onChange={(event) => props.onKindChange(event.target.value)} className="border-zinc-800 bg-zinc-900 text-zinc-100" />
                                 </Field>
                                 <Field label={t("fields.fileRole")}>
-                                    <select value={props.uploadArtifactClass} onChange={(event) => props.onArtifactClassChange(event.target.value)} className="h-9 w-full rounded-md border border-zinc-800 bg-zinc-900 px-3 text-sm text-zinc-200">
+                                    <Select value={props.uploadArtifactClass} onChange={(event) => props.onArtifactClassChange(event.target.value)} className="h-9 w-full rounded-md border border-zinc-800 bg-zinc-900 px-3 text-sm text-zinc-200">
                                         {ARTIFACT_CLASS_OPTIONS.map((option) => (
                                             <option key={option.value} value={option.value}>{taxonomy.classLabel(option.value)}</option>
                                         ))}
-                                    </select>
+                                    </Select>
                                 </Field>
                                 <Field label={t("fields.lifecycle")}>
-                                    <select value={props.uploadImportance} onChange={(event) => props.onImportanceChange(event.target.value)} className="h-9 w-full rounded-md border border-zinc-800 bg-zinc-900 px-3 text-sm text-zinc-200">
+                                    <Select value={props.uploadImportance} onChange={(event) => props.onImportanceChange(event.target.value)} className="h-9 w-full rounded-md border border-zinc-800 bg-zinc-900 px-3 text-sm text-zinc-200">
                                         {ARTIFACT_IMPORTANCE_OPTIONS.map((option) => (
                                             <option key={option.value} value={option.value}>{taxonomy.importanceLabel(option.value)}</option>
                                         ))}
-                                    </select>
+                                    </Select>
                                 </Field>
                             </div>
                             <Field label={t("fields.metadataJson")}>
@@ -3044,7 +3045,7 @@ function TrackExternalDialog(props: {
                     </Field>
                     <div className="grid gap-4 sm:grid-cols-2">
                         <Field label={t("fields.customer")}>
-                            <select
+                            <Select
                                 value={props.customerId}
                                 onChange={(event) => props.onCustomerChange(event.target.value)}
                                 disabled={Boolean(props.projectId)}
@@ -3052,13 +3053,13 @@ function TrackExternalDialog(props: {
                             >
                                 <option value="">{t("fields.selectCustomer")}</option>
                                 {props.customers.map((customer) => <option key={customer.id} value={customer.id}>{customer.name}</option>)}
-                            </select>
+                            </Select>
                         </Field>
                         <Field label={t("fields.project")}>
-                            <select value={props.projectId} onChange={(event) => props.onProjectChange(event.target.value)} className="h-11 w-full rounded-md border border-zinc-800 bg-zinc-900 px-3 text-sm text-zinc-200">
+                            <Select value={props.projectId} onChange={(event) => props.onProjectChange(event.target.value)} className="h-11 w-full rounded-md border border-zinc-800 bg-zinc-900 px-3 text-sm text-zinc-200">
                                 <option value="">{t("fields.none")}</option>
                                 {props.projects.map((project) => <option key={project.id} value={project.id}>{project.name}</option>)}
-                            </select>
+                            </Select>
                         </Field>
                     </div>
                     <details className="rounded-xl border border-zinc-800 bg-zinc-950/70">
@@ -3069,14 +3070,14 @@ function TrackExternalDialog(props: {
                             </Field>
                             <div className="grid gap-4 sm:grid-cols-2">
                                 <Field label={t("fields.fileRole")}>
-                                    <select value={props.artifactClass} onChange={(event) => props.onArtifactClassChange(event.target.value)} className="h-11 w-full rounded-md border border-zinc-800 bg-zinc-900 px-3 text-sm text-zinc-200">
+                                    <Select value={props.artifactClass} onChange={(event) => props.onArtifactClassChange(event.target.value)} className="h-11 w-full rounded-md border border-zinc-800 bg-zinc-900 px-3 text-sm text-zinc-200">
                                         {ARTIFACT_CLASS_OPTIONS.map((option) => <option key={option.value} value={option.value}>{taxonomy.classLabel(option.value)}</option>)}
-                                    </select>
+                                    </Select>
                                 </Field>
                                 <Field label={t("fields.lifecycle")}>
-                                    <select value={props.importance} onChange={(event) => props.onImportanceChange(event.target.value)} className="h-11 w-full rounded-md border border-zinc-800 bg-zinc-900 px-3 text-sm text-zinc-200">
+                                    <Select value={props.importance} onChange={(event) => props.onImportanceChange(event.target.value)} className="h-11 w-full rounded-md border border-zinc-800 bg-zinc-900 px-3 text-sm text-zinc-200">
                                         {ARTIFACT_IMPORTANCE_OPTIONS.map((option) => <option key={option.value} value={option.value}>{taxonomy.importanceLabel(option.value)}</option>)}
-                                    </select>
+                                    </Select>
                                 </Field>
                             </div>
                             <Field label={t("fields.metadataJson")}>

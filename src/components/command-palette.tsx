@@ -272,7 +272,7 @@ export function CommandPalette({ access, canAct }: { access: NavAccess; canAct: 
                         />
                         <kbd className="hidden rounded-md border border-border px-1.5 py-0.5 font-mono text-[11px] text-muted-foreground sm:inline">Esc</kbd>
                     </div>
-                    <div ref={listRef} id={listId} role="listbox" aria-label={t("results")} className="min-h-0 flex-1 overflow-y-auto overscroll-contain p-2">
+                    <div ref={listRef} id={listId} role="listbox" aria-label={t("results")} className="fade-y min-h-0 flex-1 overflow-y-auto overscroll-contain p-2">
                         {options.length === 0 ? (
                             <p className="px-3 py-10 text-center text-sm text-muted-foreground">{loading ? t("searching") : t("noResults", { query: query.trim() })}</p>
                         ) : groups.map((group) => (
@@ -315,7 +315,7 @@ export function CommandPalette({ access, canAct }: { access: NavAccess; canAct: 
                     <div className="hidden items-center gap-4 border-t border-border px-4 py-2.5 text-[11px] text-muted-foreground sm:flex">
                         <span className="inline-flex items-center gap-1.5"><kbd className="rounded border border-border px-1 font-mono">↑</kbd><kbd className="rounded border border-border px-1 font-mono">↓</kbd>{t("move")}</span>
                         <span className="inline-flex items-center gap-1.5"><kbd className="rounded border border-border px-1 font-mono">↵</kbd>{t("open")}</span>
-                        <button type="button" onClick={() => { onOpenChange(false); setSheetOpen(true); }} className="ml-auto inline-flex items-center gap-1.5 rounded-md hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400">
+                        <button type="button" onClick={() => { onOpenChange(false); setSheetOpen(true); }} className="ml-auto inline-flex items-center gap-1.5 rounded-md hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
                             <IconKeyboard className="h-3.5 w-3.5" />{t("allShortcuts")}<kbd className="rounded border border-border px-1 font-mono">?</kbd>
                         </button>
                     </div>

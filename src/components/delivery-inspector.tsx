@@ -10,6 +10,7 @@ import {
 } from "@tabler/icons-react";
 import { useTranslations } from "next-intl";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Presence } from "@/components/ui/motion";
 import { RunStatusChip } from "@/components/run-status-chip";
 import { agentAvatarSrc } from "@/lib/avatar";
 import { cn } from "@/lib/utils";
@@ -165,7 +166,7 @@ function DeliveryInspectorImpl({ messageId, tone = "dark" }: { messageId: string
                     {error && (
                         <p className="text-[11px] text-amber-400" role="alert">{t(error)}</p>
                     )}
-                    {data && <DeliveryBody data={data} />}
+                    <Presence show={data !== null} snappy>{data && <DeliveryBody data={data} />}</Presence>
                 </div>
             </PopoverContent>
         </Popover>

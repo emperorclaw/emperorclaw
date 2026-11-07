@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
+import { Select } from "@/components/ui/select";
 
 type Member = {
     id: string;
@@ -291,7 +292,7 @@ export default function MembersClient({ currentUserId, currentUserRole, initialM
                             className="min-h-11 flex-1 min-w-[200px]"
                             required
                         />
-                        <select
+                        <Select
                             aria-label={t("invitationRole")}
                             value={inviteRole}
                             onChange={(e) => setInviteRole(e.target.value)}
@@ -303,7 +304,7 @@ export default function MembersClient({ currentUserId, currentUserRole, initialM
                                     {t(`roles.${r}`)}
                                 </option>
                             ))}
-                        </select>
+                        </Select>
                         <Button type="submit" className="min-h-11" disabled={sending}>
                             {sending ? <IconLoader2 className="w-4 h-4 animate-spin mr-1" /> : null}
                             {t("sendInvitation")}
@@ -467,7 +468,7 @@ export default function MembersClient({ currentUserId, currentUserRole, initialM
                     <DialogContent onCloseAutoFocus={restoreDialogFocus} className="max-h-[90dvh] overflow-y-auto bg-background text-foreground sm:max-w-sm">
                         <DialogTitle>{t("changeRoleTitle")}</DialogTitle>
                         <DialogDescription>{t("changeRoleDescription")}</DialogDescription>
-                        <select
+                        <Select
                             value={newRole}
                             onChange={(e) => setNewRole(e.target.value)}
                             aria-label={t("workspaceRole")}
@@ -478,7 +479,7 @@ export default function MembersClient({ currentUserId, currentUserRole, initialM
                                     {t(`roles.${r}`)}
                                 </option>
                             ))}
-                        </select>
+                        </Select>
                         <div className="flex gap-3 justify-end">
                             <Button variant="ghost" onClick={() => setChangingRoleFor(null)}>
                                 {tc("cancel")}

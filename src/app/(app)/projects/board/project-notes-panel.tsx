@@ -2,9 +2,11 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
 import { useEffect, useState } from "react";
+import { motion } from "framer-motion";
 import { useTranslations } from "next-intl";
 import { IconBrain, IconLoader2, IconPlus, IconX } from "@tabler/icons-react";
 import { RichText } from "@/components/rich-text";
+import { useDrawerMotion, useScrimMotion } from "@/components/ui/motion";
 import { useShortDateTime } from "./board-labels";
 
 /** Shared notes for one project: what every agent on it should know. */
@@ -18,6 +20,8 @@ export function ProjectNotesPanel({ projectName, notes, agentName, canEdit, onAd
 }) {
     const t = useTranslations("projects.notes");
     const tc = useTranslations("common");
+    const drawerMotion = useDrawerMotion();
+    const scrimMotion = useScrimMotion();
     const shortDateTime = useShortDateTime();
     const [draft, setDraft] = useState("");
     const [saving, setSaving] = useState(false);
@@ -38,8 +42,8 @@ export function ProjectNotesPanel({ projectName, notes, agentName, canEdit, onAd
 
     return (
         <>
-            <button type="button" aria-label={t("close")} onClick={onClose} className="fixed inset-0 z-40 bg-black/50 lg:bg-black/20 motion-safe:animate-in motion-safe:fade-in" />
-            <aside role="dialog" aria-labelledby="project-notes-title" className="fixed inset-y-0 right-0 z-50 flex w-full flex-col border-l border-zinc-800 bg-zinc-950 shadow-[-24px_0_48px_-24px_rgba(0,0,0,0.6)] sm:w-[min(34rem,92vw)] motion-safe:animate-in motion-safe:slide-in-from-right-6 motion-safe:duration-200">
+            <motion.button {...scrimMotion} type="button" aria-label={t("close")} onClick={onClose} className="fixed inset-0 z-40 bg-black/50 lg:bg-black/20" />
+            <motion.aside {...drawerMotion} role="dialog" aria-labelledby="project-notes-title" className="fixed inset-y-0 right-0 z-50 flex w-full flex-col border-l border-zinc-800 bg-zinc-950 shadow-[-24px_0_48px_-24px_rgba(0,0,0,0.6)] sm:w-[min(34rem,92vw)]">
                 <div className="flex items-center gap-3 border-b border-zinc-800/80 px-5 py-3">
                     <IconBrain className="h-5 w-5 shrink-0 text-cyan-300" aria-hidden="true" />
                     <div className="min-w-0 flex-1">
@@ -85,7 +89,7 @@ export function ProjectNotesPanel({ projectName, notes, agentName, canEdit, onAd
                         </ol>
                     )}
                 </div>
-            </aside>
+            </motion.aside>
         </>
     );
 }

@@ -17,6 +17,7 @@ import {
 import Link from "next/link";
 import { useTranslations } from "next-intl";
 import { useCopy } from "@/lib/i18n/use-copy";
+import { Collapse } from "@/components/ui/motion";
 import { cn } from "@/lib/utils";
 import { taskHref } from "@/lib/task-story";
 import { formatRunDuration, formatTokenCount } from "@/lib/run-ledger-copy";
@@ -220,7 +221,7 @@ export const ReplyRunFooter = memo(function ReplyRunFooter({ run, tone = "dark" 
                 <span className="truncate">{label}</span>
                 <IconChevronDown className={cn("h-3 w-3 shrink-0 transition-transform", open && "rotate-180")} aria-hidden="true" />
             </button>
-            {open && (
+            <Collapse open={open} snappy>
                 <div className="mt-1.5 space-y-2 rounded-lg border border-zinc-800/80 bg-zinc-900/60 p-2">
                     <RunTimeline runId={run.runId} />
                     {run.taskId && (
@@ -229,7 +230,7 @@ export const ReplyRunFooter = memo(function ReplyRunFooter({ run, tone = "dark" 
                         </Link>
                     )}
                 </div>
-            )}
+            </Collapse>
         </div>
     );
 });
@@ -254,12 +255,12 @@ export const LiveRunSteps = memo(function LiveRunSteps({ steps, usage }: { steps
                 {open ? t("hideSteps") : steps.length > 0 ? t("stepsCount", { count: steps.length }) : t("stepsToggle")}
                 <IconChevronDown className={cn("h-3 w-3 transition-transform", open && "rotate-180")} aria-hidden="true" />
             </button>
-            {open && (
+            <Collapse open={open} snappy>
                 <div className="mt-1.5 space-y-1.5 rounded-lg border border-zinc-800/80 bg-zinc-950/60 p-2">
                     <RunTimelineList steps={steps} emptyText={t("noStepsYet")} />
                     {usageLine && <p className="text-[10px] tabular-nums text-zinc-500">{usageLine}</p>}
                 </div>
-            )}
+            </Collapse>
         </div>
     );
 });

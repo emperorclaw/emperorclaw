@@ -19,6 +19,7 @@ import type { ViewSummary } from "@/lib/views";
 import { VIEW_DESCRIPTION_MAX, VIEW_TITLE_MAX } from "@/lib/view-spec";
 import { mayChangeVisibility } from "@/lib/view-access";
 import { cn } from "@/lib/utils";
+import { Select } from "@/components/ui/select";
 
 export { useScopeText } from "@/components/views/view-meta";
 
@@ -221,7 +222,7 @@ export function NewViewButton({ customers, projects }: { customers: ScopeOption[
                         </div>
                         <div className="grid gap-1.5">
                             <Label htmlFor="view-scope">{t("whereItLives")}</Label>
-                            <select id="view-scope" value={scope} onChange={(e) => setScope(e.target.value)}
+                            <Select id="view-scope" value={scope} onChange={(e) => setScope(e.target.value)}
                                 className="h-10 rounded-xl border border-border bg-card px-3 text-sm text-foreground">
                                 <option value="company">{tScope("company")}</option>
                                 {customers.length > 0 && (
@@ -234,7 +235,7 @@ export function NewViewButton({ customers, projects }: { customers: ScopeOption[
                                         {projects.map((p) => <option key={p.id} value={`project:${p.id}`}>{p.name}</option>)}
                                     </optgroup>
                                 )}
-                            </select>
+                            </Select>
                         </div>
                         <fieldset className="grid gap-1.5">
                             <legend className="mb-1.5 text-sm font-medium text-foreground">{t("whoCanSee")}</legend>

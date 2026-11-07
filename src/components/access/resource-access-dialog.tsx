@@ -12,6 +12,7 @@ import { Label } from "@/components/ui/label";
 import { PersonChip } from "@/components/views/view-meta";
 import { RESOURCE_ROLES, type ResourceRole, type ResourceType } from "@/lib/resource-roles";
 import { cn } from "@/lib/utils";
+import { Select } from "@/components/ui/select";
 
 type Person = {
     userId: string;
@@ -44,9 +45,9 @@ const selectClass = "h-9 rounded-lg border border-border bg-card px-2 text-sm te
 function RoleSelect({ value, onChange, disabled, label }: { value: ResourceRole; onChange: (role: ResourceRole) => void; disabled?: boolean; label: string }) {
     const tRole = useTranslations("access.roles");
     return (
-        <select aria-label={label} value={value} disabled={disabled} onChange={(e) => onChange(e.target.value as ResourceRole)} className={selectClass}>
+        <Select aria-label={label} value={value} disabled={disabled} onChange={(e) => onChange(e.target.value as ResourceRole)} className={selectClass}>
             {RESOURCE_ROLES.map((role) => <option key={role} value={role}>{tRole(role)}</option>)}
-        </select>
+        </Select>
     );
 }
 
@@ -216,9 +217,9 @@ function AddPersonDialog({ data, busy, onClose, onAdd }: {
                     </div>
                     <div className="grid gap-1.5">
                         <Label htmlFor="access-role">{t("role")}</Label>
-                        <select id="access-role" value={role} onChange={(e) => setRole(e.target.value as ResourceRole)} className={cn(selectClass, "h-10 rounded-xl px-3")}>
+                        <Select id="access-role" value={role} onChange={(e) => setRole(e.target.value as ResourceRole)} className={cn(selectClass, "h-10 rounded-xl px-3")}>
                             {RESOURCE_ROLES.map((r) => <option key={r} value={r}>{tRole(r)}</option>)}
-                        </select>
+                        </Select>
                     </div>
                     <DialogFooter>
                         <Button type="button" variant="ghost" onClick={onClose}>{tc("cancel")}</Button>

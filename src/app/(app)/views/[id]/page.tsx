@@ -41,7 +41,7 @@ export default async function ViewPage({ params }: { params: Promise<{ id: strin
 
     if (view.access === "metadata") {
         return (
-            <div className="mx-auto max-w-[1000px] space-y-5 animate-in fade-in duration-500">
+            <div className="mx-auto max-w-[1000px] space-y-5">
                 <ViewMetadataClient view={view} transferTo={transferTo} />
             </div>
         );
@@ -61,7 +61,7 @@ export default async function ViewPage({ params }: { params: Promise<{ id: strin
     const askAgentId = maintainer && chatIsPrivate && agentRows.some((a) => a.id === maintainer) ? maintainer : null;
 
     return (
-        <div className="mx-auto max-w-[1600px] space-y-5 animate-in fade-in duration-500">
+        <div className="mx-auto max-w-[1600px] space-y-5">
             <ViewDetailClient
                 view={view}
                 canEdit={canEdit}

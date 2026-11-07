@@ -16,11 +16,13 @@ import { DeliveryInspector } from "@/components/delivery-inspector";
 import { ApprovalCard } from "@/components/approval-card";
 import { TypingReveal } from "@/components/typing-reveal";
 import { markLiveReveal } from "@/lib/typing-reveal";
+import { useLiveArrivals } from "@/lib/use-live-arrivals";
 import { approvalCardIdOf } from "@/lib/approval-card-copy";
 import { isPersistedUuid } from "@/lib/run-ledger-copy";
 import { agentAvatarSrc } from "@/lib/avatar";
 import { cn } from "@/lib/utils";
 import { LiveStatusRow } from "@/components/live-status-row";
+import { MotionItem, MotionList, Presence } from "@/components/ui/motion";
 import { LiveRunSteps, ReplyRunFooter, type ReplyRun } from "@/components/run-timeline";
 import { chatPollDelayMs, eventsSinceParam, isTimedStepKind, lastReasoningCopy, lastReasoningLine, mergeLiveRuns, type ClientLiveRun } from "@/lib/live-activity";
 import { useLivePoll } from "@/lib/use-realtime";
@@ -209,6 +211,7 @@ export function AgentTeamChat({
     // Disable the browser's second anchoring mechanism on the scroll container.
     rowVirtualizer.shouldAdjustScrollPositionOnItemSizeChange = (item, _delta, instance) =>
         !isAtBottomRef.current && item.start < (instance.scrollOffset ?? 0);
+    const isLiveArrival = useLiveArrivals(messages);
 
 
     const loadOlderMessages = useCallback(async () => {
@@ -538,17 +541,17 @@ export function AgentTeamChat({
                 </div>
             </div>
 
-            {unreadCount > 0 && !isAtBottom && (
+            <Presence show={unreadCount > 0 && !isAtBottom} snappy scale y={8} className="absolute bottom-20 left-1/2 z-10 -translate-x-1/2">
                 <button
                     type="button"
                     onClick={scrollToLatest}
-                    className="absolute bottom-20 left-1/2 z-10 -translate-x-1/2 rounded-full border border-cyan-500/30 bg-zinc-900/95 px-3 py-1.5 text-xs font-medium text-cyan-300 shadow-lg transition-colors hover:bg-zinc-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400/70"
+                    className="rounded-full border border-cyan-500/30 bg-zinc-900/95 px-3 py-1.5 text-xs font-medium text-cyan-300 shadow-lg transition-colors hover:bg-zinc-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400/70"
                 >
                     {t("jumpToLatest", { count: unreadCount })}
                 </button>
-            )}
+            </Presence>
 
-            <div ref={scrollRef} onScroll={handleScroll} style={{ overflowAnchor: "none" }} className="flex-1 overflow-y-auto px-3 py-3 sm:px-4">
+            <div ref={scrollRef} onScroll={handleScroll} style={{ overflowAnchor: "none" }} className="fade-y flex-1 overflow-y-auto px-3 py-3 sm:px-4">
                 {messages.length === 0 ? (
                     <div className="flex h-full items-center justify-center px-6 text-center text-sm italic text-zinc-600">{groupId ? t("emptyGroup") : t("emptyTeam")}</div>
                 ) : (
@@ -630,24 +633,26 @@ export function AgentTeamChat({
 
                                         {/* Bubble + read receipts */}
                                         <div className={cn("flex min-w-0 max-w-[86%] flex-col sm:max-w-[78%]", isHuman ? "items-end" : "items-start", isRich && "w-full max-w-full sm:max-w-[min(92%,880px)]")}>
-                                            {/* Sender name — group-start only */}
+                                            {/* Sender name — group-start only; your own messages need none (the side says it). */}
                                             {!isContinuation && !isHuman && (
-                                                <span className="text-[10px] font-medium text-cyan-400 mb-1 ml-1">{getAgentName(senderId)}</span>
+                                                <span className="text-[10px] font-medium text-muted-foreground mb-1 ml-1">{getAgentName(senderId)}</span>
                                             )}
-                                            {!isContinuation && isHuman && (
-                                                <span className="text-[10px] font-medium text-zinc-400 mb-1 mr-1">
-                                                    {isOwn ? t("you") : getMessageSenderName(msg) || t("member")}
+                                            {!isContinuation && isHuman && !isOwn && (
+                                                <span className="text-[10px] font-medium text-muted-foreground mb-1 mr-1">
+                                                    {getMessageSenderName(msg) || t("member")}
                                                 </span>
                                             )}
 
                                             <div className={cn(
+                                                // Same surfaces and tail convention as the direct chat.
                                                 "min-w-0 max-w-full rounded-2xl border px-4 py-2.5 text-sm",
+                                                isLiveArrival(msg.id) && "ec-message-in",
                                                 isRich && "w-full",
                                                 isHuman
-                                                    ? "border-zinc-700/50 bg-zinc-800/50 text-zinc-200"
-                                                    : "border-zinc-800/50 bg-zinc-800/30 text-zinc-300",
-                                                isLastInGroup && isHuman && "rounded-tr-none",
-                                                isLastInGroup && !isHuman && "rounded-tl-none"
+                                                    ? "border-transparent bg-secondary text-secondary-foreground"
+                                                    : "border-border bg-background/60 text-foreground",
+                                                isLastInGroup && isHuman && "rounded-br-md",
+                                                isLastInGroup && !isHuman && "rounded-bl-md"
                                             )}>
                                                 {isHuman ? (
                                                     <ParsedMessage text={msg.text} />
@@ -693,47 +698,45 @@ export function AgentTeamChat({
                                                 {msg.senderType === "agent" && replyRuns[msg.id] && (
                                                     <ReplyRunFooter run={replyRuns[msg.id]} />
                                                 )}
-                                                {isPersistedUuid(msg.id) && (msg.senderType === "human" || msg.senderType === "agent") && (
-                                                    <div className="mt-1.5">
-                                                        <DeliveryInspector messageId={msg.id} />
-                                                    </div>
-                                                )}
-                                                {/* Timestamp bottom-right */}
-                                                <div className={cn(
-                                                    "text-[10px] mt-1.5 text-right opacity-50",
-                                                    isHuman ? "text-zinc-400" : "text-zinc-500"
-                                                )}>
-                                                    {format.dateTime(new Date(msg.createdAt), { hour: "2-digit", minute: "2-digit" })}
+                                                {/* One footer line: the delivery inspector, read receipts (last message
+                                                    of a group) or the waiting note (no reads after 30 s), then the time. */}
+                                                <div className="mt-1.5 flex items-center justify-end gap-1.5 text-[10px] text-muted-foreground">
+                                                    {isPersistedUuid(msg.id) && (msg.senderType === "human" || msg.senderType === "agent") && (
+                                                        <span className="mr-auto shrink-0">
+                                                            <DeliveryInspector messageId={msg.id} />
+                                                        </span>
+                                                    )}
+                                                    {readByAgents.length > 0 && isLastInGroup ? (
+                                                        <span className="flex min-w-0 items-center gap-1">
+                                                            <span className="flex shrink-0 -space-x-1">
+                                                                {readByAgents.slice(0, 3).map(a => (
+                                                                    <img
+                                                                        key={a.id}
+                                                                        src={agentAvatarSrc({ id: a.id, avatarUrl: agents.find((ag) => ag.id === a.id)?.avatarUrl })}
+                                                                        title={a.name}
+                                                                        className="h-3.5 w-3.5 rounded-full border border-border object-cover"
+                                                                        alt={a.name}
+                                                                    />
+                                                                ))}
+                                                            </span>
+                                                            <span className="truncate font-medium">
+                                                                {readByAgents.length === 1 ? t("readBy", { name: readByAgents[0].name }) : t("readByCount", { count: readByAgents.length })}
+                                                            </span>
+                                                            <span aria-hidden>·</span>
+                                                        </span>
+                                                    ) : isHuman && isLastInGroup && now - msgTime > 30000 ? (
+                                                        <span className="flex min-w-0 items-center gap-1">
+                                                            <span className="truncate font-medium text-amber-600 dark:text-amber-400">
+                                                                {offlineAgents.length > 0 ? t("queued") : t("waiting")}
+                                                            </span>
+                                                            <span aria-hidden>·</span>
+                                                        </span>
+                                                    ) : null}
+                                                    <time dateTime={new Date(msg.createdAt).toISOString()} className="shrink-0 whitespace-nowrap tabular-nums">
+                                                        {format.dateTime(new Date(msg.createdAt), { hour: "2-digit", minute: "2-digit" })}
+                                                    </time>
                                                 </div>
                                             </div>
-
-                                            {/* Read receipts — only on last message of group */}
-                                            {readByAgents.length > 0 && isLastInGroup && (
-                                                <div className="mt-1 flex items-center gap-1 px-1">
-                                                    <div className="flex -space-x-1">
-                                                        {readByAgents.slice(0, 3).map(a => (
-                                                            <img
-                                                                key={a.id}
-                                                                src={agentAvatarSrc({ id: a.id, avatarUrl: agents.find((ag) => ag.id === a.id)?.avatarUrl })}
-                                                                title={a.name}
-                                                                className="h-3.5 w-3.5 rounded-full border border-zinc-900 object-cover"
-                                                                alt={a.name}
-                                                            />
-                                                        ))}
-                                                    </div>
-                                                    <span className="text-[10px] font-medium text-cyan-500">
-                                                        {readByAgents.length === 1 ? t("readBy", { name: readByAgents[0].name }) : t("readByCount", { count: readByAgents.length })}
-                                                    </span>
-                                                </div>
-                                            )}
-                                            {/* Waiting indicator — human message with no reads after 30s */}
-                                            {isHuman && isLastInGroup && readByAgents.length === 0 && now - msgTime > 30000 && (
-                                                <div className="mt-1 px-1">
-                                                    <span className="text-[10px] font-medium text-amber-400">
-                                                        {offlineAgents.length > 0 ? t("queued") : t("waiting")}
-                                                    </span>
-                                                </div>
-                                            )}
                                         </div>
                                     </div>
                                 </div>
@@ -757,11 +760,9 @@ export function AgentTeamChat({
                 stepStartedAt={soloLiveRun && isTimedStepKind(soloLiveRun.current.kind) ? soloLiveRun.currentStartedAt : null}
                 detail={soloLiveRun ? render(lastReasoningCopy(soloLiveRun), lastReasoningLine(soloLiveRun) ?? "") || null : null}
             />
-            {liveActive && soloLiveRun && (
-                <div className="px-4 pb-1.5 pl-[42px]">
-                    <LiveRunSteps steps={soloLiveRun.steps} usage={soloLiveRun.usage} />
-                </div>
-            )}
+            <Presence show={Boolean(liveActive && soloLiveRun)} snappy className="px-4 pb-1.5 pl-[42px]">
+                {soloLiveRun && <LiveRunSteps steps={soloLiveRun.steps} usage={soloLiveRun.usage} />}
+            </Presence>
 
             {sendable ? (
                 <form onSubmit={handleSend} className="border-t border-zinc-800/80 bg-zinc-900/30 p-2 sm:p-3">
@@ -774,9 +775,13 @@ export function AgentTeamChat({
                             )}
                             {pendingAttachments.length > 0 && (
                                 <div className="flex flex-wrap gap-2">
+                                    <MotionList>
                                     {pendingAttachments.map((att) => (
-                                        <AttachmentChip key={att.id} attachment={att} onRemove={() => removePendingAttachment(att.id)} />
+                                        <MotionItem key={att.id}>
+                                            <AttachmentChip attachment={att} onRemove={() => removePendingAttachment(att.id)} />
+                                        </MotionItem>
                                     ))}
+                                    </MotionList>
                                 </div>
                             )}
                         </div>
@@ -818,15 +823,15 @@ export function AgentTeamChat({
                             onSubmit={sendMessage}
                             placeholder={placeholder}
                             rows={1}
-                            className="min-h-11 w-full resize-none overflow-y-auto rounded-xl border border-zinc-700 bg-zinc-800 px-3 py-2.5 text-sm leading-5 text-zinc-200 placeholder:text-zinc-600 focus:outline-none focus:ring-2 focus:ring-cyan-500/70 sm:px-4"
+                            className="min-h-11 w-full resize-none overflow-y-auto rounded-xl border border-zinc-700 bg-zinc-800 px-3 py-2.5 text-sm leading-5 text-zinc-200 placeholder:overflow-hidden placeholder:text-ellipsis placeholder:whitespace-nowrap placeholder:text-zinc-600 focus:outline-none focus:ring-2 focus:ring-ring sm:px-4"
                         />
                         <button
                             type="submit"
                             disabled={(!draft.trim() && pendingAttachments.length === 0) || isSending}
                             aria-label={t("send")}
-                            className="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-xl bg-cyan-600 transition-colors hover:bg-cyan-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300 disabled:cursor-not-allowed disabled:opacity-40"
+                            className="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-xl bg-primary text-primary-foreground transition-colors hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background disabled:cursor-not-allowed disabled:opacity-40"
                         >
-                            <IconSend className="h-4 w-4 text-white" />
+                            <IconSend className="h-4 w-4" />
                         </button>
                     </div>
                     <p className="mt-1.5 px-1 text-[10px] text-zinc-600">{t("sendHint")}</p>

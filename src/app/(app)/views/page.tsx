@@ -32,7 +32,7 @@ export default async function ViewsPage({ searchParams }: { searchParams: Promis
     const t = await getTranslations("views.list");
 
     return (
-        <div className="mx-auto max-w-[1400px] space-y-6 animate-in fade-in duration-500">
+        <div className="mx-auto max-w-[1400px] space-y-6">
             <PageHeader
                 eyebrow={t("eyebrow")}
                 title={showArchived ? t("archivedTitle") : t("title")}

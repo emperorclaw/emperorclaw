@@ -8,6 +8,7 @@ import { versions, DOC_SECTIONS, type DocVersion, type DocPage } from '@/content
 import { DocsMarkdownRenderer } from './docs-markdown-renderer';
 import { IconChevronRight, IconFileText, IconMenu2, IconX, IconArrowLeft } from "@tabler/icons-react";
 import { CustomLogo } from './custom-logo';
+import { Select } from '@/components/ui/select';
 
 /** Product name and docs build: never translated. */
 const DOCS_BUILD = 'Emperor Claw v1.1.2';
@@ -137,18 +138,15 @@ export function DocsViewer({ version: initialVersion, slug }: DocsViewerProps) {
                     {t('version')}
                   </label>
                   <div className="relative group">
-                    <select
-                      className="w-full appearance-none px-3 py-2 border border-border rounded-xl bg-muted/50 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-indigo-500/40 transition-all"
+                    <Select
+                      className="w-full px-3 py-2 border border-border rounded-xl bg-muted/50 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-indigo-500/40 transition-all"
                       value={currentVersion}
                       onChange={(e) => handleVersionChange(e.target.value)}
                     >
                       {versions.map(v => (
                         <option key={v.id} value={v.id}>{v.label}</option>
                       ))}
-                    </select>
-                    <div className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-muted-foreground">
-                      <IconChevronRight className="w-4 h-4 rotate-90" />
-                    </div>
+                    </Select>
                   </div>
                 </div>
 

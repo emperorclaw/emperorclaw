@@ -128,7 +128,7 @@
 }
 
 :root {
-  --radius: 0.875rem;
+  --radius: 0.5rem;
   --background: oklch(0.985 0.002 286);
   --foreground: oklch(0.15 0.004 286);
   --card: oklch(1 0 0);
@@ -144,8 +144,8 @@
   --accent: oklch(0.91 0.02 240);
   --accent-foreground: oklch(0.18 0.02 260);
   --destructive: oklch(0.55 0.25 27);
-  --border: oklch(0 0 0 / 0.14);
-  --input: oklch(0 0 0 / 0.16);
+  --border: oklch(0 0 0 / 0.09);
+  --input: oklch(0 0 0 / 0.12);
   --ring: oklch(0.55 0.15 232);
   --chart-1: oklch(0.646 0.222 41.116);
   --chart-2: oklch(0.55 0.15 232);
@@ -158,7 +158,7 @@
   --sidebar-primary-foreground: oklch(0.985 0 0);
   --sidebar-accent: oklch(0.93 0.005 260);
   --sidebar-accent-foreground: oklch(0.18 0.004 286);
-  --sidebar-border: oklch(0 0 0 / 0.12);
+  --sidebar-border: oklch(0 0 0 / 0.08);
   --sidebar-ring: oklch(0.55 0.15 232);
 
   /* Light mode inverts zinc: 950 is white, 50 is dark */
@@ -246,19 +246,31 @@
   --lime-300: oklch(0.45 0.14 130);
   --lime-400: oklch(0.54 0.16 130);
 
-  --chat-gradient-start: rgba(255, 255, 255, 0.55);
-  --chat-gradient-end: rgba(244, 244, 245, 0.95);
+  /* Elevation: a hairline plus a soft offset shadow, never a halo. Panels sit
+     on the page; pop surfaces (menus, popovers, dialogs) float above it. */
+  --shadow-panel: 0 0 0 0.5px oklch(0 0 0 / 0.04), 0 1px 2px oklch(0 0 0 / 0.04), 0 2px 8px oklch(0 0 0 / 0.04);
+  --shadow-pop: 0 0 0 0.5px oklch(0 0 0 / 0.06), 0 4px 12px oklch(0 0 0 / 0.08), 0 12px 32px oklch(0 0 0 / 0.1);
+
+  /* Motion: critically damped springs (no overshoot), response 0.4 s and 0.3 s,
+     sampled into linear() so CSS transitions and keyframes can use them. */
+  --ease-spring: linear(0, 0.0494, 0.1577, 0.2857, 0.412, 0.5263, 0.6246, 0.7064, 0.7727, 0.8255, 0.867, 0.8993, 0.9241, 0.9431, 0.9575, 0.9683, 0.9765, 0.9826, 0.9872, 0.9905, 0.9931, 0.9949, 0.9963, 0.9973, 1);
+  --duration-spring: 540ms;
+  --ease-spring-snappy: linear(0, 0.0495, 0.1582, 0.2864, 0.4129, 0.5273, 0.6256, 0.7073, 0.7736, 0.8263, 0.8677, 0.8998, 0.9246, 0.9435, 0.9578, 0.9686, 0.9767, 0.9828, 0.9873, 0.9906, 0.9931, 0.995, 0.9963, 0.9973, 1);
+  --duration-spring-snappy: 400ms;
+
+  /* Height of the phone tab bar (without the safe area); .emperor-main clears it. */
+  --mobile-tabbar-h: 3.5rem;
 }
 
 /* `.force-dark` gets the full dark palette (tokens AND scales) so anything
    inside renders exactly as it does in dark mode, whatever the page theme. */
 .dark,
 .force-dark {
-  --background: oklch(0.105 0.004 286);
+  --background: oklch(0.13 0.004 286);
   --foreground: oklch(0.985 0.002 286);
-  --card: oklch(0.155 0.006 286);
+  --card: oklch(0.165 0.005 286);
   --card-foreground: oklch(0.985 0.002 286);
-  --popover: oklch(0.145 0.006 286);
+  --popover: oklch(0.19 0.005 286);
   --popover-foreground: oklch(0.985 0.002 286);
   --primary: oklch(0.72 0.15 232);
   --primary-foreground: oklch(0.115 0.006 286);
@@ -266,27 +278,28 @@
   --secondary-foreground: oklch(0.94 0.006 286);
   --muted: oklch(0.205 0.012 286);
   --muted-foreground: oklch(0.72 0.014 286);
-  --accent: oklch(0.24 0.04 286);
+  --accent: oklch(0.3 0.008 286);
   --accent-foreground: oklch(0.985 0.002 286);
   --destructive: oklch(0.704 0.191 22.216);
-  --border: oklch(1 0 0 / 12%);
-  --input: oklch(1 0 0 / 14%);
+  --border: oklch(1 0 0 / 8%);
+  --input: oklch(1 0 0 / 11%);
   --ring: oklch(0.72 0.15 232);
   --chart-1: oklch(0.72 0.15 232);
   --chart-2: oklch(0.74 0.14 165);
   --chart-3: oklch(0.78 0.16 75);
   --chart-4: oklch(0.68 0.18 306);
   --chart-5: oklch(0.68 0.20 24);
-  --sidebar: oklch(0.12 0.006 286);
+  --sidebar: oklch(0.145 0.005 286);
   --sidebar-foreground: oklch(0.9 0.006 286);
   --sidebar-primary: oklch(0.72 0.15 232);
   --sidebar-primary-foreground: oklch(0.115 0.006 286);
-  --sidebar-accent: oklch(0.2 0.012 286);
+  --sidebar-accent: oklch(0.26 0.008 286);
   --sidebar-accent-foreground: oklch(0.985 0.002 286);
-  --sidebar-border: oklch(1 0 0 / 10%);
+  --sidebar-border: oklch(1 0 0 / 7%);
   --sidebar-ring: oklch(0.72 0.15 232);
 
-  /* Dark mode keeps standard zinc scale */
+  /* Dark mode keeps the zinc scale, with its darkest steps lifted to the
+     canvas (950 = background, 900 = card) so zinc surfaces match the tokens. */
   --zinc-50: oklch(0.985 0.002 286);
   --zinc-100: oklch(0.965 0.003 286);
   --zinc-200: oklch(0.92 0.004 286);
@@ -295,9 +308,9 @@
   --zinc-500: oklch(0.55 0.01 286);
   --zinc-600: oklch(0.40 0.01 286);
   --zinc-700: oklch(0.30 0.01 286);
-  --zinc-800: oklch(0.22 0.01 286);
-  --zinc-900: oklch(0.15 0.01 286);
-  --zinc-950: oklch(0.10 0.01 286);
+  --zinc-800: oklch(0.235 0.008 286);
+  --zinc-900: oklch(0.165 0.005 286);
+  --zinc-950: oklch(0.13 0.004 286);
 
   /* Dark mode keeps bright cyan scale */
   --cyan-50: oklch(0.984 0.019 200.873);
@@ -369,8 +382,8 @@
   --lime-300: oklch(0.897 0.196 126.665);
   --lime-400: oklch(0.841 0.238 128.85);
 
-  --chat-gradient-start: rgba(24, 24, 27, 0.55);
-  --chat-gradient-end: rgba(9, 9, 11, 0.95);
+  --shadow-panel: inset 0 1px 0 oklch(1 0 0 / 0.04), 0 1px 2px oklch(0 0 0 / 0.3);
+  --shadow-pop: inset 0 1px 0 oklch(1 0 0 / 0.06), 0 0 0 0.5px oklch(0 0 0 / 0.5), 0 8px 24px oklch(0 0 0 / 0.35), 0 16px 48px oklch(0 0 0 / 0.25);
 }
 
 /* Custom Blob Animations for Auth Background */
@@ -426,27 +439,20 @@
 @layer base {
   html {
     color-scheme: light;
-    background: oklch(0.985 0.002 286);
+    background: var(--background);
   }
 
   .dark html,
   html.dark {
     color-scheme: dark;
-    background: #050507;
   }
 
+  /* A flat, calm canvas in both themes. */
   body {
     min-height: 100vh;
-    background: oklch(0.985 0.002 286);
+    background: var(--background);
     font-feature-settings: "cv02", "cv03", "cv04", "cv11";
     text-rendering: geometricPrecision;
-  }
-
-  .dark body {
-    background:
-      radial-gradient(circle at 18% 0%, rgba(34, 211, 238, 0.08), transparent 28rem),
-      radial-gradient(circle at 88% 6%, rgba(124, 58, 237, 0.10), transparent 32rem),
-      linear-gradient(135deg, #050507 0%, #08080b 45%, #0b0b10 100%);
   }
 
   ::selection {
@@ -516,54 +522,33 @@
 
 @layer components {
   .emperor-app-shell {
-    background: oklch(0.985 0.002 286);
-  }
-
-  .dark .emperor-app-shell {
-    background:
-      radial-gradient(circle at 16% -8%, rgba(34, 211, 238, 0.10), transparent 32rem),
-      radial-gradient(circle at 92% 0%, rgba(168, 85, 247, 0.12), transparent 34rem),
-      #050507;
+    background: var(--background);
   }
 
   .emperor-main {
     background: transparent;
   }
 
-  .dark .emperor-main {
-    background:
-      linear-gradient(180deg, rgba(255,255,255,0.018), transparent 16rem),
-      radial-gradient(circle at 50% 0%, rgba(255,255,255,0.045), transparent 42rem);
-  }
-
   .emperor-page-frame {
   }
 
+  /* Panels: hairline + soft layered shadow, no blur. The radius defaults to
+     the 2xl step (16px), the cap for shells and panels. */
   .emperor-panel {
-    border: 1px solid oklch(0 0 0 / 0.12);
-    background: oklch(1 0 0);
-    box-shadow:
-      0 1px 2px oklch(0 0 0 / 0.04),
-      0 4px 16px oklch(0 0 0 / 0.06),
-      0 0 0 0.5px oklch(0 0 0 / 0.06);
-    backdrop-filter: blur(18px);
-  }
-
-  .dark .emperor-panel {
-    border: 1px solid rgba(63, 63, 70, 0.72);
-    background: linear-gradient(180deg, rgba(24, 24, 27, 0.82), rgba(9, 9, 11, 0.78));
-    box-shadow: 0 24px 80px rgba(0, 0, 0, 0.26);
+    border: 1px solid var(--border);
+    border-radius: calc(var(--radius) + 8px);
+    background: var(--card);
+    box-shadow: var(--shadow-panel);
   }
 
   .emperor-chip {
-    border: 1px solid oklch(0 0 0 / 0.12);
+    border: 1px solid var(--border);
     background: oklch(0.97 0.003 260);
     color: oklch(0.35 0.005 286);
   }
 
   .dark .emperor-chip {
-    border: 1px solid rgba(63, 63, 70, 0.78);
-    background: rgba(24, 24, 27, 0.72);
+    background: oklch(1 0 0 / 0.04);
     color: rgb(212, 212, 216);
   }
 
@@ -593,24 +578,21 @@
   .emperor-main .font-medium {
     font-weight: 550;
   }
-}
 
-@media (prefers-reduced-motion: reduce) {
-  *, *::before, *::after {
-    animation-duration: 0.01ms !important;
-    animation-iteration-count: 1 !important;
-    scroll-behavior: auto !important;
-    transition-duration: 0.01ms !important;
+  /* Tracking follows size: large headings tighten, small labels stay open. */
+  .emperor-main h1 {
+    letter-spacing: -0.025em;
+    line-height: 1.1;
+  }
+
+  .emperor-main :is(h2, h3) {
+    letter-spacing: -0.012em;
   }
 }
 
 /* --- Responsive helpers --- */
 
 @media (max-width: 639px) {
-  .emperor-panel {
-    border-radius: 1rem;
-  }
-
   .emperor-main h1 {
     font-size: 1.5rem;
   }
@@ -913,8 +895,32 @@
 }
 
 /* The observatory is a shared company space. Only fresh signals activate work cues. */
-.observatory-stage { background: radial-gradient(ellipse at 50% 15%, #163b52 0%, #081728 38%, #030914 85%); }
-.observatory-stars { background-image: radial-gradient(circle, rgb(165 243 252 / .3) 1px, transparent 1px), radial-gradient(circle, rgb(196 181 253 / .2) 1px, transparent 1px); background-size: 67px 73px, 113px 127px; background-position: 17px 9px, 53px 31px; opacity: .4; }
+/* Light: a daylit floor (pale sky to warm paper) with light desks; dark keeps
+   the night observatory. Desk and throne surfaces read these tokens. */
+.observatory-stage {
+  --scene-desk-top: #dbe7f1;
+  --scene-desk-front: #c3d4e3;
+  --scene-throne-back-top: #cfe3f1;
+  --scene-throne-back-bottom: #a9c4da;
+  --scene-throne-step: #d6e4ef;
+  --scene-throne-step-top: #e3edf5;
+  --scene-throne-seat: #b8d0e3;
+  --scene-throne-arm: #c6d9e8;
+  background: radial-gradient(ellipse at 50% 15%, #f4fbff 0%, #e8f2f9 40%, #dde8f1 85%);
+}
+.dark .observatory-stage, .force-dark .observatory-stage {
+  --scene-desk-top: #17304a;
+  --scene-desk-front: #0b1a2c;
+  --scene-throne-back-top: #1d4363;
+  --scene-throne-back-bottom: #0b1c2f;
+  --scene-throne-step: #132a42;
+  --scene-throne-step-top: #183450;
+  --scene-throne-seat: #1f4a6e;
+  --scene-throne-arm: #163552;
+  background: radial-gradient(ellipse at 50% 15%, #163b52 0%, #081728 38%, #030914 85%);
+}
+.observatory-stars { background-image: radial-gradient(circle, rgb(14 116 144 / .22) 1px, transparent 1px), radial-gradient(circle, rgb(109 40 217 / .12) 1px, transparent 1px); background-size: 67px 73px, 113px 127px; background-position: 17px 9px, 53px 31px; opacity: .35; }
+.dark .observatory-stars, .force-dark .observatory-stars { background-image: radial-gradient(circle, rgb(165 243 252 / .3) 1px, transparent 1px), radial-gradient(circle, rgb(196 181 253 / .2) 1px, transparent 1px); opacity: .4; }
 @keyframes observatory-work { 25% { transform: translate(1px, -2px) rotate(.6deg); } 75% { transform: translate(-1px, -1px) rotate(-.6deg); } }
 @keyframes observatory-terminal { 50% { opacity: .35; } }
 @keyframes observatory-transfer { to { stroke-dashoffset: -60; } }
@@ -936,7 +942,8 @@
 /* Living office (dashboard Scene). Idle life is CSS only: shared keyframes,
    transform/opacity, per-desk timing from custom properties. One-shot moments
    (plane, confetti, gold pulse) run once and are removed by the component. */
-.living-floor-glow { background: radial-gradient(ellipse 70% 60% at 50% 0%, rgb(34 211 238 / .07), transparent 70%), linear-gradient(rgb(103 232 249 / .035) 1px, transparent 1px) 0 0 / 100% 46px; mask-image: linear-gradient(to bottom, black, transparent 92%); }
+.living-floor-glow { background: radial-gradient(ellipse 70% 60% at 50% 0%, rgb(14 165 233 / .08), transparent 70%), linear-gradient(rgb(14 116 144 / .07) 1px, transparent 1px) 0 0 / 100% 46px; mask-image: linear-gradient(to bottom, black, transparent 92%); }
+.dark .living-floor-glow, .force-dark .living-floor-glow { background: radial-gradient(ellipse 70% 60% at 50% 0%, rgb(34 211 238 / .07), transparent 70%), linear-gradient(rgb(103 232 249 / .035) 1px, transparent 1px) 0 0 / 100% 46px; }
 @keyframes living-breathe { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-1.2px); } }
 .living-breathe { animation: living-breathe var(--bob-t, 2.6s) ease-in-out infinite; animation-delay: var(--bob-d, 0s); }
 @keyframes living-gold { 0%, 100% { opacity: .55; } 50% { opacity: 1; } }
@@ -971,7 +978,481 @@
   .emperor-main {
     padding-left: max(0.75rem, env(safe-area-inset-left));
     padding-right: max(0.75rem, env(safe-area-inset-right));
-    padding-bottom: max(5rem, calc(1rem + env(safe-area-inset-bottom)));
+  }
+}
+
+/* The phone tab bar is fixed and translucent, so content scrolls under it;
+   the main column clears it exactly (bar + safe area + the usual 1rem). */
+@media (max-width: 767px) {
+  .emperor-main {
+    padding-bottom: calc(var(--mobile-tabbar-h) + env(safe-area-inset-bottom) + 1rem);
+  }
+}
+
+/* Small caps labels: modest tracking at most (unlayered so it caps the wide
+   tracking-[0.2em]-style utilities; the zh-CN reset below still wins). */
+.emperor-main .uppercase {
+  letter-spacing: 0.06em;
+}
+
+/* ─── Motion & material ─────────────────────────────────────── */
+/* Apple's fluid-interface rules: respond on press, move on critically damped
+   springs, let surfaces grow from what opened them, and keep chrome
+   translucent so content reads underneath. Reduced-motion, -transparency and
+   more-contrast alternatives are at the end of this section. */
+
+/* 1. Press: every control answers on pointer-down. Scale is its own property,
+   so it never fights a translate or transform utility. Colors keep their
+   150 ms fade; the press goes in fast (100 ms) and springs back on release.
+   Layered as a component default: any Tailwind transition-* utility on the
+   control wins, so its own transform/translate/rotate transitions keep
+   running. Framer-driven elements ([data-motion]) and drag sources
+   ([data-no-press], and anything inside one) never get it. */
+@layer components {
+  :is(.emperor-app-shell, [data-slot="dialog-content"], [data-slot="dropdown-menu-content"], [data-slot="popover-content"])
+    :is(button, a[href], [role="button"], [role="tab"], [role="menuitem"], summary):not(:disabled, [aria-disabled="true"], [data-disabled], [data-motion], [data-no-press], [data-no-press] *) {
+    transition:
+      color 150ms ease, background-color 150ms ease, border-color 150ms ease, outline-color 150ms ease,
+      text-decoration-color 150ms ease, fill 150ms ease, stroke 150ms ease, opacity 150ms ease, box-shadow 150ms ease,
+      scale var(--duration-spring-snappy) var(--ease-spring-snappy);
+  }
+
+  :is(.emperor-app-shell, [data-slot="dialog-content"], [data-slot="dropdown-menu-content"], [data-slot="popover-content"])
+    :is(button, a[href], [role="button"], [role="tab"], [role="menuitem"], summary):not(:disabled, [aria-disabled="true"], [data-disabled], [data-motion], [data-no-press], [data-no-press] *):active {
+    scale: 0.97;
+    transition-duration: 100ms;
+    transition-timing-function: ease-out;
+  }
+}
+
+/* Controls that only fade colors (`transition-colors`, the common case) keep
+   that utility's list, duration and easing and add `scale` to it, so the press
+   eases instead of snapping. Unlayered so it extends the utility. */
+:is(.emperor-app-shell, [data-slot="dialog-content"], [data-slot="dropdown-menu-content"], [data-slot="popover-content"])
+  :is(button, a[href], [role="button"], [role="tab"], [role="menuitem"], summary).transition-colors:not(:disabled, [aria-disabled="true"], [data-disabled], [data-motion], [data-no-press], [data-no-press] *) {
+  transition-property:
+    color, background-color, border-color, outline-color, text-decoration-color, fill, stroke,
+    --tw-gradient-from, --tw-gradient-via, --tw-gradient-to, scale;
+}
+
+/* 3. Page arrival: route content rises 6px and fades in on the spring, with a
+   light stagger for the first blocks. `backwards` fill only, so nothing is
+   left transformed (no stray containing block) once it has settled. Mounted
+   per navigation by (app)/template.tsx, so a background refresh never replays it.
+   Layered so a block's own animate-* utility always wins over the arrival. */
+@keyframes ec-arrive {
+  from { opacity: 0; translate: 0 6px; }
+}
+
+@layer components {
+  .ec-page-arrive > * > * {
+    animation: ec-arrive var(--duration-spring) var(--ease-spring) backwards;
+  }
+
+  .ec-page-arrive > * > :nth-child(2) { animation-delay: 30ms; }
+  .ec-page-arrive > * > :nth-child(3) { animation-delay: 60ms; }
+  .ec-page-arrive > * > :nth-child(n + 4) { animation-delay: 90ms; }
+}
+
+/* 4. Materialize: overlays grow from their trigger (Radix sets the origin),
+   sharpening from a soft blur as they settle; exits mirror it, shorter. */
+@keyframes ec-materialize-in {
+  from { opacity: 0; transform: scale(0.96); filter: blur(6px); }
+}
+
+@keyframes ec-materialize-out {
+  to { opacity: 0; transform: scale(0.96); filter: blur(6px); }
+}
+
+@keyframes ec-scrim-in { from { opacity: 0; } }
+@keyframes ec-scrim-out { to { opacity: 0; } }
+
+.ec-materialize[data-state="open"] {
+  animation: ec-materialize-in var(--duration-spring-snappy) var(--ease-spring-snappy) both;
+}
+
+.ec-materialize[data-state="closed"] {
+  animation: ec-materialize-out 160ms ease-in both;
+}
+
+/* Large surfaces (dialogs) skip the blur: filtering a full panel every frame
+   costs far more than it shows. Opacity and scale only. */
+@keyframes ec-materialize-lg-in {
+  from { opacity: 0; transform: scale(0.96); }
+}
+
+@keyframes ec-materialize-lg-out {
+  to { opacity: 0; transform: scale(0.96); }
+}
+
+.ec-materialize-lg[data-state="open"] {
+  animation-name: ec-materialize-lg-in;
+  animation-duration: var(--duration-spring);
+  animation-timing-function: var(--ease-spring);
+}
+
+.ec-materialize-lg[data-state="closed"] {
+  animation-name: ec-materialize-lg-out;
+}
+
+/* Bottom sheets rise from the bottom edge instead (after .ec-materialize, so
+   they win); `translate` leaves `transform` free for drag-to-dismiss. */
+@keyframes ec-sheet-in { from { translate: 0 100%; } }
+@keyframes ec-sheet-out { to { translate: 0 100%; } }
+
+.ec-sheet[data-state="open"] {
+  animation: ec-sheet-in var(--duration-spring) var(--ease-spring) backwards;
+}
+
+.ec-sheet[data-state="closed"] {
+  animation: ec-sheet-out 200ms ease-in forwards;
+}
+
+.ec-scrim[data-state="open"] { animation: ec-scrim-in 240ms ease-out both; }
+.ec-scrim[data-state="closed"] { animation: ec-scrim-out 160ms ease-in both; }
+
+/* 5. Material: translucent chrome that content scrolls under, with a 1px
+   light edge where the bar meets the content. */
+.ec-material {
+  background-color: color-mix(in oklch, var(--sidebar) 72%, transparent);
+  -webkit-backdrop-filter: blur(20px) saturate(180%);
+  backdrop-filter: blur(20px) saturate(180%);
+}
+
+.ec-material-edge-top {
+  box-shadow: inset 0 1px 0 oklch(1 0 0 / 0.5);
+}
+
+.dark .ec-material-edge-top {
+  box-shadow: inset 0 1px 0 oklch(1 0 0 / 0.06);
+}
+
+/* 6. Scroll edges fade instead of cutting hard. Driven by the element's own
+   scroll position, so a list that does not overflow gets no fade at all and
+   each edge fades only while there is more to scroll that way. Browsers
+   without scroll-driven animations keep plain hard edges. */
+@property --ec-fade-top {
+  syntax: "<length>";
+  inherits: false;
+  initial-value: 0px;
+}
+
+@property --ec-fade-bottom {
+  syntax: "<length>";
+  inherits: false;
+  initial-value: 0px;
+}
+
+@keyframes ec-fade-edges {
+  0% { --ec-fade-top: 0px; --ec-fade-bottom: 16px; }
+  8%, 92% { --ec-fade-top: 16px; --ec-fade-bottom: 16px; }
+  100% { --ec-fade-top: 16px; --ec-fade-bottom: 0px; }
+}
+
+@supports (animation-timeline: scroll()) {
+  .fade-y {
+    -webkit-mask-image: linear-gradient(to bottom, transparent 0, #000 var(--ec-fade-top), #000 calc(100% - var(--ec-fade-bottom)), transparent 100%);
+    mask-image: linear-gradient(to bottom, transparent 0, #000 var(--ec-fade-top), #000 calc(100% - var(--ec-fade-bottom)), transparent 100%);
+    animation: ec-fade-edges linear both;
+    animation-timeline: scroll(self);
+  }
+}
+
+/* 7. New chat messages slide up and fade in on the snappy spring (only live
+   arrivals; history and re-mounted virtual rows never get the class). */
+@keyframes ec-message-in {
+  from { opacity: 0; translate: 0 8px; }
+}
+
+.ec-message-in {
+  animation: ec-message-in var(--duration-spring-snappy) var(--ease-spring-snappy) backwards;
+}
+
+/* 8. Disclosures: every <details> opens and closes on the spring (height +
+   fade), closing a little faster than it opens. Browsers without
+   ::details-content keep the instant toggle. */
+@supports selector(::details-content) {
+  details {
+    interpolate-size: allow-keywords;
+  }
+
+  details::details-content {
+    block-size: 0;
+    opacity: 0;
+    overflow-y: clip;
+    transition:
+      block-size 260ms var(--ease-spring),
+      opacity 180ms ease-in,
+      content-visibility 260ms allow-discrete;
+  }
+
+  details[open]::details-content {
+    block-size: auto;
+    opacity: 1;
+    transition:
+      block-size var(--duration-spring) var(--ease-spring),
+      opacity 240ms ease-out,
+      content-visibility var(--duration-spring) allow-discrete;
+  }
+}
+
+/* Summary chevrons that use `group-open:` rotate on the snappy spring. */
+details > summary svg {
+  transition: rotate var(--duration-spring-snappy) var(--ease-spring-snappy), transform var(--duration-spring-snappy) var(--ease-spring-snappy);
+}
+
+/* Tab panels (ui/tabs.tsx): the newly active panel fades in and slides a
+   little from the side of the tab that was picked. Radix unmounts the old
+   panel at once, so the new one never waits on it. */
+@keyframes ec-tab-forward { from { opacity: 0; translate: 12px 0; } }
+@keyframes ec-tab-back { from { opacity: 0; translate: -12px 0; } }
+
+[data-slot="tabs"][data-direction="forward"] [data-slot="tabs-content"][data-state="active"] {
+  animation: ec-tab-forward var(--duration-spring) var(--ease-spring) backwards;
+}
+
+[data-slot="tabs"][data-direction="back"] [data-slot="tabs-content"][data-state="active"] {
+  animation: ec-tab-back var(--duration-spring) var(--ease-spring) backwards;
+}
+
+/* Loading placeholders fade in after a beat (a fast load never flashes
+   them), and the page that replaces them rises in through .ec-page-arrive,
+   so skeleton -> content reads as a crossfade rather than a hard swap. */
+@keyframes ec-skeleton-in { from { opacity: 0; } }
+
+.ec-skeleton-in {
+  animation: ec-skeleton-in 240ms ease-out 120ms backwards;
+}
+
+/* Simple elements that only appear (no exit): fade and rise in on insert. */
+.ec-appear {
+  transition:
+    opacity var(--duration-spring-snappy) var(--ease-spring-snappy),
+    translate var(--duration-spring-snappy) var(--ease-spring-snappy);
+}
+
+@starting-style {
+  .ec-appear {
+    opacity: 0;
+    translate: 0 6px;
+  }
+}
+
+/* Menus opened from a corner button (mobile navigation) grow out of that
+   corner: a deeper scale than .ec-materialize so the anchor reads. No blur:
+   the panel is large, and opacity + scale stay on the compositor. */
+@keyframes ec-corner-in {
+  from { opacity: 0; transform: scale(0.88); }
+}
+
+@keyframes ec-corner-out {
+  to { opacity: 0; transform: scale(0.88); }
+}
+
+.ec-materialize.ec-corner[data-state="open"] {
+  animation: ec-corner-in var(--duration-spring) var(--ease-spring) both;
+}
+
+.ec-materialize.ec-corner[data-state="closed"] {
+  animation: ec-corner-out 200ms ease-in both;
+}
+
+/* Side drawers slide in from the right edge and back out the same way. */
+@keyframes ec-drawer-in { from { translate: 100% 0; } }
+@keyframes ec-drawer-out { to { translate: 100% 0; } }
+
+.ec-drawer[data-state="open"] {
+  animation: ec-drawer-in var(--duration-spring) var(--ease-spring) backwards;
+}
+
+.ec-drawer[data-state="closed"] {
+  animation: ec-drawer-out 260ms ease-in forwards;
+}
+
+/* Phone navigation stacks (Messages list -> thread): the thread pushes in from
+   the right; back pops it out the same way while the list slides back from
+   a short offset underneath. Phones only: wider screens show both panes. */
+@keyframes ec-push-in { from { translate: 100% 0; } }
+@keyframes ec-push-out { to { translate: 100% 0; } }
+@keyframes ec-pop-under { from { translate: -24% 0; opacity: 0.6; } }
+
+@media (max-width: 639.98px) {
+  .ec-push-in {
+    animation: ec-push-in var(--duration-spring) var(--ease-spring) backwards;
+  }
+
+  .ec-push-out {
+    animation: ec-push-out 260ms ease-in forwards;
+    pointer-events: none;
+  }
+
+  .ec-pop-under {
+    animation: ec-pop-under var(--duration-spring) var(--ease-spring) backwards;
+  }
+}
+
+@media (max-width: 639.98px) and (prefers-reduced-motion: reduce) {
+  .ec-push-in,
+  .ec-pop-under {
+    animation: ec-scrim-in 160ms ease-out backwards;
+  }
+
+  .ec-push-out {
+    animation: ec-scrim-out 120ms ease-in forwards;
+  }
+}
+
+/* Toasts (sonner) move on the snappy spring and leave faster than they came. */
+[data-sonner-toast] {
+  transition-timing-function: var(--ease-spring-snappy) !important;
+}
+
+[data-sonner-toast][data-removed="true"] {
+  transition-duration: 200ms !important;
+  transition-timing-function: ease-in !important;
+}
+
+/* 9. Theme switch: a short cross-fade through the View Transitions API. */
+::view-transition-old(root),
+::view-transition-new(root) {
+  animation-duration: 240ms;
+  animation-timing-function: ease;
+}
+
+/* Reduced motion: gentle equivalents, not nothing. Movement, scale and blur
+   become short opacity fades; presses stop scaling; color and opacity
+   feedback stays. The scoped blocks above (charts, office scenes) still
+   switch their own loops off. */
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+
+  @layer components {
+    .ec-page-arrive > * > * {
+      animation: ec-scrim-in 160ms ease-out backwards;
+      animation-delay: 0ms;
+    }
+  }
+
+  .ec-message-in {
+    animation: ec-scrim-in 160ms ease-out backwards;
+    animation-delay: 0ms;
+  }
+
+  /* Looping attention utilities stop (a skeleton still shows, just static);
+     spinners keep turning, slower, so loading stays visible. */
+  [class*="animate-ping"],
+  [class*="animate-bounce"],
+  [class*="animate-pulse"] {
+    animation: none;
+  }
+
+  [class*="animate-spin"] {
+    animation-duration: 1.6s;
+  }
+
+  /* Plain Tailwind transitions: short (160 ms) and immediate. The broad
+     utilities stop carrying transform, translate, scale and rotate, so
+     things snap into place while color and opacity feedback still fades. */
+  [class*="transition"] {
+    transition-duration: 160ms;
+    transition-delay: 0ms;
+  }
+
+  :is(.transition, .transition-all, .transition-transform) {
+    transition-property: color, background-color, border-color, outline-color, text-decoration-color, fill, stroke, opacity, box-shadow;
+  }
+
+  .ec-materialize[data-state="open"],
+  .ec-materialize-lg[data-state="open"] {
+    animation: ec-scrim-in 160ms ease-out both;
+  }
+
+  .ec-materialize[data-state="closed"],
+  .ec-sheet[data-state="closed"] {
+    animation: ec-scrim-out 120ms ease-in both;
+  }
+
+  .ec-sheet[data-state="open"] {
+    animation: ec-scrim-in 160ms ease-out both;
+  }
+
+  .ec-materialize.ec-corner[data-state="open"] {
+    animation: ec-scrim-in 160ms ease-out both;
+  }
+
+  .ec-materialize.ec-corner[data-state="closed"] {
+    animation: ec-scrim-out 120ms ease-in both;
+  }
+
+  .ec-drawer[data-state="open"] {
+    animation: ec-scrim-in 160ms ease-out both;
+  }
+
+  .ec-drawer[data-state="closed"] {
+    animation: ec-scrim-out 120ms ease-in both;
+  }
+
+  [data-slot="tabs"][data-direction] [data-slot="tabs-content"][data-state="active"] {
+    animation: ec-scrim-in 160ms ease-out backwards;
+  }
+
+  .ec-appear {
+    translate: none;
+    transition-duration: 160ms;
+  }
+
+  details::details-content,
+  details[open]::details-content {
+    transition-duration: 0ms, 160ms, 0ms;
+  }
+
+  :is(.emperor-app-shell, [data-slot="dialog-content"], [data-slot="dropdown-menu-content"], [data-slot="popover-content"])
+    :is(button, a[href], [role="button"], [role="tab"], [role="menuitem"], summary):active {
+    scale: none;
+  }
+
+  [data-slot="button"]:active {
+    scale: none;
+  }
+
+  /* tw-animate-css slides and zooms elsewhere: keep only their fade. */
+  .animate-in,
+  .animate-out {
+    --tw-enter-translate-x: 0;
+    --tw-enter-translate-y: 0;
+    --tw-enter-scale: 1;
+    --tw-enter-rotate: 0;
+    --tw-exit-translate-x: 0;
+    --tw-exit-translate-y: 0;
+    --tw-exit-scale: 1;
+    --tw-exit-rotate: 0;
+    animation-duration: 160ms;
+  }
+
+  ::view-transition-old(root),
+  ::view-transition-new(root) {
+    animation: none;
+  }
+}
+
+/* Reduced transparency: solid bars, no blur. */
+@media (prefers-reduced-transparency: reduce) {
+  .ec-material {
+    background-color: var(--sidebar);
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+  }
+}
+
+/* More contrast: solid bars with a visible edge. */
+@media (prefers-contrast: more) {
+  .ec-material {
+    background-color: var(--sidebar);
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+    border-color: color-mix(in oklch, var(--foreground) 35%, transparent);
   }
 }
 

@@ -14,6 +14,8 @@ import { useAgentActivity } from "./use-agent-activity";
 import { PageHeader } from "@/components/page-header";
 import { EmptyState } from "@/components/ui/empty-state";
 import { agentAvatarSrc } from "@/lib/avatar";
+import { MotionItem, MotionList, Presence, Swap } from "@/components/ui/motion";
+import { AgentContextMenu } from "@/components/entity-context-menu";
 import { cn } from "@/lib/utils";
 import type { AgentNow } from "@/lib/agent-activity";
 
@@ -50,6 +52,15 @@ export function AgentsClient({ agents }: { agents: AgentDirectoryItem[] }) {
     const hireRequested = searchParams.get("hire") === "1";
     const [selectedId, setSelectedId] = useState((linkedId && agents.some((a) => a.id === linkedId) ? linkedId : agents[0]?.id) || "");
     const [mobileView, setMobileView] = useState<"list" | "detail">(linkedId ? "detail" : "list");
+    // A later `?agent=` on this page (a context menu's "Scopes", "Memory"…) selects that agent too.
+    const [lastLinkedId, setLastLinkedId] = useState(linkedId);
+    if (linkedId !== lastLinkedId) {
+        setLastLinkedId(linkedId);
+        if (linkedId && agents.some((a) => a.id === linkedId)) {
+            setSelectedId(linkedId);
+            setMobileView("detail");
+        }
+    }
     const [advancedDialogOpen, setAdvancedDialogOpen] = useState(false);
     const router = useRouter();
     // A freshly hired agent is not instantly reachable: the runtime has to boot
@@ -114,7 +125,7 @@ export function AgentsClient({ agents }: { agents: AgentDirectoryItem[] }) {
     const selectedAgent = agents.find((agent) => agent.id === selectedId) || filteredAgents[0] || agents[0] || null;
 
     return (
-        <div className="mx-auto max-w-[1800px] space-y-6 animate-in fade-in duration-500">
+        <div className="mx-auto max-w-[1800px] space-y-6">
             <PageHeader
                 eyebrow={t("eyebrow")}
                 title={t("title")}
@@ -168,7 +179,7 @@ export function AgentsClient({ agents }: { agents: AgentDirectoryItem[] }) {
                 />
             ) : (
                 <div className="grid grid-cols-1 gap-6 lg:grid-cols-[320px_minmax(0,1fr)]">
-                    <aside className={cn("emperor-panel min-w-0 overflow-hidden rounded-2xl p-3 sm:p-4", mobileView === "detail" ? "hidden lg:block" : "")}>
+                    <aside className={cn("emperor-panel min-w-0 overflow-hidden rounded-2xl p-4 sm:p-5", mobileView === "detail" ? "hidden lg:block" : "")}>
                         <label className="flex min-h-11 min-w-0 items-center gap-2 rounded-xl border border-zinc-800 bg-zinc-950/80 px-3 py-2 text-sm text-zinc-400">
                             <IconSearch className="h-4 w-4" />
                             <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder={t("search")} className="w-full bg-transparent text-zinc-100 outline-none placeholder:text-zinc-500" />
@@ -181,8 +192,11 @@ export function AgentsClient({ agents }: { agents: AgentDirectoryItem[] }) {
                             ))}
                         </div>
                         <div className="mt-4 space-y-2">
+                            <MotionList>
                             {filteredAgents.map((agent) => (
-                                <button key={agent.id} type="button" onClick={() => { setSelectedId(agent.id); setMobileView("detail"); window.scrollTo({ top: 0 }); document.querySelector("main")?.scrollTo({ top: 0 }); }} className={cn("flex min-w-0 w-full items-center gap-3 rounded-xl border p-3 text-left transition-colors", selectedAgent?.id === agent.id ? "border-cyan-400/40 bg-cyan-400/10" : "border-zinc-800 bg-zinc-950/60 hover:border-zinc-700")}>
+                                <MotionItem key={agent.id}>
+                                <AgentContextMenu agent={agent}>
+                                <button type="button" onClick={() => { setSelectedId(agent.id); setMobileView("detail"); window.scrollTo({ top: 0 }); document.querySelector("main")?.scrollTo({ top: 0 }); }} className={cn("flex min-w-0 w-full items-center gap-3 rounded-xl border p-3 text-left transition-colors", selectedAgent?.id === agent.id ? "border-cyan-400/40 bg-cyan-400/10" : "border-zinc-800 bg-zinc-950/60 hover:border-zinc-700")}>
                                     <AgentAvatar agent={agent} size="sm" />
                                     <span className="min-w-0 flex-1">
                                         <span className="flex items-center gap-2 truncate font-medium text-zinc-100">
@@ -199,15 +213,18 @@ export function AgentsClient({ agents }: { agents: AgentDirectoryItem[] }) {
                                     </span>
                                     <LiveStatusDot agent={agent} now={activity[agent.id]} />
                                 </button>
+                                </AgentContextMenu>
+                                </MotionItem>
                             ))}
-                            {filteredAgents.length === 0 ? (
+                            </MotionList>
+                            <Presence show={filteredAgents.length === 0}>
                                 <EmptyState
                                     compact
                                     icon={IconSearch}
                                     title={query.trim() ? t("noMatch") : AGENT_STATUSES.has(status) ? t("noStatusAgents", { status: tStatus(status as "online") }) : t("noMatch")}
                                     description={<button type="button" onClick={() => { setQuery(""); setStatus("all"); }} className="text-primary hover:underline">{t("showAll")}</button>}
                                 />
-                            ) : null}
+                            </Presence>
                         </div>
                     </aside>
 
@@ -217,8 +234,13 @@ export function AgentsClient({ agents }: { agents: AgentDirectoryItem[] }) {
                                 <IconArrowLeft className="h-4 w-4" />
                                 {t("allAgents")}
                             </button>
-                            {selectedAgent.use !== "metadata" && <AgentNowCard now={activity[selectedAgent.id]} />}
-                            <AgentDetailPanel agentId={selectedAgent.id} agentName={selectedAgent.name} runtime={activity[selectedAgent.id]?.runtime ?? null} />
+                            {/* Switching agents crossfades the detail instead of swapping it hard. */}
+                            <Swap id={selectedAgent.id} className="space-y-4">
+                                <div className="space-y-4">
+                                    {selectedAgent.use !== "metadata" && <AgentNowCard now={activity[selectedAgent.id]} />}
+                                    <AgentDetailPanel agentId={selectedAgent.id} agentName={selectedAgent.name} runtime={activity[selectedAgent.id]?.runtime ?? null} />
+                                </div>
+                            </Swap>
                         </div>
                     ) : (
                         <main className="emperor-panel rounded-2xl p-6 flex items-center justify-center min-h-[400px]">

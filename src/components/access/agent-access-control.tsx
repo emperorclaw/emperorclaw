@@ -10,6 +10,7 @@ import { Input } from "@/components/ui/input";
 import { PersonChip } from "@/components/views/view-meta";
 import { normalizeAgentAccess, type AgentAccessMode } from "@/lib/agent-access";
 import { cn } from "@/lib/utils";
+import { Select } from "@/components/ui/select";
 
 type Named = { id: string; name: string };
 
@@ -88,10 +89,10 @@ export function WhoCanUseField({ value, onChange, people, me, disabled }: {
             {value.access !== "everyone" && (
                 <div className="grid gap-1.5">
                     <label className="text-xs text-muted-foreground" htmlFor="agent-access-owner">{t("owner")}</label>
-                    <select id="agent-access-owner" value={owner ?? ""} onChange={(e) => onChange({ ...value, ownerUserId: e.target.value || null })}
+                    <Select id="agent-access-owner" value={owner ?? ""} onChange={(e) => onChange({ ...value, ownerUserId: e.target.value || null })}
                         className="h-9 rounded-lg border border-border bg-card px-2 text-sm text-foreground">
                         {people.map((p) => <option key={p.id} value={p.id}>{p.id === me ? t("me", { name: p.name }) : p.name}</option>)}
-                    </select>
+                    </Select>
                     <p className="text-xs text-muted-foreground">
                         {value.access === "owner"
                             ? t("ownerHint")

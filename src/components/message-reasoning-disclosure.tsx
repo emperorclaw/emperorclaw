@@ -3,6 +3,7 @@
 import { useCallback, useState } from "react";
 import { IconChevronRight } from "@tabler/icons-react";
 import { useTranslations } from "next-intl";
+import { Collapse } from "@/components/ui/motion";
 
 /**
  * Collapsed disclosure for an agent message's persisted reasoning.
@@ -59,8 +60,8 @@ export function MessageReasoningDisclosure({ messageId }: { messageId: string })
                 <IconChevronRight className={`h-3 w-3 transition-transform ${open ? "rotate-90" : ""}`} />
                 {open ? t("hide") : t("show")}
             </button>
-            {open && (
-                <div className="mt-1.5 min-w-0">
+            <Collapse open={open} snappy className="pt-1.5">
+                <div className="min-w-0">
                     {loading && <p className="text-[11px] text-zinc-500">{t("loading")}</p>}
                     {!loading && error && <p className="text-[11px] text-amber-400">{t("loadFailed")}</p>}
                     {!loading && !error && reasoning === "" && (
@@ -74,7 +75,7 @@ export function MessageReasoningDisclosure({ messageId }: { messageId: string })
                         </pre>
                     )}
                 </div>
-            )}
+            </Collapse>
         </div>
     );
 }

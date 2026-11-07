@@ -181,7 +181,7 @@ export function SearchClient({ initialQuery, initialType, initial }: { initialQu
                 : state ? t("resultCount", { count, more: state.nextCursor ? "yes" : "no" }) : null;
 
     return (
-        <div className="mx-auto max-w-[1100px] space-y-5 pb-20 animate-in fade-in duration-500">
+        <div className="mx-auto max-w-[1100px] space-y-5 pb-20">
             <PageHeader
                 eyebrow={t("eyebrow")}
                 title={t("title")}

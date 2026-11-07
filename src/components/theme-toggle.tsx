@@ -3,7 +3,31 @@
 import { useTheme } from "next-themes";
 import { IconSun, IconMoon } from "@tabler/icons-react";
 import { useEffect, useState } from "react";
+import { flushSync } from "react-dom";
 import { useTranslations } from "next-intl";
+
+type ViewTransitionDocument = Document & { startViewTransition?: (update: () => void) => unknown };
+
+/**
+ * Cross-fade light and dark through the View Transitions API where the
+ * browser has it (the 240 ms fade is in globals.css); a plain switch
+ * otherwise or when the person prefers reduced motion. The class is set
+ * synchronously inside the transition so the new snapshot is the new theme.
+ */
+function switchTheme(next: "light" | "dark", setTheme: (theme: string) => void) {
+  const doc = document as ViewTransitionDocument;
+  const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  if (!doc.startViewTransition || reduced) {
+    setTheme(next);
+    return;
+  }
+  doc.startViewTransition(() => {
+    flushSync(() => setTheme(next));
+    document.documentElement.classList.toggle("dark", next === "dark");
+    document.documentElement.classList.toggle("light", next === "light");
+    document.documentElement.style.colorScheme = next;
+  });
+}
 
 export function ThemeToggle({ collapsed = false, mini = false }: { collapsed?: boolean; mini?: boolean }) {
   const t = useTranslations("theme");
@@ -11,6 +35,8 @@ export function ThemeToggle({ collapsed = false, mini = false }: { collapsed?: b
   const [mounted, setMounted] = useState(false);
 
   useEffect(() => {
+    // The theme is only known on the client: render the placeholder until mounted.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setMounted(true);
   }, []);
 
@@ -32,7 +58,7 @@ export function ThemeToggle({ collapsed = false, mini = false }: { collapsed?: b
     return (
       <button
         type="button"
-        onClick={() => setTheme(isDark ? "light" : "dark")}
+        onClick={() => switchTheme(isDark ? "light" : "dark", setTheme)}
         aria-label={isDark ? t("switchToLight") : t("switchToDark")}
         className="flex h-6 w-6 cursor-pointer items-center justify-center rounded-lg text-zinc-500 transition-colors hover:bg-zinc-800/60 dark:hover:bg-white/[0.045] hover:text-zinc-100"
       >
@@ -44,7 +70,7 @@ export function ThemeToggle({ collapsed = false, mini = false }: { collapsed?: b
   return (
     <button
       type="button"
-      onClick={() => setTheme(isDark ? "light" : "dark")}
+      onClick={() => switchTheme(isDark ? "light" : "dark", setTheme)}
       aria-label={isDark ? t("switchToLight") : t("switchToDark")}
       className="flex w-full cursor-pointer items-center rounded-xl text-sm font-medium text-zinc-400 transition-all duration-200 hover:bg-zinc-800/60 dark:hover:bg-white/[0.045] hover:text-zinc-100"
       style={collapsed ? { justifyContent: "center", padding: "0.625rem 0.5rem" } : { gap: "0.75rem", padding: "0.625rem 0.75rem" }}

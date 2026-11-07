@@ -6,6 +6,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { DndContext, DragOverlay, MouseSensor, TouchSensor, useSensor, useSensors, type DragEndEvent, type DragStartEvent } from "@dnd-kit/core";
 import { IconAlertTriangle, IconLayoutColumns, IconList, IconPlus, IconSearch, IconX } from "@tabler/icons-react";
 import { toast } from "sonner";
+import { AnimatePresence } from "framer-motion";
 import { useFormatter, useTranslations } from "next-intl";
 import { useAge } from "@/lib/i18n/format";
 import { ageParts } from "@/lib/i18n/relative-time";
@@ -135,6 +136,8 @@ async function bulkTaskRequest(url: string, taskIds: string[], resultKey: "archi
 function useMinuteClock() {
     const [now, setNow] = useState(0);
     useEffect(() => {
+        // Reading the clock after mount is the point: SSR and hydration render 0.
+        // eslint-disable-next-line react-hooks/set-state-in-effect
         setNow(Date.now());
         const timer = window.setInterval(() => setNow(Date.now()), 60_000);
         return () => window.clearInterval(timer);
@@ -1002,8 +1005,10 @@ export default function ProjectsClient({ initialTasks, projects, agents, custome
                 </>
             )}
 
+            <AnimatePresence>
             {selectedTask && (
                 <TaskDrawer
+                    key="task-drawer"
                     task={selectedTask}
                     view={views.get(selectedTask.id) ?? viewFor(selectedTask)}
                     project={projectLabel(selectedTask.projectId)}
@@ -1025,9 +1030,12 @@ export default function ProjectsClient({ initialTasks, projects, agents, custome
                     onSendNote={(text) => sendTaskNote(selectedTask, text)}
                 />
             )}
+            </AnimatePresence>
 
+            <AnimatePresence>
             {isNotesOpen && selectedProject && (
                 <ProjectNotesPanel
+                    key="project-notes"
                     projectName={projectTitle(selectedProject).name}
                     notes={currentProjectNotes}
                     agentName={agentName}
@@ -1036,6 +1044,7 @@ export default function ProjectsClient({ initialTasks, projects, agents, custome
                     onClose={() => setIsNotesOpen(false)}
                 />
             )}
+            </AnimatePresence>
 
             <ProjectFormDialog mode={projectDialogMode} form={projectForm} setForm={setProjectForm} customers={customers} agents={agents} busy={isMutating} error={projectDialogMode ? mutationError : null} onClose={() => setProjectDialogMode(null)} onSubmit={() => void submitProject()} />
             <TaskFormDialog mode={taskDialogMode} form={taskForm} setForm={setTaskForm} projects={taskDialogMode === "edit" ? projectItems : visibleProjects} defaultProject={useDefaultProject} customers={customers} agents={agents} members={members} busy={isMutating} error={taskDialogMode ? mutationError : null} onClose={() => setTaskDialogMode(null)} onSubmit={() => void submitTask()} />

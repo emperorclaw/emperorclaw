@@ -19,7 +19,8 @@ import {
 import { cn } from "@/lib/utils";
 import { RichText } from "@/components/rich-text";
 import { projectTitle } from "@/lib/project-title";
-import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
+import { Dialog, DialogDescription, DialogTitle } from "@/components/ui/dialog";
+import { BottomSheetContent } from "@/components/ui/bottom-sheet";
 import { fixAudience } from "@/lib/failure-cause";
 import type { StoryEntry } from "@/lib/task-story";
 import type { TaskStoryView } from "@/lib/task-story-reads";
@@ -27,6 +28,7 @@ import { LiveRunBlock, strongestStall, useNow, useStallLabel, useTaskLive, useTi
 import { useBoardLabels } from "../../board/board-labels";
 import { TaskStoryTimeline } from "./task-story-timeline";
 import { useModuleEnabled } from "@/components/modules-provider";
+import { Select } from "@/components/ui/select";
 
 const STATE_TONE: Record<string, string> = {
     inbox: "border-zinc-700 bg-zinc-800/60 text-zinc-300",
@@ -154,10 +156,10 @@ function TaskActions({ story, onDone }: { story: Story; onDone?: () => void }) {
             <div className="grid gap-3">
                 <label className="grid gap-1.5">
                     <span className="text-xs font-medium text-zinc-400">{t("state")}</span>
-                    <select value={choosingBlocked ? "blocked" : task.state} disabled={disabled} onChange={(event) => onState(event.target.value)} className={selectClass}>
+                    <Select value={choosingBlocked ? "blocked" : task.state} disabled={disabled} onChange={(event) => onState(event.target.value)} className={selectClass}>
                         {!(EDITABLE_STATES as readonly string[]).includes(task.state) && <option value={task.state}>{labels.state(task.state)}</option>}
                         {EDITABLE_STATES.map((state) => <option key={state} value={state}>{labels.state(state)}</option>)}
-                    </select>
+                    </Select>
                 </label>
                 {choosingBlocked && (
                     <div className="grid gap-2 rounded-xl border border-rose-500/20 bg-rose-500/[0.05] p-3">
@@ -174,7 +176,7 @@ function TaskActions({ story, onDone }: { story: Story; onDone?: () => void }) {
                 {canAssign && (
                     <label className="grid gap-1.5">
                         <span className="text-xs font-medium text-zinc-400">{t("owner")}</span>
-                        <select value={ownerValue} disabled={disabled} onChange={(event) => onAssignee(event.target.value)} className={selectClass}>
+                        <Select value={ownerValue} disabled={disabled} onChange={(event) => onAssignee(event.target.value)} className={selectClass}>
                             <option value="">{t("unassigned")}</option>
                             {task.owner && !assignees.agents.some((a) => `agent:${a.id}` === ownerValue) && !assignees.members.some((m) => `human:${m.id}` === ownerValue) && (
                                 <option value={ownerValue}>{task.owner.name}</option>
@@ -189,7 +191,7 @@ function TaskActions({ story, onDone }: { story: Story; onDone?: () => void }) {
                                     {assignees.members.map((member) => <option key={member.id} value={`human:${member.id}`}>{member.name}</option>)}
                                 </optgroup>
                             )}
-                        </select>
+                        </Select>
                     </label>
                 )}
             </div>
@@ -370,11 +372,11 @@ ${project.description}` : project.name;
 
             {canEdit && (
                 <Dialog open={sheetOpen} onOpenChange={setSheetOpen}>
-                    <DialogContent className="top-auto bottom-0 left-0 max-h-[85dvh] max-w-none translate-x-0 translate-y-0 overflow-y-auto rounded-b-none rounded-t-2xl p-5 pb-[max(1.25rem,env(safe-area-inset-bottom))] data-[state=open]:slide-in-from-bottom-8 sm:max-w-none lg:hidden">
-                        <DialogTitle className="text-base">{t("taskActions")}</DialogTitle>
+                    <BottomSheetContent className="lg:hidden" onDismiss={() => setSheetOpen(false)}
+                        header={<DialogTitle className="text-base">{t("taskActions")}</DialogTitle>}>
                         <DialogDescription className="sr-only">{t("taskActionsDescription")}</DialogDescription>
                         <TaskActions story={story} onDone={() => setSheetOpen(false)} />
-                    </DialogContent>
+                    </BottomSheetContent>
                 </Dialog>
             )}
         </div>

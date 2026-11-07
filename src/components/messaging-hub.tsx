@@ -17,6 +17,8 @@ import {
     IconUsers,
 } from "@tabler/icons-react";
 import { cn } from "@/lib/utils";
+import { MotionItem, MotionList, PopPresence, Presence, Swap } from "@/components/ui/motion";
+import { AgentContextMenu, EntityContextMenu, MENU_ICONS, absoluteUrl, useCopyToClipboard } from "@/components/entity-context-menu";
 import {
     DropdownMenu,
     DropdownMenuContent,
@@ -78,6 +80,8 @@ export type GroupThreadSummary = {
     lastMessageAt: string | null;
 };
 
+/** Matches `.ec-push-out` in globals.css. */
+const MOBILE_POP_MS = 260;
 const GROUP_PREFIX = "group:";
 // A secondary direct thread (an agent's Operations thread, or an earlier private one).
 const DIRECT_THREAD_PREFIX = "thread:";
@@ -145,6 +149,16 @@ export function MessagingHub({
     const [showAgentConversations, setShowAgentConversations] = useState(false);
     const [searchQuery, setSearchQuery] = useState("");
     const [mobileChatOpen, setMobileChatOpen] = useState(false);
+    // Phones: back keeps the thread on screen briefly so it can slide out (the pop).
+    const [mobilePopping, setMobilePopping] = useState(false);
+    const popTimer = useRef<number | null>(null);
+    useEffect(() => () => { if (popTimer.current) window.clearTimeout(popTimer.current); }, []);
+    const closeMobileChat = () => {
+        setMobileChatOpen(false);
+        setMobilePopping(true);
+        if (popTimer.current) window.clearTimeout(popTimer.current);
+        popTimer.current = window.setTimeout(() => { popTimer.current = null; setMobilePopping(false); }, MOBILE_POP_MS);
+    };
     const [isFocused, setIsFocused] = useState(false);
     // "Mark all as read" zeroes the counts at once. Keyed to the props it
     // cleared: the next server refresh brings the real counts back.
@@ -330,14 +344,17 @@ export function MessagingHub({
                 ? activeAgent.role || t("directConversation")
                 : t("teamDescription");
     const teamSelected = selectedAgentId === null && selectedGroupId === null;
+    const tMenu = useTranslations("contextMenu");
+    const copy = useCopyToClipboard();
+    const conversationKey = activeGroup ? `group:${activeGroup.id}` : selectedAgentId === null ? `team:${teamThreadId ?? ""}` : `agent:${selectedAgentId}:${selectedDirectThreadId ?? ""}`;
     const editingGroup = groupDialog?.mode === "edit" ? groups.find((g) => g.id === groupDialog.groupId) ?? null : null;
 
     return (
-        <div className="flex min-w-0 flex-1 overflow-hidden">
+        <div className="relative flex min-w-0 flex-1 overflow-hidden">
             {/* Sidebar */}
             <aside className={cn(
                 "min-w-0 flex-1 flex-col border-zinc-800/80 bg-zinc-950/70 sm:flex-none sm:border-r",
-                mobileChatOpen ? "hidden sm:flex" : "flex",
+                mobileChatOpen ? "hidden sm:flex" : mobilePopping ? "ec-pop-under flex" : "flex",
                 isFocused ? "sm:hidden" : "sm:w-64 lg:w-72 xl:w-80"
             )}>
                 <div className="flex h-16 items-center gap-3 border-b border-zinc-800/80 px-4 sm:hidden">
@@ -373,7 +390,7 @@ export function MessagingHub({
                     </button>
                 </div>
 
-                <div className="flex-1 overflow-y-auto">
+                <div className="fade-y flex-1 overflow-y-auto">
                     <div className="p-2 space-y-1">
                         {/* Team Channel */}
                         <button
@@ -427,12 +444,19 @@ export function MessagingHub({
                             <input type="checkbox" checked={showAgentConversations} onChange={(e) => { setShowAgentConversations(e.target.checked); localStorage.setItem(AGENT_CONVERSATIONS_KEY, e.target.checked ? "1" : "0"); }} className="h-4 w-4 accent-cyan-400 focus-visible:outline focus-visible:outline-2 focus-visible:outline-cyan-300" />
                             {t("showAgentConversations")}
                         </label>}
+                        <MotionList>
                         {filteredGroups.map((group) => {
                             const agentCount = group.members.filter((m) => m.kind === "agent").length;
                             const selected = selectedGroupId === group.id;
                             return (
-                                <button
-                                    key={group.id}
+                                <EntityContextMenu key={group.id} label={group.title} entries={[
+                                    { key: "open", label: tMenu("open"), icon: MENU_ICONS.open, onSelect: () => openGroup(group.id) },
+                                    ...(!group.isAgentPair ? [{ key: "settings", label: tMenu("settings"), icon: IconSettings, onSelect: () => setGroupDialog({ mode: "edit", groupId: group.id }) }] : []),
+                                    { key: "copy-link", label: tMenu("copyLink"), icon: MENU_ICONS.link, onSelect: () => void copy(absoluteUrl(`/messages?group=${encodeURIComponent(group.id)}`), tMenu("linkCopied")), separated: true },
+                                ]}>
+                                <MotionItem
+                                    as="button"
+                                    type="button"
                                     onClick={() => openGroup(group.id)}
                                     className={cn(
                                         "group flex min-h-14 w-full items-center gap-3 rounded-xl p-3 text-left transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400/70",
@@ -448,17 +472,17 @@ export function MessagingHub({
                                     <div className="min-w-0 flex-1">
                                         <div className="flex items-center justify-between gap-2">
                                             <span className={cn("truncate text-sm font-semibold tracking-tight", selected ? "text-cyan-100" : "text-zinc-300")}>{group.title}</span>
-                                            {unread(group.unreadCount) > 0 && (
-                                                <span className="min-w-5 shrink-0 rounded-full bg-cyan-400 px-1.5 py-0.5 text-center text-[10px] font-bold text-cyan-950">{unread(group.unreadCount)}</span>
-                                            )}
+                                            <PopPresence show={unread(group.unreadCount) > 0} className="min-w-5 shrink-0 rounded-full bg-cyan-400 px-1.5 py-0.5 text-center text-[10px] font-bold text-cyan-950">{unread(group.unreadCount)}</PopPresence>
                                         </div>
                                         <span className="block truncate text-[11px] text-zinc-500">
                                             {group.lastMessageText || t("groupRow", { count: agentCount, time: formatRelativeMessageTime(group.lastMessageAt) })}
                                         </span>
                                     </div>
-                                </button>
+                                </MotionItem>
+                                </EntityContextMenu>
                             );
                         })}
+                        </MotionList>
                         {groups.length === 0 && (
                             <button
                                 type="button"
@@ -474,9 +498,12 @@ export function MessagingHub({
                             {t("directMessages")}
                         </div>
 
+                        <MotionList>
                         {filteredThreads.map((thread) => (
-                            <button
-                                key={thread.agentId}
+                            <AgentContextMenu key={thread.agentId} agent={{ id: thread.agentId, name: thread.agentName }} onMessage={() => openDirectThread(thread.agentId)}>
+                            <MotionItem
+                                as="button"
+                                type="button"
                                 onClick={() => openDirectThread(thread.agentId)}
                                 className={cn(
                                     "group flex min-h-16 w-full items-start gap-3 rounded-xl p-3 text-left transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400/70",
@@ -510,11 +537,9 @@ export function MessagingHub({
                                             </span>
                                         </div>
                                         <div className="flex flex-col items-end gap-1 shrink-0">
-                                            {unread(thread.unreadCount) > 0 && (
-                                                <span className="min-w-5 rounded-full bg-cyan-400 px-1.5 py-0.5 text-center text-[10px] font-bold text-cyan-950">
-                                                    {unread(thread.unreadCount)}
-                                                </span>
-                                            )}
+                                            <PopPresence show={unread(thread.unreadCount) > 0} className="min-w-5 rounded-full bg-cyan-400 px-1.5 py-0.5 text-center text-[10px] font-bold text-cyan-950">
+                                                {unread(thread.unreadCount)}
+                                            </PopPresence>
                                             <span className="text-[10px] text-zinc-600">
                                                 {formatRelativeMessageTime(thread.lastMessageAt)}
                                             </span>
@@ -524,18 +549,23 @@ export function MessagingHub({
                                         {thread.lastMessageText || t("noDirectYet")}
                                     </div>
                                 </div>
-                            </button>
+                            </MotionItem>
+                            </AgentContextMenu>
                         ))}
+                        </MotionList>
 
                         {visibleSecondaryThreads.length > 0 && (
                             <div className="mt-6 px-3 mb-2 flex items-center text-[10px] font-bold uppercase tracking-[0.1em] text-zinc-600">
                                 {t("sharedThreads")}
                             </div>
                         )}
+                        <MotionList>
                         {visibleSecondaryThreads.map((thread) => {
                             const selected = selectedDirectThreadId === thread.threadId;
                             return (
-                                <button
+                                <MotionItem
+                                    as="button"
+                                    type="button"
                                     key={thread.threadId}
                                     onClick={() => openSecondaryState(thread)}
                                     className={cn(
@@ -553,19 +583,18 @@ export function MessagingHub({
                                     <div className="min-w-0 flex-1">
                                         <div className="flex items-center justify-between gap-2">
                                             <span className={cn("truncate text-sm font-semibold tracking-tight", selected ? "text-cyan-100" : "text-zinc-300")}>{secondaryThreadLabel(thread)}</span>
-                                            {unread(thread.unreadCount) > 0 && (
-                                                <span className="min-w-5 shrink-0 rounded-full bg-cyan-400 px-1.5 py-0.5 text-center text-[10px] font-bold text-cyan-950">{unread(thread.unreadCount)}</span>
-                                            )}
+                                            <PopPresence show={unread(thread.unreadCount) > 0} className="min-w-5 shrink-0 rounded-full bg-cyan-400 px-1.5 py-0.5 text-center text-[10px] font-bold text-cyan-950">{unread(thread.unreadCount)}</PopPresence>
                                         </div>
                                         <span className="block truncate text-[11px] text-zinc-500">
                                             {thread.lastMessageText || formatRelativeMessageTime(thread.lastMessageAt)}
                                         </span>
                                     </div>
-                                </button>
+                                </MotionItem>
                             );
                         })}
+                        </MotionList>
 
-                        {filteredThreads.length === 0 && (
+                        <Presence show={filteredThreads.length === 0}>{filteredThreads.length === 0 && (
                             searchQuery.trim() ? (
                                 <EmptyState
                                     compact
@@ -583,7 +612,7 @@ export function MessagingHub({
                                     description={t("emptyDescription")}
                                 />
                             )
-                        )}
+                        )}</Presence>
                     </div>
                 </div>
             </aside>
@@ -591,13 +620,13 @@ export function MessagingHub({
             {/* Chat Content */}
             <section className={cn(
                 "relative min-w-0 flex-1 flex-col overflow-hidden bg-zinc-950/60",
-                mobileChatOpen ? "flex" : "hidden sm:flex"
+                mobileChatOpen ? "ec-push-in flex" : mobilePopping ? "ec-push-out flex max-sm:absolute max-sm:inset-0 max-sm:z-10" : "hidden sm:flex"
             )}>
                 <header className="flex h-16 shrink-0 items-center justify-between gap-3 border-b border-zinc-800/80 bg-zinc-950/70 px-3 sm:px-4">
                     <div className="flex min-w-0 items-center gap-1.5">
                         <button
                             type="button"
-                            onClick={() => setMobileChatOpen(false)}
+                            onClick={closeMobileChat}
                             aria-label={t("backToConversations")}
                             className="grid h-11 w-11 shrink-0 place-items-center rounded-xl text-zinc-400 transition-colors hover:bg-zinc-800 hover:text-zinc-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400/70 sm:hidden"
                         >
@@ -753,6 +782,8 @@ export function MessagingHub({
                         {isFocused ? <IconLayoutSidebarLeftExpand className="h-4 w-4" /> : <IconLayoutSidebarLeftCollapse className="h-4 w-4" />}
                     </button>
                 </header>
+                {/* Switching conversations crossfades the thread instead of swapping it hard. */}
+                <Swap id={conversationKey} className="flex min-h-0 flex-1 flex-col" panelClassName="flex min-h-0 flex-1 flex-col">
                 {activeGroup ? (
                     <div className="flex min-h-0 flex-1 flex-col">
                         <div className="relative min-h-0 flex-1 overflow-hidden">
@@ -791,6 +822,7 @@ export function MessagingHub({
                         <AgentDirectChat key={`${selectedAgentId}:${selectedDirectThreadId ?? ""}`} agentId={selectedAgentId} agentName={activeAgent?.name || t("agent")} hideHeader={true} directThreadId={selectedDirectThreadId} />
                     </div>
                 )}
+                </Swap>
             </section>
             {groupDialog && (
                 <GroupDialog

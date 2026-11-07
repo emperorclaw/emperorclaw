@@ -2,6 +2,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
 import { useEffect, useRef, useState } from "react";
+import { motion } from "framer-motion";
 import Link from "next/link";
 import { useFormatter, useTranslations } from "next-intl";
 import {
@@ -22,9 +23,11 @@ import { getArtifactClassLabel } from "@/lib/artifact-taxonomy";
 import { blockedReason, sentenceCase, taskBriefMarkdown, type BoardTask } from "@/lib/project-board-model";
 import type { ProjectTitle } from "@/lib/project-title";
 import { taskHref } from "@/lib/task-story";
+import { useDrawerMotion, useScrimMotion } from "@/components/ui/motion";
 import { cn } from "@/lib/utils";
 import { OwnerAvatar, SignalIcons, type TaskView } from "./task-card";
 import { PRIORITY_CHOICES, TASK_STATES as DRAWER_STATES, useBoardLabels } from "./board-labels";
+import { Select } from "@/components/ui/select";
 
 type DrawerT = ReturnType<typeof useTranslations<"tasks.drawer">>;
 type BoardLabels = ReturnType<typeof useBoardLabels>;
@@ -134,6 +137,8 @@ export function TaskDrawer({
     const [note, setNote] = useState("");
     const [sending, setSending] = useState(false);
     const panelRef = useRef<HTMLDivElement>(null);
+    const drawerMotion = useDrawerMotion();
+    const scrimMotion = useScrimMotion();
     const brief = taskBriefMarkdown(task);
     const reason = blockedReason(task);
     const ownerValue = task.assignedMemberId ? `human:${task.assignedMemberId}` : task.assignedAgentId ? `agent:${task.assignedAgentId}` : "";
@@ -162,12 +167,13 @@ export function TaskDrawer({
 
     return (
         <>
-            <button type="button" aria-label={t("closeTask")} onClick={onClose} className="fixed inset-0 z-40 bg-black/50 lg:bg-black/25 motion-safe:animate-in motion-safe:fade-in" />
-            <aside
+            <motion.button {...scrimMotion} type="button" aria-label={t("closeTask")} onClick={onClose} className="fixed inset-0 z-40 bg-black/50 lg:bg-black/25" />
+            <motion.aside
+                {...drawerMotion}
                 ref={panelRef}
                 tabIndex={-1}
                 aria-labelledby="task-drawer-title"
-                className="fixed inset-y-0 right-0 z-50 flex w-full flex-col border-l border-zinc-800 bg-zinc-950 shadow-[-24px_0_48px_-24px_rgba(0,0,0,0.6)] outline-none sm:w-[min(38rem,92vw)] motion-safe:animate-in motion-safe:slide-in-from-right-6 motion-safe:duration-200"
+                className="fixed inset-y-0 right-0 z-50 flex w-full flex-col border-l border-zinc-800 bg-zinc-950 shadow-[-24px_0_48px_-24px_rgba(0,0,0,0.6)] outline-none sm:w-[min(38rem,92vw)]"
             >
                 <div className="flex items-center gap-2 border-b border-zinc-800/80 px-4 py-2.5 sm:px-5">
                     <span className="hidden font-mono text-[11px] text-zinc-500 sm:inline">TASK-{String(task.id).slice(0, 8).toUpperCase()}</span>
@@ -209,23 +215,23 @@ export function TaskDrawer({
                         <div className="grid grid-cols-3 gap-2 sm:gap-3">
                             <label className="grid gap-1.5 text-xs text-zinc-400">
                                 <span>{t("state")}</span>
-                                <select value={task.state === "queued" ? "inbox" : task.state ?? "inbox"} disabled={busy} onChange={(event) => onSetState(event.target.value)} className={selectClass}>
+                                <Select value={task.state === "queued" ? "inbox" : task.state ?? "inbox"} disabled={busy} onChange={(event) => onSetState(event.target.value)} className={selectClass}>
                                     {DRAWER_STATES.map((state) => <option key={state} value={state}>{labels.state(state)}</option>)}
-                                </select>
+                                </Select>
                             </label>
                             <label className="grid gap-1.5 text-xs text-zinc-400">
                                 <span>{t("owner")}</span>
-                                <select value={ownerValue} disabled={busy} onChange={(event) => onAssign(event.target.value)} className={selectClass}>
+                                <Select value={ownerValue} disabled={busy} onChange={(event) => onAssign(event.target.value)} className={selectClass}>
                                     <option value="">{t("noOwner")}</option>
                                     {agents.length > 0 && <optgroup label={t("agents")}>{agents.map((agent) => <option key={agent.id} value={`agent:${agent.id}`}>{agent.name}</option>)}</optgroup>}
                                     {members.length > 0 && <optgroup label={t("people")}>{members.map((member) => <option key={member.id} value={`human:${member.id}`}>{member.displayName || member.email}</option>)}</optgroup>}
-                                </select>
+                                </Select>
                             </label>
                             <label className="grid gap-1.5 text-xs text-zinc-400">
                                 <span>{t("priority")}</span>
-                                <select value={PRIORITY_CHOICES.reduce((best, choice) => ((task.priority ?? 0) >= choice.value ? choice : best), PRIORITY_CHOICES[0]).value} disabled={busy} onChange={(event) => onSetPriority(Number(event.target.value) || 0)} className={selectClass}>
+                                <Select value={PRIORITY_CHOICES.reduce((best, choice) => ((task.priority ?? 0) >= choice.value ? choice : best), PRIORITY_CHOICES[0]).value} disabled={busy} onChange={(event) => onSetPriority(Number(event.target.value) || 0)} className={selectClass}>
                                     {PRIORITY_CHOICES.map((choice) => <option key={choice.value} value={choice.value}>{labels.priority(choice.tone)}</option>)}
-                                </select>
+                                </Select>
                             </label>
                         </div>
                     ) : (
@@ -326,7 +332,7 @@ export function TaskDrawer({
                         </div>
                     </div>
                 )}
-            </aside>
+            </motion.aside>
         </>
     );
 }

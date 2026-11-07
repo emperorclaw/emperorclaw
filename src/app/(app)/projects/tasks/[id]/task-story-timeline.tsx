@@ -20,6 +20,7 @@ import {
     IconSparkles,
     IconUserShare,
 } from "@tabler/icons-react";
+import { Collapse } from "@/components/ui/motion";
 import { cn } from "@/lib/utils";
 import { RunTimeline } from "@/components/run-timeline";
 import { RichText } from "@/components/rich-text";
@@ -333,11 +334,11 @@ export const RunBlock = memo(function RunBlock({ run, timeZone, defaultOpen = fa
                     </div>
                 )}
 
-                {open && (
+                <Collapse open={open}>
                     <div id={panelId} className="space-y-2 border-t border-zinc-800/80 bg-zinc-950/50 px-3 py-3">
                         <RunTimeline runId={run.id} />
                     </div>
-                )}
+                </Collapse>
             </div>
         </Row>
     );

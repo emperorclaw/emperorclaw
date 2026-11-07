@@ -71,7 +71,7 @@ export function SkeletonHeader({ action = true }: { action?: boolean }) {
 export function SkeletonPage({ label, children, className }: { label?: string; children: ReactNode; className?: string }) {
     const t = useTranslations("common");
     return (
-        <div role="status" aria-live="polite" aria-busy="true" className={cn("mx-auto w-full max-w-[1600px] space-y-6", className)}>
+        <div role="status" aria-live="polite" aria-busy="true" className={cn("ec-skeleton-in mx-auto w-full max-w-[1600px] space-y-6", className)}>
             <span className="sr-only">{label ?? t("loading")}…</span>
             {children}
         </div>

@@ -13,6 +13,7 @@ import {
 import { NotificationBell } from "@/components/notification-bell";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuCheckboxItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { cn } from "@/lib/utils";
+import { SegmentPill, Swap, useTabDirection } from "@/components/ui/motion";
 import { TeamObservatory } from "./team-observatory";
 import { LiveLinkProvider } from "./live-link";
 import { LivePill } from "@/components/live-pill";
@@ -51,6 +52,8 @@ function LoadingConversation() {
 const AgentDirectChat = dynamic(() => import("@/components/agent-direct-chat").then((module) => module.AgentDirectChat), { loading: () => <LoadingConversation /> });
 
 /** Container: owns filters and selection, derives everything else from server data. */
+const DASHBOARD_VIEWS = ["scene", "pulse", "list", "teams"] as const;
+
 export function TeamDashboard({ data, initialView, canAct, isOwnerOrAdmin }: {
     data: DashboardData;
     initialView?: "scene" | "pulse" | "list" | "teams";
@@ -68,6 +71,7 @@ export function TeamDashboard({ data, initialView, canAct, isOwnerOrAdmin }: {
         window.history.replaceState(window.history.state, "", url);
     };
     const view = chosenView ?? initialView ?? "scene";
+    const viewDirection = useTabDirection(view, DASHBOARD_VIEWS);
     const [motionPaused, setMotionPaused] = useState(false);
     const playfulIdle = false;
     const inboxRef = useRef<HTMLDivElement>(null);
@@ -212,8 +216,9 @@ export function TeamDashboard({ data, initialView, canAct, isOwnerOrAdmin }: {
                                 <div role="tablist" aria-label={t("viewTabs")} className="grid flex-1 grid-cols-3 rounded-xl border border-border bg-muted/40 p-0.5 sm:flex sm:flex-none dark:bg-white/[0.03]">
                                     {([["scene", t("viewScene"), IconBox], ["pulse", t("viewPulse"), IconRadar], ["list", t("viewList"), IconLayoutList]] as const).map(([id, label, Icon]) => (
                                         <button key={id} type="button" role="tab" aria-selected={view === id} onClick={() => setView(id)}
-                                            className={cn("inline-flex min-h-11 items-center justify-center gap-1.5 rounded-[10px] px-3 text-sm font-medium transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400",
-                                                view === id ? "bg-cyan-500/15 text-cyan-700 ring-1 ring-inset ring-cyan-500/40 dark:text-cyan-200" : "text-muted-foreground hover:text-foreground")}>
+                                            className={cn("relative isolate inline-flex min-h-11 items-center justify-center gap-1.5 rounded-[10px] px-3 text-sm font-medium transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400",
+                                                view === id ? "text-cyan-700 dark:text-cyan-200" : "text-muted-foreground hover:text-foreground")}>
+                                            {view === id && <SegmentPill layoutId="dashboard-view" className="bg-cyan-500/15 ring-1 ring-inset ring-cyan-500/40" />}
                                             <Icon className="h-4 w-4" stroke={1.8} />{label}
                                         </button>
                                     ))}
@@ -250,6 +255,7 @@ export function TeamDashboard({ data, initialView, canAct, isOwnerOrAdmin }: {
                             </div>
                         )}
 
+                        <Swap id={view} direction={viewDirection}>
                         {view === "scene" ? (
                             <TeamObservatory agents={agents.filter(isActive)} teams={data.teams ?? []} communications={data.communications ?? []} thoughts={data.thoughts ?? []} liveEvents={data.liveEvents ?? []}
                                 pendingActions={pendingDecisions} actionKeys={actionMembers} selectedKey={selectedKey} onSelect={selectMember} onOpenInbox={openInbox} onShowAll={() => setView("list")}
@@ -262,6 +268,7 @@ export function TeamDashboard({ data, initialView, canAct, isOwnerOrAdmin }: {
                         ) : (
                             <AgentList agents={agents} selectedKey={selectedKey} isActive={isActive} onSelect={selectMember} canAct={canAct} members={data.members} now={now} />
                         )}
+                        </Swap>
                     </section>
                 </div>
 

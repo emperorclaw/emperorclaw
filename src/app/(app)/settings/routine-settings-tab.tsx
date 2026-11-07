@@ -5,6 +5,7 @@ import { IconBook, IconCheck, IconSend, IconSunrise } from "@tabler/icons-react"
 import { useTranslations } from "next-intl";
 import { cn } from "@/lib/utils";
 import { SettingsSwitch as Toggle } from "@/components/ui/settings-switch";
+import { Select } from "@/components/ui/select";
 
 type Routine = { enabled: boolean; stallRemindersEnabled: boolean; time: string; timezone: string; weekdaysOnly: boolean };
 
@@ -132,11 +133,11 @@ export function RoutineSettingsTab({ isAdmin }: { isAdmin: boolean }) {
                     </label>
                     <label className="block">
                         <span className="text-xs font-medium text-muted-foreground">{t("timezone")}</span>
-                        <select value={routine.timezone} disabled={disabled || !routine.enabled}
+                        <Select value={routine.timezone} disabled={disabled || !routine.enabled}
                             onChange={(e) => void save({ timezone: e.target.value })}
                             className="mt-1 h-10 w-full rounded-lg border border-border bg-muted px-3 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-cyan-400/60">
                             {[...new Set([routine.timezone, ...timezones])].map((tz) => <option key={tz} value={tz}>{tz}</option>)}
-                        </select>
+                        </Select>
                     </label>
                 </div>
                 {isAdmin && !configured && routine.timezone !== browserZone && (

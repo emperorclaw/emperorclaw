@@ -12,6 +12,7 @@ import { MarkdownRenderer } from "@/components/markdown-renderer";
 import { agentAvatarSrc } from "@/lib/avatar";
 import { approvalAgeDays, isStaleApproval } from "@/lib/approval-status";
 import { ACTION_CATALOG } from "@/lib/action-policy";
+import { MotionItem, MotionList } from "@/components/ui/motion";
 import { cn } from "@/lib/utils";
 
 export type ApprovalItem = {
@@ -219,7 +220,7 @@ function PendingCard({ item, onDecide, busy }: { item: ApprovalItem; onDecide: (
     );
 }
 
-function ResolvedRow({ item }: { item: ApprovalItem }) {
+function ResolvedRow({ ref, item }: { ref?: React.Ref<HTMLElement>; item: ApprovalItem }) {
     const t = useTranslations("approvals");
     const ago = useAgo();
     const actionLabel = useActionLabel();
@@ -229,7 +230,7 @@ function ResolvedRow({ item }: { item: ApprovalItem }) {
     const title = item.task?.title ?? t("resolvedTitle", { name: item.requester?.name ?? t("anAgent"), action: actionLabel(item) });
     const href = item.task ? taskHref(item.task) : item.requester ? `/agents?agent=${item.requester.id}` : "/approvals";
     return (
-        <li>
+        <MotionItem ref={ref} as="li">
             <Link href={href} className="flex items-center gap-3 rounded-lg px-2 py-2.5 transition-colors hover:bg-zinc-900">
                 <span className={cn("grid h-6 w-6 shrink-0 place-items-center rounded-full",
                     approved ? "bg-emerald-500/15 text-emerald-300" : dismissed || item.status === "expired" ? "bg-zinc-500/15 text-zinc-300" : "bg-rose-500/15 text-rose-300")}>
@@ -243,7 +244,7 @@ function ResolvedRow({ item }: { item: ApprovalItem }) {
                 </span>
                 <span className="shrink-0 text-[11px] text-zinc-600">{item.resolvedAt ? ago(item.resolvedAt) : ""}</span>
             </Link>
-        </li>
+        </MotionItem>
     );
 }
 
@@ -307,7 +308,7 @@ export default function ApprovalsClient({ items }: { items: ApprovalItem[] }) {
     };
 
     return (
-        <div className="mx-auto max-w-[1800px] space-y-6 animate-in fade-in duration-500">
+        <div className="mx-auto max-w-[1800px] space-y-6">
             <PageHeader
                 eyebrow={t("eyebrow")}
                 title={t("title")}
@@ -323,8 +324,10 @@ export default function ApprovalsClient({ items }: { items: ApprovalItem[] }) {
             <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_380px]">
             <section className="min-w-0 space-y-3">
                 <h2 className="text-sm font-semibold text-zinc-300">{t("waitingOnYou")} <span className="ml-1 rounded-full bg-zinc-800 px-2 py-0.5 text-xs tabular-nums text-zinc-400">{pending.length}</span></h2>
+                <MotionList>
                 {pending.length === 0 ? (
-                    query.trim() ? (
+                    <MotionItem key={query.trim() ? "no-matches" : "empty"}>
+                    {query.trim() ? (
                         <EmptyState
                             icon={IconSearch}
                             title={t("noMatches")}
@@ -336,14 +339,16 @@ export default function ApprovalsClient({ items }: { items: ApprovalItem[] }) {
                             title={t("emptyTitle")}
                             description={t("emptyDescription")}
                         />
-                    )
-                ) : pending.map((item) => <PendingCard key={item.key} item={item} onDecide={decide} busy={busyKey === item.key} />)}
+                    )}
+                    </MotionItem>
+                ) : pending.map((item) => <MotionItem key={item.key}><PendingCard item={item} onDecide={decide} busy={busyKey === item.key} /></MotionItem>)}
+                </MotionList>
             </section>
 
             <section className="emperor-panel h-fit rounded-2xl p-4">
                 <h2 className="mb-1 px-2 text-sm font-semibold text-zinc-300">{t("recentlyDecided")}</h2>
                 {resolved.length > 0
-                    ? <ul className="divide-y divide-zinc-800/70">{resolved.map((item) => <ResolvedRow key={item.key} item={item} />)}</ul>
+                    ? <ul className="divide-y divide-zinc-800/70"><MotionList>{resolved.map((item) => <ResolvedRow key={item.key} item={item} />)}</MotionList></ul>
                     : <EmptyState compact bordered={false} title={<span className="text-xs font-normal text-muted-foreground">{query.trim() ? t("noDecidedMatches") : t("noDecisions")}</span>} />}
             </section>
             </div>

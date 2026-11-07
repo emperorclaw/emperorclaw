@@ -385,8 +385,8 @@ function PipelineFlowMap({ pipeline, runs, agentsMap }: { pipeline: PipelineRow;
       <div
         className={
           expanded
-            ? "fixed inset-4 z-50 flex flex-col overflow-hidden rounded-3xl border border-zinc-800/80 bg-[radial-gradient(circle_at_25%_10%,rgba(34,211,238,0.14),transparent_30%),radial-gradient(circle_at_75%_20%,rgba(168,85,247,0.12),transparent_32%),#050507] shadow-2xl shadow-black/60 force-dark"
-            : "relative flex h-[70vh] min-h-[520px] flex-col overflow-hidden rounded-3xl border border-zinc-800/80 bg-[radial-gradient(circle_at_25%_10%,rgba(34,211,238,0.14),transparent_30%),radial-gradient(circle_at_75%_20%,rgba(168,85,247,0.12),transparent_32%),#050507] force-dark"
+            ? "fixed inset-4 z-50 flex flex-col overflow-hidden rounded-2xl border border-zinc-800/80 bg-[radial-gradient(circle_at_25%_10%,rgba(34,211,238,0.14),transparent_30%),radial-gradient(circle_at_75%_20%,rgba(168,85,247,0.12),transparent_32%),#050507] shadow-2xl shadow-black/60 force-dark"
+            : "relative flex h-[70vh] min-h-[520px] flex-1 flex-col overflow-hidden rounded-2xl border border-zinc-800/80 lg:h-auto lg:min-h-[max(520px,70vh)] bg-[radial-gradient(circle_at_25%_10%,rgba(34,211,238,0.14),transparent_30%),radial-gradient(circle_at_75%_20%,rgba(168,85,247,0.12),transparent_32%),#050507] force-dark"
         }
       >
       <button
@@ -594,7 +594,7 @@ export default function PipelinesClient({ initialPipelines, initialRuns, agents,
   const documentedCount = pipelines.filter((pipeline) => parseSteps(pipeline.stepsJson).length > 0 || pipeline.docMarkdown).length;
 
   return (
-    <div className="mx-auto flex max-w-[1800px] flex-col gap-6 animate-in fade-in duration-500">
+    <div className="mx-auto flex max-w-[1800px] flex-col gap-6">
         <PageHeader
           eyebrow={t("eyebrow")}
           title={t("title")}
@@ -611,12 +611,13 @@ export default function PipelinesClient({ initialPipelines, initialRuns, agents,
         {pipelines.length === 0 ? <EmptyAutomationsState /> : (
           <div className="grid grid-cols-1 gap-4 sm:gap-6 lg:grid-cols-[300px_minmax(0,1fr)] lg:grid-rows-[auto_auto_1fr] lg:[grid-template-areas:'list_head'_'list_side'_'list_map'] 2xl:grid-cols-[320px_minmax(0,1fr)_400px] 2xl:grid-rows-[auto_1fr] 2xl:[grid-template-areas:'list_head_side'_'list_map_side']">
             {/* Phone: list, header, how it runs, map. Laptop: the list beside the rest. Wide: how it runs gets its own column. */}
-            <aside className="rounded-[1.25rem] sm:rounded-[1.75rem] border border-zinc-800 bg-zinc-950/80 p-3 sm:p-4 lg:[grid-area:list] lg:self-start">
+            {/* Every panel shares one radius, border and padding, and stretches to its grid area so edges line up. */}
+            <aside className="min-w-0 rounded-2xl border border-zinc-800 bg-zinc-950/80 p-4 sm:p-5 lg:[grid-area:list]">
               <div className="flex items-center justify-between">
                 <h2 className="text-sm font-semibold text-zinc-100">{t("explorer")}</h2>
                 <span className="rounded-full border border-zinc-800 px-2 py-0.5 text-xs text-zinc-500">{filteredPipelines.length}</span>
               </div>
-              <label className="mt-4 flex items-center gap-2 rounded-2xl border border-zinc-800 bg-zinc-900/60 px-3 py-2 text-sm text-zinc-400">
+              <label className="mt-4 flex min-h-10 items-center gap-2 rounded-xl border border-zinc-800 bg-zinc-900/60 px-3 text-sm text-zinc-400">
                 <IconSearch className="h-4 w-4" />
                 <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder={t("searchPlaceholder")} className="w-full bg-transparent text-zinc-100 outline-none placeholder:text-zinc-600" />
               </label>
@@ -672,7 +673,7 @@ export default function PipelinesClient({ initialPipelines, initialRuns, agents,
             </aside>
 
               {selectedPipeline && (
-                  <div className="flex min-w-0 flex-col gap-3 rounded-[1.25rem] sm:rounded-[1.75rem] border border-zinc-800 bg-zinc-950/80 p-4 sm:p-5 lg:[grid-area:head]">
+                  <div className="flex min-w-0 flex-col gap-3 rounded-2xl border border-zinc-800 bg-zinc-950/80 p-4 sm:p-5 lg:[grid-area:head]">
                     <div className="min-w-0">
                       <div className="inline-flex items-center gap-1.5 text-xs font-bold uppercase tracking-[0.22em] text-zinc-500"><span className={`h-1.5 w-1.5 rounded-full ${STATUS_DOT_STYLES[selectedPipeline.status] || "bg-zinc-600"}`} />{statusLabel(t, selectedPipeline.status)}</div>
                       <h2 className="mt-1 break-words text-2xl font-semibold text-zinc-50">{selectedPipeline.name}</h2>
@@ -698,7 +699,7 @@ export default function PipelinesClient({ initialPipelines, initialRuns, agents,
                   </div>
               )}
 
-            <aside className="min-w-0 rounded-[1.25rem] sm:rounded-[1.75rem] border border-zinc-800 bg-zinc-950/80 p-4 sm:p-5 lg:[grid-area:side] 2xl:self-start">
+            <aside className="min-w-0 rounded-2xl border border-zinc-800 bg-zinc-950/80 p-4 sm:p-5 lg:[grid-area:side]">
               {selectedPipeline && (
                 <div className="space-y-6">
                   <HowItRuns
@@ -762,7 +763,7 @@ export default function PipelinesClient({ initialPipelines, initialRuns, agents,
             </aside>
 
             {selectedPipeline ? (
-              <main className="min-w-0 lg:[grid-area:map]">
+              <main className="flex min-w-0 flex-col lg:[grid-area:map]">
                 <PipelineFlowMap pipeline={selectedPipeline} runs={selectedRuns} agentsMap={agentsMap} />
               </main>
             ) : null}

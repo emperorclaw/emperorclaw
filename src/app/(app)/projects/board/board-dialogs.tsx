@@ -6,6 +6,7 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 import { PROJECT_NAME_MAX, projectTitle } from "@/lib/project-title";
 import { cn } from "@/lib/utils";
 import { PRIORITY_CHOICES, PROJECT_STATUSES, TASK_STATES, WORK_TYPES, useBoardLabels } from "./board-labels";
+import { Select } from "@/components/ui/select";
 
 /** The project the server creates for a first task: a stored name, not UI copy. */
 const DEFAULT_PROJECT_NAME = "General";
@@ -68,23 +69,23 @@ export function ProjectFormDialog({ mode, form, setForm, customers, agents, busy
                     <div className="grid gap-3 sm:grid-cols-2">
                         <label className={labelClass}>
                             <span>{t("customer")}</span>
-                            <select value={form.customerId} onChange={(event) => setForm((prev) => ({ ...prev, customerId: event.target.value }))} className={cn(field, "h-10")}>
+                            <Select value={form.customerId} onChange={(event) => setForm((prev) => ({ ...prev, customerId: event.target.value }))} className={cn(field, "h-10")}>
                                 <option value="">{t("noCustomer")}</option>
                                 {customers.map((customer) => <option key={customer.id} value={customer.id}>{customer.name}</option>)}
-                            </select>
+                            </Select>
                         </label>
                         <label className={labelClass}>
                             <span>{t("leadAgent")}</span>
-                            <select value={form.leadAgentId} onChange={(event) => setForm((prev) => ({ ...prev, leadAgentId: event.target.value }))} className={cn(field, "h-10")}>
+                            <Select value={form.leadAgentId} onChange={(event) => setForm((prev) => ({ ...prev, leadAgentId: event.target.value }))} className={cn(field, "h-10")}>
                                 <option value="">{t("noLead")}</option>
                                 {agents.map((agent) => <option key={agent.id} value={agent.id}>{agent.name}</option>)}
-                            </select>
+                            </Select>
                         </label>
                         <label className={labelClass}>
                             <span>{t("status")}</span>
-                            <select value={form.status} onChange={(event) => setForm((prev) => ({ ...prev, status: event.target.value }))} className={cn(field, "h-10")}>
+                            <Select value={form.status} onChange={(event) => setForm((prev) => ({ ...prev, status: event.target.value }))} className={cn(field, "h-10")}>
                                 {PROJECT_STATUSES.map((status) => <option key={status} value={status}>{labels.projectStatus(status)}</option>)}
-                            </select>
+                            </Select>
                         </label>
                         <label className={labelClass}>
                             <span>{t("maxActiveAgents")}</span>
@@ -144,22 +145,22 @@ export function TaskFormDialog({ mode, form, setForm, projects, defaultProject =
                         ) : (
                         <label className={labelClass}>
                             <span>{t("project")}</span>
-                            <select value={form.projectId} disabled={mode === "edit"} onChange={(event) => setForm((prev) => ({ ...prev, projectId: event.target.value }))} className={cn(field, "h-10", !form.projectId && "text-zinc-400")}>
+                            <Select value={form.projectId} disabled={mode === "edit"} onChange={(event) => setForm((prev) => ({ ...prev, projectId: event.target.value }))} className={cn(field, "h-10", !form.projectId && "text-zinc-400")}>
                                 <option value="">{t("chooseProject")}</option>
                                 {projects.map((project) => {
                                     const customer = customerName(project.customerId);
                                     const name = projectTitle(project).name;
                                     return <option key={project.id} value={project.id}>{customer ? `${name} (${customer})` : name}</option>;
                                 })}
-                            </select>
+                            </Select>
                             {!form.projectId && mode === "create" && <span className="text-xs text-zinc-500">{t("projectRequired")}</span>}
                         </label>
                         )}
                         <label className={labelClass}>
                             <span>{t("workType")}</span>
-                            <select value={form.taskType} disabled={mode === "edit"} onChange={(event) => setForm((prev) => ({ ...prev, taskType: event.target.value }))} className={cn(field, "h-10")}>
+                            <Select value={form.taskType} disabled={mode === "edit"} onChange={(event) => setForm((prev) => ({ ...prev, taskType: event.target.value }))} className={cn(field, "h-10")}>
                                 {WORK_TYPES.map((value) => <option key={value} value={value}>{labels.workType(value)}</option>)}
-                            </select>
+                            </Select>
                         </label>
                     </div>
                     <label className={labelClass}>
@@ -173,23 +174,23 @@ export function TaskFormDialog({ mode, form, setForm, projects, defaultProject =
                     <div className="grid gap-3 sm:grid-cols-3">
                         <label className={labelClass}>
                             <span>{t("state")}</span>
-                            <select value={form.state} onChange={(event) => setForm((prev) => ({ ...prev, state: event.target.value }))} className={cn(field, "h-10")}>
+                            <Select value={form.state} onChange={(event) => setForm((prev) => ({ ...prev, state: event.target.value }))} className={cn(field, "h-10")}>
                                 {TASK_STATES.map((state) => <option key={state} value={state}>{labels.state(state)}</option>)}
-                            </select>
+                            </Select>
                         </label>
                         <label className={labelClass}>
                             <span>{t("owner")}</span>
-                            <select value={form.assignee} onChange={(event) => setForm((prev) => ({ ...prev, assignee: event.target.value }))} className={cn(field, "h-10")}>
+                            <Select value={form.assignee} onChange={(event) => setForm((prev) => ({ ...prev, assignee: event.target.value }))} className={cn(field, "h-10")}>
                                 <option value="">{t("noOwner")}</option>
                                 <optgroup label={t("people")}>{members.map((member) => <option key={member.id} value={`human:${member.id}`}>{member.displayName || member.email}</option>)}</optgroup>
                                 <optgroup label={t("agents")}>{agents.map((agent) => <option key={agent.id} value={`agent:${agent.id}`}>{agent.name}</option>)}</optgroup>
-                            </select>
+                            </Select>
                         </label>
                         <label className={labelClass}>
                             <span>{t("priority")}</span>
-                            <select value={form.priority} onChange={(event) => setForm((prev) => ({ ...prev, priority: Number(event.target.value) || 0 }))} className={cn(field, "h-10")}>
+                            <Select value={form.priority} onChange={(event) => setForm((prev) => ({ ...prev, priority: Number(event.target.value) || 0 }))} className={cn(field, "h-10")}>
                                 {PRIORITY_CHOICES.map((choice) => <option key={choice.value} value={choice.value}>{labels.priority(choice.tone)}</option>)}
-                            </select>
+                            </Select>
                         </label>
                     </div>
                     <details className="group rounded-lg border border-zinc-800 bg-zinc-950/70 px-3 py-2">

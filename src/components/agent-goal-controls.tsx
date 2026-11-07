@@ -3,6 +3,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { IconTarget } from '@tabler/icons-react';
 import { useTranslations } from 'next-intl';
 import { cn } from '@/lib/utils';
+import { Select } from '@/components/ui/select';
 
 type Objective = {
     id: string;
@@ -141,9 +142,9 @@ export function AgentGoalControls({ agentId }: { agentId: string }) {
                         </label>
                         <div className="flex flex-wrap items-center justify-between gap-2">
                             <label className="flex items-center gap-2 text-xs text-zinc-400">{t('cadenceLabel')}
-                                <select aria-label={t('cadenceLabel')} value={cadenceMinutes} onChange={(event) => setCadenceMinutes(Number(event.target.value))} className="min-h-9 rounded-lg border border-zinc-700 bg-zinc-900 px-2 text-sm text-zinc-100">
+                                <Select aria-label={t('cadenceLabel')} value={cadenceMinutes} onChange={(event) => setCadenceMinutes(Number(event.target.value))} className="min-h-9 rounded-lg border border-zinc-700 bg-zinc-900 px-2 text-sm text-zinc-100">
                                     {CADENCE_OPTIONS.map((value) => <option key={value} value={value}>{t(`cadence.${value}`)}</option>)}
-                                </select>
+                                </Select>
                             </label>
                             <button type="button" onClick={() => void startObjective()} disabled={busy || !text.trim()} className={button}>{busy ? t('starting') : t('start')}</button>
                         </div>

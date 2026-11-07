@@ -11,6 +11,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { PageHeader } from "@/components/page-header";
 import { EmptyState } from "@/components/ui/empty-state";
 import { cn } from "@/lib/utils";
+import { EntityContextMenu, MENU_ICONS, ProjectContextMenu } from "@/components/entity-context-menu";
 import { splitProjectTitle } from "@/lib/project-title";
 import { ScopeViewsSection } from "@/components/views/scope-views-section";
 import { ResourceAccessButton } from "@/components/access/resource-access-dialog";
@@ -45,6 +46,7 @@ export default function CustomersClient({ initialData: customerData }: { initial
     const [localNotes, setLocalNotes] = useState<Record<string, string>>({});
     const [query, setQuery] = useState("");
     const [selectedId, setSelectedId] = useState(customerData[0]?.id || "");
+    const tMenu = useTranslations("contextMenu");
 
     const filteredCustomers = useMemo(() => {
         const normalized = query.trim().toLowerCase();
@@ -110,7 +112,7 @@ export default function CustomersClient({ initialData: customerData }: { initial
     );
 
     return (
-        <div className="mx-auto max-w-[1800px] space-y-6 animate-in fade-in duration-500">
+        <div className="mx-auto max-w-[1800px] space-y-6">
             <PageHeader
                 eyebrow={t("eyebrow")}
                 title={t("title")}
@@ -168,14 +170,22 @@ export default function CustomersClient({ initialData: customerData }: { initial
                 />
             ) : (
                 <div className="grid gap-6 lg:grid-cols-[320px_minmax(0,1fr)]">
-                    <aside className="emperor-panel rounded-2xl p-3 sm:p-4">
+                    <aside className="emperor-panel rounded-2xl p-4 sm:p-5">
                         <label className="flex items-center gap-2 rounded-xl border border-zinc-800 bg-zinc-950/80 px-3 py-2 text-sm text-zinc-400">
                             <IconSearch className="h-4 w-4" />
                             <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder={t("searchPlaceholder")} className="w-full bg-transparent text-zinc-100 outline-none placeholder:text-zinc-500" />
                         </label>
                         <div className="mt-4 space-y-2">
                             {filteredCustomers.map((customer) => (
-                                <button key={customer.id} type="button" onClick={() => setSelectedId(customer.id)} className={cn("w-full cursor-pointer rounded-xl border p-3 text-left transition-colors", selectedCustomer?.id === customer.id ? "border-cyan-400/40 bg-cyan-400/10" : "border-zinc-800 bg-zinc-950/60 hover:border-zinc-700")}>
+                                <EntityContextMenu key={customer.id} label={customer.name} entries={[
+                                    { key: "open", label: tMenu("open"), icon: MENU_ICONS.open, onSelect: () => setSelectedId(customer.id) },
+                                    // "Projects": each of the customer's projects, straight to its board.
+                                    ...((customer.projects ?? []) as { id: string; goal: string }[]).slice(0, 6).map((project, index) => ({
+                                        key: `project-${project.id}`, label: splitProjectTitle(project.goal).name, icon: MENU_ICONS.board,
+                                        href: `/projects?project=${encodeURIComponent(project.id)}`, separated: index === 0,
+                                    })),
+                                ]}>
+                                <button type="button" onClick={() => setSelectedId(customer.id)} className={cn("w-full cursor-pointer rounded-xl border p-3 text-left transition-colors", selectedCustomer?.id === customer.id ? "border-cyan-400/40 bg-cyan-400/10" : "border-zinc-800 bg-zinc-950/60 hover:border-zinc-700")}>
                                     <div className="flex items-start justify-between gap-3">
                                         <div className="min-w-0">
                                             <div className="truncate font-medium text-zinc-100">{customer.name}</div>
@@ -188,6 +198,7 @@ export default function CustomersClient({ initialData: customerData }: { initial
                                         ) : null}
                                     </div>
                                 </button>
+                                </EntityContextMenu>
                             ))}
                             {filteredCustomers.length === 0 ? <EmptyState compact icon={IconSearch} title={t("noMatches")} description={<button type="button" onClick={() => setQuery("")} className="text-primary hover:underline">{t("clearSearch")}</button>} /> : null}
                         </div>
@@ -234,10 +245,12 @@ export default function CustomersClient({ initialData: customerData }: { initial
                                     <h3 className="mb-2 text-sm font-medium text-zinc-300">{t("projects")}</h3>
                                     <div className="grid gap-2 sm:grid-cols-2">
                                         {selectedCustomer.projects.map((project: { id: string; goal: string; status: string; openTasks: number }) => (
-                                            <Link key={project.id} href={`/projects?project=${project.id}`} className="rounded-xl border border-zinc-800 bg-zinc-950/60 p-3 hover:border-cyan-400/30">
+                                            <ProjectContextMenu key={project.id} project={{ id: project.id, name: splitProjectTitle(project.goal).name }}>
+                                            <Link href={`/projects?project=${project.id}`} className="rounded-xl border border-zinc-800 bg-zinc-950/60 p-3 hover:border-cyan-400/30">
                                                 <span className="block truncate text-sm text-zinc-100" title={project.goal}>{splitProjectTitle(project.goal).name}</span>
                                                 <span className="text-xs text-zinc-500">{t("projectRow", { status: statusLabel(project.status), count: project.openTasks })}</span>
                                             </Link>
+                                            </ProjectContextMenu>
                                         ))}
                                     </div>
                                 </section>
