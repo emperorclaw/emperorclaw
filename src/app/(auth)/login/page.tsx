@@ -24,6 +24,15 @@ function FadeUp({ children, delay = 0, className = "" }: { children: React.React
 /** The public site's domain: never translated. */
 const SITE_DOMAIN = "emperorclaw.com";
 
+/**
+ * The release the page was built from. This is a client component, so
+ * APP_VERSION is not readable at runtime: next.config.ts inlines it as
+ * NEXT_PUBLIC_APP_VERSION at build time. A local build leaves it empty and the
+ * package.json version is the only answer available.
+ */
+const BUILD_VERSION =
+    (process.env.NEXT_PUBLIC_APP_VERSION ?? "").trim().replace(/^v(?=\d)/i, "") || pkg.version;
+
 const stagger = { emblem: 0, title: 0.15, subtitle: 0.2, email: 0.25, password: 0.3, button: 0.35, footer: 0.4 };
 
 export default function LoginPage() {
@@ -222,7 +231,7 @@ export default function LoginPage() {
 
                 <FadeUp delay={stagger.footer + 0.05} className="flex justify-center mt-6">
                     <div className="flex items-center gap-3 text-[10px] text-zinc-600 tracking-[0.15em] uppercase font-medium">
-                        <span className="w-1 h-1 rounded-full bg-cyan-500/20" />v{pkg.version}<span className="w-1 h-1 rounded-full bg-zinc-700" />{SITE_DOMAIN}
+                        <span className="w-1 h-1 rounded-full bg-cyan-500/20" />v{BUILD_VERSION}<span className="w-1 h-1 rounded-full bg-zinc-700" />{SITE_DOMAIN}
                     </div>
                 </FadeUp>
             </div>

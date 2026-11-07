@@ -1,11 +1,11 @@
 import fs from "fs";
 import { and, eq, isNotNull, isNull, sql } from "drizzle-orm";
-import pkg from "@/../package.json" assert { type: "json" };
 import { db } from "@/db";
 import { agents } from "@/db/schema";
 import { LOCAL_SETUP_TOKEN_SUFFIX, mintAgentRuntimeToken, revokeAgentRuntimeTokens } from "@/lib/agent-runtime-tokens";
 import { decryptSecretPayload } from "@/lib/secrets";
 import { CUSTOM_LLM_PROVIDER, DOCKER_HOST_ALIAS, llmEndpointHost, parseLlmSecret } from "@/lib/llm-endpoint";
+import { appVersion } from "@/lib/app-version";
 import type { RuntimeSetupRecord } from "@/lib/runtime-setup";
 import { hermesContainerName, hermesSafeName, hermesVolumeName } from "@/lib/hermes-names";
 import { buildAgentInstructions } from "@/lib/agent-instructions";
@@ -46,8 +46,20 @@ export function hermesImageForVersion(version: string): string {
 // cached local image automatically.
 const HERMES_IMAGE_OVERRIDE = process.env.EMPEROR_CLAW_HERMES_IMAGE?.trim() || null;
 
-/** The runtime image this server provisions: its own release unless overridden. */
-export const HERMES_IMAGE = HERMES_IMAGE_OVERRIDE || hermesImageForVersion(pkg.version);
+/**
+ * The runtime image this server provisions: its own release unless overridden.
+ *
+ * `appVersion()`, not the package.json version: the image tag must be the
+ * release the server itself runs (`APP_VERSION` baked in by Docker Publish),
+ * because the bridge and the server speak one protocol version. The package
+ * version left production on v0.31.1 provisioning
+ * `emperorclaw-hermes:v0.31.0` — the health check would have reported 0.31.1
+ * while the managed runtimes stayed a release behind, the same drift moved out
+ * of sight. A build whose `APP_VERSION` is not a release version throws here on
+ * purpose: there is no published runtime image for it, so
+ * `EMPEROR_CLAW_HERMES_IMAGE` is the way to pin a local one.
+ */
+export const HERMES_IMAGE = HERMES_IMAGE_OVERRIDE || hermesImageForVersion(appVersion());
 
 // Published Hermes runtimes currently target amd64. Request that manifest
 // explicitly on ARM hosts with Docker emulation enabled.

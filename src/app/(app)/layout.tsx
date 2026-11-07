@@ -14,7 +14,7 @@ import { getLocale, getNow, getTimeZone } from "next-intl/server";
 import { AppIntlProvider } from "@/components/app-intl-provider";
 import { MotionProvider } from "@/components/motion-provider";
 import { localeNeedsSync } from "@/i18n/request";
-import pkg from "@/../package.json" assert { type: "json" };
+import { appVersion } from "@/lib/app-version";
 
 export default async function AppLayout({
     children,
@@ -47,7 +47,7 @@ export default async function AppLayout({
             <div className="emperor-app-shell flex h-dvh flex-col overflow-hidden md:flex-row">
                 <AutoRefresh intervalMs={15000} />
                 <InteractiveTour modules={modules} />
-                <AppSidebar isPlatformAdmin={isPlatformAdmin} isCompanyAdmin={isCompanyAdmin} canAct={canAct} appVersion={pkg.version} modules={modules} />
+                <AppSidebar isPlatformAdmin={isPlatformAdmin} isCompanyAdmin={isCompanyAdmin} canAct={canAct} appVersion={appVersion()} modules={modules} />
                 <CommandPalette access={{ isCompanyAdmin, isPlatformAdmin, modules }} canAct={canAct} />
                 <main className="emperor-main flex-1 min-h-0 min-w-0 overflow-x-hidden overflow-y-auto w-full px-3 py-4 pb-8 sm:px-5 sm:py-5 md:pb-16 lg:px-8">
                     <div className="emperor-page-frame">

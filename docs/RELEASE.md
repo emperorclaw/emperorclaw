@@ -47,3 +47,41 @@ public for the first time.
       not run `db:migrate` against production implicitly.
 - [ ] Tag the release (`git tag vX.Y.Z && git push --tags`) and write release
       notes from the commit log since the last tag.
+
+## What version the app reports
+
+The tag is the source of truth. Docker Publish resolves `GITHUB_REF_NAME`,
+refuses anything that is not `vX.Y.Z`, and passes it to the image as the
+`APP_VERSION` build arg; `src/lib/app-version.ts` serves it to `/api/health`,
+`/api/version`, `/api/updates/check` and the app shell, stripping the leading
+`v`. A tag that skips the `package.json` bump still reports correctly — that is
+the bug this replaced (v0.31.1 reported 0.31.0).
+
+`package.json`'s version is only the fallback for local runs (`npm run dev`,
+tests, a bare `docker build`), so keep it roughly current but do not treat it as
+the deployed version.
+
+Two other surfaces take the same value, and both used to be left behind:
+
+- **The managed runtime image.** `HERMES_IMAGE` (`src/lib/hermes-provisioning.ts`)
+  is `ghcr.io/emperorclaw/emperorclaw-hermes:v<APP_VERSION>`, so a server
+  provisions runtimes of its own release. It used to derive the tag from
+  `package.json`, which left a v0.31.1 server running `:v0.31.0` runtimes even
+  while the health check was fixed — the bridge and the server speak one
+  protocol version, so that drift is a real incompatibility, not a cosmetic
+  label. `EMPEROR_CLAW_HERMES_IMAGE` overrides it for a local runtime build.
+- **The login footer.** It is a client component, so it cannot read
+  `APP_VERSION` at runtime; `next.config.ts` inlines it into the bundle as
+  `NEXT_PUBLIC_APP_VERSION` at build time (the Dockerfile already exports it in
+  the builder stage). A local build leaves it empty and the footer falls back to
+  `package.json` like the rest.
+
+After the deploy:
+
+```bash
+curl -s https://brain.malecu.eu/api/health   # {"status":"ok","version":"0.31.2",...}
+```
+
+If `version` still shows the previous release after Watchtower reports the new
+digest, the build arg did not reach the image — check the `Resolve version from
+tag` and `Build and push` steps of the Docker Publish run.

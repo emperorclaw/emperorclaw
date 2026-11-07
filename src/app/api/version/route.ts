@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import pkg from "@/../package.json" assert { type: "json" };
+import { appVersion } from "@/lib/app-version";
 
 /**
  * GET /api/version
@@ -12,7 +13,7 @@ import pkg from "@/../package.json" assert { type: "json" };
 export async function GET() {
     return NextResponse.json(
         {
-            version: pkg.version,
+            version: appVersion(),
             name: pkg.name,
             // Canonical public repo. Must match the slug used by the update-check
             // routes (emperorclaw/emperorclaw); the old josezuma/emperorclaw only

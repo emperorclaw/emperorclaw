@@ -89,6 +89,14 @@ const securityHeaders = [
 const nextConfig: NextConfig = {
   output: "standalone",
   poweredByHeader: false,
+  // Client components cannot read APP_VERSION at runtime (it is a server-side
+  // env var, never sent to the browser), so the release tag is inlined into the
+  // bundle at build time. Docker Publish passes it as a build arg and the
+  // Dockerfile exports it in the builder stage, so `NEXT_PUBLIC_APP_VERSION` is
+  // the tag in a released image and empty in a local build (the login footer
+  // then falls back to package.json). Without this the login footer was the one
+  // surface still reporting the stale package.json version.
+  env: { NEXT_PUBLIC_APP_VERSION: process.env.APP_VERSION ?? "" },
   serverExternalPackages: ["argon2", "drizzle-orm"],
   async headers() {
     return [

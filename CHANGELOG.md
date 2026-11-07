@@ -9,6 +9,13 @@ tagged (e.g. `## [1.2.0] — 2026-07-22`). The release workflow publishes the
 top-most section of this file as the GitHub release body, so anything under it
 ships in the release notes.
 
+## [Unreleased]
+
+### Fixed
+
+- **Every release reports the version it actually is.** `/api/health` said `0.31.0` while `v0.31.1` was live: the reported version came from `package.json`, and tagging does not touch it, so any release that skipped the bump commit was one release behind. The tag is now the source of truth end to end — Docker Publish resolves it, refuses anything that is not `vX.Y.Z`, and bakes it into the image as `APP_VERSION`, which `/api/health`, `/api/version`, the update check, the bridge `emperorVersion`, the app sidebar and the login footer all report. `package.json` stays the fallback for local runs and a bare `docker build`.
+- **Managed agent runtimes run this release's image.** Provisioning tagged the container image from `package.json` too, so a `v0.31.1` server kept pulling `emperorclaw-hermes:v0.31.0` — the same drift one layer down, where the bridge and the server must speak one protocol version. The runtime image now follows the release tag, with `EMPEROR_CLAW_HERMES_IMAGE` still available to pin a local one.
+
 ## [0.31.0] — 2026-11-06
 
 ### Changed
