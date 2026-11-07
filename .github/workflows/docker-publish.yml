@@ -20,6 +20,19 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Resolve version from tag
+        id: version
+        run: |
+          # The image's reported version comes from this value, not from
+          # package.json: a tag like v0.31.1 must ship a v0.31.1 health check
+          # even if the release commit forgot to bump the package version.
+          tag="${GITHUB_REF_NAME}"
+          if ! printf '%s' "$tag" | grep -Eq '^v[0-9]+\.[0-9]+\.[0-9]+([-.][0-9A-Za-z.-]+)?$'; then
+            echo "::error::tag '$tag' is not a semver release tag (expected vX.Y.Z)"
+            exit 1
+          fi
+          echo "version=$tag" >> "$GITHUB_OUTPUT"
+
       - name: Set up QEMU (for arm64 emulation)
         uses: docker/setup-qemu-action@v3
 
@@ -56,6 +69,10 @@ jobs:
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
+          # Baked into the image as APP_VERSION (see Dockerfile); the app strips
+          # the leading `v`. This is the only place the deployed version is set.
+          build-args: |
+            APP_VERSION=${{ steps.version.outputs.version }}
           # cache disabled temporarily to clear stale CSP headers
           no-cache: true
           platforms: linux/amd64

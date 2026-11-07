@@ -19,7 +19,7 @@ import type { IncomingMessage } from "http";
 import type { Duplex } from "stream";
 import { randomUUID } from "node:crypto";
 import { WebSocket, WebSocketServer } from "ws";
-import pkg from "@/../package.json" assert { type: "json" };
+import { appVersion } from "@/lib/app-version";
 import { hermesBridgeInfo } from "@/lib/hermes-bridge-version";
 import { consumeRateLimit } from "@/lib/rate-limit";
 import { bearerToken, isHostTokenShape } from "./pairing";
@@ -213,7 +213,7 @@ export function createHostSocketServer(options: {
                     type: "welcome",
                     hostId,
                     protocol: HOST_PROTOCOL,
-                    serverVersion: pkg.version,
+                    serverVersion: appVersion(),
                     bridge: hermesBridgeInfo(),
                     heartbeatSec: HOST_HEARTBEAT_SEC,
                     inventorySec: HOST_INVENTORY_SEC,

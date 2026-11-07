@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import pkg from "@/../package.json" assert { type: "json" };
+import { appVersion } from "@/lib/app-version";
 import { isVersionNewer as isNewer } from "@/lib/semver";
 
 export const dynamic = "force-dynamic";
@@ -24,7 +24,7 @@ let cached: {
 const CACHE_TTL_MS = 15 * 60 * 1000; // 15 minutes
 
 export async function GET() {
-    const currentVersion = pkg.version;
+    const currentVersion = appVersion();
 
     // Serve from cache if fresh
     if (cached && Date.now() - cached.fetchedAt < CACHE_TTL_MS) {

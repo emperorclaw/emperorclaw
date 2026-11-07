@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { verifyMcpToken } from "@/lib/mcp";
-import packageJson from "@/../package.json" assert { type: "json" };
+import { appVersion } from "@/lib/app-version";
 
 export async function GET(req: NextRequest) {
   const auth = await verifyMcpToken(req);
@@ -19,7 +19,7 @@ export async function GET(req: NextRequest) {
     serverTime: new Date().toISOString(),
     apiBaseUrl: baseUrl,
     wsUrl,
-    emperorVersion: packageJson.version,
+    emperorVersion: appVersion(),
     docsUrl: `${baseUrl}/docs`,
     recommendedSkillVersion: "1.1.0",
     minimumBridgeVersion: "1.0.0",

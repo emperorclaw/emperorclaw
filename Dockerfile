@@ -3,6 +3,15 @@ FROM node:20-alpine AS builder
 
 WORKDIR /app
 
+# The version this image will report. Docker Publish passes the git tag here
+# (v0.31.1), so /api/health, /api/version and the update banner state the tag
+# that was actually released instead of relying on someone bumping
+# package.json before tagging — the drift that made v0.31.1 report 0.31.0.
+# Declared in both stages: the builder needs it if Next ever inlines it, the
+# runner needs it at request time.
+ARG APP_VERSION=""
+ENV APP_VERSION=$APP_VERSION
+
 COPY package.json package-lock.json* ./
 RUN npm ci
 
@@ -18,6 +27,12 @@ WORKDIR /app
 
 ENV NODE_ENV=production
 ENV NEXT_TELEMETRY_DISABLED=1
+
+# Release tag this image was built from (see builder stage). Read at runtime by
+# src/lib/app-version.ts; empty on a local `docker build`, which falls back to
+# the package.json version.
+ARG APP_VERSION=""
+ENV APP_VERSION=$APP_VERSION
 ENV PORT=3000
 # Bind to all interfaces. Next's standalone server defaults to $HOSTNAME, which
 # Docker sets to the container ID — so it would listen only on the container's

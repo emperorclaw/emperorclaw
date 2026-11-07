@@ -47,3 +47,26 @@ public for the first time.
       not run `db:migrate` against production implicitly.
 - [ ] Tag the release (`git tag vX.Y.Z && git push --tags`) and write release
       notes from the commit log since the last tag.
+
+## What version the app reports
+
+The tag is the source of truth. Docker Publish resolves `GITHUB_REF_NAME`,
+refuses anything that is not `vX.Y.Z`, and passes it to the image as the
+`APP_VERSION` build arg; `src/lib/app-version.ts` serves it to `/api/health`,
+`/api/version`, `/api/updates/check` and the app shell, stripping the leading
+`v`. A tag that skips the `package.json` bump still reports correctly — that is
+the bug this replaced (v0.31.1 reported 0.31.0).
+
+`package.json`'s version is only the fallback for local runs (`npm run dev`,
+tests, a bare `docker build`), so keep it roughly current but do not treat it as
+the deployed version.
+
+After the deploy:
+
+```bash
+curl -s https://brain.malecu.eu/api/health   # {"status":"ok","version":"0.31.2",...}
+```
+
+If `version` still shows the previous release after Watchtower reports the new
+digest, the build arg did not reach the image — check the `Resolve version from
+tag` and `Build and push` steps of the Docker Publish run.

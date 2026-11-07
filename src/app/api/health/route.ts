@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { db } from "@/db";
 import { sql } from "drizzle-orm";
-import pkg from "@/../package.json" assert { type: "json" };
+import { appVersion } from "@/lib/app-version";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -24,7 +24,7 @@ export async function GET() {
 
     const body = {
         status: dbOk ? "ok" : "degraded",
-        version: pkg.version,
+        version: appVersion(),
         checks: { database: dbOk ? "ok" : "unreachable" },
     };
 
