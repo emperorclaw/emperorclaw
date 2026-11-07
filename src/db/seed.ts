@@ -31,6 +31,9 @@ async function main() {
         [adminUser] = await db.insert(users).values({
             email: "admin@acme.com",
             passwordHash,
+            // The demo login printed below has to work: credentials sign-in
+            // refuses an unverified email, and the seed never sends one.
+            emailVerifiedAt: new Date(),
         }).returning();
         console.log(`Created admin user: ${adminUser.email}`);
     } else {

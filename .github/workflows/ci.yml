@@ -292,6 +292,71 @@ jobs:
       - name: Integration tests
         run: npm run test:integration
 
+  # Browser gate for pointer hit-testing and CSS containing blocks, which the
+  # static suites cannot see: the v0.31.1 regression where the global press
+  # scale collapsed a row's stretched-link overlay so clicks in the row stopped
+  # navigating (tests/e2e/views-row-click.spec.ts). Real build, real Postgres,
+  # real credentials sign-in.
+  e2e-ui:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: emperor
+          POSTGRES_PASSWORD: emperor
+          POSTGRES_DB: emperor_e2e
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U emperor -d emperor_e2e"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      POSTGRES_CONNECTION_STRING: postgres://emperor:emperor@localhost:5432/emperor_e2e
+      APP_URL: http://127.0.0.1:3210
+      NEXTAUTH_URL: http://127.0.0.1:3210
+      NEXTAUTH_SECRET: ci-e2e-only-not-a-real-secret
+      EMPEROR_CLAW_MASTER_KEY: 0000000000000000000000000000000000000000000000000000000000000000
+      PORT: "3210"
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run migrations
+        run: npm run db:migrate
+
+      - name: Seed the demo workspace (admin@acme.com, one open task)
+        run: npm run db:seed
+
+      - name: Build (the suite runs the production server)
+        run: npm run build
+
+      - name: Install Chromium
+        run: npx playwright install --with-deps chromium
+
+      - name: Browser regression suite
+        run: npm run test:e2e
+
+      - name: Upload Playwright artifacts on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-results
+          path: |
+            test-results/
+            playwright-report/
+          retention-days: 7
+
   windows-installer:
     runs-on: windows-latest
     steps:

@@ -70,3 +70,9 @@ __pycache__/
 research/
 *.pyc
 .scratch-*
+
+# Playwright (tests/e2e): traces, screenshots and reports are CI artifacts.
+test-results/
+playwright-report/
+blob-report/
+.playwright/
