@@ -27,7 +27,9 @@ jobs:
           # package.json: a tag like v0.31.1 must ship a v0.31.1 health check
           # even if the release commit forgot to bump the package version.
           tag="${GITHUB_REF_NAME}"
-          if ! printf '%s' "$tag" | grep -Eq '^v[0-9]+\.[0-9]+\.[0-9]+([-.][0-9A-Za-z.-]+)?$'; then
+          # Strict semver after the `v`: three numeric parts, optional
+          # -prerelease and +build. A four-part tag (v1.2.3.4) is not a release.
+          if ! printf '%s' "$tag" | grep -Eq '^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?(\+[0-9A-Za-z.-]+)?$'; then
             echo "::error::tag '$tag' is not a semver release tag (expected vX.Y.Z)"
             exit 1
           fi
