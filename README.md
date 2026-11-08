@@ -33,6 +33,44 @@
 
 One agent is a tool. Five agents doing sales, support, research and content are a team, and a team needs an org chart, a task board, a shared memory and someone watching the bill. EmperorClaw gives your AI workforce all of that, on your own server, with a dashboard you can run from your phone.
 
+<br/>
+
+## What makes EmperorClaw different
+
+Most agent platforms put every agent on one prompt and one skills folder, and show every person the whole workspace. EmperorClaw treats **access and knowledge as scoped objects**, enforced the same way for people, for agents, and for AI tools outside the platform.
+
+### 👥 Member visibility is a scope, not a permission flag
+
+Restrict any member to **specific agents and specific clients** in Settings → Members → Access Scope. The server applies that scope to everything the member can read — agents, projects, tasks, approvals, files, views, costs, threads — so a restricted member cannot reach another client's work by guessing a link. Owners and admins are never restricted, and an empty scope grants nothing: it fails closed instead of widening to "everything".
+
+> **What that buys you:** give a client or contractor access to only the agents that work for them. They sign in to the same install, see their own agents and their own client's work, and never see the rest.
+
+### 🧠 The Company Brain is scoped per company, client, project and agent
+
+Every knowledge note carries a scope: the whole company, one client (customer), one project, or **one individual agent**. When an agent starts a turn, Emperor resolves the notes that apply to that agent, that task's client and that project, and injects only those. The same scope rule decides what the agent may read later.
+
+> **Why a flat wiki is not the same:** in a skills folder every agent reads one shared pool — either everybody sees every client's rules, or you copy the same instructions into a dozen files and keep them in sync by hand. Here the scope *is* the retrieval filter. A note scoped to one agent is a private operating manual no other agent reads, and the same agent follows different rules for two different clients without anyone editing a prompt.
+
+### 🔌 The Company Brain is an MCP server, not just injected context
+
+EmperorClaw runs a spec-compliant **MCP server at `/mcp`**. Claude Code, Codex, Claude Desktop and any other MCP client connect to it — with **OAuth 2.1 + PKCE** (sign in and approve, nothing to copy) or an access token from Settings → Access Tokens — and read the scoped knowledge, tasks, projects, customers, agents and files that connection may see. Writes follow the same rules and stay attributable to the person or token that made them.
+
+> **Why "we speak MCP" usually means less:** many tools only push context *into* the agents running inside their own platform. Emperor also lets an outside AI **query the company**. Connect Claude Desktop or Codex and ask it questions about one client without giving it access to the others.
+
+```bash
+# Claude Code — token from Settings → Access Tokens
+claude mcp add --transport http emperorclaw https://your-emperorclaw-host/mcp \
+  --header "Authorization: Bearer $EMPEROR_CLAW_TOKEN"
+
+# Codex CLI / IDE
+codex mcp add emperorclaw --url https://your-emperorclaw-host/mcp \
+  --bearer-token-env-var EMPEROR_CLAW_TOKEN
+```
+
+Then ask: *"What are our delivery rules for Maple & Co, and what is still open on their project?"* Prefer no token? Add `https://<your-host>/mcp` as a custom connector in Claude Desktop or claude.ai and approve the OAuth sign-in. Full walkthrough: [MCP endpoints](src/content/docs/v1.1/mcp.md) · [agents and MCP](https://emperorclaw.com/docs/agents-and-mcp/).
+
+<br/>
+
 |        | Step | What happens |
 | ------ | ---- | ------------ |
 | **01** | **Describe your company** | Paste a model key, say what you do. Your lead agent writes the company's Knowledge & Rules while you watch. |
@@ -94,7 +132,7 @@ Tasks can require your approval before they close. Notifications in-app, by emai
 <td valign="top">
 
 ### 🧠 Company Brain
-A wiki your agents actually read: rules, procedures and know-how, linked together, scoped to the right company, client, project or agent.
+A wiki your agents actually read: rules, procedures and know-how, linked together, scoped to the right company, client, project or agent. Each agent receives only the scopes that apply to its work, and outside MCP clients can query the same notes.
 
 </td>
 <td valign="top">
@@ -120,7 +158,7 @@ Duration, tool calls, tokens and cost for every run. Monthly budgets per agent t
 <td valign="top">
 
 ### 👥 Your whole team, with roles
-Invite teammates as owner, admin, member or viewer. Restricted members see only the agents and clients they're assigned. One install can host several companies, and each client's work, files and knowledge stay apart.
+Invite teammates as owner, admin, member or viewer. Restrict a member to specific agents and clients — the server enforces that scope on everything they read, so a client or contractor sees only the agents that work for them. One install can host several companies, and each client's work, files and knowledge stay apart.
 
 </td>
 <td valign="top">
@@ -140,7 +178,7 @@ Agents heartbeat; tasks have leases. When an agent goes quiet, work is retried, 
 <td valign="top">
 
 ### 🔌 Bring your own agents
-Hermes, OpenClaw, or any MCP client, including Claude. MCP tools for scoped company work, including conversations with agents through `send_message`, `wait_for_reply` and `read_thread`.
+Hermes, OpenClaw, or any MCP client, including Claude. Emperor is itself an MCP server at `/mcp` (OAuth or a scoped token), so an outside client can read scoped knowledge, tasks and customers instead of only receiving injected context — plus MCP tools for scoped company work, including conversations with agents through `send_message`, `wait_for_reply` and `read_thread`.
 
 </td>
 <td valign="top">
@@ -178,14 +216,16 @@ Bottom tabs for home, messages, projects, approvals and agents. Approve work, an
 Read the [operator guide](src/content/docs/v1.1/operator-guide.md) or the
 [public feature map](https://emperorclaw.com/docs/features/) for examples and limits.
 
-## Why EmperorClaw is different
+## What else it gets right
 
 |   |   |
 | - | - |
 | **Nothing gets lost.** | Messages, replies and runs are durable. A restart, a network drop or a killed process resolves into a delivered reply or a visible incident, never silence. |
 | **You can see the work.** | Not just "online": the current step, each tool call, tokens and cost, live in the UI and recorded per run. |
 | **Agents stay fast as they grow.** | Persistent sessions per thread, compaction off the critical path and compact tool results, so the hundredth message is as quick as the first. |
-| **Your knowledge, scoped.** | The same agent follows different rules for different clients, because the brain is scoped, not one giant prompt. |
+| **People see only their part.** | A member's agents and clients are an enforced scope, not a hidden menu: agents, projects, tasks, approvals, files, views, costs and threads are all filtered server-side, and an empty scope grants nothing. |
+| **Your knowledge, scoped.** | The same agent follows different rules for different clients, because the brain is scoped per company, client, project and agent instead of being one giant prompt. |
+| **Your brain is an MCP server.** | Claude, Codex and any MCP client connect over OAuth and query the scoped knowledge, tasks and customers from outside the platform. |
 | **Two ways to run agents.** | **Managed**: Emperor creates and updates Docker agents for you. **Remote**: one command installs agents on any Linux box, a VPS or a Raspberry Pi. |
 | **Self-hosted, Fair Source.** | Your server, your Postgres, your data. Every release becomes Apache 2.0 after two years. |
 
@@ -262,10 +302,13 @@ Then: create a project, add a task with a clear expected result, assign it, and 
 EmperorClaw *uses* them. They do the work; EmperorClaw assigns it, remembers it, checks it and shows it to you.
 
 **Can I connect Claude?**
-Yes. EmperorClaw is an MCP server: connect Claude or any MCP client with OAuth and it can read and run your company's work.
+Yes. EmperorClaw is itself an MCP server at `/mcp`: connect Claude, Codex or any MCP client with OAuth (or a scoped access token) and it can read the company knowledge, tasks, projects and customers its scope allows — from outside the platform, not only as context injected into our own agents. See [MCP endpoints](src/content/docs/v1.1/mcp.md).
+
+**How does access control and knowledge sharing differ from other agent tools?**
+Three scopes, enforced server-side, not one shared pool: **people** (a member can be restricted to specific agents and clients — give a contractor access to only the agents that work for them), **knowledge** (every note is scoped to company, client, project or one agent, and each agent receives only the scopes that apply to its work) and **outside tools** (an MCP client reads the same scoped knowledge over OAuth). A flat skills folder or wiki has one pool for everyone, and usually only pushes context into its own agents.
 
 **Can one install serve several companies or clients?**
-Yes. Data, tokens and knowledge are scoped per company, and inside a company each client gets its own work, files and rules.
+Yes. Data, tokens and knowledge are scoped per company, and inside a company each client gets its own work, files and rules that other clients' members cannot read.
 
 **Do agents run all the time?**
 Agents wake on messages, assigned tasks and scheduled pipelines. Long work is fine: turns have no fixed time limit, only an inactivity limit.
