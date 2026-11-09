@@ -412,6 +412,8 @@ async function applyObjectiveAction(tx: Tx, objective: ObjectiveRow, action: Obj
             cancelQueued = true;
             break;
         }
+        // A person stops it (UI Stop, `/goal clear`); an agent cancels it. Both close it the same way.
+        case "stop":
         case "cancel": {
             patch.status = "cancelled";
             patch.nextRunAt = null;

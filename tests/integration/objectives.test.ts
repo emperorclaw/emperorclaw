@@ -160,6 +160,37 @@ maybe("objectives: pausing cancels a queued prompt and the tick never posts afte
     assert.equal(await runObjectiveFollowups(new Date()), 0);
 });
 
+maybe("objectives: stopping closes the objective, cancels its queued prompt and frees the agent for a new one", async () => {
+    await resetDb();
+    const { companyId, userId } = await seedCompanyWithToken();
+    const dev = await seedAgent(companyId, { name: "Dev", provider: "mcp" });
+    const { requestAgentObjective, readAgentObjective, runObjectiveFollowups } = await import("@/lib/agent-objective");
+    const db = await getDb();
+    const { agentObjectives, threadMessages } = await getSchema();
+    const { and, eq, sql } = await import("drizzle-orm");
+
+    const started = await requestAgentObjective(companyId, userId, dev.id, { action: "start", objective: "Stop me", cadenceMinutes: 60 });
+    const stopped = await requestAgentObjective(companyId, userId, dev.id, { action: "stop" });
+    assert.equal(stopped.objective.status, "cancelled");
+
+    const [row] = await db.select().from(agentObjectives).where(eq(agentObjectives.id, started.objective.id));
+    assert.equal(row.nextRunAt, null);
+    assert.ok(row.completedAt, "a stopped objective records when it closed");
+
+    const queued = await db.select().from(threadMessages).where(and(
+        eq(threadMessages.companyId, companyId),
+        sql`${threadMessages.metadataJson}->>'objectiveId' = ${started.objective.id}`,
+    ));
+    assert.ok(queued.every((m) => m.deliveryState === "cancelled"), "queued prompts are cancelled on stop");
+    assert.equal(await runObjectiveFollowups(new Date(Date.now() + 2 * 60 * 60 * 1000)), 0);
+
+    // Controlling it afterwards says it's closed, and the agent can take a new objective.
+    await assert.rejects(requestAgentObjective(companyId, userId, dev.id, { action: "pause" }), /already closed/);
+    const next = await requestAgentObjective(companyId, userId, dev.id, { action: "start", objective: "Next goal" });
+    assert.equal(next.objective.status, "active");
+    assert.equal((await readAgentObjective(companyId, dev.id)).objective?.objective, "Next goal");
+});
+
 maybe("objectives: any provider (mcp) manages its own objective through the bound token", async () => {
     await resetDb();
     const { companyId, userId, rawToken } = await seedCompanyWithToken();
