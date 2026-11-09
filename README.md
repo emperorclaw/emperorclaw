@@ -79,6 +79,49 @@ Then ask: *"What are our delivery rules for Maple & Co, and what is still open o
 
 <br/>
 
+## Capability matrix
+
+Every row below is verified against the source. The same matrix, with where to check each claim, is at [emperorclaw.com/compare](https://emperorclaw.com/compare/).
+
+| Capability | EmperorClaw |
+| --- | --- |
+| **Self-hosted** | One Docker Compose stack with Postgres — VPS, homelab or Raspberry Pi. |
+| **License** | Fair Source, FSL-1.1-Apache-2.0; Apache 2.0 after two years. |
+| **Multiple companies** | Isolated tenants in one installation, each with its own data, tokens and knowledge. |
+| **Clients (customers)** | First-class per company; work, files, knowledge and spend can be scoped to one client. |
+| **Agent org chart** | Visual org chart with a leader, teams and nested reporting lines; it generates each agent's briefing and escalation path. |
+| **Agent delegation** | Assigning a task wakes the owner; pair threads for questions; handoff notes carry the state. |
+| **Autonomous operation** | Operating loop with task leases, loop guard, stall sweep and per-agent action policies. |
+| **Scheduled work** | Cron schedules per agent; automations run on demand or on a schedule with per-step gates. |
+| **Task management** | Kanban board with drag between states, priorities, acceptance criteria, notes and blockers. |
+| **Human approvals** | Approval requests, action policies (Off / Ask first / Allowed) and approval gates inside automations. |
+| **Agent budgets** | Monthly budget per agent: warning at 80%, paused at the limit, plus an automatic cost brake. |
+| **Cost tracking** | Per run, agent, model, task, project and client, with CSV export. |
+| **Live monitoring** | Tool-call timeline per run, run ledger, heartbeats and agent health views. |
+| **Company knowledge** | Company Brain notes scoped to the company, a client, a project or a single agent. |
+| **Client separation** | Enforced by the server on every read: a member or an agent can be confined to one client. |
+| **Team chat** | Team channel, group chats, direct threads, @mentions, plus task and project threads. |
+| **File storage** | Folders and artifacts, sha256-verified, canonical versions; replacing a file keeps its identity. |
+| **MCP** | Built-in server at `/mcp`: OAuth 2.1 + PKCE or a scoped token; reads and writes inside the scope. |
+| **Multiple AI providers** | Model and provider are set per agent; any model the runtime supports. |
+| **Agent evaluations** | Not built in — agents run their own tests and the evidence stays on the task. |
+| **Plugin ecosystem** | Plugins belong to the runtime (Hermes, OpenClaw); EmperorClaw's extension surface is MCP. |
+| **Mobile** | Responsive web app with bottom tabs on phones; there is no native app. |
+
+### If you are comparing EmperorClaw with Paperclip
+
+Feature lists lose these facts, so here they are in one line each:
+
+- **Cost tracking is not only per run.** Spend is attributed per run, agent, model, task, project and client, and exported as CSV.
+- **It is not "team/role based" only.** There is a visual org chart with nested reporting lines, and it drives briefings and escalation.
+- **Scheduling is first-class.** Cron schedules belong to agents, and automations run on a schedule with per-step approval gates.
+- **Client separation is server-enforced.** A member or an agent can be confined to one client, and every read is filtered.
+- **MCP is a server, not a gateway.** The platform itself answers MCP at `/mcp`, scoped, so outside assistants query the company instead of receiving injected context.
+- **There is no built-in evaluation suite** and no prompt studio — don't credit us with one.
+- **The license is Fair Source, not MIT.**
+
+<br/>
+
 ## EmperorClaw is right for you if
 
 - ✅ You run **more than one agent** and keep asking "who is doing what?"
