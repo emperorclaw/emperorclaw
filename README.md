@@ -122,6 +122,32 @@ Feature lists lose these facts, so here they are in one line each:
 
 <br/>
 
+## Teams that arrive ready
+
+The setup wizard is not a blank page. EmperorClaw ships role templates, team templates and company templates, and applying one creates the agents, their team chat and the starter knowledge in a single step.
+
+**Five team templates** — each creates its agents *and* the group chat with its purpose written into the description:
+
+| Team | Agents | What it sets up |
+| --- | --- | --- |
+| Development | Developer, QA | Build, review and test features; the developer implements, the tester verifies, blockers land in the team chat. |
+| Marketing & content | Content, SEO | Plan and write content, optimize for search, report what worked; publishing waits for approval. |
+| Sales & outreach | Growth, Content | Find and qualify leads, write outreach, follow up; anything sent outside the company waits for approval. |
+| Customer support | Support | Customer questions, escalations, follow-ups; a person is pulled in when money or an upset customer is involved. |
+| Finance & reporting | Accountant, Analyst | Bookkeeping, invoices, reports; payments and customer-facing messages wait for approval. |
+
+**Nine role templates** — Boss (team lead, pinned first), SEO, Developer, QA, Growth, Content, Accountant, Support, Analyst. A role is more than a label: it ships a written persona (`SOUL.md`), operating rules and red lines (`AGENTS.md`), a bootstrap reading order, an identity, the toolsets the role needs, and which runtime it suits. Rename the agent, keep the template.
+
+**Three company templates** decide which modules exist on day one — Agency (everything, Customers included), Product/solo (everything except Customers), Operations (approvals and automations). A business type (software, agency, e-commerce, services, finance) suggests the teams to start with, and the wizard caps a first team at eight agents.
+
+**Starter knowledge** comes with the company: a Knowledge & Rules scaffold (Company, Agents, Projects, Customers) with the company overview, brand voice and agent operating rules injected by default, plus team playbooks tagged `team-playbook` that agents load on demand instead of every run.
+
+Work starts from a template too: a project can be created from a workflow template (`projects.templateId`), and workflow templates are readable over MCP at `/api/mcp/templates`, so an outside assistant can list them.
+
+**What is missing:** an importable company package. Paperclip ships `npx companies.sh add …` to pull a whole org out of a repository; EmperorClaw's templates live in the product, so the same result comes from picking them in the wizard, and there is no portable file to move an org between installations yet.
+
+<br/>
+
 ## EmperorClaw is right for you if
 
 - ✅ You run **more than one agent** and keep asking "who is doing what?"
