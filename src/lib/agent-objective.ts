@@ -415,6 +415,8 @@ async function applyObjectiveAction(tx: Tx, objective: ObjectiveRow, action: Obj
         // A person stops it (UI Stop, `/goal clear`); an agent cancels it. Both close it the same way.
         case "stop":
         case "cancel": {
+            // A person can't relabel a finished objective as cancelled (`/goal clear` after completion).
+            if (action === "stop" && (objective.status === "completed" || objective.status === "cancelled")) throw new Error("This objective is already closed");
             patch.status = "cancelled";
             patch.nextRunAt = null;
             patch.completedAt = now;

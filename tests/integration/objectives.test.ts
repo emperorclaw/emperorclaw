@@ -186,6 +186,7 @@ maybe("objectives: stopping closes the objective, cancels its queued prompt and 
 
     // Controlling it afterwards says it's closed, and the agent can take a new objective.
     await assert.rejects(requestAgentObjective(companyId, userId, dev.id, { action: "pause" }), /already closed/);
+    await assert.rejects(requestAgentObjective(companyId, userId, dev.id, { action: "stop" }), /already closed/);
     const next = await requestAgentObjective(companyId, userId, dev.id, { action: "start", objective: "Next goal" });
     assert.equal(next.objective.status, "active");
     assert.equal((await readAgentObjective(companyId, dev.id)).objective?.objective, "Next goal");
