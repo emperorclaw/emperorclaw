@@ -148,6 +148,39 @@ codex mcp add emperorclaw --url https://your-emperorclaw-host/mcp \
 
 <br/>
 
+## 它怎么跑
+
+EmperorClaw 是一台服务器，不是一个终端脚本。Next.js 面板、WebSocket 控制面和 PostgreSQL 跑在 Docker 里；每个智能体有自己的容器，状态存在数据卷和数据库里。
+
+**安装**是一条命令——`curl -fsSL https://raw.githubusercontent.com/emperorclaw/emperorclaw/main/install.sh | bash`——或者从仓库 `docker compose up -d`。脚本把文件放到 `~/emperorclaw`，检查端口，启动整套服务，等就绪，再打开浏览器。Linux 上它能顺带装 Docker Engine；macOS 和 Windows 需要 Docker Desktop。源码构建需要 Node.js 20+ 与 PostgreSQL。我们故意不提供 `npx` 式单文件：这是带面板、接口和控制面的多用户服务器，不是你 shell 里的进程管理器。
+
+| 服务 | 是什么 |
+| --- | --- |
+| `app` | 面板、REST/MCP 接口和 WebSocket 控制面 |
+| `postgres` | PostgreSQL 16，数据在 `pgdata` 卷里 |
+| `caddy` | 传入域名时的可选自动 HTTPS |
+| `drive-sync` | 可选的 rclone 边车，用于 Google Drive 备份 |
+
+**每个智能体一个容器。** 用「本地：这台机器」雇用，会在应用所在的网络上开一个同级 Docker 容器（`emperor-<agent>-<id8>`，重启策略 `unless-stopped`），带自己的 API 令牌，并把命名卷挂在 `/home/hermes/.hermes/profiles` 上，里面是模型配置、`SOUL.md`、会话（`state.db`）、记忆和技能。点「重建运行时」会停掉、删除、重新开这个容器——镜像更新和密钥轮换用的也是这个动作——而 profile 卷让智能体回来时还是它自己。
+
+**智能体可以住在别处。** 「设置 → 运行时主机」通过 SSH 接入另一台机器；主机会报告可用内存和磁盘（对照新智能体的需求）、是否装了浏览器、已经跑了几个智能体。没有 Docker socket 权限的托管部署，把 worker 放在另一台机器上即可。
+
+**状态扛得住重启。** 任务、备注、审批、消息、运行记录和成本都在 PostgreSQL。领取任务会写 `lease_owner` / `lease_until`，看门狗回收过期租约，所以崩掉的智能体不会卡住任务，两个智能体也不能同时拥有同一件事。指派会在数据库里排一次唤醒，一个突发窗口内合并成一条消息，最多重试 `max_wake_attempts` 次（默认 3），每个智能体还有 `last_heartbeat_at` 和 `last_wake_at`。智能体容器随 Docker 回来；应用、数据库和 Caddy 随守护进程重启。
+
+| 方面 | EmperorClaw | 本地 Node CLI |
+| --- | --- | --- |
+| 安装 | 需要 Docker，一条命令 | `npx`，仅此而已 |
+| 隔离 | 每个智能体一个容器一个 profile | 智能体共用你的 shell 和文件 |
+| 服务器上 7×24 | 原生：compose 栈 + 重启策略 | 自己接 systemd、PM2 或 tmux |
+| 关掉终端 | 工作继续——状态在 Postgres | 停了，除非你自己守护进程 |
+| 最初五分钟 | 慢一些：拉镜像、初始化 | 快：什么都不用装 |
+
+两个边界说清楚：容器不是虚拟机——智能体容器共用主机内核，并且默认加入应用的 Docker 网络，所以容器隔离的是文件、密钥和进程，不是敌意代码；另外 EmperorClaw 默认不给单个智能体设 CPU / 内存上限，要硬上限就在 Docker 主机上设。镜像发布为 `amd64`，Apple Silicon 通过 Docker Desktop 模拟运行。
+
+上面每一条都能在 [`docker-compose.yml`](docker-compose.yml)、[`install.sh`](install.sh)、[`src/lib/hermes-provisioning.ts`](src/lib/hermes-provisioning.ts)、[`src/lib/watchdog.ts`](src/lib/watchdog.ts)、[`src/lib/task-wake.ts`](src/lib/task-wake.ts) 和 [`src/db/schema.ts`](src/db/schema.ts) 里核实——长版本在 [emperorclaw.com/zh/docs/architecture](https://emperorclaw.com/zh/docs/architecture/)。
+
+<br/>
+
 ## EmperorClaw 适合你，如果
 
 - ✅ 你运行着**不止一个智能体**，却总在问"到底谁在做什么？"

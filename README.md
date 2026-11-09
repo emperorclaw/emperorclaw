@@ -148,6 +148,39 @@ Work starts from a template too: a project can be created from a workflow templa
 
 <br/>
 
+## How it runs
+
+EmperorClaw is a server, not a terminal script. A Next.js panel, a WebSocket control plane and PostgreSQL run in Docker; each agent runs in its own container and keeps its state in a volume and in the database.
+
+**Install** is one command — `curl -fsSL https://raw.githubusercontent.com/emperorclaw/emperorclaw/main/install.sh | bash` — or `docker compose up -d` from the repository. The installer writes to `~/emperorclaw`, checks the ports, starts the stack, waits for readiness and opens the browser. Linux can install Docker Engine for you; macOS and Windows need Docker Desktop. Source builds need Node.js 20+ and PostgreSQL. There is no `npx`-style single binary, by design: this is a multi-user server with a panel, an API and a control plane, not a process manager for your shell.
+
+| Service | What it is |
+| --- | --- |
+| `app` | the panel, the REST/MCP API and the WebSocket control plane |
+| `postgres` | PostgreSQL 16, data in the `pgdata` volume |
+| `caddy` | optional automatic HTTPS when you pass a domain |
+| `drive-sync` | optional rclone sidecar for Google Drive backups |
+
+**One container per agent.** Hiring with *Local: this machine* creates a sibling Docker container (`emperor-<agent>-<id8>`, restart policy `unless-stopped`) on the app's network, with its own API token and a named volume at `/home/hermes/.hermes/profiles` holding model configuration, `SOUL.md`, sessions (`state.db`), memory and skills. *Recreate Runtime* stops, removes and re-provisions that container — the same primitive used for image updates and key rotations — and the profile volume means the agent comes back as itself.
+
+**Agents can live elsewhere.** *Settings → Runtime hosts* connects another machine over SSH; the host reports free memory and disk against what a new agent needs, whether a browser is installed, and how many agents it runs. Hosted deployments without Docker socket access keep the workers on another machine.
+
+**State survives a restart.** Tasks, notes, approvals, messages, run records and costs are in PostgreSQL. Claiming a task sets `lease_owner`/`lease_until` and a watchdog reclaims expired leases, so a crashed agent cannot freeze an item and two agents cannot own the same task. Assignments queue a wake in the database, coalesced into one message per burst and retried up to `max_wake_attempts` (3), with `last_heartbeat_at` and `last_wake_at` per agent. Agent containers come back with Docker; app, database and Caddy restart with the daemon.
+
+| Aspect | EmperorClaw | A local Node CLI |
+| --- | --- | --- |
+| Install | Docker required, one command | `npx`, nothing else |
+| Isolation | One container and one profile per agent | Agents share your shell and your files |
+| 24/7 on a server | Native: compose stack with restart policies | Yours to wire: systemd, PM2 or tmux |
+| Terminal closes | Work continues — state is in Postgres | Stops, unless you daemonise it |
+| First five minutes | Slower: Docker pull and setup | Faster: nothing to install |
+
+Two limits, stated plainly: containers are not virtual machines — agent containers share the host kernel and join the app's Docker network, so the container isolates files, keys and process, not hostile code; and EmperorClaw does not set per-agent CPU or memory limits by default, so cap them on the Docker host if you need hard limits. Published images are `amd64`; Apple Silicon runs them through Docker Desktop emulation.
+
+Every claim above is checkable in [`docker-compose.yml`](docker-compose.yml), [`install.sh`](install.sh), [`src/lib/hermes-provisioning.ts`](src/lib/hermes-provisioning.ts), [`src/lib/watchdog.ts`](src/lib/watchdog.ts), [`src/lib/task-wake.ts`](src/lib/task-wake.ts) and [`src/db/schema.ts`](src/db/schema.ts) — the long version is at [emperorclaw.com/docs/architecture](https://emperorclaw.com/docs/architecture/).
+
+<br/>
+
 ## EmperorClaw is right for you if
 
 - ✅ You run **more than one agent** and keep asking "who is doing what?"
