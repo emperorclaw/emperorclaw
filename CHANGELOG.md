@@ -9,6 +9,12 @@ tagged (e.g. `## [1.2.0] — 2026-07-22`). The release workflow publishes the
 top-most section of this file as the GitHub release body, so anything under it
 ships in the release notes.
 
+## [0.31.3] — 2026-11-09
+
+### Fixed
+
+- **Stopping an objective works again.** Pressing **Stop** on an agent's objective in the chat (or typing `/goal clear` or `/goal cancel`) failed with "Invalid objective action": the stop request passed validation but nothing handled it. Stopping now closes the objective the same way an agent cancels one — it stops its scheduled check-ins, cancels any check-in still queued for the agent, and lets you start a new objective right away.
+
 ## [0.31.2] — 2026-11-07
 
 ### Fixed
