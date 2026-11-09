@@ -175,7 +175,7 @@ EmperorClaw 是一台服务器，不是一个终端脚本。Next.js 面板、Web
 | 关掉终端 | 工作继续——状态在 Postgres | 停了，除非你自己守护进程 |
 | 最初五分钟 | 慢一些：拉镜像、初始化 | 快：什么都不用装 |
 
-两个边界说清楚：容器不是虚拟机——智能体容器共用主机内核，并且默认加入应用的 Docker 网络，所以容器隔离的是文件、密钥和进程，不是敌意代码；另外 EmperorClaw 默认不给单个智能体设 CPU / 内存上限，要硬上限就在 Docker 主机上设。镜像发布为 `amd64`，Apple Silicon 通过 Docker Desktop 模拟运行。
+三个边界说清楚：容器不是虚拟机——智能体容器共用主机内核，并且默认加入应用的 Docker 网络，所以容器隔离的是文件、密钥和进程，不是敌意代码；每个智能体容器创建时就带 1 GiB 内存上限和 1.5 个 CPU（`src/lib/hermes-provisioning.ts` 里的 `NanoCpus`），运维可以在主机侧调高，但面板里不能按智能体单独改；同时没有设 PID 上限、也没有只读根文件系统，所以失控进程是被内存和 CPU 兜住，而不是被进程数兜住。镜像发布为 `amd64`，Apple Silicon 通过 Docker Desktop 模拟运行。
 
 上面每一条都能在 [`docker-compose.yml`](docker-compose.yml)、[`install.sh`](install.sh)、[`src/lib/hermes-provisioning.ts`](src/lib/hermes-provisioning.ts)、[`src/lib/watchdog.ts`](src/lib/watchdog.ts)、[`src/lib/task-wake.ts`](src/lib/task-wake.ts) 和 [`src/db/schema.ts`](src/db/schema.ts) 里核实——长版本在 [emperorclaw.com/zh/docs/architecture](https://emperorclaw.com/zh/docs/architecture/)。
 

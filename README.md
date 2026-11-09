@@ -175,7 +175,7 @@ EmperorClaw is a server, not a terminal script. A Next.js panel, a WebSocket con
 | Terminal closes | Work continues — state is in Postgres | Stops, unless you daemonise it |
 | First five minutes | Slower: Docker pull and setup | Faster: nothing to install |
 
-Two limits, stated plainly: containers are not virtual machines — agent containers share the host kernel and join the app's Docker network, so the container isolates files, keys and process, not hostile code; and EmperorClaw does not set per-agent CPU or memory limits by default, so cap them on the Docker host if you need hard limits. Published images are `amd64`; Apple Silicon runs them through Docker Desktop emulation.
+Three limits, stated plainly: containers are not virtual machines — agent containers share the host kernel and join the app's Docker network, so the container isolates files, keys and process, not hostile code; each agent container is created with a 1 GiB memory limit and 1.5 CPUs (`NanoCpus` in `src/lib/hermes-provisioning.ts`), which an operator can raise per host but not per agent from the panel; and no PID limit or read-only root filesystem is set, so a runaway process is bounded by memory and CPU, not by process count. Published images are `amd64`; Apple Silicon runs them through Docker Desktop emulation.
 
 Every claim above is checkable in [`docker-compose.yml`](docker-compose.yml), [`install.sh`](install.sh), [`src/lib/hermes-provisioning.ts`](src/lib/hermes-provisioning.ts), [`src/lib/watchdog.ts`](src/lib/watchdog.ts), [`src/lib/task-wake.ts`](src/lib/task-wake.ts) and [`src/db/schema.ts`](src/db/schema.ts) — the long version is at [emperorclaw.com/docs/architecture](https://emperorclaw.com/docs/architecture/).
 
