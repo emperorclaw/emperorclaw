@@ -105,13 +105,13 @@ export const LivingDesk = forwardRef<HTMLLIElement, DeskProps>(function LivingDe
             aria-haspopup="dialog" aria-pressed={selected} aria-label={ariaLabel} aria-describedby={statusId}
             className={cn("group flex w-full min-w-0 flex-col items-center rounded-xl px-1.5 pb-2 pt-1 text-center transition-colors duration-200 hover:bg-slate-900/[0.04] dark:hover:bg-white/[0.04] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-500 dark:focus-visible:ring-cyan-300",
                 selected && "bg-cyan-500/[0.08] ring-1 ring-inset ring-cyan-500/40 dark:bg-cyan-400/[0.07] dark:ring-cyan-300/40",
-                linked && "bg-amber-300/[0.08] ring-2 ring-inset ring-amber-300/80")}>
+                linked && "bg-amber-500/[0.08] ring-2 ring-inset ring-amber-500/60 dark:bg-amber-300/[0.08] dark:ring-amber-300/80")}>
             {/* 102 units in 84px: the seated figure (≈83 units above the desk) renders about 68px tall. */}
             <svg viewBox="-52 -96 104 102" className="h-[84px] w-[86px] shrink-0 overflow-visible" aria-hidden="true">
                 {/* Floor ring: gold when this agent needs you. */}
-                <ellipse cy="4" rx="46" ry="10" fill={needsYou ? "#fbbf24" : `hsl(${hue} 70% 55%)`} opacity={needsYou ? 0.2 : 0.07} />
-                {needsYou && <ellipse cy="4" rx="50" ry="12" fill="none" stroke="#fcd34d" strokeWidth={linked ? 3 : 2} opacity={linked ? 1 : 0.75} className="living-gold" />}
-                {pulse && !still && <ellipse cy="4" rx="50" ry="12" fill="none" stroke="#fde68a" strokeWidth="2.5" className="living-pulse" />}
+                <ellipse cy="4" rx="46" ry="10" fill={needsYou ? "var(--scene-alert-fill)" : `hsl(${hue} 70% 55%)`} opacity={needsYou ? 0.2 : 0.07} />
+                {needsYou && <ellipse cy="4" rx="50" ry="12" fill="none" stroke="var(--scene-alert-ring)" strokeWidth={linked ? 3 : 2} opacity={linked ? 1 : 0.75} className="living-gold" />}
+                {pulse && !still && <ellipse cy="4" rx="50" ry="12" fill="none" stroke="var(--scene-alert-pulse)" strokeWidth="2.5" className="living-pulse" />}
                 <g className={cn(!still && (working ? "observatory-working" : offline ? undefined : "living-breathe"))}>
                     <CharacterFigureView appearance={appearance} mood={moodForStatus(agent.status)} seated expression={armsUp ? "happy" : expressionForActivity(activity)} armsUp={armsUp} salt={`desk-${m.id}`} />
                     {photo && <image href={photo} x="-17" y="-76" width="34" height="34" preserveAspectRatio="xMidYMid slice" />}
@@ -127,7 +127,7 @@ export const LivingDesk = forwardRef<HTMLLIElement, DeskProps>(function LivingDe
             </span>}
             <span className="mt-0.5 flex w-full min-w-0 items-center justify-center gap-1.5">
                 <span className="truncate text-[13px] font-semibold leading-5 text-slate-900 dark:text-slate-50">{m.name}</span>
-                {actions > 0 && <span className="grid h-[18px] min-w-[18px] shrink-0 place-items-center rounded-md bg-amber-300 px-1 text-[11px] font-bold tabular-nums leading-none text-amber-950">{actions}</span>}
+                {actions > 0 && <span className="grid h-[18px] min-w-[18px] shrink-0 place-items-center rounded-md bg-amber-500 dark:bg-amber-300 px-1 text-[11px] font-bold tabular-nums leading-none text-amber-950">{actions}</span>}
             </span>
             <span className={cn("flex max-w-full items-center gap-1 text-[11px] font-medium leading-4", armsUp ? "text-lime-200" : BUCKET_TONE[bucket])}>
                 <Icon className="h-3 w-3 shrink-0" stroke={2} aria-hidden="true" /><span className="truncate">{scene.caption(label)}</span>
@@ -223,15 +223,15 @@ export function Throne({ pending, onOpen, still, leader = null, leaderAgent = nu
             <path d="M-78 6 L78 6 L70 -2 L-70 -2 Z" style={{ fill: "var(--scene-throne-step)" }} stroke="#67e8f9" strokeOpacity="0.25" />
             <path d="M-60 -2 L60 -2 L54 -9 L-54 -9 Z" style={{ fill: "var(--scene-throne-step-top)" }} stroke="#67e8f9" strokeOpacity="0.3" />
             {/* Chair back and seat */}
-            <path d="M-26 -12 L-26 -52 Q-26 -70 0 -74 Q26 -70 26 -52 L26 -12 Z" fill="url(#throne-back)" stroke={waiting ? "#fcd34d" : "#67e8f9"} strokeOpacity={waiting ? 0.9 : 0.5} strokeWidth="1.5" />
-            <path d="M-17 -18 L-17 -50 Q-17 -62 0 -65 Q17 -62 17 -50 L17 -18" fill="none" stroke={waiting ? "#fde68a" : "#a5f3fc"} strokeOpacity="0.35" />
+            <path d="M-26 -12 L-26 -52 Q-26 -70 0 -74 Q26 -70 26 -52 L26 -12 Z" fill="url(#throne-back)" stroke={waiting ? "var(--scene-alert-ring)" : "#67e8f9"} strokeOpacity={waiting ? 0.9 : 0.5} strokeWidth="1.5" />
+            <path d="M-17 -18 L-17 -50 Q-17 -62 0 -65 Q17 -62 17 -50 L17 -18" fill="none" stroke={waiting ? "var(--scene-alert-soft)" : "#a5f3fc"} strokeOpacity="0.35" />
             <rect x="-34" y="-17" width="68" height="9" rx="3" style={{ fill: "var(--scene-throne-seat)" }} stroke="#67e8f9" strokeOpacity="0.35" />
             <rect x="-38" y="-30" width="9" height="20" rx="3" style={{ fill: "var(--scene-throne-arm)" }} />
             <rect x="29" y="-30" width="9" height="20" rx="3" style={{ fill: "var(--scene-throne-arm)" }} />
             <image href="/crown.png" x="-19" y="-62" width="38" height="29" preserveAspectRatio="xMidYMid meet" />
         </svg>
         {waiting
-            ? <span className="mt-0.5 inline-flex items-center gap-1.5 rounded-full bg-amber-300 px-2.5 py-0.5 text-xs font-semibold text-amber-950"><IconBellRinging className="h-3.5 w-3.5" stroke={2} aria-hidden="true" />{t("decisionsWaiting", { count: pending })}</span>
+            ? <span className="mt-0.5 inline-flex items-center gap-1.5 rounded-full bg-amber-500 dark:bg-amber-300 px-2.5 py-0.5 text-xs font-semibold text-amber-950"><IconBellRinging className="h-3.5 w-3.5" stroke={2} aria-hidden="true" />{t("decisionsWaiting", { count: pending })}</span>
             : <span className="mt-0.5 inline-flex items-center rounded-full bg-slate-900/[0.06] px-2.5 py-0.5 text-xs font-semibold text-slate-600 dark:bg-white/[0.06] dark:text-slate-300">{t("allClear")}</span>}
     </button>;
 
@@ -273,8 +273,8 @@ export function Throne({ pending, onOpen, still, leader = null, leaderAgent = nu
                 <path d="M-78 6 L78 6 L70 -2 L-70 -2 Z" style={{ fill: "var(--scene-throne-step)" }} stroke="#67e8f9" strokeOpacity="0.25" />
                 <path d="M-60 -2 L60 -2 L54 -9 L-54 -9 Z" style={{ fill: "var(--scene-throne-step-top)" }} stroke="#67e8f9" strokeOpacity="0.3" />
                 {/* Chair back */}
-                <path d="M-26 -12 L-26 -52 Q-26 -70 0 -74 Q26 -70 26 -52 L26 -12 Z" fill="url(#throne-back)" stroke={waiting ? "#fcd34d" : "#67e8f9"} strokeOpacity={waiting ? 0.9 : 0.5} strokeWidth="1.5" />
-                <path d="M-17 -18 L-17 -50 Q-17 -62 0 -65 Q17 -62 17 -50 L17 -18" fill="none" stroke={waiting ? "#fde68a" : "#a5f3fc"} strokeOpacity="0.35" />
+                <path d="M-26 -12 L-26 -52 Q-26 -70 0 -74 Q26 -70 26 -52 L26 -12 Z" fill="url(#throne-back)" stroke={waiting ? "var(--scene-alert-ring)" : "#67e8f9"} strokeOpacity={waiting ? 0.9 : 0.5} strokeWidth="1.5" />
+                <path d="M-17 -18 L-17 -50 Q-17 -62 0 -65 Q17 -62 17 -50 L17 -18" fill="none" stroke={waiting ? "var(--scene-alert-soft)" : "#a5f3fc"} strokeOpacity="0.35" />
                 {/* Occupant: seated, slightly larger than a desk, in front of the back and behind the cushion. */}
                 {appearance && <g transform="translate(0 -15) scale(1.15)" className={cn(ghost && "living-ghost")}>
                     <g className={cn(!still && leaderAgent && (working ? "observatory-working" : offline ? undefined : "living-breathe"))}>
@@ -303,7 +303,7 @@ export function Throne({ pending, onOpen, still, leader = null, leaderAgent = nu
         <button type="button" onClick={onOpen} aria-label={inboxLabel}
             className="mt-1 rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300">
             {waiting
-                ? <span className="inline-flex items-center gap-1.5 rounded-full bg-amber-300 px-2.5 py-0.5 text-xs font-semibold text-amber-950"><IconBellRinging className="h-3.5 w-3.5" stroke={2} aria-hidden="true" />{t("decisionsWaiting", { count: pending })}</span>
+                ? <span className="inline-flex items-center gap-1.5 rounded-full bg-amber-500 dark:bg-amber-300 px-2.5 py-0.5 text-xs font-semibold text-amber-950"><IconBellRinging className="h-3.5 w-3.5" stroke={2} aria-hidden="true" />{t("decisionsWaiting", { count: pending })}</span>
                 : <span className="inline-flex items-center rounded-full bg-slate-900/[0.06] px-2.5 py-0.5 text-xs font-semibold text-slate-600 dark:bg-white/[0.06] dark:text-slate-300">{t("allClear")}</span>}
         </button>
     </div>;

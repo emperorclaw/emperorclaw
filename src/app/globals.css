@@ -906,10 +906,19 @@
   --scene-throne-step-top: #e3edf5;
   --scene-throne-seat: #b8d0e3;
   --scene-throne-arm: #c6d9e8;
+  /* Alerts on a daylit floor need a deeper amber than the night scene. */
+  --scene-alert-fill: #f59e0b;
+  --scene-alert-ring: #d97706;
+  --scene-alert-pulse: #f59e0b;
+  --scene-alert-soft: #fbbf24;
   background: radial-gradient(ellipse at 50% 15%, #f4fbff 0%, #e8f2f9 40%, #dde8f1 85%);
 }
 .dark .observatory-stage, .force-dark .observatory-stage {
   --scene-desk-top: #17304a;
+  --scene-alert-fill: #fbbf24;
+  --scene-alert-ring: #fcd34d;
+  --scene-alert-pulse: #fde68a;
+  --scene-alert-soft: #fde68a;
   --scene-desk-front: #0b1a2c;
   --scene-throne-back-top: #1d4363;
   --scene-throne-back-bottom: #0b1c2f;
