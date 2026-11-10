@@ -29,6 +29,8 @@ provides_tools:
   - emperor_update_objective
   - emperor_request_approval
   - emperor_check_action
+  - emperor_list_pending_approvals
+  - emperor_decide_approval
   - emperor_remember
   - emperor_list_groups
   - emperor_create_group

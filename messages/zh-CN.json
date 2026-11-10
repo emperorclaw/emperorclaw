@@ -679,7 +679,10 @@
       "details": "详情（{count}）",
       "customer": "客户",
       "project": "项目",
-      "open": "打开"
+      "open": "打开",
+      "waitingOnAgent": "等待：{name}（智能体）",
+      "waitingOnPeople": "等待：{names}",
+      "waitingOnAdmins": "等待：所有者或管理员"
     },
     "reject": {
       "placeholder": "{name} 应该修改什么？",
@@ -723,7 +726,8 @@
       "resumeFailed": "无法恢复",
       "restartFailed": "无法重启运行时",
       "reassignFailed": "无法重新分配该任务",
-      "markReadFailed": "无法标为已读"
+      "markReadFailed": "无法标为已读",
+      "alreadyDecidedBy": "已由 {name} 决定。"
     },
     "theAgent": "该智能体",
     "theAgentLower": "该智能体",
@@ -769,7 +773,9 @@
         "messages": "消息",
         "teamChat": "团队聊天"
       }
-    }
+    },
+    "allApprovals": "全部审批",
+    "allApprovalsHint": "所有待处理的审批，包括正在等待智能体或其他人的审批。作为所有者或管理员，你可以决定其中任何一个。"
   },
   "settings": {
     "sections": {
@@ -804,7 +810,9 @@
       "advanced": "高级设置",
       "advancedDescription": "手动运行时命令和连接诊断。",
       "instance": "实例",
-      "instanceDescription": "整个自托管安装的设置。"
+      "instanceDescription": "整个自托管安装的设置。",
+      "approvals": "审批",
+      "approvalsDescription": "谁来决定智能体的请求，以及未决请求何时上报。"
     },
     "profile": {
       "title": "个人资料",
@@ -1331,6 +1339,23 @@
       "name": "实例名称",
       "nameHint": "显示在电子邮件和页面标题中的名称。",
       "namePlaceholder": "我的 Emperor Claw 实例"
+    },
+    "approvals": {
+      "title": "审批",
+      "intro": "智能体的请求会发给其审批人：先是为该智能体或其团队设置的审批人，否则是其在组织架构中的上级，然后是其所有者，最后是所有者和管理员。",
+      "saved": "已保存",
+      "loadFailed": "无法加载审批设置。",
+      "saveFailed": "无法保存审批设置，请重试。",
+      "escalateLabel": "上报时间（分钟）",
+      "escalateHint": "如果审批人在此时间内未作决定，请求会交给上一级审批人。{min} 到 {max} 分钟；默认 {default}。请求仍会在 48 小时后过期。",
+      "save": "保存",
+      "cancel": "取消",
+      "teamsTitle": "团队审批人",
+      "teamsIntro": "谁来审批组织架构中各团队智能体的请求（除非某个智能体有自己的审批人）。",
+      "noTeams": "组织架构中还没有团队。请在“智能体 → 组织”中添加团队。",
+      "teamAuto": "自动（各智能体的上级）",
+      "agentHint": "要为单个智能体选择审批人，请打开该智能体的“操作”标签页。",
+      "cleared": "已移除的审批人已清除。逐个保存团队以保留此更改。"
     }
   },
   "runtimeHosts": {
@@ -3132,7 +3157,8 @@
       "approval": {
         "approved": "<who>{actor}</who> 批准了 <target>审批 {label}</target> {detail}",
         "rejected": "<who>{actor}</who> 拒绝了 <target>审批 {label}</target> {detail}",
-        "dismissed": "<who>{actor}</who> 驳回了 <target>审批 {label}</target> {detail}"
+        "dismissed": "<who>{actor}</who> 驳回了 <target>审批 {label}</target> {detail}",
+        "escalated": "<who>{actor}</who> 上报了 <target>审批 {label}</target> {detail}"
       },
       "member": {
         "role_changed": "<who>{actor}</who> 更改了 <target>{label}</target> 的角色 {detail}",
@@ -3254,7 +3280,8 @@
         "contextNotes": "公司上下文",
         "agentRoutine": "每日智能体例行任务",
         "instance": "实例设置",
-        "modules": "模块"
+        "modules": "模块",
+        "approvals": "审批路由"
       },
       "permissions": {
         "off": "关闭",
@@ -3327,7 +3354,12 @@
     "emptyDescription": "还没有智能体请求支出、发送、发布、删除或关闭需要审批的工作。新的请求会显示在这里和收件箱中。",
     "recentlyDecided": "最近已处理",
     "noDecidedMatches": "没有已处理的审批符合该搜索。",
-    "noDecisions": "还没有任何决定。你处理过的审批会显示在这里。"
+    "noDecisions": "还没有任何决定。你处理过的审批会显示在这里。",
+    "waitingOnAgent": "等待 {name}（智能体）",
+    "waitingOnPeople": "等待 {names}",
+    "waitingOnAdmins": "等待所有者或管理员",
+    "alreadyDecidedBy": "已由 {name} 决定——你的决策未生效。",
+    "resolvedByAgent": "{label}：{name}（智能体）"
   },
   "approvalCard": {
     "title": "审批请求",
@@ -3354,7 +3386,13 @@
       "rejected": "已拒绝",
       "dismissed": "已忽略",
       "expired": "已过期"
-    }
+    },
+    "waitingOn": "等待",
+    "waitingOnAgent": "{name}（智能体）",
+    "waitingOnAdmins": "所有者或管理员",
+    "alreadyDecidedBy": "已由 {name} 决定。",
+    "decidedByAgent": "{status}（{name}，智能体）",
+    "waitingOnApprover": "一位审批人"
   },
   "artifacts": {
     "preview": {
@@ -5815,5 +5853,42 @@
     "archive": "归档",
     "moveBack": "移回收件箱",
     "projects": "项目"
+  },
+  "approvers": {
+    "modeLabel": "审批人",
+    "modes": {
+      "auto": "自动（按组织架构）",
+      "agent": "指定智能体",
+      "people": "指定人员"
+    },
+    "agentLabel": "审批智能体",
+    "findPerson": "查找人员",
+    "nobody": "没有匹配的人员。",
+    "anyOne": "其中任何一人都可以决定，以第一个决定为准。",
+    "agentStep": "{name}（智能体）",
+    "adminsStep": "所有者和管理员",
+    "title": "谁来审批该智能体的请求",
+    "intro": "它的审批请求和“先询问”操作会发给这些审批人。自动模式按组织架构：先是团队审批人，然后是该智能体的上级，然后是其所有者，最后是所有者和管理员。",
+    "loadFailed": "无法加载该智能体的审批人。",
+    "saveFailed": "无法保存审批人，请重试。",
+    "saved": "已保存",
+    "save": "保存",
+    "cancel": "取消",
+    "asksGoTo": "请求发给：",
+    "skipped": "已跳过 {name}：{reason}。",
+    "reasons": {
+      "self": "智能体不能审批自己的请求",
+      "cycle": "组织架构中二者存在汇报环路",
+      "not_above": "它在组织架构中不是该智能体的上级",
+      "inactive": "它不是活跃的智能体",
+      "action_not_allowed": "它自己无权执行此操作",
+      "no_project_access": "它无法使用此项目",
+      "unknown_action": "只有人员可以审批此类操作"
+    },
+    "riskyNote": "上级智能体只能决定它自己有权执行的操作；其他操作会跳过它。所有者和管理员始终可以决定。",
+    "adminsOnly": "只有所有者和管理员可以更改此设置。",
+    "loading": "加载中…",
+    "cleared": "已移除的审批人已清除。保存以保留此更改。",
+    "personStep": "一位人员"
   }
 }

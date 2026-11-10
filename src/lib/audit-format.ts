@@ -249,6 +249,7 @@ const VERBS: Record<string, string> = {
     "approval.approved": "approved",
     "approval.rejected": "rejected",
     "approval.dismissed": "dismissed",
+    "approval.escalated": "escalated",
     "member.role_changed": "changed the role of",
     "member.scope_changed": "changed the access of",
     "member.removed": "removed",
@@ -308,7 +309,7 @@ const VERBS: Record<string, string> = {
 export const AUDIT_SENTENCE_ACTIONS: readonly string[] = Object.keys(VERBS);
 
 const SETTING_LABELS: Record<string, string> = {
-    directChatMode: "direct chat mode", contextNotes: "company context", agentRoutine: "daily agent routine", instance: "instance settings", modules: "modules",
+    directChatMode: "direct chat mode", contextNotes: "company context", agentRoutine: "daily agent routine", instance: "instance settings", modules: "modules", approvals: "approval routing",
 };
 
 const STATE_LABELS: Record<string, string> = {

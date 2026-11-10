@@ -26,10 +26,12 @@ export default async function InboxPage({ searchParams }: { searchParams: Promis
             <InboxClient
                 entries={result.entries}
                 archived={result.archived}
+                otherApprovals={result.otherApprovals}
+                isOwnerOrAdmin={access.isOwnerOrAdmin}
                 agents={result.agents}
                 generatedAt={result.generatedAt}
                 canAct={access.canAct}
-                filter={params.filter === "archived" ? "archived" : parseInboxFilter(params.filter)}
+                filter={params.filter === "archived" ? "archived" : params.filter === "allApprovals" && access.isOwnerOrAdmin ? "allApprovals" : parseInboxFilter(params.filter)}
             />
         </>
     );

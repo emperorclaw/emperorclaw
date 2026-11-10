@@ -1,9 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { AuthError, requireRole } from "@/lib/roles";
-import { getApprovalDetail, resolveApproval } from "@/lib/approvals";
+import { getApprovalDetail, resolveApprovalOutcome } from "@/lib/approvals";
 import { companyRouteAccess } from "@/lib/company-access";
 import { memberMaySeeApproval, memberVisibleProjectIds } from "@/lib/member-scope";
-import { alwaysAllowRefusal, approvalDecisionAccess } from "@/lib/approval-access";
+import { alreadyDecidedResponse as alreadyDecided, alwaysAllowRefusal, approvalDecisionAccess } from "@/lib/approval-access";
 
 export async function GET(
     _req: NextRequest,
@@ -42,6 +42,8 @@ export async function PATCH(
         const { detail, denied } = await approvalDecisionAccess(ctx, id);
         if (denied) return denied;
         if (!detail) return NextResponse.json({ error: "Approval not found" }, { status: 404 });
+        // First decision wins: the loser learns who decided.
+        if (detail.approval.status !== "pending") return alreadyDecided(ctx.companyId, detail.approval);
         const body = await req.json();
         const { status, resolutionNote } = body;
 
@@ -59,7 +61,7 @@ export async function PATCH(
             if (refused) return NextResponse.json({ error: refused.error }, { status: refused.status });
         }
 
-        const approval = await resolveApproval({
+        const { approval, decided } = await resolveApprovalOutcome({
             companyId: ctx.companyId,
             approvalId: id,
             resolverUserId: ctx.userId,
@@ -71,6 +73,7 @@ export async function PATCH(
         if (!approval) {
             return NextResponse.json({ error: "Approval not found" }, { status: 404 });
         }
+        if (!decided) return alreadyDecided(ctx.companyId, approval);
 
         return NextResponse.json({ approval });
     } catch (error) {

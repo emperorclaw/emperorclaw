@@ -7,6 +7,7 @@ import { TextSwap } from "@/components/ui/motion";
 import { useRealtimeTopics } from "@/lib/use-realtime";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
+import type { WaitingOn } from "@/lib/approval-routing";
 
 /**
  * An approval card in a chat thread (lib/approval-card.ts posts the system
@@ -27,6 +28,10 @@ type CardState = {
     label: string;
     requesterName: string | null;
     mayDecide: boolean;
+    /** A pending routed ask: who it waits on (lib/approval-routing.ts). */
+    waitingOn?: WaitingOn | null;
+    /** Decided by a boss agent (decide_approval), not a person. */
+    resolverIsAgent?: boolean;
     /** "Always allow" is offered (a pending action ask, and this person may change the agent's permissions). */
     mayAlwaysAllow?: boolean;
     /** Approved with "Always allow". */
@@ -99,7 +104,11 @@ export function ApprovalCard({ approvalId }: { approvalId: string }) {
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({ status, resolutionNote: note.trim() || null, ...(alwaysAllow ? { alwaysAllow: true } : {}) }),
             });
-            if (!res.ok) setError(t("decideFailed"));
+            if (res.status === 409) {
+                // First decision wins: say who decided it.
+                const data = (await res.json().catch(() => ({}))) as { decidedBy?: string | null };
+                setError(data.decidedBy ? t("alreadyDecidedBy", { name: data.decidedBy }) : t("decideFailed"));
+            } else if (!res.ok) setError(t("decideFailed"));
             else {
                 setNote("");
                 setConfirmAlways(false);
@@ -137,15 +146,26 @@ export function ApprovalCard({ approvalId }: { approvalId: string }) {
                 <dd className="min-w-0 break-words">{card.requesterName ?? t("unknownAgent")}</dd>
                 <dt className="text-muted-foreground">{t("action")}</dt>
                 <dd className="min-w-0 break-words">{card.label}</dd>
+                {pending && card.waitingOn ? (
+                    <>
+                        <dt className="text-muted-foreground">{t("waitingOn")}</dt>
+                        <dd className="min-w-0 break-words">
+                            {card.waitingOn.kind === "agent" ? t("waitingOnAgent", { name: card.waitingOn.names[0] ?? t("unknownAgent") })
+                                : card.waitingOn.kind === "users" ? card.waitingOn.names.join(", ")
+                                    : card.waitingOn.kind === "hidden" ? t("waitingOnApprover")
+                                        : t("waitingOnAdmins")}
+                        </dd>
+                    </>
+                ) : null}
             </dl>
-            {card.mayDecide && card.rationale ? (
+            {card.rationale ? (
                 <div className="mt-2">
                     <div className="text-muted-foreground">{t("rationale")}</div>
                     {/* Plain text: the agent wrote it, so it is never rendered as Markdown or HTML here. */}
                     <p className="mt-0.5 max-h-48 overflow-y-auto whitespace-pre-wrap break-words">{card.rationale}</p>
                 </div>
             ) : null}
-            {card.mayDecide && card.tasks && card.tasks.length > 0 ? (
+            {card.tasks && card.tasks.length > 0 ? (
                 <div className="mt-2 text-muted-foreground">
                     {t("tasks")}{" "}
                     {card.tasks.map((task, index) => (
@@ -161,10 +181,10 @@ export function ApprovalCard({ approvalId }: { approvalId: string }) {
                         <span className="block pt-2 text-emerald-600 dark:text-emerald-300">{t("alwaysAllowedFor", { name: card.requesterName ?? t("unknownAgent") })}</span>
                     </motion.p>
                 ) : null}
-                {!pending && card.mayDecide ? (
+                {!pending && (card.mayDecide || card.resolverName !== undefined) ? (
                     <motion.div key="resolved" {...collapse} className="overflow-hidden">
                         <p className="pt-2 text-muted-foreground">
-                            {card.resolverName ? t("decidedBy", { status: statusLabel, name: card.resolverName }) : statusLabel}
+                            {card.resolverName ? t(card.resolverIsAgent ? "decidedByAgent" : "decidedBy", { status: statusLabel, name: card.resolverName }) : statusLabel}
                             {card.resolutionNote ? <span className="block whitespace-pre-wrap break-words text-foreground">{t("note", { note: card.resolutionNote })}</span> : null}
                         </p>
                     </motion.div>
@@ -213,7 +233,7 @@ export function ApprovalCard({ approvalId }: { approvalId: string }) {
                     </motion.div>
                 ) : null}
             </AnimatePresence>
-            {card.mayDecide && error ? <p role="alert" className="mt-2 text-destructive">{error}</p> : null}
+            {error ? <p role="alert" className="mt-2 text-destructive">{error}</p> : null}
         </div>
     );
 }

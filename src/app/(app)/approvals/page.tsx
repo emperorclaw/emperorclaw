@@ -1,7 +1,9 @@
 import { db } from "@/db";
 import { approvals, approvalTaskLinks, tasks, projects, customers, agents, users, companyMembers } from "@/db/schema";
 import { and, eq, isNull, desc, inArray, ne } from "drizzle-orm";
-import { getCompanyId } from "@/lib/auth";
+import { requireRole } from "@/lib/roles";
+import { canAdmin } from "@/lib/role-matrix";
+import { currentApproverStep, humanMayDecide, waitingOnParts } from "@/lib/approval-routing";
 import { listPendingDecisions } from "@/lib/approvals";
 import { redirect } from "next/navigation";
 import ApprovalsClient, { type ApprovalItem } from "./approvals-client";
@@ -23,8 +25,11 @@ function taskDescription(task: typeof tasks.$inferSelect): string | null {
 }
 
 export default async function ApprovalsPage() {
-    const companyId = await getCompanyId();
-    if (!companyId) redirect("/login");
+    // Role from the DB: a routed ask is listed as waiting only for its approvers (owners and admins see all).
+    const guard = await requireRole("viewer")().catch(() => null);
+    if (!guard) redirect("/login");
+    const companyId = guard.companyId;
+    const viewer = { userId: guard.userId, isOwnerOrAdmin: canAdmin(guard.role) };
 
     const [decisions, allApprovals, allLinks, allProjects, allCustomers, allAgents, people] = await Promise.all([
         listPendingDecisions(companyId),
@@ -47,6 +52,12 @@ export default async function ApprovalsPage() {
     const customerById = new Map(allCustomers.map((c) => [c.id, c]));
     const agentById = new Map(allAgents.map((a) => [a.id, a]));
     const userById = new Map(people.map((p) => [p.id, p.displayName || p.email]));
+    const names = { agent: (id: string) => agentById.get(id)?.name ?? "An agent", person: (id: string) => userById.get(id) ?? "A person" };
+    const routing = (approval: typeof approvals.$inferSelect | null) => ({
+        resolverName: approval?.resolverUserId ? userById.get(approval.resolverUserId) ?? null : approval?.resolverAgentId ? agentById.get(approval.resolverAgentId)?.name ?? null : null,
+        resolverIsAgent: Boolean(approval?.resolverAgentId && !approval.resolverUserId),
+        waitingOn: approval?.status === "pending" && approval.approverKind ? waitingOnParts(currentApproverStep(approval), names) : null,
+    });
     const memberById = new Map(people.map((p) => [p.memberId, p.displayName || p.email]));
 
     const toItem = (task: typeof tasks.$inferSelect, approval: typeof approvals.$inferSelect | null, linked: (typeof tasks.$inferSelect)[] = [task]): ApprovalItem => {
@@ -62,7 +73,7 @@ export default async function ApprovalsPage() {
             resolutionNote: approval?.resolutionNote ?? null,
             requestedAt: (approval?.requestedAt ?? task.updatedAt).toISOString(),
             resolvedAt: approval?.resolvedAt ? approval.resolvedAt.toISOString() : null,
-            resolverName: approval?.resolverUserId ? userById.get(approval.resolverUserId) ?? null : null,
+            ...routing(approval),
             requester: requester ? { id: requester.id, name: requester.name, avatarUrl: requester.avatarUrl } : null,
             task: {
                 id: task.id,
@@ -92,7 +103,7 @@ export default async function ApprovalsPage() {
             resolutionNote: approval.resolutionNote,
             requestedAt: approval.requestedAt.toISOString(),
             resolvedAt: approval.resolvedAt ? approval.resolvedAt.toISOString() : null,
-            resolverName: approval.resolverUserId ? userById.get(approval.resolverUserId) ?? null : null,
+            ...routing(approval),
             requester: requester ? { id: requester.id, name: requester.name, avatarUrl: requester.avatarUrl } : null,
             task: null,
             action: { key: approval.actionType, label: actionLabel(approval.actionType), args },
@@ -113,7 +124,9 @@ export default async function ApprovalsPage() {
     // first live task (deciding it resolves them all), then tasks flagged
     // "requires approval" with no request yet.
     const pending: ApprovalItem[] = [
-        ...decisions.approvals.map(({ approval, tasks: linked }) => linked[0] ? toItem(linked[0], approval, linked) : toActionItem(approval)),
+        ...decisions.approvals
+            .filter(({ approval }) => humanMayDecide(approval, viewer))
+            .map(({ approval, tasks: linked }) => linked[0] ? toItem(linked[0], approval, linked) : toActionItem(approval)),
         ...decisions.implicit.map((task) => toItem(task, null)),
     ];
 

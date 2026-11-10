@@ -110,6 +110,8 @@ export interface AttentionEntry {
     projectId?: string | null;
     customerId?: string | null;
     customerName?: string | null;
+    /** A routed approval: who it waits on ("Architect (agent)", "Jose, Luis"); null for one from before routing. */
+    waitingOn?: import("@/lib/approval-routing").WaitingOn | null;
     /** A multi-task approval: how many live tasks one decision resolves. */
     taskCount?: number;
     /** A mention/decision notification that "Mark read" clears. */

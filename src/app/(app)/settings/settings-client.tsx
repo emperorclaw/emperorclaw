@@ -19,6 +19,7 @@ import { RoutineSettingsTab } from "./routine-settings-tab";
 import { DirectChatSettingsTab } from "./direct-chat-settings-tab";
 import { DisplaysTab } from "./displays-tab";
 import { ModulesSettingsTab } from "./modules-settings-tab";
+import { ApprovalSettingsTab } from "./approval-settings-tab";
 import { RuntimeHostsTab } from "./runtime-hosts-tab";
 import { ProfileTab } from "./profile-tab";
 import type { ModuleState } from "@/lib/modules";
@@ -380,6 +381,10 @@ export default function SettingsClient({
 
             {activeTab === "modules" && isAdmin && (
                 <ModulesSettingsTab isAdmin={isAdmin} />
+            )}
+
+            {activeTab === "approvals" && isAdmin && (
+                <ApprovalSettingsTab />
             )}
 
             {activeTab === "runtime-hosts" && isAdmin && (

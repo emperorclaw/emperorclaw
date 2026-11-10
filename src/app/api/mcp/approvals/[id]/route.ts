@@ -1,11 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { verifyMcpToken } from "@/lib/mcp";
 import { requireRole, AuthError } from "@/lib/roles";
-import { getApprovalDetail, resolveApproval } from "@/lib/approvals";
+import { getApprovalDetail, resolveApprovalOutcome } from "@/lib/approvals";
 import { mayProceed } from "@/lib/approval-status";
-import { memberMaySeeApproval, memberVisibleProjectIds } from "@/lib/member-scope";
-import { recordsWriteDenied } from "@/lib/resource-access";
 import { mcpMayUseProject, mcpRouteAccess } from "@/lib/mcp-access";
+import { agentDeciders } from "@/lib/approval-routing";
+import { alreadyDecidedResponse, approvalDecisionAccess } from "@/lib/approval-access";
 
 export async function GET(
     req: NextRequest,
@@ -21,10 +21,11 @@ export async function GET(
     const detail = await getApprovalDetail(companyId, id);
     const scoped = await mcpRouteAccess(companyId, auth.companyToken!, req.nextUrl.searchParams.get("agentId"));
     if (scoped.response) return scoped.response;
-    // An ask-first action approval has no project: only the agent that asked reads it.
+    // An ask-first action approval has no project: only the agent that asked
+    // reads it, and the boss agent it was routed to (approval routing).
     const visible = detail && (detail.approval.projectId
         ? mcpMayUseProject(scoped.access, detail.approval.projectId)
-        : !scoped.access.agentId || detail.approval.requesterAgentId === scoped.access.agentId);
+        : !scoped.access.agentId || detail.approval.requesterAgentId === scoped.access.agentId || agentDeciders(detail.approval).includes(scoped.access.agentId));
     if (!detail || !visible) {
         return NextResponse.json({ error: "Approval not found" }, { status: 404 });
     }
@@ -38,10 +39,11 @@ export async function PATCH(
     _req: NextRequest,
     { params }: { params: Promise<{ id: string }> }
 ) {
-    // Approvals are a human gate. This endpoint is MCP-reachable, but an agent
-    // must never resolve its own approval (or forge a human audit trail), so it
-    // requires a real logged-in user session and ignores any caller-supplied
-    // resolver id in favour of the authenticated one.
+    // A human decision. This endpoint is MCP-reachable, but an agent must never
+    // resolve its own approval (or forge a human audit trail), so it requires a
+    // real logged-in user session and ignores any caller-supplied resolver id
+    // in favour of the authenticated one. A boss agent decides through the
+    // decide_approval MCP tool, which checks its authority.
     let ctx;
     try {
         ctx = await requireRole("member")();
@@ -52,16 +54,12 @@ export async function PATCH(
 
     try {
         const { id } = await params;
-        // A restricted member decides only approvals on projects they can see.
-        const current = await getApprovalDetail(ctx.companyId, id);
-        if (!current || !memberMaySeeApproval(ctx.scope, await memberVisibleProjectIds(ctx.companyId, ctx.scope), current.approval)) {
-            return NextResponse.json({ error: "Approval not found" }, { status: 404 });
-        }
-        // A restricted member with only "Can view" on that project reads it but never decides (0.20).
-        if (ctx.scope && current.approval.projectId) {
-            const denied = await recordsWriteDenied(ctx, [{ projectId: current.approval.projectId }], "member", "Approval");
-            if (denied) return denied;
-        }
+        // The same rule as PATCH /api/approvals/[id] (lib/approval-access.ts):
+        // scope, "Can view", and a routed ask's approvers (owners/admins override).
+        const { detail: current, denied } = await approvalDecisionAccess(ctx, id);
+        if (denied) return denied;
+        if (!current) return NextResponse.json({ error: "Approval not found" }, { status: 404 });
+        if (current.approval.status !== "pending") return alreadyDecidedResponse(ctx.companyId, current.approval);
         const body = await _req.json();
         const { status, resolutionNote } = body;
 
@@ -69,7 +67,7 @@ export async function PATCH(
             return NextResponse.json({ error: "status must be approved, rejected, or dismissed" }, { status: 400 });
         }
 
-        const approval = await resolveApproval({
+        const { approval, decided } = await resolveApprovalOutcome({
             companyId: ctx.companyId,
             approvalId: id,
             resolverUserId: ctx.userId,
@@ -80,6 +78,7 @@ export async function PATCH(
         if (!approval) {
             return NextResponse.json({ error: "Approval not found" }, { status: 404 });
         }
+        if (!decided) return alreadyDecidedResponse(ctx.companyId, approval);
 
         return NextResponse.json({ approval });
     } catch (error) {

@@ -3,7 +3,8 @@ import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { listTasksForCompany, createTaskForProject, updateTaskForCompany, claimNextTaskForAgent, getTaskOverviewForCompany, addTaskNote } from "@/lib/openclaw/tasks";
 import { getTaskDetailForCompany } from "@/lib/openclaw/task-context";
 import { jsonResult, errorResult } from "../result";
-import { requestApprovalForTasks } from "@/lib/approvals";
+import { APPROVER_TOKEN_REQUIRED, decideApprovalAsAgent, listPendingApprovalsForAgent, requestApprovalForTasks } from "@/lib/approvals";
+import { approvalWaitingOnForAgent } from "@/lib/approval-routing-server";
 import { resolveAgentId } from "@/lib/mcp";
 import { BOUND_AGENT_MISMATCH, assertMcpMayAssign, mcpAccessForAgent, mcpMayUseProject, mcpMayUseTask } from "@/lib/mcp-access";
 import { mcpActor } from "@/lib/audit";
@@ -19,7 +20,7 @@ export function registerTaskTools(server: McpServer, companyId: string, callerAg
     };
     server.registerTool("request_approval", {
         title: "Request Approval",
-        description: "Ask a person to sign off before you act: spending money, sending anything outside the company (emails, posts, messages with customers), publishing, deleting, or closing a task that requires approval. Moves the task to review and notifies owners and admins. An approval card is posted in the chat you are asking from: pass threadId (a thread you can post in, e.g. the group where the work was discussed) so the people there can decide it in place; without it the card goes to your direct chat. The decision and the person's note arrive in that same thread. Status meanings: approved task_done closes the task; any other approved action comes back in_progress for you to do and then close; rejected comes back in_progress with the reason to revise; dismissed means the request is obsolete — DO NOT ACT; expired (an external action left pending more than 48h) means DO NOT ACT, ask again if still needed. Don't ask in chat instead, and don't act unless the response says mayProceed (approved).",
+        description: "Ask a person to sign off before you act: spending money, sending anything outside the company (emails, posts, messages with customers), publishing, deleting, or closing a task that requires approval. Moves the task to review and goes to your approver: the approvers set for you or your team, else your manager in the org chart (a boss agent may decide only what it is itself allowed to do), else your owner, else owners and admins; an undecided ask moves up the chain after the company's escalation time. An approval card is posted in the chat you are asking from: pass threadId (a thread you can post in, e.g. the group where the work was discussed) so the people there can decide it in place; without it the card goes to your direct chat. The decision and the person's note arrive in that same thread. Status meanings: approved task_done closes the task; any other approved action comes back in_progress for you to do and then close; rejected comes back in_progress with the reason to revise; dismissed means the request is obsolete — DO NOT ACT; expired (an external action left pending more than 48h) means DO NOT ACT, ask again if still needed. Don't ask in chat instead, and don't act unless the response says mayProceed (approved).",
         inputSchema: {
             taskId: z.string().describe("The task this approval is for"),
             rationale: z.string().min(1).describe("What exactly needs approval and why, with the evidence a person needs to decide"),
@@ -32,7 +33,46 @@ export function registerTaskTools(server: McpServer, companyId: string, callerAg
             await requireTask(taskId);
             const requester = callerAgentId ?? (agentId ? await resolveAgentId(companyId, agentId) : null);
             const approval = await requestApprovalForTasks({ companyId, taskIds: [taskId], requesterAgentId: requester, rationale, actionType, threadId });
-            return jsonResult({ approval, status: "pending", cardThreadId: approval?.threadId ?? null, next: "Wait for the decision; check it with get_task." });
+            const waitingOn = approval ? await approvalWaitingOnForAgent(companyId, approval) : null;
+            return jsonResult({ approval, status: "pending", waitingOn: waitingOn ?? "an owner or admin", cardThreadId: approval?.threadId ?? null, next: "Wait for the decision; check it with get_task." });
+        } catch (e) {
+            return errorResult(e);
+        }
+    });
+
+    // Approval routing: a boss agent decides the asks routed to it (lib/approval-routing.ts).
+    // Only a token bound to the deciding agent: a company-wide (operator or
+    // shared bridge) connection naming an agent could act as any boss.
+    const decidingAgent = () => {
+        if (!callerAgentId) throw new Error(APPROVER_TOKEN_REQUIRED);
+        return callerAgentId;
+    };
+
+    server.registerTool("list_pending_approvals", {
+        title: "List Pending Approvals",
+        description: "The approval requests waiting on YOU as their approver (you approve for agents below you in the org chart, or you were set as their approver). Each has what is asked, by whom, why, and the tasks. Decide each with decide_approval. Empty when nothing waits on you. Needs your own agent token.",
+    }, async () => {
+        try {
+            const approver = decidingAgent();
+            return jsonResult({ approvals: await listPendingApprovalsForAgent(companyId, approver) });
+        } catch (e) {
+            return errorResult(e);
+        }
+    });
+
+    server.registerTool("decide_approval", {
+        title: "Decide Approval",
+        description: "Approve or deny an approval request that is waiting on you (see list_pending_approvals, or the message that asked you). You may decide it only while you are its approver (named for the requester or its team, or above it in the org chart), are allowed to do that action yourself, and can use its project; otherwise this refuses and the request moves up to the next approver. Never approve your own request. approve = the requester may go ahead (or the task closes, for task_done); deny = it must not, and your note says what to change. The requester is told your decision and your name. First decision wins: if someone already decided, this says who. Needs your own agent token; on a shared connection, leave the request and it moves up to a person.",
+        inputSchema: {
+            approvalId: z.string().describe("The approval request's id"),
+            decision: z.enum(["approve", "deny"]).describe("approve or deny"),
+            note: z.string().max(2000).optional().describe("Why, and for a denial what to change. The requester reads it."),
+        },
+    }, async ({ approvalId, decision, note }) => {
+        try {
+            const approver = decidingAgent();
+            const approval = await decideApprovalAsAgent({ companyId, approvalId, agentId: approver, decision, note });
+            return jsonResult({ approval: { id: approval.id, status: approval.status, resolutionNote: approval.resolutionNote }, message: `Recorded: ${approval.status}. The requester has been told.` });
         } catch (e) {
             return errorResult(e);
         }

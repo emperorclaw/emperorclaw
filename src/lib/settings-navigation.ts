@@ -15,6 +15,7 @@ export const SETTINGS_SECTIONS = [
         { id:'members', label:'People & access', description:'Manage people and their workspace permissions.', admin:true },
         { id:'direct-chats', label:'Direct chats', description:'Choose whether direct chats with agents are shared or private.', admin:true },
         { id:'modules', label:'Modules', description:'Turn parts of Emperor on or off for this company. Data is kept.', admin:true },
+        { id:'approvals', label:'Approvals', description:'Who decides what agents ask for, and when an undecided request moves up.', admin:true },
     ] },
     { id: 'connections', label: 'Connections', items: [
         { id:'connections', label:'Agent connections', description:'Add agents or connect a runtime you already use.' },

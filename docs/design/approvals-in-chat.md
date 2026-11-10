@@ -2,6 +2,8 @@
 
 Status: design, not implemented. Owner: product (Malecu). Target: 0.30.
 
+> Update: the approval card, its thread and decision delivery shipped in 0.30. Directed approvers, agent approvers and escalation shipped later as [approval-routing.md](approval-routing.md), which reverses D4: action-policy and external asks are delegable to a boss agent that may do that action itself.
+
 ## 1. Problem
 
 Two gaps, one feature:

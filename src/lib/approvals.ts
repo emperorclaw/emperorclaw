@@ -4,10 +4,10 @@ import { ACTION_APPROVAL_KIND, ALWAYS_ALLOWED_KEY, isActionApproval, wasAlwaysAl
 import { updateActionPolicies } from "./action-policy-server";
 import { actionLabel } from "./action-policy";
 import { db } from "@/db";
-import { approvalTaskLinks, approvals, companyMembers, projects, taskEvents, tasks, users } from "@/db/schema";
+import { agents, approvalTaskLinks, approvals, companies, companyMembers, projects, taskEvents, tasks, users } from "@/db/schema";
 import { broadcastMcpEvent } from "./pubsub";
 import { TASK_STATES } from "./task-state";
-import { notifyApprovalRequested } from "./notifications";
+import { notifyApprovalApprovers, routingColumnsForAsk } from "./approval-routing-server";
 import {
   approvalDecisionMessage,
   ApprovalDecision,
@@ -21,6 +21,7 @@ import { auditTaskTitle, humanActor, recordAudits, taskChangeEntries } from "@/l
 import { queueTaskOutcomeReport } from "@/lib/organization-routing";
 import { ApprovalThreadError, approvalDecisionThread, markApprovalCardDecided, postApprovalCard, resolveApprovalThread } from "./approval-card";
 import { APPROVAL_DECISION_FOR_KEY, approvalDecisionNoticeText } from "./approval-card-copy";
+import { agentDeciders } from "./approval-routing";
 
 export async function createApprovalRequest(input: {
   companyId: string;
@@ -35,6 +36,12 @@ export async function createApprovalRequest(input: {
   // requester's direct thread. No card without a requesting agent.
   cardThreadId?: string | null;
 }) {
+  // Who decides, resolved once (lib/approval-routing.ts). Only an agent's ask
+  // is routed; a person's ask keeps today's rule (owners and admins).
+  const routing = input.requesterAgentId
+    ? await routingColumnsForAsk(input.companyId, { requesterAgentId: input.requesterAgentId, projectId: input.projectId, actionType: input.actionType || "task_done", metadataJson: input.metadataJson, taskIds: input.taskIds })
+    : {};
+
   // One pending ask per task, also under concurrency: the check and the insert
   // run under per-task advisory locks (sorted, so two multi-task asks cannot
   // deadlock), so a concurrent identical ask reuses this approval instead of
@@ -70,6 +77,7 @@ export async function createApprovalRequest(input: {
       rationale: input.rationale || null,
       confidence: input.confidence || 0,
       metadataJson: input.metadataJson || {},
+      ...routing,
     }).returning();
 
     await tx.insert(approvalTaskLinks).values(
@@ -90,7 +98,7 @@ export async function createApprovalRequest(input: {
       approval,
       taskIds: input.taskIds,
     });
-    await notifyApprovalRequested(input.companyId, approval);
+    await notifyApprovalApprovers(input.companyId, approval);
   }
 
   // The card, once: postApprovalCard is a no-op when the approval has one. A
@@ -102,10 +110,14 @@ export async function createApprovalRequest(input: {
   return approval;
 }
 
-export async function resolveApproval(input: {
+type ResolveApprovalInput = {
   companyId: string;
   approvalId: string;
   resolverUserId?: string | null;
+  /** An agent approver deciding (decide_approval); then resolverUserId is null. */
+  resolverAgentId?: string | null;
+  /** Decide only while the ask is still at this escalation level (the one the caller checked). */
+  expectedEscalationLevel?: number;
   status: ApprovalDecision;
   resolutionNote?: string | null;
   /**
@@ -114,11 +126,25 @@ export async function resolveApproval(input: {
    * is an action ask and the person may change the agent's permissions.
    */
   alwaysAllow?: boolean;
-}) {
-  const alwaysAllow = input.alwaysAllow === true && input.status === "approved";
+};
+
+export async function resolveApproval(input: ResolveApprovalInput) {
+  return (await resolveApprovalOutcome(input)).approval;
+}
+
+/**
+ * Decide an approval. `decided` is false when it was already decided (the
+ * first decision wins; a repeat or a race loser changes nothing) or does not
+ * exist; `approval` is then the stored row, or null.
+ */
+export async function resolveApprovalOutcome(input: ResolveApprovalInput): Promise<{ approval: typeof approvals.$inferSelect | null; decided: boolean }> {
+  const alwaysAllow = input.alwaysAllow === true && input.status === "approved" && !input.resolverAgentId;
+  const resolverAgentId = input.resolverUserId ? null : input.resolverAgentId || null;
+  const actor = resolverAgentId ? { type: "agent" as const, id: resolverAgentId } : humanActor(input.resolverUserId);
   let [approval] = await db.update(approvals).set({
     status: input.status,
     resolverUserId: input.resolverUserId || null,
+    resolverAgentId,
     resolutionNote: input.resolutionNote || null,
     resolvedAt: new Date(),
   }).where(and(
@@ -126,11 +152,12 @@ export async function resolveApproval(input: {
     eq(approvals.id, input.approvalId),
     // A decision is final: resolving an already-resolved approval is a no-op.
     eq(approvals.status, "pending"),
+    ...(input.expectedEscalationLevel !== undefined ? [eq(approvals.escalationLevel, input.expectedEscalationLevel)] : []),
   )).returning();
 
   if (!approval) {
     const [existing] = await db.select().from(approvals).where(and(eq(approvals.companyId, input.companyId), eq(approvals.id, input.approvalId))).limit(1);
-    return existing ?? null;
+    return { approval: existing ?? null, decided: false };
   }
 
   // Only the request that decided it changes the permission (a repeat is a no-op above).
@@ -183,8 +210,8 @@ export async function resolveApproval(input: {
         companyId: input.companyId,
         taskId: row.task.id,
         eventType: `task_${nextState}`,
-        actorType: "human",
-        actorId: input.resolverUserId || null,
+        actorType: resolverAgentId ? "agent" : "human",
+        actorId: resolverAgentId ?? (input.resolverUserId || null),
         payloadJson: {
           approvalId: approval.id,
           approvalStatus: input.status,
@@ -202,8 +229,8 @@ export async function resolveApproval(input: {
   }
 
   await recordAudits([
-    { companyId: input.companyId, actor: humanActor(input.resolverUserId), action: `approval.${input.status}`, target: { type: "approval", id: approval.id }, before: { status: "pending" }, after: { status: input.status, actionType: approval.actionType, taskIds }, meta: { label: linkedTaskRows[0] ? auditTaskTitle(linkedTaskRows[0].task) : null, count: taskIds.length, projectId: approval.projectId } },
-    ...(nextState ? linkedTaskRows.flatMap((row) => taskChangeEntries(input.companyId, humanActor(input.resolverUserId), row.task, { ...row.task, state: nextState })) : []),
+    { companyId: input.companyId, actor, action: `approval.${input.status}`, target: { type: "approval", id: approval.id }, before: { status: "pending" }, after: { status: input.status, actionType: approval.actionType, taskIds }, meta: { label: linkedTaskRows[0] ? auditTaskTitle(linkedTaskRows[0].task) : null, count: taskIds.length, projectId: approval.projectId, ...(approval.approverKind ? { approverKind: approval.approverKind, escalationLevel: approval.escalationLevel } : {}) } },
+    ...(nextState ? linkedTaskRows.flatMap((row) => taskChangeEntries(input.companyId, actor, row.task, { ...row.task, state: nextState })) : []),
   ]);
   await broadcastMcpEvent(input.companyId, {
     type: "approval_updated",
@@ -212,7 +239,7 @@ export async function resolveApproval(input: {
   });
   await tellAgentAboutDecision(input.companyId, approval, linkedTaskRows.map((r) => r.task));
 
-  return approval;
+  return { approval, decided: true };
 }
 
 /** The linked tasks of an approval, with their projects, for refs and effects. */
@@ -286,6 +313,215 @@ export async function expireStaleApprovals(now = new Date()): Promise<number> {
   }
 
   return expired;
+}
+
+/** Routed approvals checked per sweep tick; a backlog drains over several ticks. */
+const ESCALATE_BATCH_SIZE = 200;
+
+/** The thread note when an ask moves up ("Waiting longer than 30 min — escalated to Jose."). Pure. */
+export function escalationNoteText(minutes: number, toName: string): string {
+  const wait = minutes % 60 === 0 ? `${minutes / 60} h` : `${minutes} min`;
+  return `Waiting longer than ${wait} — escalated to ${toName.replace(/@/g, "")}.`;
+}
+
+/**
+ * Move routed asks up the approver chain when the current approver has not
+ * decided within the company's escalation time (default 30 minutes): agent →
+ * its manager → … → people → owners and admins. An agent step whose
+ * authority no longer holds is skipped. The update is guarded on `pending`
+ * and the current level, so a concurrent decision or a second instance wins
+ * and a repeat pass is a no-op. The 48 h expiry (expireStaleApprovals) still
+ * applies. Runs from the periodic sweep (lifecycle.ts). Returns how many asks moved.
+ */
+export async function escalateStaleApprovals(now = new Date()): Promise<number> {
+  const { DEFAULT_ESCALATE_AFTER_MINUTES, ESCALATE_MINUTES_PATTERN, MAX_ESCALATE_AFTER_MINUTES, MIN_ESCALATE_AFTER_MINUTES, approverChainOf, approverColumns, nextEscalationLevel, normalizeCompanyApprovalSettings, waitingOnText, waitingOnTextForAgent } = await import("./approval-routing");
+  const { agentAuthorityNow, approvalNames, settleApprovalWakes } = await import("./approval-routing-server");
+  // Each company's own timeout, read exactly as clampEscalateAfterMinutes reads
+  // it in JS (same pattern, clamp and default), so a company with a long
+  // timeout never fills the batch with asks not yet due.
+  const minutesSql = sql`CASE WHEN (${companies.approvalSettingsJson}->>'escalateAfterMinutes') ~ ${ESCALATE_MINUTES_PATTERN}
+    THEN GREATEST(${MIN_ESCALATE_AFTER_MINUTES}, LEAST(${MAX_ESCALATE_AFTER_MINUTES}, (${companies.approvalSettingsJson}->>'escalateAfterMinutes')::int))
+    ELSE ${DEFAULT_ESCALATE_AFTER_MINUTES} END`;
+  const candidates = await db.select({ approval: approvals, settings: companies.approvalSettingsJson }).from(approvals)
+    .innerJoin(companies, eq(companies.id, approvals.companyId))
+    .where(and(
+      eq(approvals.status, "pending"),
+      sql`${approvals.approverKind} IS NOT NULL`,
+      ne(approvals.approverKind, "admins"),
+      sql`COALESCE(${approvals.escalatedAt}, ${approvals.requestedAt}) <= ${now.toISOString()}::timestamp - make_interval(mins => ${minutesSql})`,
+    )).orderBy(approvals.requestedAt).limit(ESCALATE_BATCH_SIZE);
+
+  let escalated = 0;
+  for (const { approval: candidate, settings } of candidates) {
+    try {
+      const minutes = normalizeCompanyApprovalSettings(settings).escalateAfterMinutes;
+      const since = candidate.escalatedAt ?? candidate.requestedAt;
+      if (now.getTime() - since.getTime() < minutes * 60_000) continue;
+      const steps = approverChainOf(candidate);
+      const level = candidate.escalationLevel ?? 0;
+      const taskIds = (await db.select({ taskId: approvalTaskLinks.taskId }).from(approvalTaskLinks).where(eq(approvalTaskLinks.approvalId, candidate.id))).map((l) => l.taskId);
+      const qualified = new Map<string, boolean>();
+      for (const step of steps.slice(level + 1)) {
+        if (step.kind === "agent" && !qualified.has(step.agentId)) qualified.set(step.agentId, (await agentAuthorityNow(candidate.companyId, candidate, step.agentId, taskIds)).ok);
+      }
+      const next = nextEscalationLevel(steps, level, (agentId) => qualified.get(agentId) === true);
+      if (next === null) continue;
+
+      const [approval] = await db.update(approvals).set({ ...approverColumns(steps, next), escalatedAt: now }).where(and(
+        eq(approvals.id, candidate.id),
+        eq(approvals.companyId, candidate.companyId),
+        eq(approvals.status, "pending"),
+        eq(approvals.escalationLevel, level),
+      )).returning();
+      if (!approval) continue;
+      escalated += 1;
+
+      const names = await approvalNames(candidate.companyId);
+      // The audit (owners and admins) names people; the chat note, which agents read, never does.
+      await recordAudits([{ companyId: candidate.companyId, actor: { type: "system", id: null }, action: "approval.escalated", target: { type: "approval", id: approval.id }, before: { escalationLevel: level }, after: { escalationLevel: next, approverKind: approval.approverKind }, meta: { from: waitingOnText(steps[level] ?? null, names), to: waitingOnText(steps[next], names), minutes } }]);
+      await broadcastMcpEvent(candidate.companyId, { type: "approval_updated", approval, taskIds });
+      // Agents passed over are not woken for it any more (they may still decide it).
+      await settleApprovalWakes(candidate.companyId, approval.id, approval.approverAgentId);
+      await notifyApprovalApprovers(candidate.companyId, approval, { escalatedFrom: steps[level] ?? null });
+      await postEscalationNote(candidate.companyId, approval, escalationNoteText(minutes, waitingOnTextForAgent(steps[next], names.agent)));
+    } catch (error) {
+      console.error(`[approvals] failed to escalate approval ${candidate.id}:`, error);
+    }
+  }
+  return escalated;
+}
+
+/** The one-line escalation note under the card (its thread), addressed to nobody. */
+async function postEscalationNote(companyId: string, approval: typeof approvals.$inferSelect, text: string): Promise<void> {
+  try {
+    const thread = await approvalDecisionThread(companyId, approval);
+    if (!thread) return;
+    const { appendThreadMessage } = await import("./control-plane");
+    const note = await appendThreadMessage({
+      companyId,
+      threadId: thread.id,
+      senderType: "system",
+      targetAgentId: null,
+      text,
+      deliveryState: "resolved",
+      metadataJson: { approvalEscalation: approval.escalationLevel, approvalId: approval.id, ...(approval.cardMessageId ? { [APPROVAL_DECISION_FOR_KEY]: approval.cardMessageId } : {}) },
+    });
+    await broadcastMcpEvent(companyId, { type: "thread_message", threadId: thread.id, message: note });
+  } catch (error) {
+    console.warn("[approvals] could not post the escalation note:", error instanceof Error ? error.message : error);
+  }
+}
+
+/**
+ * Deciding (and listing what to decide) needs a token bound to the deciding
+ * agent. A company-wide token naming an agent is refused: anyone holding it
+ * could act as any boss. Such an agent leaves the ask, and it escalates to a person.
+ */
+export const APPROVER_TOKEN_REQUIRED = "Approving needs this agent's own token: a shared (company-wide) connection can't decide approvals. Leave the request; it moves up to a person.";
+
+export class ApprovalDecisionError extends Error {
+  constructor(message: string, public status: number) {
+    super(message);
+  }
+}
+
+/**
+ * An agent approver decides (the decide_approval tool). It must be one of the
+ * agents the ask has reached (the current approver, or an earlier one), and
+ * its authority is checked again now: it is above the requester, never the
+ * requester, active, allowed to do the action itself and able to use the
+ * project. Anything else: 404 (not its approval) or 403 (why). First decision
+ * wins: a loser gets 409 "Already decided by <name>".
+ */
+export async function decideApprovalAsAgent(input: { companyId: string; approvalId: string; agentId: string; decision: "approve" | "deny"; note?: string | null }) {
+  const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  if (!UUID.test(input.approvalId)) throw new ApprovalDecisionError("Approval not found", 404);
+  const [current] = await db.select().from(approvals).where(and(eq(approvals.companyId, input.companyId), eq(approvals.id, input.approvalId))).limit(1);
+  // Never the requester, whatever the chain says.
+  if (current && current.requesterAgentId === input.agentId) throw new ApprovalDecisionError("You can't decide your own request.", 403);
+  if (!current || !current.approverKind || !agentDeciders(current).includes(input.agentId)) throw new ApprovalDecisionError("Approval not found", 404);
+  if (current.status !== "pending") throw new ApprovalDecisionError(await alreadyDecidedText(input.companyId, current), 409);
+  const taskIds = (await db.select({ taskId: approvalTaskLinks.taskId }).from(approvalTaskLinks).where(eq(approvalTaskLinks.approvalId, current.id))).map((l) => l.taskId);
+  const { agentAuthorityNow } = await import("./approval-routing-server");
+  const { authorityRefusalText } = await import("./approval-routing");
+  const authority = await agentAuthorityNow(input.companyId, current, input.agentId, taskIds);
+  if (!authority.ok) {
+    throw new ApprovalDecisionError(`You can't decide this approval: ${authorityRefusalText(authority.reason)}. Leave it; it moves up to the next approver.`, 403);
+  }
+  const outcome = await resolveApprovalOutcome({
+    companyId: input.companyId,
+    approvalId: input.approvalId,
+    resolverAgentId: input.agentId,
+    status: input.decision === "approve" ? "approved" : "rejected",
+    resolutionNote: input.note?.trim() ? input.note.trim().slice(0, 2000) : null,
+    // Atomic with what was checked: decided only while still at the checked step.
+    expectedEscalationLevel: current.escalationLevel,
+  });
+  if (!outcome.approval) throw new ApprovalDecisionError("Approval not found", 404);
+  if (!outcome.decided) {
+    if (outcome.approval.status === "pending") throw new ApprovalDecisionError("The approval moved to another approver while you decided. Check it again with list_pending_approvals.", 409);
+    throw new ApprovalDecisionError(await alreadyDecidedText(input.companyId, outcome.approval, { forAgent: true }), 409);
+  }
+  return outcome.approval;
+}
+
+/**
+ * "Already decided by Jose (approved)." for the loser of a race. An agent
+ * (forAgent) learns an agent decider's name, never a person's ("a person").
+ */
+export async function alreadyDecidedText(companyId: string, approval: typeof approvals.$inferSelect, options: { forAgent?: boolean } = {}): Promise<string> {
+  if (approval.status === "expired") return "Already expired without a decision.";
+  const name = options.forAgent && !approval.resolverAgentId ? (approval.resolverUserId ? "a person" : null) : await deciderName(companyId, approval);
+  return name ? `Already decided by ${name}${approval.resolverAgentId ? " (agent)" : ""} (${approval.status}).` : `Already ${approval.status}.`;
+}
+
+/** At most this many asks per list_pending_approvals answer (after filtering). */
+const PENDING_FOR_AGENT_MAX = 50;
+/** Rows read per page while filtering (reached steps and authority). */
+const PENDING_FOR_AGENT_PAGE = 200;
+
+/**
+ * The asks an agent may decide now (list_pending_approvals): its step has
+ * been reached and its authority holds right now (agentAuthorityNow, the same
+ * check decide_approval makes), filtered before the limit so the list is
+ * exactly what it may decide, oldest first.
+ */
+export async function listPendingApprovalsForAgent(companyId: string, agentId: string) {
+  const { agentAuthorityNow } = await import("./approval-routing-server");
+  const mine: (typeof approvals.$inferSelect)[] = [];
+  const linksOf = async (ids: string[]) => ids.length ? db.select({ approvalId: approvalTaskLinks.approvalId, taskId: approvalTaskLinks.taskId }).from(approvalTaskLinks).where(inArray(approvalTaskLinks.approvalId, ids)) : [];
+  for (let offset = 0; mine.length < PENDING_FOR_AGENT_MAX; offset += PENDING_FOR_AGENT_PAGE) {
+    const page = await db.select().from(approvals).where(and(
+      eq(approvals.companyId, companyId),
+      eq(approvals.status, "pending"),
+      sql`${approvals.approverChainJson} @> ${JSON.stringify([{ kind: "agent", agentId }])}::jsonb`,
+    )).orderBy(approvals.requestedAt, approvals.id).limit(PENDING_FOR_AGENT_PAGE).offset(offset);
+    const reached = page.filter((row) => row.requesterAgentId !== agentId && agentDeciders(row).includes(agentId));
+    const pageLinks = await linksOf(reached.map((row) => row.id));
+    for (const row of reached) {
+      if (mine.length >= PENDING_FOR_AGENT_MAX) break;
+      const taskIds = pageLinks.filter((l) => l.approvalId === row.id).map((l) => l.taskId);
+      if ((await agentAuthorityNow(companyId, row, agentId, taskIds)).ok) mine.push(row);
+    }
+    if (page.length < PENDING_FOR_AGENT_PAGE) break;
+  }
+  if (!mine.length) return [];
+  const { approvalCardLabelFor } = await import("./approval-card");
+  const requesterIds = [...new Set(mine.flatMap((row) => row.requesterAgentId ? [row.requesterAgentId] : []))];
+  const requesters = requesterIds.length ? await db.select({ id: agents.id, name: agents.name }).from(agents).where(inArray(agents.id, requesterIds)) : [];
+  const links = await linksOf(mine.map((row) => row.id));
+  return Promise.all(mine.map(async (row) => ({
+    approvalId: row.id,
+    requestedBy: requesters.find((r) => r.id === row.requesterAgentId)?.name ?? null,
+    requesterAgentId: row.requesterAgentId,
+    actionType: row.actionType,
+    what: await approvalCardLabelFor(companyId, row),
+    rationale: row.rationale,
+    taskIds: links.filter((l) => l.approvalId === row.id).map((l) => l.taskId),
+    projectId: row.projectId,
+    requestedAt: row.requestedAt.toISOString(),
+    assignedToYouNow: row.approverAgentId === agentId,
+  })));
 }
 
 /**
@@ -493,8 +729,12 @@ function actionDecisionMessage(approval: typeof approvals.$inferSelect): { text:
   return { text, deliveryState: "queued" };
 }
 
-/** The display name of the person who decided, or null (expired, or no name set). */
-async function deciderName(companyId: string, approval: typeof approvals.$inferSelect): Promise<string | null> {
+/** The display name of the person (or agent) who decided, or null (expired, or no name set). */
+export async function deciderName(companyId: string, approval: typeof approvals.$inferSelect): Promise<string | null> {
+  if (approval.resolverAgentId) {
+    const [agent] = await db.select({ name: agents.name }).from(agents).where(and(eq(agents.id, approval.resolverAgentId), eq(agents.companyId, companyId))).limit(1);
+    return agent?.name?.trim() || null;
+  }
   if (!approval.resolverUserId) return null;
   const [user] = await db.select({ displayName: users.displayName }).from(users)
     .innerJoin(companyMembers, and(eq(companyMembers.userId, users.id), eq(companyMembers.companyId, companyId)))
@@ -514,6 +754,11 @@ async function deciderName(companyId: string, approval: typeof approvals.$inferS
  */
 async function tellAgentAboutDecision(companyId: string, approval: typeof approvals.$inferSelect, linked: (typeof tasks.$inferSelect)[]) {
   await markApprovalCardDecided(companyId, approval);
+  // A boss agent that was asked and has not acted yet is not woken for it any more.
+  if (approval.approverKind) {
+    const { settleApprovalWakes } = await import("./approval-routing-server");
+    await settleApprovalWakes(companyId, approval.id);
+  }
   try {
     const agentId = approval.requesterAgentId ?? linked.find((t) => t.assignedAgentId)?.assignedAgentId ?? null;
     if (!agentId) return;
@@ -535,12 +780,14 @@ async function tellAgentAboutDecision(companyId: string, approval: typeof approv
         refs,
         note: approval.resolutionNote,
       });
+    const decider = approval.status === "expired" ? null : await deciderName(companyId, approval);
     const decision = await appendThreadMessage({
       companyId,
       threadId: thread.id,
       senderType: "system",
       targetAgentId: agentId,
-      text: message.text,
+      // Who decided: a person or a boss agent (approval routing).
+      text: decider ? [message.text, `Decided by ${decider}${approval.resolverAgentId ? " (agent)" : ""}.`].join("\n\n") : message.text,
       // Queued (the runtime acts on it) unless there is nothing left to do.
       deliveryState: message.deliveryState,
       metadataJson: {
@@ -559,7 +806,7 @@ async function tellAgentAboutDecision(companyId: string, approval: typeof approv
         senderType: "system",
         // Addressed to nobody and already delivered: the notice wakes no agent.
         targetAgentId: null,
-        text: approvalDecisionNoticeText({ approvalId: approval.id, status: approval.status, deciderName: await deciderName(companyId, approval) }),
+        text: approvalDecisionNoticeText({ approvalId: approval.id, status: approval.status, deciderName: decider }),
         deliveryState: "resolved",
         metadataJson: {
           approvalDecision: approval.status,

@@ -23,6 +23,7 @@ import { approvalAgeDays, isStaleApproval } from "@/lib/approval-status";
 import { matchesInboxSearch } from "@/lib/inbox-state-rules";
 import { isPlainKey, isTypingTarget } from "@/lib/keyboard-shortcuts";
 import type { AttentionEntry } from "@/lib/team-scene";
+import type { WaitingOn } from "@/lib/approval-routing";
 import { useTimeAgo } from "@/lib/i18n/format";
 import { useCopy } from "@/lib/i18n/use-copy";
 import { useSceneCopy } from "@/components/team-dashboard/use-scene-copy";
@@ -33,8 +34,8 @@ import { useModuleEnabled } from "@/components/modules-provider";
 
 type Agent = { key: string; id: string; name: string; role: string | null };
 type Decision = "approved" | "rejected" | "dismissed";
-/** The filters, plus the person's own archive. */
-type InboxView = InboxFilter | "archived";
+/** The filters, plus the person's own archive and (owners and admins) every pending approval. */
+type InboxView = InboxFilter | "archived" | "allApprovals";
 
 // "Decisions" + "Blocked" = "Needs you" (the header and the badge); FYI is counted apart.
 // Labels and hints: inbox.filters.<id> / <id>Hint; group headings: inbox.groups.<group>.
@@ -46,9 +47,12 @@ const APPROVE = "bg-emerald-500/15 text-emerald-700 ring-emerald-500/40 hover:bg
 const DANGER = "bg-rose-500/10 text-rose-600 ring-rose-500/30 hover:bg-rose-500/20 dark:text-rose-300";
 const NEUTRAL = "bg-transparent text-muted-foreground ring-border hover:bg-muted hover:text-foreground";
 
-export function InboxClient({ entries, archived, agents, generatedAt, canAct, filter }: {
+export function InboxClient({ entries, archived, otherApprovals = [], isOwnerOrAdmin = false, agents, generatedAt, canAct, filter }: {
     entries: AttentionEntry[];
     archived: AttentionEntry[];
+    /** Owners and admins: pending approvals routed to someone else (lib/attention.ts). */
+    otherApprovals?: AttentionEntry[];
+    isOwnerOrAdmin?: boolean;
     agents: Agent[];
     generatedAt: string;
     canAct: boolean;
@@ -71,12 +75,15 @@ export function InboxClient({ entries, archived, agents, generatedAt, canAct, fi
     const { markRead: markSeen } = inbox;
     const tMenu = useTranslations("contextMenu");
     const showingArchived = filter === "archived";
+    const showingAllApprovals = filter === "allApprovals";
 
     const live = useMemo(() => inbox.active.filter((e) => !done.has(e.id)), [inbox.active, done]);
     const archivedLive = useMemo(() => inbox.archivedList.filter((e) => !done.has(e.id)), [inbox.archivedList, done]);
     // Search narrows what the current view lists, on this page only.
-    const visible = useMemo(() => (showingArchived ? archivedLive : live.filter((e) => matchesInboxFilter(e, filter as InboxFilter)))
-        .filter((e) => matchesInboxSearch(e, query)), [showingArchived, archivedLive, live, filter, query]);
+    // "All approvals" (owners and admins): yours, plus the ones waiting on an agent or other people.
+    const allApprovals = useMemo(() => [...live.filter((e) => e.kind === "approval"), ...otherApprovals.filter((e) => !done.has(e.id))], [live, otherApprovals, done]);
+    const visible = useMemo(() => (showingArchived ? archivedLive : showingAllApprovals ? allApprovals : live.filter((e) => matchesInboxFilter(e, filter as InboxFilter)))
+        .filter((e) => matchesInboxSearch(e, query)), [showingArchived, showingAllApprovals, allApprovals, archivedLive, live, filter, query]);
     const grouped = useMemo(() => ATTENTION_GROUPS.map((group) => ({ group, items: visible.filter((e) => attentionGroup(e) === group) })).filter((g) => g.items.length > 0), [visible]);
     // Keyboard order follows the screen: groups top to bottom.
     const ordered = useMemo(() => grouped.flatMap((g) => g.items), [grouped]);
@@ -124,7 +131,13 @@ export function InboxClient({ entries, archived, agents, generatedAt, canAct, fi
             method: "PATCH", headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ status: decision, resolutionNote: note.trim() || null }),
         });
-        if (!res.ok) throw new Error(t("errors.decisionFailed"));
+        if (res.status === 409) {
+            // First decision wins: say who decided it.
+            const data = (await res.json().catch(() => ({}))) as { decidedBy?: string | null; approval?: { status?: string } };
+            void settle();
+            throw new Error(data.decidedBy ? t("errors.alreadyDecidedBy", { name: data.decidedBy }) : t("errors.alreadyDecided", { status: data.approval?.status ?? "" }));
+        }
+        if (!res.ok) throw new Error(((await res.json().catch(() => ({}))) as { error?: string }).error || t("errors.decisionFailed"));
         const stored = ((await res.json().catch(() => ({}))) as { approval?: { status?: string } }).approval?.status;
         if (stored && stored !== decision) {
             void settle();
@@ -296,6 +309,15 @@ export function InboxClient({ entries, archived, agents, generatedAt, canAct, fi
                         className="min-h-11 w-full rounded-lg border border-border bg-background pl-9 pr-3 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-cyan-400/60 md:min-h-9"
                     />
                 </label>
+                {isOwnerOrAdmin && (
+                    <button type="button" aria-pressed={showingAllApprovals} onClick={() => setFilter(showingAllApprovals ? "needs" : "allApprovals")}
+                        title={t("allApprovalsHint")}
+                        className={cn(BTN, showingAllApprovals ? PRIMARY : NEUTRAL, "text-sm font-medium")}>
+                        <IconChecks className="h-4 w-4" />
+                        {t("allApprovals")}
+                        <span className="tabular-nums text-muted-foreground">{allApprovals.length}</span>
+                    </button>
+                )}
                 <button type="button" aria-pressed={showingArchived} onClick={() => setFilter(showingArchived ? "needs" : "archived")}
                     title={showingArchived ? t("backTitle") : t("archivedTitle")}
                     className={cn(BTN, showingArchived ? PRIMARY : NEUTRAL, "text-sm font-medium")}>
@@ -465,6 +487,8 @@ function InboxRow({ ref, menu, entry, now, selected, unread, archivedView, onSel
     const group = attentionGroup(entry);
     const isAgentArea = entry.kind === "agent" || entry.kind === "run_failed";
     const project = isAgentArea || !entry.area ? null : render(entry.areaCopy, entry.area);
+    // A routed approval: who it waits on (lib/approval-routing.ts).
+    const waitingOnLabel = (w: WaitingOn) => w.kind === "agent" ? t("waitingOnAgent", { name: w.names[0] ?? "" }) : w.kind === "users" ? t("waitingOnPeople", { names: w.names.join(", ") }) : t("waitingOnAdmins");
     const archiveButton = (
         <button type="button" onClick={(e) => { e.stopPropagation(); onArchive(); }} aria-keyshortcuts="e"
             title={archivedView ? t("moveBackTitle") : t("archiveTitle")} aria-label={archivedView ? t("moveBackLabel") : t("archive")}
@@ -507,6 +531,7 @@ function InboxRow({ ref, menu, entry, now, selected, unread, archivedView, onSel
                                 <p className={cn("mt-1 line-clamp-2 text-sm", group === "blocked" ? "text-rose-600/90 dark:text-rose-300/90" : "text-muted-foreground")}>{render(entry.reasonCopy, entry.reason)}</p>
                             )}
                             {entry.detail && <p className="mt-1 line-clamp-2 text-sm text-muted-foreground">{entry.detail}</p>}
+                            {entry.waitingOn && <p className="mt-1 text-xs text-muted-foreground">{waitingOnLabel(entry.waitingOn)}</p>}
                             {entry.actionArgs && (
                                 // Every argument in full: approving here lets exactly this call run once.
                                 <details className="mt-1.5 text-sm" open={entry.actionArgs.length <= 4}>

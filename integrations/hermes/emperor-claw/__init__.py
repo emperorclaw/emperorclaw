@@ -824,6 +824,20 @@ def emperor_request_approval(args: Dict[str, Any], **_: Any) -> str:
     return _json(_request("POST", "/approvals", body=body))
 
 
+def emperor_list_pending_approvals(args: Dict[str, Any], **_: Any) -> str:
+    # Needs the agent's own (bound) token; a shared token is refused by the server.
+    return _json(_request("GET", "/approvals/pending"))
+
+
+def emperor_decide_approval(args: Dict[str, Any], **_: Any) -> str:
+    approval_id = str(args.get("approvalId") or args.get("approval_id") or "").strip()
+    decision = str(args.get("decision") or "").strip().lower()
+    if not approval_id or decision not in ("approve", "deny"):
+        return _json({"error": "approvalId and decision (approve or deny) are required"})
+    body = {"decision": decision, "note": str(args.get("note") or "").strip() or None}
+    return _json(_request("POST", f"/approvals/{approval_id}/decide", body=body))
+
+
 CHECK_ACTIONS = ("send_email", "post_social", "spend_money", "delete_data", "deploy", "browse_web", "run_shell")
 
 
@@ -1655,7 +1669,7 @@ def register(ctx: Any) -> None:
         "emperor_request_approval",
         TOOLSET,
         _schema(
-            "Ask a person to sign off before you act: spending money, sending anything outside the company (emails, posts, customer messages), publishing, deleting, or closing a task that requires approval. Moves the task to review and notifies owners and admins; the decision and note arrive in your direct chat. Approved task_done closes the task; any other approved action comes back in_progress for you to do and then close; rejected comes back in_progress with the reason. Do not ask in chat instead, and do not act until it is approved.",
+            "Ask a person to sign off before you act: spending money, sending anything outside the company (emails, posts, customer messages), publishing, deleting, or closing a task that requires approval. Moves the task to review and goes to your approver (the approvers set for you or your team, else your manager in the org chart, else your owner, else owners and admins); an undecided ask moves up the chain. The decision, who decided and the note arrive in your direct chat. Approved task_done closes the task; any other approved action comes back in_progress for you to do and then close; rejected comes back in_progress with the reason. Do not ask in chat instead, and do not act until it is approved.",
             {
                 "taskId": {"type": "string"},
                 "rationale": {"type": "string", "description": "What exactly needs approval and why, with the evidence needed to decide"},
@@ -1667,6 +1681,36 @@ def register(ctx: Any) -> None:
         check_fn=_available,
         requires_env=requires,
         description="Request Emperor approval",
+    )
+    ctx.register_tool(
+        "emperor_list_pending_approvals",
+        TOOLSET,
+        _schema(
+            "The approval requests waiting on YOU as their approver (you approve for agents below you in the org chart, or you were set as their approver): what is asked, by whom, why, and the tasks. Decide each with emperor_decide_approval. Empty when nothing waits on you.",
+            {},
+            [],
+        ),
+        emperor_list_pending_approvals,
+        check_fn=_available,
+        requires_env=requires,
+        description="List approvals waiting on you",
+    )
+    ctx.register_tool(
+        "emperor_decide_approval",
+        TOOLSET,
+        _schema(
+            "Approve or deny an approval request waiting on you (see emperor_list_pending_approvals, or the message that asked you). You may decide only while you are its approver (named for the requester or its team, or above it in the org chart), may do that action yourself, and can use its project; otherwise this refuses and the request moves up to the next approver. Never approve your own request. approve = the requester may go ahead (or the task closes, for task_done); deny = it must not, and your note says what to change. First decision wins: if someone already decided, this says who. Needs this agent's own token; with a shared token, leave the request and it moves up to a person.",
+            {
+                "approvalId": {"type": "string"},
+                "decision": {"type": "string", "enum": ["approve", "deny"]},
+                "note": {"type": "string", "description": "Why, and for a denial what to change. The requester reads it."},
+            },
+            ["approvalId", "decision"],
+        ),
+        emperor_decide_approval,
+        check_fn=_available,
+        requires_env=requires,
+        description="Decide an approval routed to you",
     )
     ctx.register_tool(
         "emperor_check_action",

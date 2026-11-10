@@ -9,6 +9,7 @@ import {
     type ActionCatalogEntry, type ActionMode, type ActionPolicyMap,
 } from "@/lib/action-policy";
 import { cn } from "@/lib/utils";
+import { AgentApproversSection } from "./agent-approvers-section";
 
 type Props = { agentId: string; agentName?: string };
 type Level = "agent" | "company";
@@ -124,6 +125,8 @@ export function AgentActionsTab({ agentId, agentName }: Props) {
                     {t("adminsOnly")}
                 </p>
             )}
+
+            {level === "agent" && <AgentApproversSection agentId={agentId} />}
 
             {GROUPS.map((group) => (
                 <section key={group} className="space-y-2" aria-labelledby={`actions-${group}`}>

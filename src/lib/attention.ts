@@ -19,6 +19,8 @@ import { computeCompanyHealth, OFFLINE_AFTER_MS, type CompanyHealth } from "@/li
 import { listPendingDecisions } from "@/lib/approvals";
 import { isActionApproval, storedActionArgs } from "@/lib/action-policy-rules";
 import { actionLabel } from "@/lib/action-policy";
+import { currentApproverStep, humanMayDecide, isAssignedToHuman, waitingOnParts } from "@/lib/approval-routing";
+import { approvalNames } from "@/lib/approval-routing-server";
 import { directThreadLink, userMayUseThread } from "@/lib/direct-chat-mode";
 import { isAgentPairThread } from "@/lib/groups";
 import { getScopedAgentIds, getScopedCustomerIds, getScopedProjectIds } from "@/lib/member-scope";
@@ -93,6 +95,12 @@ export interface AttentionResult {
     agents: AttentionAgent[];
     /** Agents working now (attention-rules workingNowAgentIds), member-scoped: the Home badge and the dashboard card. */
     workingNow: string[];
+    /**
+     * Owners and admins only: pending approvals routed to someone else (an
+     * agent, other people). Never counted as needing them; the Inbox's "All
+     * approvals" filter lists them, and an owner or admin may still decide.
+     */
+    otherApprovals: AttentionEntry[];
 }
 
 /** Data the dashboard already loaded, so it is not queried twice. */
@@ -350,15 +358,24 @@ export async function buildAttention(companyId: string, access: AttentionAccess,
         });
     }
 
-    // Approvals: one entry per request, however many tasks it covers.
+    // Approvals: one entry per request, however many tasks it covers. A routed
+    // ask (lib/approval-routing.ts) needs only its approvers: someone else's is
+    // left out, or (owners and admins) kept apart for the "All approvals" filter.
+    const otherApprovals: AttentionEntry[] = [];
+    const viewer = { userId: access.userId ?? "", isOwnerOrAdmin: access.isOwnerOrAdmin };
+    const names = decisions.approvals.some(({ approval }) => approval.approverKind) ? await approvalNames(companyId) : null;
     for (const { approval, tasks: linked } of decisions.approvals) {
+        const mineToDecide = isAssignedToHuman(approval, viewer);
+        if (!mineToDecide && !(access.isOwnerOrAdmin && access.userId)) continue;
+        if (!access.isOwnerOrAdmin && !humanMayDecide(approval, viewer)) continue;
+        const target = mineToDecide ? entries : otherApprovals;
         const first = linked[0];
         const what = first ? taskTitle(first.inputJson, first.taskType) : approval.rationale ? excerpt(approval.rationale, 48) : humanize(approval.actionType);
         const key = approval.requesterAgentId ? `agent:${approval.requesterAgentId}` : null;
         for (const t of linked) coveredTasks.add(t.id);
         // An ask-first action permission: the action is the title, its key arguments the detail.
         const askFirst = isActionApproval(approval);
-        entries.push({
+        target.push({
             id: `approval:${approval.id}`, kind: "approval",
             title: askFirst ? `Allow once: ${actionLabel(approval.actionType)}`
                 : approval.actionType === "task_done" ? `Approve ${excerpt(what, 52)}` : `Approve ${humanize(approval.actionType)}: ${excerpt(what, 40)}`,
@@ -369,6 +386,7 @@ export async function buildAttention(companyId: string, access: AttentionAccess,
             approvalId: approval.id, taskId: first?.id ?? null, taskCount: linked.length,
             detail: askFirst ? null : approval.rationale ? excerpt(approval.rationale, 180) : null,
             ...(askFirst ? { actionArgs: storedActionArgs(approval.metadataJson) } : {}),
+            waitingOn: names && approval.approverKind ? waitingOnParts(currentApproverStep(approval), names) : null,
             ...context(approval.projectId),
         });
     }
@@ -535,6 +553,7 @@ export async function buildAttention(companyId: string, access: AttentionAccess,
         archived,
         counts: attentionCounts(visible),
         workingNow,
+        otherApprovals: sortAttention(applyAttentionScope(otherApprovals, access.scope)),
         agents: agentRows
             .filter((a) => !scopedAgents || scopedAgents.has(a.id))
             .map((a) => ({ key: `agent:${a.id}`, id: a.id, name: a.name, role: a.role }))

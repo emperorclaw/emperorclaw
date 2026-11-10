@@ -9,6 +9,20 @@ tagged (e.g. `## [1.2.0] — 2026-07-22`). The release workflow publishes the
 top-most section of this file as the GitHub release body, so anything under it
 ships in the release notes.
 
+## [Unreleased]
+
+### Added
+
+- **Approvals go to the right approver.** Each request an agent makes (an approval, or an action set to ask first) now goes to one approver, chosen once when it is asked: the approvers you set for that agent, else the approvers of its team, else its manager in the org chart, else its owner, else the company owners and admins. Only that approver is notified; owners and admins hear about it only when it falls back or moves up to them, and they can always decide anything.
+- **Boss agents can decide for their team.** When the approver is an agent, it is woken with what is asked, by whom and why, and decides with the new `decide_approval` tool (`list_pending_approvals` shows what waits on it; Hermes agents get `emperor_decide_approval` and `emperor_list_pending_approvals`). It may approve only what it is itself allowed to do (a boss that may not deploy cannot approve a deploy), only for agents it was named to approve for (this works without an org chart) or that are below it on the chart, and never its own request; otherwise the request skips it and goes further up. The requester is told who decided.
+- **Undecided requests move up.** If the approver has not decided within 30 minutes (change it in Settings → Approvals), the request moves to the next approver up the chain, with a short note in the chat ("Waiting longer than 30 min — escalated to Jose"). Requests still expire after 48 hours.
+- **Who approves, in the settings.** An agent's Actions tab has "Who approves this agent's requests" (automatic, a specific agent, or specific people) and shows where its requests go now ("Asks go to: Architect → Jose → owners and admins"). Settings → Approvals sets the escalation time and approvers per org chart team. Only owners and admins change them.
+- **"Waiting on" everywhere.** Approval cards, the Inbox and the Approvals page show who a request waits on. Your Inbox lists the requests waiting on you; owners and admins also get an **All approvals** filter. When two people decide at once, the second sees "Already decided by …".
+
+### Changed
+
+- A request that waits on specific people can be decided only by them or by an owner or admin; anyone else sees "Waiting on …". Requests made before this release keep the old rules.
+
 ## [0.31.3] — 2026-11-09
 
 ### Fixed

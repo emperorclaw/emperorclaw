@@ -30,7 +30,7 @@ const unnamed = (kind: OrgKind) => kind === "human" ? "A person" : "An agent";
 
 /** What every agent is told about reporting lines (also in the org chart note). Agents follow it literally. */
 export const ORGANIZATION_REPORTING_RULE = [
-    "- A reporting line guides coordination; it never grants permission. You may still ask anyone you can reach.",
+    "- A reporting line guides coordination; it never grants permission. You may still ask anyone you can reach. One exception: your manager may decide your approval requests, only for actions it is itself allowed to do.",
     "- Your manager depends on the work: use the task or conversation team to pick the reporting line. Working in another team's chat is collaboration, not a new reporting line.",
     "- Each task has one coordinating owner; joining a team never transfers task ownership. Approvals and access rules still apply.",
     "- When you set a task done or blocked, Emperor tells your manager for that team if the manager is an agent not already on the task. Otherwise (a human manager, or a manager who created or owns the task), report it as you normally would.",

@@ -679,7 +679,10 @@
       "details": "Details ({count})",
       "customer": "Customer",
       "project": "Project",
-      "open": "Open"
+      "open": "Open",
+      "waitingOnAgent": "Waiting on: {name} (agent)",
+      "waitingOnPeople": "Waiting on: {names}",
+      "waitingOnAdmins": "Waiting on: an owner or admin"
     },
     "reject": {
       "placeholder": "What should {name} change?",
@@ -723,7 +726,8 @@
       "resumeFailed": "Couldn't resume",
       "restartFailed": "Couldn't restart the runtime",
       "reassignFailed": "Couldn't reassign the task",
-      "markReadFailed": "Couldn't mark it read"
+      "markReadFailed": "Couldn't mark it read",
+      "alreadyDecidedBy": "Already decided by {name}."
     },
     "theAgent": "The agent",
     "theAgentLower": "the agent",
@@ -769,7 +773,9 @@
         "messages": "Messages",
         "teamChat": "Team chat"
       }
-    }
+    },
+    "allApprovals": "All approvals",
+    "allApprovalsHint": "Every pending approval, including the ones waiting on an agent or on other people. As an owner or admin you can decide any of them."
   },
   "settings": {
     "sections": {
@@ -804,7 +810,9 @@
       "advanced": "Advanced setup",
       "advancedDescription": "Manual runtime commands and connection diagnostics.",
       "instance": "Instance",
-      "instanceDescription": "Settings for the entire self-hosted installation."
+      "instanceDescription": "Settings for the entire self-hosted installation.",
+      "approvals": "Approvals",
+      "approvalsDescription": "Who decides what agents ask for, and when an undecided request moves up."
     },
     "profile": {
       "title": "Your Profile",
@@ -1331,6 +1339,23 @@
       "name": "Instance name",
       "nameHint": "Display name shown in emails and page titles.",
       "namePlaceholder": "My Emperor Claw Instance"
+    },
+    "approvals": {
+      "title": "Approvals",
+      "intro": "Agents' requests go to their approver: the approvers set for the agent or its team, else its manager in the org chart, else its owner, else owners and admins.",
+      "saved": "Saved",
+      "loadFailed": "Couldn't load the approval settings.",
+      "saveFailed": "Couldn't save the approval settings. Try again.",
+      "escalateLabel": "Move up after (minutes)",
+      "escalateHint": "If the approver hasn't decided in this time, the request goes to the next approver up the chain. {min} to {max} minutes; default {default}. Requests still expire after 48 hours.",
+      "save": "Save",
+      "cancel": "Cancel",
+      "teamsTitle": "Team approvers",
+      "teamsIntro": "Who approves requests from the agents in each org chart team, unless an agent has its own approvers.",
+      "noTeams": "No teams on the org chart yet. Add teams in Agents → Organization.",
+      "teamAuto": "Automatic (each agent's manager)",
+      "agentHint": "To choose approvers for one agent, open that agent's Actions tab.",
+      "cleared": "Removed approvers were cleared. Save each team to keep the change."
     }
   },
   "runtimeHosts": {
@@ -3132,7 +3157,8 @@
       "approval": {
         "approved": "<who>{actor}</who> approved <target>approval {label}</target> {detail}",
         "rejected": "<who>{actor}</who> rejected <target>approval {label}</target> {detail}",
-        "dismissed": "<who>{actor}</who> dismissed <target>approval {label}</target> {detail}"
+        "dismissed": "<who>{actor}</who> dismissed <target>approval {label}</target> {detail}",
+        "escalated": "<who>{actor}</who> escalated <target>approval {label}</target> {detail}"
       },
       "member": {
         "role_changed": "<who>{actor}</who> changed the role of <target>{label}</target> {detail}",
@@ -3254,7 +3280,8 @@
         "contextNotes": "company context",
         "agentRoutine": "daily agent routine",
         "instance": "instance settings",
-        "modules": "modules"
+        "modules": "modules",
+        "approvals": "approval routing"
       },
       "permissions": {
         "off": "off",
@@ -3327,7 +3354,12 @@
     "emptyDescription": "No agent has asked to spend, send, publish, delete or close work that needs sign-off. New requests show up here and in the Inbox.",
     "recentlyDecided": "Recently decided",
     "noDecidedMatches": "No decided approvals match that search.",
-    "noDecisions": "No decisions yet. Approvals you decide show up here."
+    "noDecisions": "No decisions yet. Approvals you decide show up here.",
+    "waitingOnAgent": "waiting on {name} (agent)",
+    "waitingOnPeople": "waiting on {names}",
+    "waitingOnAdmins": "waiting on an owner or admin",
+    "alreadyDecidedBy": "Already decided by {name} — your decision was not applied.",
+    "resolvedByAgent": "{label} by {name} (agent)"
   },
   "approvalCard": {
     "title": "Approval request",
@@ -3354,7 +3386,13 @@
       "rejected": "Rejected",
       "dismissed": "Dismissed",
       "expired": "Expired"
-    }
+    },
+    "waitingOn": "Waiting on",
+    "waitingOnAgent": "{name} (agent)",
+    "waitingOnAdmins": "An owner or admin",
+    "alreadyDecidedBy": "Already decided by {name}.",
+    "decidedByAgent": "{status} by {name} (agent)",
+    "waitingOnApprover": "An approver"
   },
   "artifacts": {
     "preview": {
@@ -5815,5 +5853,42 @@
     "archive": "Archive",
     "moveBack": "Move back to inbox",
     "projects": "Projects"
+  },
+  "approvers": {
+    "modeLabel": "Who approves",
+    "modes": {
+      "auto": "Automatic (org chart)",
+      "agent": "A specific agent",
+      "people": "Specific people"
+    },
+    "agentLabel": "Approving agent",
+    "findPerson": "Find a person",
+    "nobody": "No one matches.",
+    "anyOne": "Any one of them can decide. The first decision counts.",
+    "agentStep": "{name} (agent)",
+    "adminsStep": "owners and admins",
+    "title": "Who approves this agent's requests",
+    "intro": "Its approval requests and ask-first actions go to these approvers. Automatic follows the org chart: the team's approvers, then the agent's manager, then its owner, then owners and admins.",
+    "loadFailed": "Couldn't load who approves this agent's requests.",
+    "saveFailed": "Couldn't save who approves. Try again.",
+    "saved": "Saved",
+    "save": "Save",
+    "cancel": "Cancel",
+    "asksGoTo": "Asks go to:",
+    "skipped": "Skipped {name}: {reason}.",
+    "reasons": {
+      "self": "an agent never approves its own requests",
+      "cycle": "the org chart has a reporting loop between them",
+      "not_above": "it is not above this agent in the org chart",
+      "inactive": "it is not an active agent",
+      "action_not_allowed": "it is not allowed to do this action itself",
+      "no_project_access": "it cannot use this project",
+      "unknown_action": "only a person can approve this kind of action"
+    },
+    "riskyNote": "A boss agent decides only what it is allowed to do itself. For other actions the ask skips it. Owners and admins can always decide.",
+    "adminsOnly": "Only owners and admins can change this.",
+    "loading": "Loading…",
+    "cleared": "Removed approvers were cleared. Save to keep the change.",
+    "personStep": "a person"
   }
 }

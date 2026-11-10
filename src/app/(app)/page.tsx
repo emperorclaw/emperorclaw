@@ -1,4 +1,5 @@
 import { redirect } from "next/navigation";
+import { isAssignedToHuman } from "@/lib/approval-routing";
 import { getTranslations } from "next-intl/server";
 import { and, desc, eq, gte, inArray, isNotNull, isNull, sql } from "drizzle-orm";
 import { db } from "@/db";
@@ -119,7 +120,8 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
         db.selectDistinct({ agentId: agentRuns.agentId }).from(agentRuns)
             .where(and(eq(agentRuns.companyId, companyId), eq(agentRuns.status, "running"), gte(agentRuns.startedAt, new Date(now.getTime() - OFFLINE_AFTER_MS)), isNotNull(agentRuns.agentId), agentScope(agentRuns.agentId))),
     ]);
-    const pendingApprovals = decisions.approvals.filter(({ approval }) => memberMaySeeApproval(memberScope, visibleProjects, approval)).map(({ approval, tasks: linked }) => ({
+    // A routed ask is listed for its approvers only (lib/approval-routing.ts), as in the Inbox.
+    const pendingApprovals = decisions.approvals.filter(({ approval }) => memberMaySeeApproval(memberScope, visibleProjects, approval) && isAssignedToHuman(approval, { userId: guard.userId, isOwnerOrAdmin })).map(({ approval, tasks: linked }) => ({
         id: approval.id, requestedAt: approval.requestedAt, actionType: approval.actionType, rationale: approval.rationale, projectId: approval.projectId,
         // An ask-first action has no task.
         requesterAgentId: approval.requesterAgentId, taskInput: (linked[0]?.inputJson ?? null) as unknown, taskType: (linked[0]?.taskType ?? null) as string | null,

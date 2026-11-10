@@ -13,7 +13,7 @@ import { and, count, desc, eq, gte, isNull, sql } from "drizzle-orm";
 import { db } from "@/db";
 import { agents, approvals, companies } from "@/db/schema";
 import { broadcastMcpEvent } from "@/lib/pubsub";
-import { notifyApprovalRequested } from "@/lib/notifications";
+import { notifyApprovalApprovers, routingColumnsForAsk } from "@/lib/approval-routing-server";
 import {
     actionLabel, applyPolicyChanges, changedPolicyKeys, normalizePolicyMap, resolveActionMode, restActionForRequest, restActorRef,
     type ActionMode, type ActionPolicyMap,
@@ -128,7 +128,7 @@ export async function enforceActionPolicy(input: {
 }
 
 function pendingMessage(label: string, actionKey: string, approvalId: string): string {
-    return `Approval needed: "${label}" (${actionKey}) is set to ask first, so nothing was done. Approval ${approvalId} is waiting for a person in the Inbox. Don't do it yet and don't work around it. When you are told it is approved, repeat the exact same call once, with the same arguments, within 24 hours.`;
+    return `Approval needed: "${label}" (${actionKey}) is set to ask first, so nothing was done. Approval ${approvalId} is waiting for its approver (a person in the Inbox, or a boss agent allowed to do it). Don't do it yet and don't work around it. When you are told it is approved, repeat the exact same call once, with the same arguments, within 24 hours.`;
 }
 
 /** Pending action asks of one agent (or, with no agent, of one token). */
@@ -150,6 +150,9 @@ async function createActionApproval(input: {
     const label = actionLabel(input.actionKey);
     // Every argument on one line: the Inbox detail, dashboard and notification text (always shown as plain text).
     const rationale = input.preview.length > 0 ? input.preview.map((p) => `${p.field}: ${p.value}`).join(" · ") : "No details given";
+    const metadataJson = { kind: ACTION_APPROVAL_KIND, actionKey: input.actionKey, actionLabel: label, tokenId: input.agentId ? null : input.tokenId, args: input.preview };
+    // Who decides, resolved once (lib/approval-routing.ts): an agent's ask only.
+    const routing = input.agentId ? await routingColumnsForAsk(input.companyId, { requesterAgentId: input.agentId, projectId: null, actionType: input.actionKey, metadataJson }) : {};
     const [created] = await db.insert(approvals).values({
         id: randomUUID(),
         companyId: input.companyId,
@@ -158,7 +161,8 @@ async function createActionApproval(input: {
         actionType: input.actionKey,
         argsHash: input.argsHash,
         rationale,
-        metadataJson: { kind: ACTION_APPROVAL_KIND, actionKey: input.actionKey, actionLabel: label, tokenId: input.agentId ? null : input.tokenId, args: input.preview },
+        metadataJson,
+        ...routing,
     }).onConflictDoNothing().returning();
     if (!created) {
         // A concurrent identical ask won the one-pending-per-call index: wait on that one.
@@ -171,7 +175,7 @@ async function createActionApproval(input: {
         throw new Error("Could not record the approval request");
     }
     await broadcastMcpEvent(input.companyId, { type: "approval_created", approval: created, taskIds: [] });
-    await notifyApprovalRequested(input.companyId, created);
+    await notifyApprovalApprovers(input.companyId, created);
     // The card goes to the agent's direct thread only: the card text is neutral
     // (the action's name), and the arguments stay in the approval.
     return postApprovalCard({ companyId: input.companyId, approval: created });

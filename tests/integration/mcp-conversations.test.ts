@@ -57,6 +57,8 @@ const SHARED_TOOLS = [
     "list_views", "read_thread", "remove_group_member", "request_approval", "run_automation", "search_knowledge", "send_message",
     "update_agent", "update_group", "update_knowledge_note", "update_objective", "update_panel", "update_project",
     "update_task", "update_view", "wait_for_reply",
+    // Approval routing: a boss agent's asks to decide.
+    "decide_approval", "list_pending_approvals",
 ];
 
 maybe("tool lists: operator connections add the request tools; both get read_thread and wait_for_reply", async () => {

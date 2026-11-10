@@ -14,6 +14,7 @@ import { approvalAgeDays, isStaleApproval } from "@/lib/approval-status";
 import { ACTION_CATALOG } from "@/lib/action-policy";
 import { MotionItem, MotionList } from "@/components/ui/motion";
 import { cn } from "@/lib/utils";
+import type { WaitingOn } from "@/lib/approval-routing";
 
 export type ApprovalItem = {
     key: string;
@@ -25,6 +26,10 @@ export type ApprovalItem = {
     requestedAt: string;
     resolvedAt: string | null;
     resolverName: string | null;
+    /** Decided by a boss agent (decide_approval). */
+    resolverIsAgent?: boolean;
+    /** A pending routed ask: who it waits on (lib/approval-routing.ts). */
+    waitingOn?: WaitingOn | null;
     requester: { id: string; name: string; avatarUrl: string | null } | null;
     /** Null for an agent asking to run one action (an "ask first" permission), which has `action` instead. */
     task: { id: string; projectId: string; title: string; description: string | null; state: string; assignee: string | null } | null;
@@ -120,6 +125,11 @@ function PendingCard({ item, onDecide, busy }: { item: ApprovalItem; onDecide: (
                         <span>{t("asksTo")}</span>
                         <span className="rounded-md border border-amber-500/25 bg-amber-500/10 px-1.5 py-0.5 font-medium text-amber-200">{action}</span>
                         <span className="inline-flex items-center gap-1"><IconClockHour4 className="h-3 w-3" />{ago(item.requestedAt)}</span>
+                        {item.waitingOn && (
+                            <span>· {item.waitingOn.kind === "agent" ? t("waitingOnAgent", { name: item.waitingOn.names[0] ?? t("anAgent") })
+                                : item.waitingOn.kind === "users" ? t("waitingOnPeople", { names: item.waitingOn.names.join(", ") })
+                                    : t("waitingOnAdmins")}</span>
+                        )}
                     </div>
                     {item.task ? (
                         <Link href={taskHref(item.task)} className="group mt-1.5 inline-flex max-w-full items-center gap-1.5 text-base font-semibold text-zinc-100 hover:text-zinc-50">
@@ -239,7 +249,7 @@ function ResolvedRow({ ref, item }: { ref?: React.Ref<HTMLElement>; item: Approv
                 <span className="min-w-0 flex-1">
                     <span className="block truncate text-sm text-zinc-200">{title}</span>
                     <span className="block truncate text-xs text-zinc-500">
-                        {item.resolverName ? t("resolvedBy", { label, name: item.resolverName }) : label}{item.resolutionNote ? ` — "${item.resolutionNote}"` : ""}
+                        {item.resolverName ? t(item.resolverIsAgent ? "resolvedByAgent" : "resolvedBy", { label, name: item.resolverName }) : label}{item.resolutionNote ? ` — "${item.resolutionNote}"` : ""}
                     </span>
                 </span>
                 <span className="shrink-0 text-[11px] text-zinc-600">{item.resolvedAt ? ago(item.resolvedAt) : ""}</span>
@@ -284,7 +294,13 @@ export default function ApprovalsClient({ items }: { items: ApprovalItem[] }) {
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({ status: decision, resolutionNote: note.trim() || null }),
             });
-            if (!res.ok) throw new Error(t("decideFailed"));
+            if (res.status === 409) {
+                // First decision wins: say who decided it.
+                const data = (await res.json().catch(() => ({}))) as { decidedBy?: string | null; approval?: { status?: string } };
+                router.refresh();
+                throw new Error(data.decidedBy ? t("alreadyDecidedBy", { name: data.decidedBy }) : t("alreadyResolved", { status: data.approval?.status ?? "" }));
+            }
+            if (!res.ok) throw new Error(((await res.json().catch(() => ({}))) as { error?: string }).error || t("decideFailed"));
             // A decision is final: if it was already resolved (expired, or decided
             // by someone else), say what actually stands instead of confirming ours.
             const stored = ((await res.json().catch(() => ({}))) as { approval?: { status?: string } }).approval?.status;

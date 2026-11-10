@@ -70,6 +70,9 @@ export const companies = pgTable("companies", {
     // Modules switched off for this company (lib/modules.ts): { moduleKey: boolean }.
     // A missing key means on, so existing companies keep everything.
     modulesJson: jsonb("modules_json").default("{}").$type<Record<string, boolean>>().notNull(),
+    // Approval routing (lib/approval-routing.ts): escalation timeout and team
+    // approvers. {} = defaults (30 minutes, no team approvers).
+    approvalSettingsJson: jsonb("approval_settings_json").default("{}").$type<Record<string, unknown>>().notNull(),
     createdAt: timestamp("created_at").defaultNow().notNull(),
     deletedAt: timestamp("deleted_at"),
 });
@@ -283,6 +286,8 @@ export const agents = pgTable("agents", {
     }>().notNull(),
     // Per-agent action permissions (lib/action-policy.ts); a key left out uses the company default.
     actionPoliciesJson: jsonb("action_policies_json").default("{}").$type<Record<string, string>>().notNull(),
+    // Who approves this agent's requests (lib/approval-routing.ts). {} = automatic (org chart).
+    approvalSettingsJson: jsonb("approval_settings_json").default("{}").$type<Record<string, unknown>>().notNull(),
     monthlyBudgetCents: integer("monthly_budget_cents").default(0).notNull(), // 0 = unlimited
     monthlyTokenUsage: integer("monthly_token_usage").default(0).notNull(),
     monthlyCostCents: doublePrecision("monthly_cost_cents").default(0).notNull(), // calculated spend in cents
@@ -589,6 +594,19 @@ export const approvals = pgTable("approvals", {
     // asks made before cards existed: their decision goes to the direct thread.
     threadId: uuid("thread_id").references(() => messageThreads.id, { onDelete: 'set null' }),
     cardMessageId: uuid("card_message_id").references(() => threadMessages.id, { onDelete: 'set null' }),
+    // Approval routing (lib/approval-routing.ts, docs/design/approval-routing.md).
+    // The approver chain is resolved once when an agent asks; the current step
+    // (escalation_level) is mirrored in approver_kind / approver_agent_id /
+    // approver_user_ids. A null approver_kind is an ask from before routing:
+    // owners/admins are notified and any member with access may decide.
+    approverKind: text("approver_kind"), // 'agent' | 'users' | 'admins'
+    approverAgentId: uuid("approver_agent_id").references(() => agents.id, { onDelete: 'set null' }),
+    approverUserIds: jsonb("approver_user_ids").$type<string[]>(),
+    approverChainJson: jsonb("approver_chain_json").$type<import("@/lib/approval-routing").ApproverStep[]>(),
+    escalationLevel: integer("escalation_level").default(0).notNull(),
+    escalatedAt: timestamp("escalated_at"),
+    // The agent that decided (decide_approval); resolver_user_id is the person.
+    resolverAgentId: uuid("resolver_agent_id").references(() => agents.id, { onDelete: 'set null' }),
     createdAt: timestamp("created_at").defaultNow().notNull(),
 }, (table) => [
     index("approvals_requester_action_idx").on(table.companyId, table.requesterAgentId, table.actionType),
@@ -598,6 +616,9 @@ export const approvals = pgTable("approvals", {
     // Deleting a thread or its messages (agent deletion) nulls these links: keep that an index lookup.
     index("approvals_thread_idx").on(table.threadId).where(sql`${table.threadId} IS NOT NULL`),
     index("approvals_card_message_idx").on(table.cardMessageId).where(sql`${table.cardMessageId} IS NOT NULL`),
+    // An agent's pending asks to decide (list_pending_approvals), and the escalation sweep.
+    index("approvals_approver_agent_idx").on(table.companyId, table.approverAgentId, table.status).where(sql`${table.approverAgentId} IS NOT NULL`),
+    index("approvals_pending_routed_idx").on(table.requestedAt).where(sql`${table.status} = 'pending' AND ${table.approverKind} IS NOT NULL`),
 ]);
 
 export const approvalTaskLinks = pgTable("approval_task_links", {

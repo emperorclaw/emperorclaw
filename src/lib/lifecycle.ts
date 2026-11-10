@@ -7,7 +7,7 @@ import { notifyAgentDown } from "./notifications";
 import { runDailyRoutines } from "./agent-routines";
 import { runStallSweep } from "./stall-sweep";
 import { runScheduledRetention } from "./retention";
-import { expireStaleApprovals } from "./approvals";
+import { escalateStaleApprovals, expireStaleApprovals } from "./approvals";
 import { runObjectiveFollowups } from "./agent-objective";
 import { flushPendingAgentWakes } from "./task-wake";
 import { reconcileOrganizationNotes } from "./organization-note";
@@ -46,6 +46,7 @@ let lastObjectiveCheck = 0;
 let lastCallbackCheck = 0;
 let lastRetentionCheck = 0;
 let lastPipelineScheduleCheck = 0;
+let lastApprovalEscalationCheck = 0;
 
 const pool = new Pool({
   connectionString: process.env.POSTGRES_CONNECTION_STRING,
@@ -115,6 +116,13 @@ async function runLifecycleMonitor() {
     if (now.getTime() - lastObjectiveCheck >= 60_000) {
       lastObjectiveCheck = now.getTime();
       await runObjectiveFollowups(now).catch((error) => console.error("Objective followups failed:", error));
+    }
+    // Approval routing: an ask its approver left undecided past the company's
+    // escalation time (minutes, default 30) moves up the chain. Once a minute;
+    // guarded on pending + the current level, so it is safe to repeat.
+    if (now.getTime() - lastApprovalEscalationCheck >= 60_000) {
+      lastApprovalEscalationCheck = now.getTime();
+      await escalateStaleApprovals(now).catch((error) => console.error("Approval escalation failed:", error));
     }
     // Emperor-scheduled automations: fire the due cron slots. Each slot is
     // claimed with a compare-and-set on pipelines.next_run_at, so this stays
