@@ -11,6 +11,8 @@ ships in the release notes.
 
 ## [Unreleased]
 
+## [0.32.0] — 2026-11-11
+
 ### Added
 
 - **Approvals go to the right approver.** Each request an agent makes (an approval, or an action set to ask first) now goes to one approver, chosen once when it is asked: the approvers you set for that agent, else the approvers of its team, else its manager in the org chart, else its owner, else the company owners and admins. Only that approver is notified; owners and admins hear about it only when it falls back or moves up to them, and they can always decide anything.
@@ -22,6 +24,10 @@ ships in the release notes.
 ### Changed
 
 - A request that waits on specific people can be decided only by them or by an owner or admin; anyone else sees "Waiting on …". Requests made before this release keep the old rules.
+
+### Fixed
+
+- **Alerts on the light dashboard scene are readable.** Agents with an alert on the light-mode team scene showed a pale badge and ring that blended into the floor; the badge, ring and pulse now use darker amber in light mode and keep the brighter one in dark mode.
 
 ## [0.31.3] — 2026-11-09
 
