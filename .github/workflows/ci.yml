@@ -256,6 +256,9 @@ jobs:
 
   integration:
     runs-on: ubuntu-latest
+    # A hung test used to burn the 6h job default and end as "cancelled" with no
+    # failing step. Fail fast instead: the suite takes ~4 min on CI.
+    timeout-minutes: 30
     services:
       postgres:
         image: postgres:16-alpine

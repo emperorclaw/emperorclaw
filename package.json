@@ -28,7 +28,7 @@
     "test:bridge:plugin": "python3 tests/contract/hermes/python_suites.py --plugin-only",
     "test:contract": "bash tests/contract/hermes/run.sh",
     "test:contract:all": "bash tests/contract/hermes/run.sh all",
-    "test:integration": "npx tsx --test --test-concurrency=1 tests/integration/*.test.ts",
+    "test:integration": "npx tsx --test --test-concurrency=1 --test-timeout=180000 tests/integration/*.test.ts",
     "test:all": "npm run test && npm run test:integration",
     "db:migrate": "npx tsx src/db/migrate.ts",
     "storage:reconcile": "npx tsx scripts/reconcile-artifact-storage.ts",

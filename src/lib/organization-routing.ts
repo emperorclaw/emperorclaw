@@ -18,6 +18,7 @@ import { quotedPromptText, sanitizePromptText, taskTitle } from "@/lib/task-wake
 
 type LoadedOrganization = Awaited<ReturnType<typeof loadOrganizationCached>>;
 type TaskRow = typeof tasks.$inferSelect;
+type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
 
 /** A second report for the same task and state inside this window is a retry, not news. */
 export const ORG_REPORT_DEDUPE_MS = 10 * 60_000;
@@ -153,7 +154,7 @@ export async function reportTaskOutcomeToManager(input: TaskOutcomeReport): Prom
             if (recent.some((row) => meta(row).taskId === task.id && meta(row).state === state && Date.now() - row.createdAt.getTime() < ORG_REPORT_DEDUPE_MS)) return;
             const lastWaking = recent.find((row) => meta(row).wakes === true);
             const wake = reportShouldWake(lastWaking ? lastWaking.createdAt.getTime() : null, Date.now());
-            const quietSince = wake ? await countQuietReports(companyId, manager.id) : 0;
+            const quietSince = wake ? await countQuietReports(companyId, manager.id, tx) : 0;
             const text = managerReportText({
                 taskId: task.id,
                 title: taskTitle(task),
@@ -164,7 +165,7 @@ export async function reportTaskOutcomeToManager(input: TaskOutcomeReport): Prom
                 redacted: !mcpMayUseProject(access, task.projectId),
                 quietSince,
             });
-            const thread = await ensureDirectThread(companyId, manager.id, null);
+            const thread = await ensureDirectThread(companyId, manager.id, null, tx);
             await appendThreadMessage({
                 companyId,
                 threadId: thread.id,
@@ -174,7 +175,7 @@ export async function reportTaskOutcomeToManager(input: TaskOutcomeReport): Prom
                 // "queued" wakes the manager; "resolved" is already handled, so it waits in the chat.
                 deliveryState: wake ? "queued" : "resolved",
                 metadataJson: { orgReport: true, taskId: task.id, state, reportedBy: workerId, wakes: wake },
-            });
+            }, tx);
         });
     } catch (error) {
         console.warn("[org-report] could not tell the chart manager:", error instanceof Error ? error.message : error);
@@ -182,12 +183,12 @@ export async function reportTaskOutcomeToManager(input: TaskOutcomeReport): Prom
 }
 
 /** Quiet reports since the manager's last waking one (the next waking report mentions them). */
-async function countQuietReports(companyId: string, managerId: string): Promise<number> {
-    const [lastWaking] = await db.select({ createdAt: threadMessages.createdAt }).from(threadMessages).where(and(
+async function countQuietReports(companyId: string, managerId: string, executor: typeof db | Tx = db): Promise<number> {
+    const [lastWaking] = await executor.select({ createdAt: threadMessages.createdAt }).from(threadMessages).where(and(
         eq(threadMessages.companyId, companyId), eq(threadMessages.targetAgentId, managerId),
         sql`${threadMessages.metadataJson}->>'orgReport' = 'true'`, sql`${threadMessages.metadataJson}->>'wakes' = 'true'`,
     )).orderBy(desc(threadMessages.createdAt)).limit(1);
-    const [row] = await db.select({ count: sql<number>`count(*)::int` }).from(threadMessages).where(and(
+    const [row] = await executor.select({ count: sql<number>`count(*)::int` }).from(threadMessages).where(and(
         eq(threadMessages.companyId, companyId), eq(threadMessages.targetAgentId, managerId),
         sql`${threadMessages.metadataJson}->>'orgReport' = 'true'`, sql`${threadMessages.metadataJson}->>'wakes' = 'false'`,
         ...(lastWaking ? [gte(threadMessages.createdAt, lastWaking.createdAt)] : []),

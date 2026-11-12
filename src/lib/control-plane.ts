@@ -32,6 +32,8 @@ import { normalizeDirectChatMode, operationsThreadTitle, PRIVATE_DIRECT_THREAD_T
 import { isMissingSchemaError } from "./schema-compat";
 
 type SenderType = "human" | "agent" | "system";
+type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
+type Executor = typeof db | Tx;
 
 /** Compact reference to a file attached to a message (stored in metadataJson). */
 export type ThreadMessageAttachment = {
@@ -50,14 +52,14 @@ const USER_ID_UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-
  * cross-company ids resolve to null, so the agent falls back to a generic
  * label. Never throws.
  */
-async function resolveHumanSender(companyId: string, senderId: string): Promise<{
+async function resolveHumanSender(companyId: string, senderId: string, executor: Executor = db): Promise<{
     senderName: string;
     senderEmail: string | null;
     senderRole: string | null;
 } | null> {
     if (!USER_ID_UUID_RE.test(senderId)) return null;
     try {
-        const [user] = await db.select({
+        const [user] = await executor.select({
             name: users.displayName,
             email: users.email,
             role: users.roleTitle,
@@ -86,13 +88,13 @@ async function resolveHumanSender(companyId: string, senderId: string): Promise<
  * — only missing members are inserted, and they start "caught up" (lastReadAt =
  * now) so joining a channel does not surface every historical message as unread.
  */
-export async function ensureThreadHumanParticipants(companyId: string, threadId: string) {
-    const members = await db.select({ userId: companyMembers.userId })
+export async function ensureThreadHumanParticipants(companyId: string, threadId: string, executor: Executor = db) {
+    const members = await executor.select({ userId: companyMembers.userId })
         .from(companyMembers)
         .where(eq(companyMembers.companyId, companyId));
     if (members.length === 0) return;
 
-    const existing = await db.select({ ref: threadParticipants.participantRef })
+    const existing = await executor.select({ ref: threadParticipants.participantRef })
         .from(threadParticipants)
         .where(and(
             eq(threadParticipants.companyId, companyId),
@@ -114,7 +116,7 @@ export async function ensureThreadHumanParticipants(companyId: string, threadId:
             lastReadAt: sql`now()`,
         }));
     if (missing.length > 0) {
-        await db.insert(threadParticipants).values(missing).onConflictDoNothing();
+        await executor.insert(threadParticipants).values(missing).onConflictDoNothing();
     }
 }
 
@@ -164,9 +166,9 @@ function isUniqueViolation(error: unknown): boolean {
 }
 
 /** The company's direct-chat mode; "shared" for a database without the column yet. */
-export async function getDirectChatMode(companyId: string): Promise<DirectChatMode> {
+export async function getDirectChatMode(companyId: string, executor: Executor = db): Promise<DirectChatMode> {
     try {
-        const [row] = await db.select({ mode: companies.directChatMode }).from(companies)
+        const [row] = await executor.select({ mode: companies.directChatMode }).from(companies)
             .where(eq(companies.id, companyId)).limit(1);
         return normalizeDirectChatMode(row?.mode);
     } catch (error) {
@@ -175,9 +177,9 @@ export async function getDirectChatMode(companyId: string): Promise<DirectChatMo
     }
 }
 
-async function isCompanyMember(companyId: string, userId: string): Promise<boolean> {
+async function isCompanyMember(companyId: string, userId: string, executor: Executor = db): Promise<boolean> {
     if (!USER_ID_UUID_RE.test(userId)) return false;
-    const [row] = await db.select({ id: companyMembers.id }).from(companyMembers)
+    const [row] = await executor.select({ id: companyMembers.id }).from(companyMembers)
         .where(and(eq(companyMembers.companyId, companyId), eq(companyMembers.userId, userId)))
         .limit(1);
     return Boolean(row);
@@ -196,16 +198,16 @@ async function isCompanyMember(companyId: string, userId: string): Promise<boole
  *
  * No participant ref is ever overwritten.
  */
-export async function ensureDirectThread(companyId: string, agentId: string, userId?: string | null) {
-    const mode = await getDirectChatMode(companyId);
-    const ownerUserId = mode === "private" && userId && (await isCompanyMember(companyId, userId)) ? userId : null;
-    if (ownerUserId) return ensurePrivateDirectThread(companyId, agentId, ownerUserId);
+export async function ensureDirectThread(companyId: string, agentId: string, userId?: string | null, executor: Executor = db) {
+    const mode = await getDirectChatMode(companyId, executor);
+    const ownerUserId = mode === "private" && userId && (await isCompanyMember(companyId, userId, executor)) ? userId : null;
+    if (ownerUserId) return ensurePrivateDirectThread(companyId, agentId, ownerUserId, executor);
 
     // Serialize creation per (company, agent) with a transaction-scoped advisory
     // lock. Without it, two concurrent callers both see "no thread yet" and each
     // insert one, permanently splitting the agent's DM history across duplicate
     // threads (a message written to the loser thread becomes unreachable).
-    const thread = await db.transaction(async (tx) => {
+    const ensure = async (tx: Executor) => {
         await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${`direct-thread:${companyId}:${agentId}`}))`);
 
         // A private thread is never the shared one, even after its owner is
@@ -248,15 +250,16 @@ export async function ensureDirectThread(companyId: string, agentId: string, use
         });
 
         return created;
-    });
+    };
+    const thread = executor === db ? await db.transaction((tx) => ensure(tx)) : await ensure(executor);
 
-    await ensureThreadHumanParticipants(companyId, thread.id);
+    await ensureThreadHumanParticipants(companyId, thread.id, executor);
     return thread;
 }
 
 /** Private mode: one person's own thread with an agent (see ensureDirectThread). */
-async function ensurePrivateDirectThread(companyId: string, agentId: string, ownerUserId: string) {
-    return db.transaction(async (tx) => {
+async function ensurePrivateDirectThread(companyId: string, agentId: string, ownerUserId: string, executor: Executor = db) {
+    const ensure = async (tx: Executor) => {
         await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${`direct-thread:${companyId}:${agentId}:${ownerUserId}`}))`);
 
         const [existing] = await tx.select().from(messageThreads)
@@ -289,7 +292,8 @@ async function ensurePrivateDirectThread(companyId: string, agentId: string, own
         ]);
 
         return created;
-    });
+    };
+    return executor === db ? db.transaction((tx) => ensure(tx)) : ensure(executor);
 }
 
 /**
@@ -838,9 +842,9 @@ export async function appendThreadMessage(input: {
     mirrorToLegacyChat?: boolean;
     createdAt?: Date;
     deliveryState?: ExecutionState;
-}) {
+}, executor: Executor = db) {
     const senderIdentity = input.senderType === "human" && input.senderId
-        ? await resolveHumanSender(input.companyId, input.senderId)
+        ? await resolveHumanSender(input.companyId, input.senderId, executor)
         : null;
 
     // Tool-less objective fallback: an agent reply may carry an isolated
@@ -899,7 +903,7 @@ export async function appendThreadMessage(input: {
         }
     }
 
-    const [threadMessage] = await db.insert(threadMessages).values({
+    const [threadMessage] = await executor.insert(threadMessages).values({
         threadId: input.threadId,
         companyId: input.companyId,
         senderType: input.senderType,
@@ -925,7 +929,7 @@ export async function appendThreadMessage(input: {
     }
 
     if (input.mirrorToLegacyChat) {
-        await db.insert(chatMessages).values({
+        await executor.insert(chatMessages).values({
             companyId: input.companyId,
             threadId: input.threadId,
             senderType: input.senderType,

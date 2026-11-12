@@ -48,8 +48,36 @@ export async function getSchema() {
 /** Truncate everything we touch and clear the cached instance company. */
 export async function resetDb() {
     const db = await getDb();
+    const { settleTaskOutcomeReports } = await import("@/lib/organization-routing");
+    // Task outcome reports are fire-and-forget: one queued by the previous test
+    // can still be writing. Give it a moment to finish, but bounded — a report
+    // that never settles must not hang the suite.
+    await Promise.race([
+        settleTaskOutcomeReports(),
+        new Promise((resolve) => setTimeout(resolve, 10_000).unref()),
+    ]);
     const { sql } = await import("drizzle-orm");
-    await db.execute(sql`TRUNCATE TABLE users, companies, company_members, company_tokens, agents, token_usage_log, instance_settings, invitations, llm_pricing RESTART IDENTITY CASCADE`);
+    // A lingering writer and this TRUNCATE can deadlock: the writer's next
+    // statement queues behind our AccessExclusiveLock request while we wait for
+    // its AccessShareLock (this is what kept CI red for hours). A lock_timeout
+    // aborts our request instead, which releases the queue so the writer can
+    // finish; then a retry succeeds.
+    for (let attempt = 1; ; attempt += 1) {
+        try {
+            await db.transaction(async (tx) => {
+                await tx.execute(sql`SET LOCAL lock_timeout = '3s'`);
+                await tx.execute(sql`TRUNCATE TABLE users, companies, company_members, company_tokens, agents, token_usage_log, instance_settings, invitations, llm_pricing RESTART IDENTITY CASCADE`);
+            });
+            break;
+        } catch (error) {
+            // Drizzle wraps the driver error, so the lock timeout is on the cause.
+            const text = [error, (error as { cause?: unknown })?.cause]
+                .map((part) => String((part as Error)?.message ?? part ?? ""))
+                .join(" | ");
+            if (attempt >= 10 || !/lock timeout|canceling statement/i.test(text)) throw error;
+            await new Promise((resolve) => setTimeout(resolve, 250));
+        }
+    }
     const { clearInstanceCompanyCache } = await import("@/lib/instance");
     clearInstanceCompanyCache();
 }
