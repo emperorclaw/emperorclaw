@@ -11,6 +11,24 @@ ships in the release notes.
 
 ## [Unreleased]
 
+## [0.33.0] — 2026-11-13
+
+### Added
+
+- **Several chats with one agent.** Start a **New chat** with any agent from the chat header and switch between chats with the switcher next to it. Each chat has its own context, so a quick question no longer waits behind a long job or drags the whole history along. Your first chat with each agent stays as the **main chat**: tasks, objectives and links that don't name a chat keep landing there, so nothing changes if you never open a second one.
+- **Archive and restore.** Rename or archive extra chats from the chat menu; archived chats are read-only and one click restores them. Archiving stops the work still queued in that chat. **All chats** lists every chat with an agent, including archived ones.
+- **Limits for admins.** Settings → Direct chats lets admins turn new chats off, set how many open chats each person may keep per agent (default 20) and how long an idle extra chat waits before it archives itself (default 30 days, or never). Turning it off keeps existing chats usable. Creating, archiving and restoring chats is recorded in Activity, without titles or content.
+
+### Changed
+
+- **Stop stops one chat.** Stop inside a chat now stops only that chat; the agent keeps working in your other chats. Runtimes older than this release can only stop everything, and the button asks before it does. **Stop all chats** on the agent page is limited to owners, admins and the agent's owner.
+- **Honest queue status.** A chat waiting for the agent now says how many of your other chats it is busy with, using the runtime's real limit on parallel chats.
+- **Hermes bridge 0.33.0.** Adds thread-scoped Stop and reports its parallel-chat limit. Update runtimes with `emperor-hermes update`.
+
+### Fixed
+
+- Messages queued in a chat that was archived are no longer delivered to the runtime later.
+
 ## [0.32.0] — 2026-11-11
 
 ### Added
