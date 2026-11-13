@@ -512,7 +512,8 @@ async function loadCreatorDirectChats(companyId: string, userId: string) {
                and t.archived_at is null
                and t.direct_agent_id is not null
                and case when (select c.direct_chat_mode from companies c where c.id = ${companyId}) = 'private'
-                        then t.owner_user_id = ${userId}
+                        -- The person's MAIN chat with each agent, never an extra chat.
+                        then t.owner_user_id = ${userId} and t.is_main
                         else not t.is_private and t.owner_user_id is null end
              order by t.direct_agent_id, t.created_at
         )

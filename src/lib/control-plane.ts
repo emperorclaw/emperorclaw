@@ -30,6 +30,7 @@ import { isAgentPairThread } from "./groups";
 import { parseObjectiveStatusMarker, OBJECTIVE_STATUS_METADATA_KEY } from "./objective-status-marker";
 import { normalizeDirectChatMode, operationsThreadTitle, PRIVATE_DIRECT_THREAD_TITLE, agentTokenMayUseThread, userMayUseThread, type DirectChatMode, type ThreadPrivacy } from "./direct-chat-mode";
 import { isMissingSchemaError } from "./schema-compat";
+import { ChatArchivedError } from "./multi-chat";
 
 type SenderType = "human" | "agent" | "system";
 type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
@@ -257,43 +258,65 @@ export async function ensureDirectThread(companyId: string, agentId: string, use
     return thread;
 }
 
-/** Private mode: one person's own thread with an agent (see ensureDirectThread). */
+/**
+ * The transaction-scoped advisory lock that serializes every change to one
+ * person's chats with one agent: get-or-create of the main chat, creating an
+ * extra chat (cap check) and restoring one (lib/private-chats.ts).
+ */
+export async function lockPrivateChats(tx: Pick<typeof db, "execute">, companyId: string, agentId: string, ownerUserId: string) {
+    await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${`direct-thread:${companyId}:${agentId}:${ownerUserId}`}))`);
+}
+
+/**
+ * Private mode: one person's MAIN chat with an agent (see ensureDirectThread).
+ * Their extra chats (is_main = false, lib/private-chats.ts) are never returned
+ * here: every caller without a thread id lands in the main chat.
+ */
 async function ensurePrivateDirectThread(companyId: string, agentId: string, ownerUserId: string, executor: Executor = db) {
     const ensure = async (tx: Executor) => {
-        await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${`direct-thread:${companyId}:${agentId}:${ownerUserId}`}))`);
-
-        const [existing] = await tx.select().from(messageThreads)
-            .where(and(
-                eq(messageThreads.companyId, companyId),
-                eq(messageThreads.type, "direct"),
-                eq(messageThreads.directAgentId, agentId),
-                eq(messageThreads.ownerUserId, ownerUserId),
-                isNull(messageThreads.archivedAt),
-            ))
-            .orderBy(messageThreads.createdAt)
-            .limit(1);
-        if (existing) return existing;
-
-        const [created] = await tx.insert(messageThreads).values({
-            companyId,
-            type: "direct",
-            title: PRIVATE_DIRECT_THREAD_TITLE,
-            createdByType: "human",
-            createdById: ownerUserId,
-            directAgentId: agentId,
-            ownerUserId,
-            isPrivate: true,
-        }).returning();
-
-        // Only the owner: no ensureThreadHumanParticipants fan-out here.
-        await tx.insert(threadParticipants).values([
-            { threadId: created.id, companyId, participantType: "agent", participantId: agentId, role: "member" },
-            { threadId: created.id, companyId, participantType: "human", participantRef: ownerUserId, role: "member", lastReadAt: sql`now()` },
-        ]);
-
-        return created;
+        await lockPrivateChats(tx, companyId, agentId, ownerUserId);
+        return getOrCreateMainChatLocked(tx, companyId, agentId, ownerUserId);
     };
     return executor === db ? db.transaction((tx) => ensure(tx)) : ensure(executor);
+}
+
+/**
+ * The person's main chat with an agent, created when missing. The caller must
+ * hold lockPrivateChats for (company, agent, person) in `tx` (creating an extra
+ * chat calls it first, so the open-chat cap always counts the main chat).
+ */
+export async function getOrCreateMainChatLocked(tx: Pick<typeof db, "select" | "insert">, companyId: string, agentId: string, ownerUserId: string) {
+    const [existing] = await tx.select().from(messageThreads)
+        .where(and(
+            eq(messageThreads.companyId, companyId),
+            eq(messageThreads.type, "direct"),
+            eq(messageThreads.directAgentId, agentId),
+            eq(messageThreads.ownerUserId, ownerUserId),
+            eq(messageThreads.isMain, true),
+            isNull(messageThreads.archivedAt),
+        ))
+        .limit(1);
+    if (existing) return existing;
+
+    const [created] = await tx.insert(messageThreads).values({
+        companyId,
+        type: "direct",
+        title: PRIVATE_DIRECT_THREAD_TITLE,
+        createdByType: "human",
+        createdById: ownerUserId,
+        directAgentId: agentId,
+        ownerUserId,
+        isPrivate: true,
+        isMain: true,
+    }).returning();
+
+    // Only the owner: no ensureThreadHumanParticipants fan-out here.
+    await tx.insert(threadParticipants).values([
+        { threadId: created.id, companyId, participantType: "agent", participantId: agentId, role: "member" },
+        { threadId: created.id, companyId, participantType: "human", participantRef: ownerUserId, role: "member", lastReadAt: sql`now()` },
+    ]);
+
+    return created;
 }
 
 /**
@@ -311,7 +334,7 @@ export function canUseDirectThread(thread: ThreadPrivacy, userId: string | null 
  * it with the membership removal.
  */
 export async function archivePrivateThreadsOf(companyId: string, userId: string, executor: Pick<typeof db, "update"> = db) {
-    await executor.update(messageThreads).set({ archivedAt: new Date() }).where(and(
+    await executor.update(messageThreads).set({ archivedAt: new Date(), archiveReason: "member_left" }).where(and(
         eq(messageThreads.companyId, companyId),
         eq(messageThreads.type, "direct"),
         eq(messageThreads.ownerUserId, userId),
@@ -829,7 +852,7 @@ export async function unreachableMentionedAgents(companyId: string, senderAgentI
     return roster.filter((a) => mentioned.has(a.id) && !allowedAgentIds.has(a.id));
 }
 
-export async function appendThreadMessage(input: {
+export type AppendThreadMessageInput = {
     companyId: string;
     threadId: string;
     senderType: SenderType;
@@ -842,11 +865,34 @@ export async function appendThreadMessage(input: {
     mirrorToLegacyChat?: boolean;
     createdAt?: Date;
     deliveryState?: ExecutionState;
-}, executor: Executor = db) {
+    /**
+     * Refuse (ChatArchivedError) when the thread is archived, checked under a
+     * share lock on the thread row in the same transaction as the insert, so a
+     * concurrent archive (which locks the row FOR UPDATE before cancelling the
+     * chat's open work) either sees this message or makes it fail.
+     */
+    requireLiveThread?: boolean;
+};
+
+type MessageExecutor = Pick<typeof db, "insert" | "execute">;
+
+/** A prepared message: every read (sender, scope, marker) done, nothing written yet. */
+export type PreparedThreadMessage = {
+    input: AppendThreadMessageInput;
+    values: typeof threadMessages.$inferInsert;
+};
+
+/**
+ * Reads everything a message needs before it is stored (the human sender's
+ * identity, agent reach, the objective marker), without writing anything.
+ * Split from the insert so a caller can store it inside its own transaction
+ * (lib/private-chats.ts creates a chat and its first message atomically)
+ * without doing these reads on a second pooled connection while it holds a lock.
+ */
+export async function prepareThreadMessage(input: AppendThreadMessageInput, executor: Executor = db): Promise<PreparedThreadMessage> {
     const senderIdentity = input.senderType === "human" && input.senderId
         ? await resolveHumanSender(input.companyId, input.senderId, executor)
         : null;
-
     // Tool-less objective fallback: an agent reply may carry an isolated
     // EMPEROR_OBJECTIVE_STATUS marker. Sanitize it BEFORE persisting, mirroring
     // or broadcasting, so the control line is never visible chat text. An
@@ -903,41 +949,74 @@ export async function appendThreadMessage(input: {
         }
     }
 
-    const [threadMessage] = await executor.insert(threadMessages).values({
-        threadId: input.threadId,
-        companyId: input.companyId,
-        senderType: input.senderType,
-        senderId: input.senderId || null,
-        targetAgentId: input.targetAgentId || null,
-        text,
-        metadataJson: {
-            ...metadata,
-            ...(senderIdentity || {}),
-            ...(input.attachments && input.attachments.length > 0
-                ? { attachments: input.attachments }
-                : {}),
+    const createdAt = input.createdAt || new Date();
+    return {
+        input: { ...input, text, createdAt },
+        values: {
+            threadId: input.threadId,
+            companyId: input.companyId,
+            senderType: input.senderType,
+            senderId: input.senderId || null,
+            targetAgentId: input.targetAgentId || null,
+            text,
+            metadataJson: {
+                ...metadata,
+                ...(senderIdentity || {}),
+                ...(input.attachments && input.attachments.length > 0
+                    ? { attachments: input.attachments }
+                    : {}),
+            },
+            deliveryState: input.deliveryState || (input.senderType === "human" ? "queued" : "resolved"),
+            platformMessageId: input.platformMessageId || null,
+            createdAt,
         },
-        deliveryState: input.deliveryState || (input.senderType === "human" ? "queued" : "resolved"),
-        platformMessageId: input.platformMessageId || null,
-        createdAt: input.createdAt || new Date(),
-    }).returning();
+    };
+}
+
+/**
+ * Stores a prepared message with `executor` (a transaction, or db). Writes
+ * only: the agent-message side effects (loop guard, notifications) run in
+ * appendThreadMessage after the insert, never here.
+ */
+export async function insertPreparedThreadMessage(executor: MessageExecutor, prepared: PreparedThreadMessage, threadId = prepared.values.threadId) {
+    const { input } = prepared;
+    if (input.requireLiveThread) {
+        const locked = await executor.execute(sql`SELECT archived_at FROM message_threads WHERE id = ${threadId}::uuid AND company_id = ${input.companyId}::uuid FOR SHARE`);
+        const row = (locked.rows ?? [])[0] as { archived_at: unknown } | undefined;
+        if (row?.archived_at) throw new ChatArchivedError();
+    }
+    const [threadMessage] = await executor.insert(threadMessages).values({ ...prepared.values, threadId }).returning();
+    if (input.mirrorToLegacyChat) {
+        await executor.insert(chatMessages).values({
+            companyId: input.companyId,
+            threadId,
+            senderType: input.senderType,
+            fromUserId: input.senderId || null,
+            text: input.text,
+            platformMessageId: input.platformMessageId || null,
+            createdAt: input.createdAt || new Date(),
+        });
+    }
+    return threadMessage;
+}
+
+/**
+ * Stores a message. Pass `executor` (a transaction) to read and insert on the
+ * caller's connection: a caller holding a transaction must never need a second
+ * pooled connection here (see reportTaskOutcomeToManager).
+ */
+export async function appendThreadMessage(input: AppendThreadMessageInput, executor: Executor = db) {
+    const prepared = await prepareThreadMessage(input, executor);
+    const threadMessage = executor !== db
+        ? await insertPreparedThreadMessage(executor, prepared)
+        : input.requireLiveThread
+            ? await db.transaction((tx) => insertPreparedThreadMessage(tx, prepared))
+            : await insertPreparedThreadMessage(db, prepared);
 
     if (input.senderType === "agent") {
         await postLoopGuardNoticeIfNeeded(input.companyId, input.threadId);
         // Mentions of people and pending decisions (```choices) notify them.
         await notifyAgentMessage(input.companyId, threadMessage);
-    }
-
-    if (input.mirrorToLegacyChat) {
-        await executor.insert(chatMessages).values({
-            companyId: input.companyId,
-            threadId: input.threadId,
-            senderType: input.senderType,
-            fromUserId: input.senderId || null,
-            text,
-            platformMessageId: input.platformMessageId || null,
-            createdAt: input.createdAt || new Date(),
-        });
     }
 
     return threadMessage;

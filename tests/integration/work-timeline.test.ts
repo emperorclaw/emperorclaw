@@ -118,7 +118,7 @@ maybe("the owner sees their own private chat, never another person's", async () 
     const chatRun = tl.spans.find((s) => s.id === t.ownerChatRun.id);
     assert.ok(chatRun, "the owner's own private chat run appears");
     assert.equal(chatRun.kind, "chat");
-    assert.ok(chatRun.href, "the chat bar deep-links to the thread");
+    assert.equal(chatRun.href, `/messages?agent=${t.atlas.id}&thread=${t.ownerChatRun.threadId}`, "the chat bar deep-links to the exact chat");
     assert.ok(!ids.has(t.otherChatRun.id), "another person's private chat run never appears");
     assert.ok(!ids.has(t.otherPrivateTaskRun.id), "another person's private-thread task run never appears");
     assert.ok(ids.has(t.atlasInRun.id) && ids.has(t.atlasOutRun.id) && ids.has(t.novaRun.id));

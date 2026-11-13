@@ -193,7 +193,93 @@
   },
   "directChat": {
     "requestSource": "{source} (via API)",
-    "requestSourceOnBehalf": "{source} (via API) · on behalf of {by}"
+    "requestSourceOnBehalf": "{source} (via API) · on behalf of {by}",
+    "chats": {
+      "mainChat": "Main chat",
+      "untitled": "Untitled chat",
+      "newChat": "New chat",
+      "archivedChat": "Archived chat",
+      "working": "Working",
+      "queuedCount": "{count} queued",
+      "unread": "{count, plural, one {# unread message} other {# unread messages}}",
+      "noMessages": "No messages yet",
+      "switcherLabel": "Switch chat. Current chat: {title}",
+      "switcherDescription": "Pick one of your chats with this agent, or open the full list.",
+      "otherUnread": "Unread messages in another chat",
+      "chatsWith": "Chats with {name}",
+      "countHint": "{open} of {limit}",
+      "countHintLabel": "{open} of {limit} open chats",
+      "allChats": "All chats",
+      "allChatsMore": "All chats ({count} more)",
+      "allChatsTitle": "All chats with {name}",
+      "allChatsDescription": "Your chats with this agent. Only you can see them.",
+      "filterPlaceholder": "Filter by title",
+      "filterLabel": "Filter chats by title",
+      "groups": {
+        "today": "Today",
+        "last7Days": "Last 7 days",
+        "older": "Older"
+      },
+      "noMatches": "No chats match this filter.",
+      "archivedSection": "Archived",
+      "showArchived": "Show archived chats",
+      "noArchived": "No archived chats.",
+      "loading": "Loading…",
+      "chatMenu": "Chat options",
+      "rename": "Rename",
+      "renameTitle": "Rename chat",
+      "renameDescription": "Only you see this name.",
+      "renameLabel": "Chat name",
+      "archive": "Archive",
+      "archiveNamed": "Archive {title}",
+      "archivedDone": "Archived",
+      "restore": "Restore",
+      "restoreNamed": "Restore {title}",
+      "mainChatLocked": "The main chat can't be renamed or archived.",
+      "cancel": "Cancel",
+      "save": "Save",
+      "ok": "OK",
+      "tryAgain": "Try again",
+      "limitTitle": "Too many open chats",
+      "limitDescription": "You have {open} of {limit} open chats with this agent. Archive one to start another; you can restore it later.",
+      "limitListLabel": "Least recently used chats",
+      "limitNoSuggestions": "The agent is busy in every other chat. Open All chats to archive one.",
+      "newChatEmptyTitle": "New chat with {name}",
+      "newChatEmptyBody": "{name} starts this chat without your earlier conversation. Nothing is saved until you send the first message.",
+      "newChatPlaceholder": "Start a new chat with {name}…",
+      "archivedNotice": "{reason}. This chat is read-only until you restore it.",
+      "queuedOtherChats": "{count, plural, one {Queued. {name} is working in # other chat.} other {Queued. {name} is working in # other chats.}}",
+      "stopThisChatTitle": "Stop this chat and clear its queue",
+      "stopThisChatLabel": "Stop this chat",
+      "stopAllChatsTitle": "This stops all of {name}'s chats",
+      "stopAllChatsLabel": "Stop all of the agent's chats",
+      "stopAll": "Stop all chats",
+      "stopAllConfirm": "Stop all chats",
+      "stopAllConfirmTitle": "Stop {name} in every chat?",
+      "stopAllConfirmBody": "This stops {name}'s work in all chats, other people's included, and clears every queued message.",
+      "stopOlderRuntimeTitle": "This stops all of {name}'s chats",
+      "stopOlderRuntimeBody": "{name}'s runtime can't stop a single chat yet. Stopping now also stops its work in your other chats and in other people's chats.",
+      "archiveReason": {
+        "manual": "Archived by you",
+        "idle": "Archived after a long time without messages",
+        "member_left": "Archived when its owner left the company",
+        "agent_sealed": "Archived when access to the agent was limited"
+      },
+      "errors": {
+        "title": "Couldn't update the chat",
+        "limitReached": "You have reached the limit of open chats with this agent. Archive one to continue.",
+        "disabled": "New chats are turned off for this company.",
+        "mainCannotArchive": "The main chat can't be archived.",
+        "mainCannotRename": "The main chat keeps its name.",
+        "archived": "This chat is archived. Restore it to continue.",
+        "rateLimited": "Too many new chats. Try again in a minute.",
+        "generic": "Something went wrong. Try again.",
+        "objectiveRunning": "The agent's objective runs in this chat. Stop or complete it before archiving the chat."
+      },
+      "archivedBadge": "Archived",
+      "alreadyStarted": "This chat was already started with your first message. The new text was not sent; it is back in the box.",
+      "queuedBusyElsewhere": "Queued. {name} is busy with other work; it will pick this up next."
+    }
   },
   "agents": {
     "roles": {
@@ -413,7 +499,8 @@
         "permission_changed": "<who>{actor}</who> changed a company action permission {detail}",
         "settings_changed": "<who>{actor}</who> changed company settings {detail}",
         "host_pairing_created": "<who>{actor}</who> created a code to connect a host {detail}",
-        "direct_chat_mode_changed": "<who>{actor}</who> changed company settings {detail}"
+        "direct_chat_mode_changed": "<who>{actor}</who> changed company settings {detail}",
+        "idle_chats_archived": "<who>{actor}</who> archived idle private chats {detail}"
       },
       "task": {
         "state_changed": "<who>{actor}</who> moved <target>task {label}</target> {detail}",
@@ -494,6 +581,11 @@
         "paused": "<who>{actor}</who> paused <target>automation {label}</target> {detail}",
         "resumed": "<who>{actor}</who> resumed <target>automation {label}</target> {detail}",
         "updated": "<who>{actor}</who> updated <target>automation {label}</target> {detail}"
+      },
+      "thread": {
+        "created": "<who>{actor}</who> started <target>a chat with {label}</target> {detail}",
+        "archived": "<who>{actor}</who> archived <target>a chat with {label}</target> {detail}",
+        "restored": "<who>{actor}</who> restored <target>a chat with {label}</target> {detail}"
       }
     },
     "unnamedActors": {
@@ -530,7 +622,14 @@
       },
       "toPath": "to {path}",
       "toTopLevel": "to the top level",
-      "taskCount": "({count} tasks)"
+      "taskCount": "({count} tasks)",
+      "archiveReason": {
+        "manual": "(by its owner)",
+        "idle": "(after being idle)",
+        "member_left": "(when its owner left)",
+        "agent_sealed": "(when the agent was sealed)"
+      },
+      "chatCount": "({count, plural, one {# chat} other {# chats}})"
     },
     "words": {
       "aPerson": "a person",
@@ -548,7 +647,8 @@
         "agentRoutine": "daily agent routine",
         "instance": "instance settings",
         "modules": "modules",
-        "approvals": "approval routing"
+        "approvals": "approval routing",
+        "multiChat": "multiple chats"
       },
       "permissions": {
         "off": "off",
@@ -624,6 +724,22 @@
       "teamAuto": "Automatic (each agent's manager)",
       "agentHint": "To choose approvers for one agent, open that agent's Actions tab.",
       "cleared": "Removed approvers were cleared. Save each team to keep the change."
+    },
+    "directChats": {
+      "multiChat": {
+        "title": "Several chats per agent",
+        "intro": "People can keep more than one private chat with the same agent, each with its own context.",
+        "enabledLabel": "Allow new chats",
+        "enabledDescription": "People can start a new chat with an agent next to their main chat.",
+        "maxOpenLabel": "Open chats per person and agent",
+        "maxOpenHint": "From {min} to {max}. At the limit, people archive a chat to start another.",
+        "idleLabel": "Archive idle chats after",
+        "idleNever": "Never",
+        "idleDays": "{count, plural, one {# day} other {# days}}",
+        "idleHint": "Extra chats without messages for this long are archived; one click restores them. The main chat is never archived.",
+        "offNote": "Turning this off keeps existing chats usable: nobody loses a chat, and chats can still be archived. Only new chats and restores are blocked.",
+        "sharedNote": "Applies in private mode only. In shared mode each agent has one chat."
+      }
     }
   },
   "updatePanel": {

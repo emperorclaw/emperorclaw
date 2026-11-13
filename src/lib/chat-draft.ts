@@ -18,3 +18,12 @@ export function takeChatDraft(agentId: string): string | null {
         return null;
     }
 }
+
+/** Whether a handed-over draft waits for this agent, without taking it (it lands in the agent's main chat). */
+export function hasChatDraft(agentId: string): boolean {
+    try {
+        return window.sessionStorage.getItem(chatDraftKey(agentId)) !== null;
+    } catch {
+        return false;
+    }
+}

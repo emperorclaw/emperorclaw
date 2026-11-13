@@ -141,7 +141,8 @@ class AgentRuntime:
     async def register(self, *, boot: bool = False) -> None:
         body = registration_body(runtime_id=self.identity.runtime_id, agent_id=self.identity.agent_id,
                                  hostname=self.cfg.hostname, topology=self.cfg.topology, identity=self.link.identity,
-                                 started_at=self.started_at, fingerprint=host_fingerprint())
+                                 started_at=self.started_at, fingerprint=host_fingerprint(),
+                                 max_parallel_turns=self.cfg.max_parallel_turns)
         delay, deadline = 5.0, time.monotonic() + 900
         while True:
             try:
@@ -214,11 +215,11 @@ class AgentRuntime:
                 for message in batch.messages:
                     self._accepted.pop(message.id, None)
 
-    async def _thread_reset(self, thread_id: str) -> None:
-        """A thread-scoped replace: pause the objective only when it lives in that thread."""
+    async def _thread_reset(self, thread_id: str, action: str = "replace") -> None:
+        """A thread-scoped kill or replace: pause the objective only when it lives in that thread."""
         goal = self.objectives.goal
         if goal and goal.get("threadId") == thread_id:
-            await self.objectives.pause_all("Objective paused by Replace in its thread.")
+            await self.objectives.pause_all(f"Objective paused by {'Stop' if action == 'kill' else 'Replace'} in its thread.")
 
     def _drop_goal_step(self) -> None:
         """A queued objective step that will not run now; the objective loop queues it again."""
@@ -423,7 +424,8 @@ class AgentRuntime:
                 await flush_usage(self.client.request, self.replies.pending_usage)
                 if now - last["outbox"] >= 15 and not self.standby_reason:
                     last["outbox"] = now
-                    await self.outbox.flush(self.replies.send, self.replies.on_delivered, self.replies.on_given_up)
+                    await self.outbox.flush(self.replies.send, self.replies.on_delivered, self.replies.on_given_up,
+                                            on_dropped=self.replies.on_dropped)
                 if now - last["goals"] >= 5 and not self.standby_reason:
                     last["goals"] = now
                     await self.objectives.process_commands(active_threads=tuple(self.scheduler.in_flight()))

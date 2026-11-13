@@ -162,6 +162,9 @@ maybe("the owner sees one merged, newest-first story with every source", async (
     assert.equal(runs.get(t.privateRun.id)?.private, false);
     assert.equal(runs.get(t.privateRun.id)?.error, "quoted secret numbers");
     assert.equal(runs.get(t.privateRun.id)?.reply?.excerpt, "secret numbers for Olive");
+    // Their own private chat links to that exact chat, live run included.
+    assert.equal(runs.get(t.privateRun.id)?.threadHref, `/messages?agent=${t.atlas.id}&thread=${t.privateRun.threadId}`);
+    assert.equal(story.live.runs[0].threadHref, `/messages?agent=${t.atlas.id}&thread=${t.liveRun.threadId}`);
 
     // Approvals appear as request + decision.
     const approvalPhases = story.entries.filter((entry) => entry.kind === "approval").map((entry) => entry.kind === "approval" ? `${entry.actionType}:${entry.phase}` : "");

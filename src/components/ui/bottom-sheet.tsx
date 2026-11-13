@@ -22,12 +22,15 @@ export function BottomSheetContent({
     children,
     onDismiss,
     className,
+    onCloseAutoFocus,
 }: {
     /** Title row (put the DialogTitle here); it doubles as the drag handle. */
     header: ReactNode;
     children: ReactNode;
     onDismiss: () => void;
     className?: string;
+    /** Where focus goes when the sheet closes (Radix Dialog onCloseAutoFocus). */
+    onCloseAutoFocus?: (event: Event) => void;
 }) {
     const tc = useTranslations("common");
     const controls = useDragControls();
@@ -38,6 +41,7 @@ export function BottomSheetContent({
     return (
         <DialogContent
             showCloseButton={false}
+            onCloseAutoFocus={onCloseAutoFocus}
             className={cn("ec-sheet top-auto bottom-0 left-0 max-w-none translate-x-0 translate-y-0 gap-0 rounded-none border-0 bg-transparent p-0 shadow-none sm:max-w-none", className)}
         >
             <motion.div

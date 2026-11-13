@@ -6,7 +6,7 @@ import { useVirtualizer } from "@tanstack/react-virtual";
 import { useSession } from "next-auth/react";
 import { useFormatter, useTranslations } from "next-intl";
 import { useCopy } from "@/lib/i18n/use-copy";
-import { IconArrowUp, IconPaperclip, IconPlayerStop, IconRobot, IconMicrophone, IconSend, IconSquare, IconTrash, IconUser } from "@tabler/icons-react";
+import { IconArchive, IconArrowUp, IconPaperclip, IconPlayerStop, IconRestore, IconRobot, IconMicrophone, IconSend, IconSquare, IconTrash, IconUser } from "@tabler/icons-react";
 import { DeliveryInspector } from "@/components/delivery-inspector";
 import { ApprovalCard } from "@/components/approval-card";
 import { TypingReveal } from "@/components/typing-reveal";
@@ -32,6 +32,11 @@ import { useLivePoll } from "@/lib/use-realtime";
 import { summarizeAlsoWorking, type RunningRun } from "@/lib/agent-visibility";
 import type { RunLive } from "@/lib/run-events";
 import { Select } from "@/components/ui/select";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
+import { refreshNavBadges } from "@/components/use-nav-badges";
+import { ChatLimitDialog, DirectChatBar, patchChat, useAgentChats, useArchiveReasonLabel, useChatErrorMessage, useChatLabel } from "@/components/direct-chat-switcher";
+import { newChatClientKey, queuedBusyState } from "@/lib/multi-chat";
+import { readPendingNewChatKey, readThreadDraft, writePendingNewChatKey, writeThreadDraft } from "@/lib/chat-selection";
 
 const composerIconButton = "flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-zinc-400 transition-colors hover:bg-zinc-800 hover:text-zinc-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50";
 
@@ -42,7 +47,40 @@ type DirectThread = {
     type: string;
     title: string | null;
     createdAt: string;
+    /** Private mode: the person's own chat (set) vs. the agent's shared/Operations thread (null). */
+    ownerUserId?: string | null;
+    isMain?: boolean;
+    archivedAt?: string | null;
+    archiveReason?: string | null;
 };
+
+/** The chat on screen as one key: a New chat composer, a chat by id, or the main chat (null id). */
+function chatViewKey(threadId: string | null, newChatKey: string | null): string {
+    return newChatKey ? `new:${newChatKey}` : threadId ?? "main";
+}
+
+/** GET /api/chat `runtime` for direct chats (multi-chat P1). */
+type ChatRuntime = {
+    /** What Stop in this chat stops: this chat, or all of the agent's chats (older runtime). */
+    stopScope: "thread" | "agent";
+    /** Chats the runtime answers at once; null when it does not say. */
+    maxParallelTurns: number | null;
+    /** The viewer may stop the agent in every chat (owners, admins, the agent's owner). */
+    canStopAll?: boolean;
+};
+
+/** A refused POST /api/chat: `{ error, code, ...extra }`. */
+class ChatSendError extends Error {
+    constructor(message: string, readonly code: string | null, readonly extra: Record<string, unknown>) {
+        super(message);
+    }
+}
+
+async function throwSendError(res: Response, fallback: string): Promise<never> {
+    const data = await res.json().catch(() => ({})) as Record<string, unknown>;
+    const { error, code, ...extra } = data;
+    throw new ChatSendError(typeof error === "string" && error ? error : fallback, typeof code === "string" ? code : null, extra);
+}
 
 type DirectMessage = {
     id: string;
@@ -122,14 +160,27 @@ export function AgentDirectChat({
     canSend = true,
     onAgentReply,
     directThreadId = null,
+    onThreadChange,
+    onUnreadTotal,
+    showStopAll = false,
 }: {
     agentId: string;
     agentName: string;
     hideHeader?: boolean;
-    /** A specific direct thread of this agent (e.g. its Operations thread); default: the viewer's own. */
+    /** A specific direct thread of this agent (its Operations thread, or one of the viewer's chats); default: the viewer's main chat. */
     directThreadId?: string | null;
     canSend?: boolean;
     onAgentReply?: (message: { text: string; createdAt: string }) => void;
+    /**
+     * The viewer switched to another of their chats with the agent (null: back to the main chat).
+     * `archived`: the chat on screen is archived (true) or was just restored (false); an archived
+     * chat is not remembered as the chat to reopen.
+     */
+    onThreadChange?: (threadId: string | null, info?: { archived?: boolean }) => void;
+    /** Unread messages across all of the viewer's open chats with the agent, kept live. */
+    onUnreadTotal?: (count: number) => void;
+    /** The agent page: offer "Stop all chats" (agent-wide) to those allowed to use it. */
+    showStopAll?: boolean;
 }) {
     const t = useTranslations("directChat");
     const render = useCopy();
@@ -141,6 +192,10 @@ export function AgentDirectChat({
         if (!failure) return null;
         return failure.attempts ? t("failedAfter", { count: failure.attempts }) : t("failed");
     };
+    const tChats = useTranslations("directChat.chats");
+    const chatLabel = useChatLabel();
+    const archiveReasonLabel = useArchiveReasonLabel();
+    const chatErrorMessage = useChatErrorMessage();
     const { data: session } = useSession();
     // session.user.id is set in the auth session callback at runtime but not
     // part of next-auth's default user type — access it with the same cast the
@@ -163,13 +218,53 @@ export function AgentDirectChat({
     // The agent's running runs across all of its threads, for the "Also working
     // on" row and the busy/queued signal.
     const [runningRuns, setRunningRuns] = useState<RunningRun[]>([]);
+    // The chat on screen: one of the viewer's chats by id, or null = the main chat
+    // (resolved by the server). `newChatKey` is set while a New chat composer is
+    // open: nothing exists until its first message is sent with that key.
+    const [activeThreadId, setActiveThreadId] = useState<string | null>(directThreadId);
+    const [newChatKey, setNewChatKey] = useState<string | null>(null);
+    // One AgentDirectChat serves every chat with this agent, so every async
+    // result (a load, a send, a voice note, a delayed poll) carries the chat it
+    // was for and is dropped when another chat is on screen by then. The key is
+    // updated synchronously by every switch (chatViewKey).
+    const viewKeyRef = useRef(chatViewKey(directThreadId, null));
+    // Delayed polls after a send: cleared on every chat switch.
+    const pollTimersRef = useRef(new Set<ReturnType<typeof setTimeout>>());
+    useEffect(() => {
+        setActiveThreadId(directThreadId);
+        setNewChatKey(null);
+        const next = chatViewKey(directThreadId, null);
+        if (viewKeyRef.current !== next) {
+            viewKeyRef.current = next;
+            clearScheduledPolls();
+            clearComposerMedia();
+            setPendingAttachments([]);
+        }
+    }, [directThreadId]);
+    // Set when a New chat's first message created the thread: keep what is on screen while it loads.
+    const keepMessagesRef = useRef(false);
+    // Bumped whenever the view is cleared for another chat: a response for the previous one is dropped.
+    const viewGenerationRef = useRef(0);
+    const [runtime, setRuntime] = useState<ChatRuntime | null>(null);
+    const [limitReached, setLimitReached] = useState<{ limit: number; open: number } | null>(null);
+    const [confirmStop, setConfirmStop] = useState<"chat" | "all" | null>(null);
+    const [restoring, setRestoring] = useState(false);
     const [draft, setDraft] = useState("");
-    // A draft another page handed over (e.g. "Ask about this panel"): prefilled, never sent.
+    // A draft another page handed over (e.g. "Ask about this panel"): prefilled in the main chat, never sent.
+    // It wins over a draft stored for the main chat once that chat's id is known (see the draftKey effect).
+    const handedDraftRef = useRef<string | null>(null);
     useEffect(() => {
         if (directThreadId) return;
         const handed = takeChatDraft(agentId);
-        if (handed) setDraft((current) => current || handed);
+        if (handed) {
+            handedDraftRef.current = handed;
+            setDraft(handed);
+        }
     }, [agentId, directThreadId]);
+    const onThreadChangeRef = useRef(onThreadChange);
+    // After the open chat is marked read: refresh the chat list's unread dots and the nav badge.
+    const onReadRef = useRef<(() => void) | null>(null);
+    useEffect(() => { onThreadChangeRef.current = onThreadChange; });
     const [isLoading, setIsLoading] = useState(true);
     const [isSending, setIsSending] = useState(false);
     const [sendMode, setSendMode] = useState<"queue" | "replace">("queue");
@@ -188,6 +283,7 @@ export function AgentDirectChat({
     const [pendingAttachments, setPendingAttachments] = useState<AttachmentRef[]>([]);
     const [attachError, setAttachError] = useState<string | null>(null);
     const fileInputRef = useRef<HTMLInputElement>(null);
+    const formRef = useRef<HTMLFormElement>(null);
     const typingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
     const mediaRecorderRef = useRef<MediaRecorder | null>(null);
     const recordingChunksRef = useRef<Blob[]>([]);
@@ -213,16 +309,31 @@ export function AgentDirectChat({
 
 
     const loadMessages = useCallback(async ({ since, before }: { since?: string | null; before?: string | null } = {}) => {
+        // This load is for `activeThreadId` (null = the main chat). A stale copy of this
+        // function (a delayed poll scheduled in another chat) must never fill this one.
+        const view = chatViewKey(activeThreadId, null);
+        if (viewKeyRef.current !== view) return;
         const params = new URLSearchParams({ targetAgentId: agentId });
-        if (directThreadId) params.set("directThreadId", directThreadId);
+        if (activeThreadId) params.set("directThreadId", activeThreadId);
         params.set("limit", String(CHAT_PAGE_SIZE));
         if (since) params.set("since", since);
         if (before) params.set("before", before);
         const eventsSince = before ? null : eventsSinceParam(liveRunsRef.current);
         if (eventsSince) params.set("eventsSince", eventsSince);
 
+        const generation = viewGenerationRef.current;
         const res = await fetch(`/api/chat?${params.toString()}`);
+        if (generation !== viewGenerationRef.current || viewKeyRef.current !== view) return;
         if (!res.ok) {
+            // One of the person's own chats that is gone (a stale link or remembered id): open the main
+            // chat. Only where the page treats this as their own chats (onThreadChange); the agent's
+            // Operations thread and other secondary threads keep showing the error.
+            if (res.status === 404 && activeThreadId && !before && onThreadChangeRef.current) {
+                viewKeyRef.current = chatViewKey(null, null);
+                setActiveThreadId(null);
+                onThreadChangeRef.current(null);
+                return;
+            }
             throw new Error("Failed to load direct thread");
         }
 
@@ -233,7 +344,10 @@ export function AgentDirectChat({
             hasMore?: boolean;
             liveRuns?: RunLive[];
             replyRuns?: Record<string, ReplyRun>;
+            runtime?: ChatRuntime;
         };
+        if (generation !== viewGenerationRef.current || viewKeyRef.current !== view) return;
+        if (data.runtime) setRuntime(data.runtime);
 
         if (!before) {
             const merged = mergeLiveRuns(liveRunsRef.current, data.liveRuns, Date.now());
@@ -295,13 +409,13 @@ export function AgentDirectChat({
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({ threadId, markRead: true }),
-            });
+            }).then(() => onReadRef.current?.()).catch(() => {});
         }
 
         if (!since) {
             setHasOlderMessages(Boolean(data.hasMore));
         }
-    }, [agentId, directThreadId]);
+    }, [agentId, activeThreadId]);
 
     const loadOlderMessages = useCallback(async () => {
         if (isLoadingOlder || !hasOlderMessages || messages.length === 0) return;
@@ -319,6 +433,7 @@ export function AgentDirectChat({
 
     const handleTyping = (text: string) => {
         setDraft(text);
+        if (draftKey) writeThreadDraft(draftKey, text);
 
         if (!isTyping && text.trim().length > 0) {
             setIsTyping(true);
@@ -357,19 +472,15 @@ export function AgentDirectChat({
         fastMs: () => chatPollDelayMs("direct", liveRunsRef.current.some((liveRun) => liveRun.status === "running")),
         topics: thread?.id ? [`thread:${thread.id}`] : [],
         resetKey: loadMessages,
+        // A New chat composer has nothing to load until its first message creates the chat.
+        enabled: newChatKey === null,
         first: async (run) => {
-            setIsLoading(true);
-            setMessages([]);
-            setThread(null);
-            setParticipants([]);
-            liveRunsRef.current = [];
-            setLiveRuns([]);
-            setReplyRuns({});
-            lastSeenAtRef.current = null;
-            forceScrollToBottomRef.current = true;
-            isAtBottomRef.current = true;
-            setIsAtBottom(true);
-            setUnreadCount(0);
+            const keep = keepMessagesRef.current;
+            keepMessagesRef.current = false;
+            if (!keep) {
+                setIsLoading(true);
+                resetChatView();
+            }
 
             try {
                 await loadMessages();
@@ -384,6 +495,60 @@ export function AgentDirectChat({
             }
         },
     });
+
+    function clearScheduledPolls() {
+        for (const timer of pollTimersRef.current) clearTimeout(timer);
+        pollTimersRef.current.clear();
+    }
+
+    /** A poll a little after a send, dropped on a chat switch (and by loadMessages' own chat check). */
+    function schedulePoll(run: () => void, delay: number) {
+        const timer = setTimeout(() => {
+            pollTimersRef.current.delete(timer);
+            run();
+        }, delay);
+        pollTimersRef.current.add(timer);
+    }
+
+    /** A recording, a voice preview or an upload error belongs to the chat it was made in. */
+    function clearComposerMedia() {
+        const recorder = mediaRecorderRef.current;
+        if (recorder && recorder.state !== "inactive") {
+            // Stop without turning the clip into a preview in the next chat.
+            recorder.onstop = () => recorder.stream.getTracks().forEach((track) => track.stop());
+            recorder.stop();
+        }
+        mediaRecorderRef.current = null;
+        if (recordingTimerRef.current) clearInterval(recordingTimerRef.current);
+        setIsRecording(false);
+        setRecordingSecs(0);
+        audioBlobRef.current = null;
+        setAudioPreviewUrl((url) => {
+            if (url) URL.revokeObjectURL(url);
+            return null;
+        });
+        setMicError(null);
+        setAttachError(null);
+    }
+
+    function resetChatView() {
+        viewGenerationRef.current += 1;
+        clearScheduledPolls();
+        setMessages([]);
+        setThread(null);
+        setParticipants([]);
+        liveRunsRef.current = [];
+        setLiveRuns([]);
+        setReplyRuns({});
+        setHasOlderMessages(false);
+        setShowCancelledHistory(false);
+        setControlError(null);
+        lastSeenAtRef.current = null;
+        forceScrollToBottomRef.current = true;
+        isAtBottomRef.current = true;
+        setIsAtBottom(true);
+        setUnreadCount(0);
+    }
 
     // The agent's running runs elsewhere, for t("alsoWorkingOn") and the busy
     // queue signal. Refetches on `agents` and this thread's invalidations.
@@ -402,6 +567,193 @@ export function AgentDirectChat({
     useEffect(() => () => {
         if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
     }, [loadMessages]);
+    useEffect(() => {
+        const timers = pollTimersRef.current;
+        return () => {
+            for (const timer of timers) clearTimeout(timer);
+            timers.clear();
+        };
+    }, []);
+
+    // ---- Several chats with this agent (private mode) ----
+    // Shown for the viewer's own chats only, never in the agent's shared/Operations thread.
+    // Sticky while the next chat loads (thread is briefly null), so the bar does not flicker on a switch.
+    const [ownChatSeen, setOwnChatSeen] = useState(false);
+    useEffect(() => {
+        if (thread?.ownerUserId) setOwnChatSeen(true);
+    }, [thread?.ownerUserId]);
+    const isOwnChat = newChatKey !== null || Boolean(thread?.ownerUserId) || (ownChatSeen && !thread);
+    const chats = useAgentChats(agentId, isOwnChat);
+    const isArchived = Boolean(thread?.archivedAt);
+    // Tell the page when the person's own chat on screen is (or stops being) archived, so it is
+    // not remembered as the chat to reopen (an archived chat would not be found next time).
+    const reportedArchivedRef = useRef<{ id: string; archived: boolean } | null>(null);
+    useEffect(() => {
+        if (!thread?.id || !thread.ownerUserId) return;
+        const previous = reportedArchivedRef.current;
+        reportedArchivedRef.current = { id: thread.id, archived: isArchived };
+        const wasArchived = previous?.id === thread.id && previous.archived;
+        if (isArchived !== wasArchived) onThreadChangeRef.current?.(thread.id, { archived: isArchived });
+    }, [thread?.id, thread?.ownerUserId, isArchived]);
+    const canStartNewChat = canSend && chats.multiChatEnabled;
+    const showChatBar = chats.available && isOwnChat
+        && (chats.multiChatEnabled || chats.chats.length > 1 || isArchived || newChatKey !== null);
+    useEffect(() => {
+        onReadRef.current = () => {
+            chats.reload();
+            void refreshNavBadges();
+        };
+    });
+    const unreadTotal = chats.chats.reduce((sum, chat) => sum + chat.unread, 0);
+    useEffect(() => {
+        if (chats.available) onUnreadTotal?.(unreadTotal);
+    }, [chats.available, unreadTotal, onUnreadTotal]);
+
+    // Drafts are kept per chat (sessionStorage): `new:<agent>` for a New chat composer,
+    // else the chat's id once known. The main chat's id arrives with its first load,
+    // so a draft typed (or handed over) before that moves along to it.
+    const draftKey = newChatKey ? `new:${agentId}` : activeThreadId ?? thread?.id ?? null;
+    const previousDraftKeyRef = useRef<string | null>(null);
+    useEffect(() => {
+        const previous = previousDraftKeyRef.current;
+        previousDraftKeyRef.current = draftKey;
+        if (!draftKey || draftKey === previous) return;
+        const stored = readThreadDraft(draftKey);
+        const handed = handedDraftRef.current;
+        handedDraftRef.current = null;
+        if (previous === null && handed) {
+            // A draft handed over from another page wins over one stored for the main chat.
+            writeThreadDraft(draftKey, handed);
+            setDraft(handed);
+            return;
+        }
+        if (previous === null) {
+            // The same chat resolving its id: keep what is typed unless a draft was stored for it.
+            setDraft((current) => {
+                if (stored) return stored;
+                if (current) writeThreadDraft(draftKey, current);
+                return current;
+            });
+            return;
+        }
+        setDraft(stored);
+    }, [draftKey]);
+
+    /** Where a message goes: the New chat being started, or the chat on screen. */
+    const chatTarget = () => newChatKey
+        ? { newChat: { clientKey: newChatKey } }
+        : { directThreadId: activeThreadId ?? thread?.id ?? null };
+
+    /**
+     * After a send from a New chat composer (`sent`: the composer's client key and
+     * view when the send started): the chat now exists. Still on that composer:
+     * show the chat in place (keeping the message on screen) and tell the page.
+     * Switched away meanwhile: only refresh the chat list. Returns false for an
+     * ordinary send. A retried key answers with the chat it already made; a
+     * different text sent then goes back into the composer, with a notice.
+     */
+    const afterNewChat = (
+        data: { thread?: DirectThread; message?: DirectMessage; created?: boolean },
+        text: string | null,
+        sent: { clientKey: string | null; view: string },
+    ) => {
+        if (!sent.clientKey || !data.thread) return false;
+        const created = data.thread;
+        writePendingNewChatKey(agentId, null);
+        writeThreadDraft(`new:${agentId}`, "");
+        const notSent = data.created === false && text && data.message && data.message.text !== text ? text : null;
+        if (notSent) writeThreadDraft(created.id, notSent);
+        if (viewKeyRef.current !== sent.view) {
+            chats.reload();
+            return true;
+        }
+        // Anything still in flight for the composer is for a view that no longer exists.
+        viewGenerationRef.current += 1;
+        clearScheduledPolls();
+        viewKeyRef.current = chatViewKey(created.id, null);
+        keepMessagesRef.current = true;
+        setThread(created);
+        if (data.message) {
+            const message = data.message;
+            setMessages([message]);
+            lastSeenAtRef.current = message.createdAt;
+        }
+        previousDraftKeyRef.current = created.id;
+        setNewChatKey(null);
+        setActiveThreadId(created.id);
+        setIsLoading(false);
+        if (notSent) {
+            setDraft(notSent);
+            setControlError(tChats("alreadyStarted"));
+        }
+        onThreadChangeRef.current?.(created.id);
+        chats.reload();
+        return true;
+    };
+
+    /** Refusals that change what the chat shows: the cap dialog, or an archived chat. */
+    const handleChatRefusal = (error: unknown) => {
+        if (!(error instanceof ChatSendError)) return false;
+        if (error.code === "chat_limit_reached") {
+            const limit = Number(error.extra.limit) || chats.limit;
+            const open = Number(error.extra.open) || chats.open;
+            setLimitReached({ limit, open });
+            chats.reload();
+            return true;
+        }
+        if (error.code === "chat_archived") {
+            setControlError(tChats("errors.archived"));
+            void loadMessages().catch(() => {});
+            return true;
+        }
+        if (error.code === "multi_chat_disabled" || error.code === "rate_limited") {
+            setControlError(chatErrorMessage({ code: error.code, error: error.message }));
+            chats.reload();
+            return true;
+        }
+        return false;
+    };
+
+    const selectChat = (threadId: string) => {
+        if (!newChatKey && threadId === (activeThreadId ?? thread?.id)) return;
+        viewKeyRef.current = chatViewKey(threadId, null);
+        clearScheduledPolls();
+        clearComposerMedia();
+        setNewChatKey(null);
+        setSendMode("queue");
+        setPendingAttachments([]);
+        setActiveThreadId(threadId);
+        onThreadChangeRef.current?.(threadId);
+    };
+
+    const startNewChat = () => {
+        if (!canStartNewChat || newChatKey) return;
+        // Kept until the first message lands, so a retried or double send makes one chat.
+        const key = readPendingNewChatKey(agentId) ?? newChatClientKey();
+        writePendingNewChatKey(agentId, key);
+        viewKeyRef.current = chatViewKey(null, key);
+        resetChatView();
+        clearComposerMedia();
+        setIsLoading(false);
+        setSendMode("queue");
+        setPendingAttachments([]);
+        setNewChatKey(key);
+    };
+
+    const restoreChat = async () => {
+        if (!thread?.id || restoring) return;
+        setRestoring(true);
+        setControlError(null);
+        const result = await patchChat(thread.id, { archived: false });
+        setRestoring(false);
+        if (!result.ok) {
+            if (result.code === "chat_limit_reached") setLimitReached({ limit: chats.limit, open: chats.open });
+            else setControlError(chatErrorMessage(result));
+            return;
+        }
+        chats.reload();
+        void loadMessages().catch(() => {});
+    };
 
     const lastScrolledMessageRef = useRef<string | undefined>(undefined);
     useEffect(() => {
@@ -513,6 +865,8 @@ export function AgentDirectChat({
         if (!canSend || !audioBlobRef.current || isSending) return;
         setIsSending(true);
         setMicError(null);
+        const sent = { clientKey: newChatKey, view: viewKeyRef.current };
+        const target = chatTarget();
         try {
             const form = new FormData();
             form.append("file", audioBlobRef.current, `voice-${Date.now()}.webm`);
@@ -535,28 +889,31 @@ export function AgentDirectChat({
             const res = await fetch("/api/chat", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ text, targetAgentId: agentId, directThreadId, attachments: [voiceArtifact.id] }),
+                body: JSON.stringify({ text, targetAgentId: agentId, ...target, attachments: [voiceArtifact.id] }),
             });
-            if (!res.ok) {
-                let errMsg = t("sendFailed");
-                try { const body = await res.json(); if (body.error) errMsg = body.error; } catch {}
-                throw new Error(errMsg);
+            if (!res.ok) await throwSendError(res, t("sendFailed"));
+            const data = await res.json() as { thread?: DirectThread; message?: DirectMessage; created?: boolean };
+            const stillHere = viewKeyRef.current === sent.view;
+            if (afterNewChat(data, null, sent)) {
+                if (stillHere) discardVoice();
+                return;
             }
-            const data = await res.json() as { thread?: DirectThread; message?: DirectMessage };
+            // Sent from a chat that is no longer on screen: it is stored there; nothing to show here.
+            if (!stillHere) return;
             if (data.thread) setThread(data.thread);
             if (data.message) {
                 setMessages(prev => prev.some(m => m.id === data.message!.id) ? prev : [...prev, data.message!]);
                 lastSeenAtRef.current = data.message.createdAt;
                 // Immediately poll for agent response
-                setTimeout(() => {
-                    void loadMessages({ since: data.message!.createdAt }).catch(() => {});
-                }, 1500);
-                setTimeout(() => {
-                    void loadMessages({ since: lastSeenAtRef.current }).catch(() => {});
-                }, 4000);
+                const since = data.message.createdAt;
+                schedulePoll(() => void loadMessages({ since }).catch(() => {}), 1500);
+                schedulePoll(() => void loadMessages({ since: lastSeenAtRef.current }).catch(() => {}), 4000);
             }
             discardVoice();
         } catch (err) {
+            // A failure for a chat that is no longer on screen: its clip went with that chat.
+            if (viewKeyRef.current !== sent.view) return;
+            if (handleChatRefusal(err)) return;
             const message = err instanceof Error ? err.message : t("unknownError");
             console.error("Failed to send voice message", err);
             setMicError(message);
@@ -594,14 +951,22 @@ export function AgentDirectChat({
         setPendingAttachments((prev) => prev.filter((a) => a.id !== id));
     };
 
-    const stopAgent = async () => {
+    // In a person's own chat Stop stops that chat; an older runtime can only stop all of the
+    // agent's chats (runtime.stopScope "agent"), so it asks first. `everywhere`: Stop all chats.
+    const stopNeedsConfirm = runtime?.stopScope === "agent" && Boolean(thread?.ownerUserId);
+    const requestStop = () => {
+        if (stopNeedsConfirm) setConfirmStop("chat");
+        else void stopAgent();
+    };
+    const stopAgent = async (everywhere = false) => {
         if (isSending) return;
+        setConfirmStop(null);
         setIsSending(true);
         setControlError(null);
         try {
             const res = await fetch(`/api/agents/${agentId}/control`, {
                 method: "POST", headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ action: "kill", directThreadId }),
+                body: JSON.stringify(everywhere ? { action: "kill", scope: "agent" } : { action: "kill", directThreadId: activeThreadId ?? thread?.id ?? null }),
             });
             const data = await res.json();
             if (!res.ok) throw new Error(data.error || t("stopFailed"));
@@ -636,25 +1001,33 @@ export function AgentDirectChat({
         setIsSending(true);
         setControlError(null);
         setDraft("");
+        // The chat this text was typed in: a failure puts it back there, even after a switch.
+        const sentDraftKey = draftKey;
+        const sent = { clientKey: newChatKey, view: viewKeyRef.current };
+        if (sentDraftKey) writeThreadDraft(sentDraftKey, "");
         forceScrollToBottomRef.current = true;
         isAtBottomRef.current = true;
         setIsAtBottom(true);
 
         try {
-            const replacing = sendMode === "replace" && !text.trim().startsWith("/");
+            const replacing = sendMode === "replace" && !newChatKey && !text.trim().startsWith("/");
             if (replacing && pendingAttachments.length) throw new Error(t("attachmentsQueued"));
             const res = await fetch(replacing ? `/api/agents/${agentId}/control` : "/api/chat", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify(replacing ? { action: "replace", prompt: text, directThreadId } : { text, targetAgentId: agentId, directThreadId, attachments: pendingAttachments.map((a) => a.id) }),
+                body: JSON.stringify(replacing ? { action: "replace", prompt: text, directThreadId: activeThreadId ?? thread?.id ?? null } : { text, targetAgentId: agentId, ...chatTarget(), attachments: pendingAttachments.map((a) => a.id) }),
             });
 
-            if (!res.ok) {
-                const data = await res.json().catch(() => ({}));
-                throw new Error(data.error || t("sendDirectFailed"));
-            }
+            if (!res.ok) await throwSendError(res, t("sendDirectFailed"));
 
-            const data = await res.json() as { thread?: DirectThread; message?: DirectMessage; deduplicated?: boolean };
+            const data = await res.json() as { thread?: DirectThread; message?: DirectMessage; deduplicated?: boolean; created?: boolean };
+            const stillHere = viewKeyRef.current === sent.view;
+            if (afterNewChat(data, text, sent)) {
+                if (stillHere) setPendingAttachments([]);
+                return;
+            }
+            // Sent from a chat that is no longer on screen: it is stored there; nothing to show here.
+            if (!stillHere) return;
             if (data.thread) {
                 setThread(data.thread);
             }
@@ -664,22 +1037,23 @@ export function AgentDirectChat({
                 setPendingAttachments([]);
                 setSendMode("queue");
                 void loadMessages().catch(() => {});
-                // Aggressive polling after send: catch agent response fast
-                const schedulePoll = (delay: number, useSince: boolean) => {
-                    setTimeout(() => {
-                        void loadMessages(useSince ? { since: lastSeenAtRef.current } : {}).catch(() => {});
-                    }, delay);
-                };
-                schedulePoll(2000, true);   // 2s: poll with since
-                schedulePoll(5000, true);   // 5s: poll with since
-                schedulePoll(8000, false);  // 8s: FULL reload (no since) — catch anything missed
+                // Aggressive polling after send: catch agent response fast (dropped on a chat switch).
+                const pollAfter = (delay: number, useSince: boolean) => schedulePoll(
+                    () => void loadMessages(useSince ? { since: lastSeenAtRef.current } : {}).catch(() => {}), delay);
+                pollAfter(2000, true);   // 2s: poll with since
+                pollAfter(5000, true);   // 5s: poll with since
+                pollAfter(8000, false);  // 8s: FULL reload (no since) — catch anything missed
             }
             if (data.deduplicated) {
                 setControlError(t("duplicate"));
             }
         } catch (error) {
-            console.error(t("sendDirectFailed"), error);
+            if (sentDraftKey) writeThreadDraft(sentDraftKey, text);
+            // Switched to another chat meanwhile: the text waits in its own chat's draft.
+            if (viewKeyRef.current !== sent.view) return;
             setDraft(text);
+            if (handleChatRefusal(error)) return;
+            console.error(t("sendDirectFailed"), error);
             setControlError(error instanceof Error ? error.message : t("sendFailed"));
         } finally {
             setIsSending(false);
@@ -707,7 +1081,7 @@ export function AgentDirectChat({
             const res = await fetch("/api/chat", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ text: prompt, targetAgentId: agentId, directThreadId, attachments: [] }),
+                body: JSON.stringify({ text: prompt, targetAgentId: agentId, directThreadId: activeThreadId ?? thread?.id ?? null, attachments: [] }),
             });
             if (!res.ok) {
                 const data = await res.json().catch(() => ({}));
@@ -725,7 +1099,7 @@ export function AgentDirectChat({
             setControlError(error instanceof Error ? error.message : t("sendFailed"));
             return false;
         }
-    }, [agentId, directThreadId, loadMessages, canSend]);
+    }, [agentId, activeThreadId, thread?.id, loadMessages, canSend, t]);
     const richActions = useMemo(() => canSend ? { sendPrompt: sendWidgetPrompt } : {}, [sendWidgetPrompt, canSend]);
     const queueItems = useMemo(() => messages.filter((message) => (
         message.senderType === "human" && ["queued", "seen", "acting"].includes(message.deliveryState || "")
@@ -749,10 +1123,20 @@ export function AgentDirectChat({
     // threads, plus a "Queued — busy" signal when this chat's last message has
     // no run yet while the agent is already at (or over) its parallel-turn cap.
     const alsoWorking = useMemo(() => summarizeAlsoWorking(runningRuns, thread?.id ?? null), [runningRuns, thread?.id]);
-    const busyRunningCount = runningRuns.length;
     const lastMessage = messages[messages.length - 1];
     const lastMessageQueued = lastMessage?.senderType === "human" && (lastMessage.deliveryState === "queued" || lastMessage.deliveryState === "seen");
-    const showQueuedBusy = Boolean(lastMessageQueued) && busyRunningCount >= 3;
+    // Honest queue state: the runtime's real parallel limit (unknown = 1), counting only its work elsewhere.
+    const queuedBusy = queuedBusyState({
+        lastMessageQueued: Boolean(lastMessageQueued),
+        runningThreadIds: runningRuns.map((run) => run.threadId),
+        currentThreadId: thread?.id ?? null,
+        maxParallelTurns: runtime?.maxParallelTurns ?? null,
+        // "Working in N other chats" counts only this person's other chats with the agent.
+        ownChatIds: chats.chats.map((chat) => chat.id),
+    });
+    // The "also working on" run, when it is in one of the viewer's own chats with this agent: open it in place.
+    const alsoWorkingRun = alsoWorking.primary ? runningRuns.find((run) => run.runId === alsoWorking.primary!.runId) : undefined;
+    const alsoWorkingChat = alsoWorkingRun?.threadId ? chats.chats.find((chat) => chat.id === alsoWorkingRun.threadId) ?? null : null;
 
     return (
         <RichMessageActionsContext.Provider value={richActions}>
@@ -772,11 +1156,50 @@ export function AgentDirectChat({
                             </div>
                         </div>
                     </div>
-                    <div className="text-right">
-                        <div className="text-[10px] uppercase tracking-wider font-semibold text-zinc-500">{t("thread")}</div>
-                        <div className="text-xs font-mono text-zinc-400">{thread?.id || t("provisioning")}</div>
+                    <div className="flex items-center gap-4">
+                        {showStopAll && runtime?.canStopAll && (
+                            <button
+                                type="button"
+                                onClick={() => setConfirmStop("all")}
+                                disabled={isSending}
+                                className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-red-500/25 px-3 text-xs font-medium text-red-200 transition-colors hover:border-red-400/50 hover:bg-red-500/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50"
+                            >
+                                <IconPlayerStop aria-hidden className="h-4 w-4" />
+                                {tChats("stopAll")}
+                            </button>
+                        )}
+                        <div className="text-right">
+                            <div className="text-[10px] uppercase tracking-wider font-semibold text-zinc-500">{t("thread")}</div>
+                            <div className="text-xs font-mono text-zinc-400">{thread?.id || t("provisioning")}</div>
+                        </div>
                     </div>
                 </div>
+            )}
+            {hideHeader && showStopAll && runtime?.canStopAll && (
+                <div className="flex justify-end border-b border-zinc-800/80 px-3 py-1.5">
+                    <button type="button" onClick={() => setConfirmStop("all")} disabled={isSending}
+                        className="inline-flex min-h-11 items-center gap-2 rounded-xl px-3 text-xs font-medium text-red-200 hover:bg-red-500/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50">
+                        <IconPlayerStop aria-hidden className="h-4 w-4" />
+                        {tChats("stopAll")}
+                    </button>
+                </div>
+            )}
+            {showChatBar && (
+                <DirectChatBar
+                    agentId={agentId}
+                    agentName={agentName}
+                    chats={chats}
+                    currentThreadId={newChatKey ? null : thread?.id ?? activeThreadId}
+                    currentIsArchived={isArchived}
+                    currentThread={thread?.ownerUserId ? { isMain: Boolean(thread.isMain), title: thread.title ?? null } : null}
+                    newChatActive={newChatKey !== null}
+                    canStartNew={canStartNewChat}
+                    onSelect={selectChat}
+                    onNewChat={startNewChat}
+                    onChanged={(changedId) => {
+                        if (changedId === thread?.id) void loadMessages().catch(() => {});
+                    }}
+                />
             )}
 
             <div ref={scrollRef} onScroll={handleScroll} style={{ overflowAnchor: "none" }} className="fade-y relative flex-1 overflow-y-auto p-3 sm:p-5">
@@ -787,9 +1210,9 @@ export function AgentDirectChat({
                 ) : messages.length === 0 ? (
                     <div className="h-full flex items-center justify-center">
                         <div className="max-w-sm rounded-2xl border border-dashed border-zinc-800 bg-zinc-950/50 p-6 text-center">
-                            <div className="text-sm text-zinc-300 mb-2">{t("emptyTitle")}</div>
+                            <div className="text-sm text-zinc-300 mb-2">{newChatKey ? tChats("newChatEmptyTitle", { name: agentName }) : t("emptyTitle")}</div>
                             <div className="text-xs text-zinc-500 leading-relaxed">
-                                {t("emptyBody")}
+                                {newChatKey ? tChats("newChatEmptyBody", { name: agentName }) : t("emptyBody")}
                             </div>
                         </div>
                     </div>
@@ -986,11 +1409,29 @@ export function AgentDirectChat({
                 </button>
             </Presence>
 
-            {canSend && <div className="space-y-2 border-t border-zinc-800 bg-zinc-950/80 p-2 sm:p-4">
+            {canSend && isArchived && (
+                <div className="flex flex-wrap items-center gap-3 border-t border-zinc-800 bg-zinc-950/80 p-3 sm:p-4">
+                    <IconArchive aria-hidden className="h-4 w-4 shrink-0 text-zinc-500" />
+                    <p className="min-w-0 flex-1 text-xs text-zinc-400">
+                        {tChats("archivedNotice", { reason: archiveReasonLabel(thread?.archiveReason) })}
+                    </p>
+                    <button type="button" onClick={() => void restoreChat()} disabled={restoring}
+                        className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-zinc-700 px-3 text-xs font-medium text-zinc-200 transition-colors hover:border-cyan-400/40 hover:bg-cyan-400/10 hover:text-cyan-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50">
+                        <IconRestore aria-hidden className="h-4 w-4" />
+                        {tChats("restore")}
+                    </button>
+                    {controlError && <p role="alert" className="w-full text-xs text-red-300">{controlError}</p>}
+                </div>
+            )}
+            {canSend && !isArchived && <div className="space-y-2 border-t border-zinc-800 bg-zinc-950/80 p-2 sm:p-4">
                 {alsoWorking.primary && (
                     <div className="flex flex-wrap items-center gap-x-1.5 gap-y-1 text-xs text-zinc-400">
                         <span className="shrink-0">{t("alsoWorkingOn")}</span>
-                        {alsoWorking.primary.href ? (
+                        {alsoWorkingChat ? (
+                            <button type="button" onClick={() => selectChat(alsoWorkingChat.id)} className="min-w-0 truncate text-left text-cyan-300 hover:text-cyan-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+                                {chatLabel(alsoWorkingChat)}{alsoWorking.primary.startedAt && <> · <WorkElapsed startedAt={alsoWorking.primary.startedAt} /></>}
+                            </button>
+                        ) : alsoWorking.primary.href ? (
                             <Link href={alsoWorking.primary.href} className="min-w-0 truncate text-cyan-300 hover:text-cyan-200">
                                 {alsoWorking.primary.text}{alsoWorking.primary.startedAt && <> · <WorkElapsed startedAt={alsoWorking.primary.startedAt} /></>}
                             </Link>
@@ -1001,9 +1442,11 @@ export function AgentDirectChat({
                         {alsoWorking.more > 0 && <span className="shrink-0 text-zinc-500">{t("more", { count: alsoWorking.more })}</span>}
                     </div>
                 )}
-                {showQueuedBusy && (
+                {queuedBusy.show && (
                     <p className="rounded-lg border border-amber-500/20 bg-amber-500/[0.06] px-3 py-2 text-xs text-amber-200">
-                        {t("queuedBusy", { name: agentName, count: busyRunningCount })}
+                        {queuedBusy.others > 0
+                            ? tChats("queuedOtherChats", { name: agentName, count: queuedBusy.others })
+                            : tChats("queuedBusyElsewhere", { name: agentName })}
                     </p>
                 )}
                 {(hasQueueBacklog || showCancelledHistory) && (
@@ -1118,7 +1561,7 @@ export function AgentDirectChat({
 
                 {/* State: normal text input */}
                 {!isRecording && !audioPreviewUrl && (
-                <form onSubmit={handleSend}>
+                <form ref={formRef} onSubmit={handleSend}>
                 {(pendingAttachments.length > 0 || attachError) && (
                     <div className="mb-2 space-y-2">
                         {attachError && (
@@ -1157,7 +1600,7 @@ export function AgentDirectChat({
                                 event.currentTarget.form?.requestSubmit();
                             }
                         }}
-                        placeholder={t("messagePlaceholder", { name: agentName })}
+                        placeholder={newChatKey ? tChats("newChatPlaceholder", { name: agentName }) : t("messagePlaceholder", { name: agentName })}
                         aria-label={t("messageLabel", { name: agentName })}
                         aria-describedby="direct-message-shortcut"
                         rows={1}
@@ -1182,18 +1625,20 @@ export function AgentDirectChat({
                         >
                             <IconMicrophone className="h-4 w-4" />
                         </button>
-                        <AgentGoalControls agentId={agentId} />
-                        <Select aria-label={t("nextPromptBehavior")} title={t("busyBehavior")} value={sendMode} onChange={e => setSendMode(e.target.value as "queue" | "replace")}
+                        {/* A New chat has nothing to stop or replace yet; objectives run in an existing chat. */}
+                        {!newChatKey && <AgentGoalControls agentId={agentId} />}
+                        {!newChatKey && <Select aria-label={t("nextPromptBehavior")} title={t("busyBehavior")} value={sendMode} onChange={e => setSendMode(e.target.value as "queue" | "replace")}
                             className="h-8 min-w-0 max-w-[7rem] cursor-pointer sm:max-w-[9.5rem] truncate rounded-full border border-transparent bg-transparent px-2 text-xs text-zinc-400 hover:border-zinc-700 hover:text-zinc-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-ring">
                             <option value="queue">{t("queueAfter")}</option>
                             <option value="replace">{t("replaceCurrent")}</option>
-                        </Select>
+                        </Select>}
                         <div className="ml-auto flex items-center gap-1.5">
-                            <button type="button" onClick={stopAgent} disabled={isSending}
-                                title={t("stopTitle")} aria-label={t("stopLabel")}
+                            {!newChatKey && <button type="button" onClick={requestStop} disabled={isSending}
+                                title={stopNeedsConfirm ? tChats("stopAllChatsTitle", { name: agentName }) : thread?.ownerUserId ? tChats("stopThisChatTitle") : t("stopTitle")}
+                                aria-label={stopNeedsConfirm ? tChats("stopAllChatsLabel") : thread?.ownerUserId ? tChats("stopThisChatLabel") : t("stopLabel")}
                                 className={cn(composerIconButton, activeQueueItem ? "text-red-300 hover:bg-red-500/10 hover:text-red-200" : "")}>
                                 <IconPlayerStop className="h-4 w-4" />
-                            </button>
+                            </button>}
                             <button
                                 type="submit"
                                 disabled={(!draft.trim() && pendingAttachments.length === 0) || isSending}
@@ -1211,6 +1656,31 @@ export function AgentDirectChat({
             </form>
                 )}
             </div>}
+            {limitReached && (
+                <ChatLimitDialog
+                    limit={limitReached.limit}
+                    open={limitReached.open}
+                    chats={chats.chats}
+                    onArchived={() => chats.reload()}
+                    onClose={() => setLimitReached(null)}
+                    onRetry={() => {
+                        setLimitReached(null);
+                        if (thread?.archivedAt) void restoreChat();
+                        // A voice note waiting in the preview has no form on screen: resend the clip.
+                        else if (audioBlobRef.current) void sendVoice();
+                        else formRef.current?.requestSubmit();
+                    }}
+                />
+            )}
+            <ConfirmDialog
+                open={confirmStop !== null}
+                title={confirmStop === "all" ? tChats("stopAllConfirmTitle", { name: agentName }) : tChats("stopOlderRuntimeTitle", { name: agentName })}
+                description={confirmStop === "all" ? tChats("stopAllConfirmBody", { name: agentName }) : tChats("stopOlderRuntimeBody", { name: agentName })}
+                confirmLabel={tChats("stopAllConfirm")}
+                destructive
+                onConfirm={() => void stopAgent(confirmStop === "all")}
+                onCancel={() => setConfirmStop(null)}
+            />
         </div>
         </RichMessageActionsContext.Provider>
     );

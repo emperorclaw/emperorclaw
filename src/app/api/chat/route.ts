@@ -10,13 +10,15 @@ import { broadcastMcpEvent } from "@/lib/pubsub";
 import { parseObjectiveCommand, replyObjectiveStatus, requestAgentObjective } from "@/lib/agent-objective";
 import { AuthError } from "@/lib/roles";
 import { parseAgentControlCommand, validateAgentControl } from "@/lib/agent-control-command";
-import { DirectThreadNotAllowedError, requestAgentControl } from "@/lib/agent-control";
+import { DirectThreadNotAllowedError, canStopAgentEverywhere, chatRuntimeInfo, requestAgentControl } from "@/lib/agent-control";
 import { getGroupThread, GroupError, joinGroupAsHuman, isAgentPairThread, isCompanyOwnerOrAdmin } from "@/lib/groups";
 import { parseEventsSince } from "@/lib/run-events";
 import { loadChatRunState } from "@/lib/run-ledger-reads";
 import { companyRouteAccess } from "@/lib/company-access";
 import { agentUseFor, mentionedAgentsNotUsable, type AgentAccessViewer } from "@/lib/agent-access-server";
 import { requireGroupInScope } from "@/lib/group-route";
+import { createPrivateChat, findOwnedPrivateChat, PrivateChatError } from "@/lib/private-chats";
+import { ChatArchivedError, isValidClientKey, NEW_CHAT_RATE_LIMIT } from "@/lib/multi-chat";
 
 type ThreadMessageLike = {
     fromUserId?: string | null;
@@ -49,11 +51,49 @@ function normalizedPrompt(text: string) {
  * shared one, or — with `directThreadId` — a specific direct thread of that
  * agent they take part in, such as its Operations thread in private mode.
  */
-async function directThreadFor(companyId: string, agentId: string, userId: string | null, directThreadId: unknown) {
+async function directThreadFor(companyId: string, agentId: string, userId: string | null, directThreadId: unknown, options: { read?: boolean } = {}) {
     if (typeof directThreadId !== "string" || !directThreadId) return ensureDirectThread(companyId, agentId, userId);
     const thread = userId ? await getDirectThreadForUser(companyId, agentId, directThreadId, userId) : null;
-    if (!thread) throw new GroupError("Conversation not found", 404);
-    return thread;
+    if (thread) return thread;
+    // One of the person's own archived chats: readable, never writable.
+    const archived = userId ? await findOwnedPrivateChat(companyId, userId, directThreadId, agentId) : null;
+    if (archived?.archivedAt) {
+        if (options.read) return archived;
+        throw new ChatArchivedError();
+    }
+    throw new GroupError("Conversation not found", 404);
+}
+
+/**
+ * `newChat: { clientKey }`: start an extra private chat with the agent with
+ * its first message, atomically (lib/private-chats.ts). A retry with the same
+ * key returns the chat and its first message instead of posting twice; only a
+ * real creation counts against the new-chat rate limit.
+ */
+async function startNewChat(companyId: string, userId: string, agentId: string, newChat: unknown, text: string, attachments: ThreadMessageAttachment[]) {
+    const clientKey = newChat && typeof newChat === "object" ? (newChat as { clientKey?: unknown }).clientKey : undefined;
+    if (!isValidClientKey(clientKey)) return NextResponse.json({ error: "newChat.clientKey must be 8-128 letters, digits or _.:-" }, { status: 400 });
+    const { thread, created, message } = await createPrivateChat({
+        companyId, userId, agentId, firstMessage: text, attachments, clientKey,
+        rateLimit: { key: `chat:new:${companyId}:${userId}`, ...NEW_CHAT_RATE_LIMIT },
+    });
+    if (!created) return NextResponse.json({ thread, message: serializeMessage(message), deduplicated: true, created: false });
+    broadcastMcpEvent(companyId, { type: "thread_message", thread, message });
+    return NextResponse.json({ thread, message: serializeMessage(message), created });
+}
+
+function chatErrorResponse(error: unknown): NextResponse | null {
+    if (error instanceof PrivateChatError) {
+        const retryAfterMs = error.code === "rate_limited" ? Number(error.extra.retryAfterMs) : NaN;
+        const { retryAfterMs: _omit, ...body } = error.body() as Record<string, unknown>;
+        void _omit;
+        return NextResponse.json(body, {
+            status: error.status,
+            ...(Number.isFinite(retryAfterMs) ? { headers: { "Retry-After": Math.ceil(retryAfterMs / 1000).toString() } } : {}),
+        });
+    }
+    if (error instanceof ChatArchivedError) return NextResponse.json({ error: error.message, code: error.code }, { status: error.status });
+    return null;
 }
 
 export async function GET(req: NextRequest) {
@@ -84,7 +124,7 @@ export async function GET(req: NextRequest) {
         const thread = groupId
             ? await getGroupThread(companyId, groupId)
             : targetAgentId
-                ? await directThreadFor(companyId, directThreadId ? await resolveAgentId(companyId, targetAgentId) : targetAgentId, await getUserId(), directThreadId)
+                ? await directThreadFor(companyId, directThreadId ? await resolveAgentId(companyId, targetAgentId) : targetAgentId, await getUserId(), directThreadId, { read: true })
                 : await ensureTeamThread(companyId);
 
         // An agent pair thread is a private handoff: only owners/admins may read
@@ -119,9 +159,21 @@ export async function GET(req: NextRequest) {
                 .map((message) => String((message as { id?: unknown }).id ?? "")),
         });
 
-        return NextResponse.json({ thread, messages: pagedMessages.map(serializeMessage), participants, hasMore, liveRuns, replyRuns });
+        // Direct chats: what Stop will do here (`thread`, or `agent` when the runtime can only stop
+        // all of the agent's chats) and how many chats the runtime answers at once (null: unknown).
+        // `canStopAll`: whether this person may stop the agent in every chat (scope "agent").
+        const runtime = !groupId && targetAgentId && thread.directAgentId
+            ? {
+                ...await chatRuntimeInfo(companyId, thread.directAgentId, thread),
+                canStopAll: await canStopAgentEverywhere(access.ctx, thread.directAgentId),
+            }
+            : undefined;
+
+        return NextResponse.json({ thread, messages: pagedMessages.map(serializeMessage), participants, hasMore, liveRuns, replyRuns, ...(runtime ? { runtime } : {}) });
     } catch (error: unknown) {
         if (error instanceof AuthError) return NextResponse.json({error:error.message},{status:error.statusCode});
+        const chatError = chatErrorResponse(error);
+        if (chatError) return chatError;
         if (error instanceof GroupError) return NextResponse.json({ error: error.message }, { status: error.status });
         const isAgentNotFound = error instanceof Error && error.message.startsWith("Agent not found");
         const status = isAgentNotFound ? 404 : error instanceof Error && error.message.startsWith("Runtime controls") ? 400 : 500;
@@ -137,9 +189,12 @@ export async function POST(req: NextRequest) {
     const userId = access.ctx.userId;
 
     try {
-        const { text, targetAgentId, attachments, threadId: groupId, directThreadId } = await req.json();
+        const { text, targetAgentId, attachments, threadId: groupId, directThreadId, newChat } = await req.json();
         if (text !== undefined && typeof text !== "string") return NextResponse.json({ error: "Text must be a string" }, { status: 400 });
         if (groupId !== undefined && typeof groupId !== "string") return NextResponse.json({ error: "threadId must be a string" }, { status: 400 });
+        if (newChat !== undefined && (typeof targetAgentId !== "string" || !targetAgentId || groupId || directThreadId)) {
+            return NextResponse.json({ error: "newChat needs targetAgentId, without threadId or directThreadId" }, { status: 400 });
+        }
         // A restricted member only talks to (and controls) agents in their
         // scope; an agent limited to other people is theirs alone (0.20).
         if (typeof targetAgentId === "string" && targetAgentId) {
@@ -160,12 +215,20 @@ export async function POST(req: NextRequest) {
             }
         }
         const goalCommand = typeof text === "string" ? parseObjectiveCommand(text) : null;
+        if (newChat !== undefined && (goalCommand || (typeof text === "string" && parseAgentControlCommand(text)))) {
+            return NextResponse.json({ error: "Start a new chat with a message, then use commands in it" }, { status: 400 });
+        }
         if (goalCommand) {
             if (Array.isArray(attachments) && attachments.length) return NextResponse.json({error:"Send attachments as a normal message before setting an objective"},{status:400});
             if (goalCommand.action === "unsupported") return NextResponse.json({error:"Supported commands: /goal <objective>, status, pause, resume, stop. Describe the outcome and how to verify it in the objective."},{status:400});
             if (!targetAgentId || groupId) return NextResponse.json({error:"Use /goal in an agent's direct chat"},{status:400});
             const id = await resolveAgentId(companyId,targetAgentId);
-            try { return NextResponse.json(goalCommand.action === "status" ? await replyObjectiveStatus(companyId,userId,id) : await requestAgentObjective(companyId,userId,id,goalCommand as { action: "start" | "pause" | "resume" | "stop" | "update" | "block" | "complete"; objective?: string })); }
+            // The objective runs in the chat it was started from (D12): one of the
+            // person's own private chats. Other direct threads (Operations) and no
+            // thread id keep the main chat.
+            const current = typeof directThreadId === "string" && directThreadId ? await directThreadFor(companyId, id, userId, directThreadId) : null;
+            const goalThread = current && current.ownerUserId === userId ? current : null;
+            try { return NextResponse.json(goalCommand.action === "status" ? await replyObjectiveStatus(companyId,userId,id,{ thread: goalThread }) : await requestAgentObjective(companyId,userId,id,goalCommand as { action: "start" | "pause" | "resume" | "stop" | "update" | "block" | "complete"; objective?: string },{ thread: goalThread })); }
             catch(e) { return NextResponse.json({error:e instanceof Error?e.message:"Objective request failed"},{status:400}); }
         }
         const command = typeof text === "string" ? parseAgentControlCommand(text) : null;
@@ -215,6 +278,10 @@ export async function POST(req: NextRequest) {
             return NextResponse.json({ error: "Text or attachment is required" }, { status: 400 });
         }
 
+        if (newChat !== undefined) {
+            return await startNewChat(companyId, userId, await resolveAgentId(companyId, targetAgentId), newChat, text || "", resolvedAttachments);
+        }
+
         // A group message has no single target: agents in the group answer
         // when @mentioned, like the team channel.
         const resolvedTargetAgentId = targetAgentId && !groupId
@@ -260,6 +327,9 @@ export async function POST(req: NextRequest) {
             text: text || "",
             attachments: resolvedAttachments,
             mirrorToLegacyChat: !resolvedTargetAgentId && !groupId,
+            // A person's private chat may be archived between the lookup above
+            // and this insert: re-checked under a lock on the thread row (409).
+            requireLiveThread: Boolean(resolvedTargetAgentId) && thread.isPrivate,
         });
 
         broadcastMcpEvent(companyId, {
@@ -271,6 +341,8 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ thread, message: serializeMessage(message) });
     } catch (error: unknown) {
         if (error instanceof AuthError) return NextResponse.json({error:error.message},{status:error.statusCode});
+        const chatError = chatErrorResponse(error);
+        if (chatError) return chatError;
         if (error instanceof GroupError) return NextResponse.json({ error: error.message }, { status: error.status });
         const isAgentNotFound = error instanceof Error && error.message.startsWith("Agent not found");
         const status = isAgentNotFound ? 404 : error instanceof Error && error.message.startsWith("Runtime controls") ? 400 : 500;

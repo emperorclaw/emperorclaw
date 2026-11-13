@@ -112,6 +112,11 @@ export async function GET(req: NextRequest) {
             // sync naming no agent gets none of them.
             conditions.push(privateThreadsHiddenFromToken(companyId, privateThreadAgentId));
             if (threadScope) conditions.push(threadScope);
+            // An archived direct chat is read-only (409 chat_archived on send): its leftover
+            // open messages are never handed to a runtime, which could not answer them.
+            conditions.push(sql`NOT EXISTS (SELECT 1 FROM message_threads archived_direct
+                WHERE archived_direct.id = ${threadMessages.threadId}
+                  AND archived_direct.type = 'direct' AND archived_direct.archived_at IS NOT NULL)`);
 
             if (scopeAgentId) {
                 conditions.push(sql`${threadMessages.threadId} IN (

@@ -17,7 +17,7 @@ import {
     users,
 } from "@/db/schema";
 import { loadThreadVisibility, PRIVATE_ACTIVITY, PRIVATE_RUN_ERROR } from "@/lib/agent-activity";
-import { userMayUseThread } from "@/lib/direct-chat-mode";
+import { directThreadLink, userMayUseThread } from "@/lib/direct-chat-mode";
 import { isAgentPairThread } from "@/lib/groups";
 import { resolveMemberScope, type MemberScope } from "@/lib/member-scope";
 import { agentsNotUsableBy } from "@/lib/agent-access-server";
@@ -270,10 +270,11 @@ function threadLabel(thread: ThreadInfo | undefined, names: StoryNames, readable
     return thread.title?.trim() || "Chat";
 }
 
+/** The hub link for a thread; a direct thread opens the exact chat (callers only link readable threads). */
 function messageHref(thread: ThreadInfo | undefined): string | null {
     if (!thread) return null;
     if (thread.type === "group") return `/messages?group=${encodeURIComponent(thread.id)}`;
-    if (thread.type === "direct" && thread.directAgentId) return `/messages?agent=${encodeURIComponent(thread.directAgentId)}`;
+    if (thread.type === "direct" && thread.directAgentId) return directThreadLink(thread.id, thread.directAgentId);
     if (thread.type === "team") return "/messages";
     return null;
 }
@@ -494,7 +495,10 @@ export async function loadTaskStory(
                     exitReason: run.exitReason,
                     error: run.error ? (visible ? run.error : PRIVATE_RUN_ERROR) : null,
                     private: !visible,
-                    threadHref: visible ? runThreadLink({ threadId: run.threadId, threadType: thread?.type ?? null, agentId: run.agentId }) ?? (thread?.type === "team" ? "/messages" : null) : null,
+                    threadHref: visible ? runThreadLink({
+                        threadId: run.threadId, threadType: thread?.type ?? null, agentId: run.agentId,
+                        viewerMayUse: thread ? userMayUseThread(thread, viewer.userId) : false,
+                    }) ?? (thread?.type === "team" ? "/messages" : null) : null,
                     threadLabel: thread ? threadLabel(thread, names, visible) : null,
                     reply: run.replyMessageId
                         ? { messageId: run.replyMessageId, excerpt: replyReadable ? excerpt(reply?.text, 280) : null, at: reply?.createdAt.toISOString() ?? null }
@@ -508,7 +512,7 @@ export async function loadTaskStory(
 
     // ── Live runs (pinned) ──
     const running = runRows.filter((run) => run.status === "running");
-    const live = await buildLiveView(companyId, running, runVisibility.visible, threads, names, task.state, now);
+    const live = await buildLiveView(companyId, running, runVisibility.visible, threads, names, task.state, now, viewer.userId);
 
     // ── Header ──
     const pending = approvalRows.filter((row) => row.status === "pending").length;
@@ -562,6 +566,7 @@ async function buildLiveView(
     names: StoryNames,
     state: string,
     now: Date,
+    viewerUserId: string | null,
 ): Promise<TaskLiveView> {
     if (running.length === 0) return { runs: [], state, serverNow: now.toISOString() };
     const ids = running.map((run) => run.id);
@@ -589,7 +594,10 @@ async function buildLiveView(
                 agentName: names.agent(run.agentId),
                 private: !isVisible,
                 lastUsefulAt: stallByRun.get(run.id)?.lastUsefulAt ?? run.startedAt.toISOString(),
-                threadHref: isVisible ? runThreadLink({ threadId: run.threadId, threadType: thread?.type ?? null, agentId: run.agentId }) : null,
+                threadHref: isVisible ? runThreadLink({
+                    threadId: run.threadId, threadType: thread?.type ?? null, agentId: run.agentId,
+                    viewerMayUse: thread ? userMayUseThread(thread, viewerUserId) : false,
+                }) : null,
             };
         }),
     };
@@ -612,5 +620,5 @@ export async function loadTaskLive(companyId: string, taskId: string, viewer: Ta
         loadThreads(companyId, running.map((run) => run.threadId)),
         loadThreadVisibility(companyId, running.map((run) => run.threadId), viewer.userId),
     ]);
-    return buildLiveView(companyId, running, visibility.visible, threads, names, task.state, now);
+    return buildLiveView(companyId, running, visibility.visible, threads, names, task.state, now, viewer.userId);
 }

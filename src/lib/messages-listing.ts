@@ -15,8 +15,9 @@ import type { Role } from "@/lib/roles";
  * page and the nav badge (/api/chat/unread-count) can never disagree about
  * which conversations count.
  *
- * Listed: one direct thread per visible agent (the "primary": your own in
- * private mode, the shared one in shared mode; the most recent wins), your
+ * Listed: one direct thread per visible agent (the "primary": your main chat
+ * in private mode, with your extra chats with that agent alongside it in
+ * `extraChats`; the shared one in shared mode, the most recent winning), your
  * earlier private threads in shared mode, the team thread and the groups you
  * can see. NOT listed: an agent's shared thread in private mode (its Work log,
  * reached from the agent's panel), someone else's private thread, archived
@@ -30,7 +31,7 @@ type ThreadRow = typeof messageThreads.$inferSelect;
 export type ListedDirectThread = {
     agent: AgentRow;
     thread: ThreadRow;
-    /** "primary" = the agent's row in Direct Messages; "operations" = its Work log (not listed); "private" = your earlier private thread. */
+    /** "primary" = the agent's row in Direct Messages; "operations" = its Work log (not listed); "private" = your earlier private thread, or (in `extraChats`) an extra chat. */
     kind: "primary" | "operations" | "private";
     latest: { text: string; createdAt: Date } | null;
 };
@@ -45,6 +46,14 @@ export type MessagesListing = {
     groups: GroupListEntry[];
     /** Every thread the Messages list shows: what the badge counts and "Mark all as read" clears. */
     listedThreadIds: string[];
+    /**
+     * Private mode: the person's open EXTRA chats per agent (not the main
+     * chat, which is the agent's "primary" entry in `direct`). They share the
+     * agent's one sidebar row; their ids are in listedThreadIds, so the badge
+     * and "Mark all as read" cover them. Absent when the person has none, so
+     * the listing is exactly what it was before multiple chats.
+     */
+    extraChats?: ListedDirectThread[];
 };
 
 /** The company's team thread, read-only (the page creates it with ensureTeamThread first). */
@@ -101,6 +110,9 @@ export async function loadMessagesListing(viewer: MessagesViewer): Promise<Messa
 
     const primaryByAgent = new Map<string, ListedDirectThread>();
     const secondary: ListedDirectThread[] = [];
+    // Private mode: every chat the person owns with an agent; the main chat
+    // becomes the agent's primary entry and the rest are its extra chats.
+    const ownedByAgent = new Map<string, ListedDirectThread[]>();
     for (const thread of userThreads) {
         const agentId = agentByThread.get(thread.id);
         const agent = agentId ? agentById.get(agentId) : undefined;
@@ -113,10 +125,20 @@ export async function loadMessagesListing(viewer: MessagesViewer): Promise<Messa
             secondary.push({ agent, thread, kind: thread.ownerUserId ? "private" : "operations", latest });
             continue;
         }
+        if (directChatMode === "private") {
+            ownedByAgent.set(agent.id, [...(ownedByAgent.get(agent.id) ?? []), { agent, thread, kind: "primary", latest }]);
+            continue;
+        }
         const current = primaryByAgent.get(agent.id);
-        const latestTime = latest ? latest.createdAt.getTime() : 0;
-        const currentTime = current?.latest ? current.latest.createdAt.getTime() : 0;
-        if (!current || latestTime >= currentTime) primaryByAgent.set(agent.id, { agent, thread, kind: "primary", latest });
+        if (!current || latestTime(latest) >= latestTime(current.latest)) primaryByAgent.set(agent.id, { agent, thread, kind: "primary", latest });
+    }
+    const extraChats: ListedDirectThread[] = [];
+    for (const [agentId, owned] of ownedByAgent) {
+        // The main chat; failing that (no main yet), the most recent, as before.
+        const main = owned.find((entry) => entry.thread.isMain)
+            ?? owned.reduce((best, entry) => (latestTime(entry.latest) >= latestTime(best.latest) ? entry : best));
+        primaryByAgent.set(agentId, main);
+        for (const entry of owned) if (entry !== main) extraChats.push({ ...entry, kind: "private" });
     }
 
     const teamThread = await findTeamThread(companyId);
@@ -135,8 +157,15 @@ export async function loadMessagesListing(viewer: MessagesViewer): Promise<Messa
         ...direct.filter((d) => d.kind !== "operations").map((d) => d.thread.id),
         ...(teamThread ? [teamThread.id] : []),
         ...groups.map((g) => g.id),
+        ...extraChats.map((d) => d.thread.id),
     ];
-    return { directChatMode, agents: visibleAgents, direct, teamThread, groups, listedThreadIds };
+    const listing: MessagesListing = { directChatMode, agents: visibleAgents, direct, teamThread, groups, listedThreadIds };
+    if (extraChats.length > 0) listing.extraChats = extraChats;
+    return listing;
+}
+
+function latestTime(latest: ListedDirectThread["latest"]): number {
+    return latest ? latest.createdAt.getTime() : 0;
 }
 
 /** Just the ids the Messages list shows (see loadMessagesListing). */

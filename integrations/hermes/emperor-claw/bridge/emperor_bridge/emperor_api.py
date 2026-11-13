@@ -63,6 +63,11 @@ def is_soft_failure(exc: BaseException) -> bool:
     return isinstance(exc, (EmperorUnavailable, OSError))
 
 
+def is_chat_archived(exc: BaseException) -> bool:
+    """409 chat_archived: the chat was archived (read-only). Final: no retry can ever land there."""
+    return isinstance(exc, ApiError) and exc.status_code == 409 and "chat_archived" in (exc.body or "")
+
+
 def is_environment_failure(exc: BaseException) -> bool:
     """The environment failed (Emperor unreachable, 5xx, 408/425/429), not the prompt."""
     if isinstance(exc, ApiError):

@@ -73,6 +73,12 @@ export const companies = pgTable("companies", {
     // Approval routing (lib/approval-routing.ts): escalation timeout and team
     // approvers. {} = defaults (30 minutes, no team approvers).
     approvalSettingsJson: jsonb("approval_settings_json").default("{}").$type<Record<string, unknown>>().notNull(),
+    // Several private chats per (person, agent) (lib/multi-chat.ts): on by
+    // default, a cap on open chats, and the idle auto-archive window in days
+    // (NULL = never).
+    multiChatEnabled: boolean("multi_chat_enabled").default(true).notNull(),
+    multiChatMaxOpen: integer("multi_chat_max_open").default(20).notNull(),
+    multiChatIdleArchiveDays: integer("multi_chat_idle_archive_days").default(30),
     createdAt: timestamp("created_at").defaultNow().notNull(),
     deletedAt: timestamp("deleted_at"),
 });
@@ -970,12 +976,24 @@ export const messageThreads = pgTable("message_threads", {
     // (owner_user_id then reads NULL), so an orphaned private thread is never
     // mistaken for the shared/Operations one and never opens up to everyone.
     isPrivate: boolean("is_private").default(false).notNull(),
+    // A person's main chat with an agent: the one every caller that does not
+    // name a thread resolves to. Their other chats with it are extra chats.
+    isMain: boolean("is_main").default(false).notNull(),
     createdAt: timestamp("created_at").defaultNow().notNull(),
     archivedAt: timestamp("archived_at"),
+    // Why it was archived: manual | idle | member_left | agent_sealed (lib/multi-chat.ts).
+    archiveReason: text("archive_reason"),
+    // When the chat was last restored from the archive: idle auto-archive
+    // counts it as activity (lib/idle-chat-archive.ts).
+    restoredAt: timestamp("restored_at"),
 }, (table) => ({
     companyTypeIdx: index("message_threads_company_type_idx").on(table.companyId, table.type),
-    // One live private direct thread per (company, person, agent).
-    privateDirectUnique: uniqueIndex("message_threads_private_direct_unique")
+    // One live main private chat per (company, person, agent).
+    privateMainUnique: uniqueIndex("message_threads_private_main_unique")
+        .on(table.companyId, table.ownerUserId, table.directAgentId)
+        .where(sql`${table.type} = 'direct' AND ${table.ownerUserId} IS NOT NULL AND ${table.archivedAt} IS NULL AND ${table.isMain}`),
+    // A person's open chats with an agent (cap count, chat list).
+    privateOwnerAgentIdx: index("message_threads_private_owner_agent_idx")
         .on(table.companyId, table.ownerUserId, table.directAgentId)
         .where(sql`${table.type} = 'direct' AND ${table.ownerUserId} IS NOT NULL AND ${table.archivedAt} IS NULL`),
 }));

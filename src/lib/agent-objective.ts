@@ -282,7 +282,7 @@ export async function requestAgentObjective(companyId: string, userId: string, a
     cadenceMinutes?: number;
     maxFollowups?: number;
     blockerReason?: string | null;
-}) {
+}, options: { thread?: { id: string } | null } = {}) {
     await requireAgent(companyId, agentId);
     const action = input.action;
     if (!HUMAN_ACTIONS.includes(action)) throw new Error("Invalid objective action");
@@ -293,8 +293,9 @@ export async function requestAgentObjective(companyId: string, userId: string, a
         if (objectiveText.length > OBJECTIVE_MAX_CHARS) throw new Error(`An objective must be at most ${OBJECTIVE_MAX_CHARS} characters`);
         const cadenceMinutes = clampCadenceMinutes(input.cadenceMinutes);
         const maxFollowups = clampMaxFollowups(input.maxFollowups);
-        // Start in the human's private conversation with the agent.
-        const thread = await ensureDirectThread(companyId, agentId, userId);
+        // Start in the chat it was typed in (one of the person's own private
+        // chats, already authorized by the caller); else their main chat.
+        const thread = options.thread ?? await ensureDirectThread(companyId, agentId, userId);
 
         const created = await db.transaction(async (tx) => {
             await lockAgentRow(tx, companyId, agentId);
@@ -487,9 +488,10 @@ export function objectiveStatusText(objective: PublicObjective | ReturnType<type
     return lines.join("\n");
 }
 
-export async function replyObjectiveStatus(companyId: string, userId: string, agentId: string) {
+export async function replyObjectiveStatus(companyId: string, userId: string, agentId: string, options: { thread?: { id: string } | null } = {}) {
     const read = await readAgentObjective(companyId, agentId, userId);
-    const thread = await ensureDirectThread(companyId, agentId, userId);
+    // Answer in the chat `/goal status` was typed in; else the main chat.
+    const thread = options.thread ?? await ensureDirectThread(companyId, agentId, userId);
     const message = await threadMessageInsert(companyId, thread.id, agentId, userId, objectiveStatusText(read.objective));
     broadcastMcpEvent(companyId, { type: "thread_message", threadId: thread.id, message });
     return { thread, message };

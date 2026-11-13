@@ -17,7 +17,7 @@ import {
 } from "@/db/schema";
 import { agentAvatarSrc } from "@/lib/avatar";
 import { deriveAppearance, type CharacterAppearance } from "@/lib/character/model";
-import { isPrivateDirectThread, userMayUseThread } from "@/lib/direct-chat-mode";
+import { directThreadLink, isPrivateDirectThread, userMayUseThread } from "@/lib/direct-chat-mode";
 import { isAgentPairThread } from "@/lib/groups";
 import { memberProjectCondition } from "@/lib/member-scope";
 import { agentsNotUsableBy } from "@/lib/agent-access-server";
@@ -136,10 +136,15 @@ function threadLabel(thread: ThreadInfo | undefined, agentName: (id: string | nu
     return thread.title?.trim() || "Chat";
 }
 
-function threadHref(thread: ThreadInfo | undefined): string | null {
+/** The hub link for a chat run's thread: the exact direct chat when the viewer may use it, else the agent. */
+function threadHref(thread: ThreadInfo | undefined, viewerUserId: string | null): string | null {
     if (!thread) return null;
     if (thread.type === "group") return `/messages?group=${encodeURIComponent(thread.id)}`;
-    if (thread.type === "direct" && thread.directAgentId) return `/messages?agent=${encodeURIComponent(thread.directAgentId)}`;
+    if (thread.type === "direct" && thread.directAgentId) {
+        return userMayUseThread(thread, viewerUserId)
+            ? directThreadLink(thread.id, thread.directAgentId)
+            : `/messages?agent=${encodeURIComponent(thread.directAgentId)}`;
+    }
     if (thread.type === "team") return "/messages";
     return null;
 }
@@ -447,7 +452,7 @@ export async function loadWorkTimeline(companyId: string, viewer: TaskViewer, qu
             projectId: run.taskId ? (info?.projectId ?? null) : null,
             customerName: run.taskId ? (info?.customerName ?? null) : null,
             threadLabel: run.taskId ? null : threadLabel(thread, (id) => agentName.get(id ?? "") ?? null),
-            href: run.taskId ? taskHref(run.taskId) : threadHref(thread),
+            href: run.taskId ? taskHref(run.taskId) : threadHref(thread, viewer.userId),
             status: run.status,
             exitReason: run.exitReason,
             pendingApproval: pending.some((at) => approvalInRun(at, { startedAtMs: run.startedAt.getTime(), endedAtMs: run.endedAt?.getTime() ?? null })),

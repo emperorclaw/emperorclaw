@@ -259,7 +259,7 @@ export async function setAgentAccess(
             // (lib/direct-chat-mode.ts): their messages and their runs' steps
             // and summaries are redacted like any private thread's
             // (run-ledger-reads), while the agent itself keeps its own context.
-            const sealed = await tx.update(messageThreads).set({ archivedAt: new Date(), isPrivate: true }).where(and(
+            const sealed = await tx.update(messageThreads).set({ archivedAt: new Date(), archiveReason: "agent_sealed", isPrivate: true }).where(and(
                 eq(messageThreads.companyId, viewer.companyId), eq(messageThreads.type, "direct"),
                 eq(messageThreads.directAgentId, agentId), isNull(messageThreads.archivedAt),
                 isNull(messageThreads.ownerUserId), eq(messageThreads.isPrivate, false),

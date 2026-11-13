@@ -8,6 +8,7 @@ import { BOUND_AGENT_MISMATCH, McpUnreachableAgentError, mcpAccessForAgent, mcpM
 import { broadcastMcpEvent } from "@/lib/pubsub";
 import { ensureAgentPairThread, GROUP_THREAD_TYPE, isAgentGroupMember, isAgentPairThread, pairThreadCounterpart } from "@/lib/groups";
 import { agentLoopHardCap, agentPairLoopHardCap, mentionedAgentIds, NO_WAKE_KEY, unreachableMentionsOf } from "@/lib/message-routing";
+import { ChatArchivedError } from "@/lib/multi-chat";
 
 function isUuid(value: string) {
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value);
@@ -189,6 +190,8 @@ export async function sendThreadMessageFromMcp(input: {
 
     if (!existingThread) throw new Error("Thread not found");
     await assertAgentMayPostInThread(input.companyId, existingThread, resolvedSenderId);
+    // An archived private chat is read-only, for its agent as for its owner.
+    if (existingThread.archivedAt && isPrivateDirectThread(existingThread)) throw new ChatArchivedError();
 
     responseThread = existingThread;
 

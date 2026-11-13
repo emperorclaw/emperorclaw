@@ -11,6 +11,7 @@
  */
 
 import { copy, type CodedCopy } from "@/lib/coded-copy";
+import { directThreadLink } from "@/lib/direct-chat-mode";
 
 /** A stored delivery verdict, as `GET /api/messages/[id]/delivery` returns it. */
 export interface DeliveryVerdictCopyInput {
@@ -316,15 +317,21 @@ export function buildRunsQuery(params: { status?: string | null; cursor?: string
 /**
  * The messaging-hub deep link for a run's triggering thread, or null when the
  * hub cannot honour it. `?group=` only opens group threads and `?agent=` only
- * direct ones; the team thread has no param, so it stays plain text.
+ * direct ones; the team thread has no param, so it stays plain text. A direct
+ * thread the viewer may use (`viewerMayUse`, the caller checked
+ * userMayUseThread) links to that exact chat; otherwise `?agent=` opens the
+ * viewer's last-viewed or main chat with the agent.
  */
 export function runThreadLink(run: {
     threadId: string | null;
     threadType: string | null;
     agentId: string | null;
+    viewerMayUse?: boolean;
 }): string | null {
     if (!run.threadId) return null;
     if (run.threadType === "group") return `/messages?group=${encodeURIComponent(run.threadId)}`;
-    if (run.threadType === "direct" && run.agentId) return `/messages?agent=${encodeURIComponent(run.agentId)}`;
+    if (run.threadType === "direct" && run.agentId) {
+        return run.viewerMayUse ? directThreadLink(run.threadId, run.agentId) : `/messages?agent=${encodeURIComponent(run.agentId)}`;
+    }
     return null;
 }

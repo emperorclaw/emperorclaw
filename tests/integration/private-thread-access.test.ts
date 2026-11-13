@@ -184,6 +184,29 @@ maybe("orphaned private thread: once the owner is deleted nobody can use it, and
     await archivePrivateThreadsOf(s.companyId, s.userA);
     const [archived] = await db.select().from(messageThreads).where(eq(messageThreads.id, s.thread.id));
     assert.ok(archived.archivedAt, "a leaving member's private threads are archived");
+    assert.equal(archived.archiveReason, "member_left");
+});
+
+maybe("MCP send: an archived private chat is read-only for its own agent too (409 chat_archived)", async () => {
+    const s = await seedPrivateChat();
+    const { createPrivateChat, updatePrivateChat } = await import("@/lib/private-chats");
+    const { appendThreadMessage } = await import("@/lib/control-plane");
+    const extra = await createPrivateChat({ companyId: s.companyId, userId: s.userA, agentId: s.agentX.id, firstMessage: "side topic", clientKey: `mcp-${randomUUID()}` });
+    const ask = await appendThreadMessage({ companyId: s.companyId, threadId: extra.thread.id, senderType: "human", senderId: s.userA, targetAgentId: s.agentX.id, text: "side topic" });
+    await updatePrivateChat(s.companyId, s.userA, extra.thread.id, { archived: true });
+
+    const send = await import("@/app/api/mcp/messages/send/route");
+    const post = (body: Record<string, unknown>) => send.POST(makeRequest("http://localhost/api/mcp/messages/send", { method: "POST", headers: auth(s.tokenX), body }));
+    for (const body of [{ text: "late answer", thread_id: extra.thread.id }, { text: "late reply", replyToMessageId: ask.id }]) {
+        const res = await post(body);
+        assert.equal(res.status, 409, JSON.stringify(body));
+        assert.equal(((await res.json()) as { code: string }).code, "chat_archived");
+    }
+    // Another agent still reads it as missing, never as archived.
+    const other = await send.POST(makeRequest("http://localhost/api/mcp/messages/send", { method: "POST", headers: auth(s.tokenY), body: { text: "x", thread_id: extra.thread.id } }));
+    assert.equal(other.status, 404);
+    // The live main chat is unaffected.
+    assert.equal((await post({ text: "main answer", thread_id: s.thread.id })).status, 200);
 });
 
 maybe("delivery inspector: a message in someone else's private thread reads as missing", async () => {
@@ -202,6 +225,10 @@ maybe("display dm: private mode shows the creator's own thread, never the Operat
     await appendThreadMessage({ companyId: s.companyId, threadId: ops.id, senderType: "human", senderId: s.userB, targetAgentId: s.agentX.id, text: "ops note from B" });
     const own = await ensureDirectThread(s.companyId, s.agentX.id, s.userB);
     await appendThreadMessage({ companyId: s.companyId, threadId: own.id, senderType: "human", senderId: s.userB, targetAgentId: s.agentX.id, text: "B private" });
+    // A newer extra chat of B's with X: the screen still shows the main chat only.
+    const { createPrivateChat } = await import("@/lib/private-chats");
+    const extra = await createPrivateChat({ companyId: s.companyId, userId: s.userB, agentId: s.agentX.id, firstMessage: "B extra", clientKey: `screen-${randomUUID()}` });
+    await appendThreadMessage({ companyId: s.companyId, threadId: extra.thread.id, senderType: "human", senderId: s.userB, targetAgentId: s.agentX.id, text: "B extra chat" });
 
     const db = await getDb();
     const { companyTokens } = await getSchema();
@@ -220,6 +247,7 @@ maybe("display dm: private mode shows the creator's own thread, never the Operat
     const body = JSON.stringify(await res.json());
     assert.ok(body.includes("B private"), "the creator's own private thread is the dm");
     assert.ok(!body.includes("ops note from B"), "not the Operations thread");
+    assert.ok(!body.includes("B extra chat"), "not an extra chat: the main chat only");
     assert.ok(!body.includes("secret plan"), "never another person's private thread");
 });
 

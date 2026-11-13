@@ -71,6 +71,9 @@ test("runThreadLink links only thread types the messaging hub can open", () => {
     assert.equal(runThreadLink({ threadId: null, threadType: "group", agentId: "a" }), null);
     assert.equal(runThreadLink({ threadId: "t1", threadType: "group", agentId: null }), "/messages?group=t1");
     assert.equal(runThreadLink({ threadId: "t1", threadType: "direct", agentId: "a1" }), "/messages?agent=a1");
+    // A direct chat the viewer may use opens exactly; otherwise the agent's last-viewed or main chat.
+    assert.equal(runThreadLink({ threadId: "t1", threadType: "direct", agentId: "a1", viewerMayUse: true }), "/messages?agent=a1&thread=t1");
+    assert.equal(runThreadLink({ threadId: "t1", threadType: "direct", agentId: "a1", viewerMayUse: false }), "/messages?agent=a1");
     assert.equal(runThreadLink({ threadId: "t1", threadType: "direct", agentId: null }), null);
     assert.equal(runThreadLink({ threadId: "t1", threadType: "team", agentId: "a1" }), null);
     assert.equal(runThreadLink({ threadId: "t1", threadType: null, agentId: "a1" }), null);

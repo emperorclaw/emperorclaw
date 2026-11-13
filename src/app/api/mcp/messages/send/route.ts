@@ -7,9 +7,11 @@ import { applyStoredObjectiveStatus } from "@/lib/objective-status";
 import { parseJsonBody, optionalString } from "@/lib/validation";
 import crypto from "crypto";
 import { db } from "@/db";
-import { threadMessages, threadParticipants } from "@/db/schema";
+import { messageThreads, threadMessages, threadParticipants } from "@/db/schema";
 import { and, eq, gt, inArray, isNull, lt, notInArray, or, sql } from "drizzle-orm";
 import { broadcastMcpEvent } from "@/lib/pubsub";
+import { ChatArchivedError } from "@/lib/multi-chat";
+import { isPrivateDirectThread } from "@/lib/direct-chat-mode";
 
 const sendMessageSchema = z.object({
     text: z.string().min(1, "text is required"),
@@ -201,11 +203,21 @@ export async function POST(req: NextRequest) {
                     return { ok: true, messageId: existing.id, threadId: existing.threadId, replayed: true as const };
                 }
             }
-            if (source.deliveryState === "cancelled") return null;
+            // Archiving a chat cancels its open prompts; a late answer there is refused
+            // as archived (409 chat_archived), not swallowed as cancelled work.
+            if (source.deliveryState === "cancelled") {
+                const [sourceThread] = await tx.select().from(messageThreads).where(eq(messageThreads.id, source.threadId)).limit(1);
+                if (sourceThread?.archivedAt && isPrivateDirectThread(sourceThread)) throw new ChatArchivedError();
+                return null;
+            }
+            // A pending Stop/Replace swallows the reply only where it applies: an
+            // agent-wide command everywhere, a thread-scoped one (one private chat)
+            // only in its own thread. Other chats' replies are delivered.
             const [stop] = await tx.select({ id: threadMessages.id }).from(threadMessages).where(and(
                 eq(threadMessages.companyId, companyId), eq(threadMessages.targetAgentId, effectiveAgentId),
                 eq(threadMessages.senderType, "system"), eq(threadMessages.deliveryState, "queued"),
                 sql`${threadMessages.metadataJson}->'runtimeControl'->>'action' IN ('kill', 'replace')`,
+                sql`(${threadMessages.metadataJson}->'runtimeControl'->>'scope' IS DISTINCT FROM 'thread' OR ${threadMessages.threadId} = ${source.threadId}::uuid)`,
             )).limit(1);
             if (stop) return null;
             const sent = await send();
@@ -260,6 +272,9 @@ export async function POST(req: NextRequest) {
             ...(coalescedIds.length > 0 ? { resolvedMessageIds: coalescedResolved.map((message) => message.id) } : {}),
         });
     } catch (error) {
+        if (error instanceof ChatArchivedError) {
+            return NextResponse.json({ error: error.message, code: error.code }, { status: error.status });
+        }
         console.error("Chat send webhook error:", error);
         const message = error instanceof Error ? error.message : "Internal Server Error";
         const status = message.startsWith("Agent not found") || message === "Thread not found"

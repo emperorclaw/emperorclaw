@@ -20,7 +20,7 @@ from typing import Any, Callable, Mapping, Optional
 
 from . import supervisor
 from .interfaces import GatewayIdentity, Topology
-from .version import BRIDGE_CAPABILITIES, BRIDGE_PROTOCOL, BRIDGE_VERSION
+from .version import BRIDGE_CAPABILITIES, BRIDGE_PROTOCOL, BRIDGE_VERSION, MAX_PARALLEL_TURNS_CAPABILITY
 
 STALE_AFTER_S = 180.0
 HEALTH_FILENAME = "health.json"
@@ -28,10 +28,15 @@ HEALTH_FILENAME = "health.json"
 
 def registration_body(*, runtime_id: str, agent_id: str, hostname: str, topology: Topology,
                       identity: Optional[GatewayIdentity], started_at: float,
-                      fingerprint: Optional[str]) -> dict[str, Any]:
-    """POST /runtime/register body (register v2: bridge/Hermes versions, topology, host fingerprint)."""
+                      fingerprint: Optional[str], max_parallel_turns: Optional[int] = None) -> dict[str, Any]:
+    """POST /runtime/register body (register v2: bridge/Hermes versions, topology, host fingerprint).
+    The parallel-turn limit travels as a "max-parallel-turns: <n>" capability entry: Emperor stores
+    capabilitiesJson as-is, so an older server keeps it without knowing it."""
+    capabilities = list(BRIDGE_CAPABILITIES)
+    if max_parallel_turns:
+        capabilities.append(f"{MAX_PARALLEL_TURNS_CAPABILITY}: {max(1, int(max_parallel_turns))}")
     body = {"runtimeId": runtime_id, "name": f"Hermes on {hostname}", "hostname": hostname,
-            "gatewayVersion": "hermes-agent", "agentId": agent_id, "capabilitiesJson": list(BRIDGE_CAPABILITIES),
+            "gatewayVersion": "hermes-agent", "agentId": agent_id, "capabilitiesJson": capabilities,
             "bridgeVersion": BRIDGE_VERSION, "bridgeProtocol": BRIDGE_PROTOCOL,
             "hermesVersion": identity.code_version if identity else None,
             "hermesCodeSha": identity.code_sha if identity else None, "transport": "gateway-ws",

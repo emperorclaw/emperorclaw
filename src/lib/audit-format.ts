@@ -17,7 +17,7 @@ export type AuditActor = { type: AuditActorType; id: string | null; tokenId?: st
 
 export const AUDIT_TARGET_TYPES = [
     "agent", "task", "approval", "member", "invitation", "company", "organization", "project", "customer", "knowledge_note",
-    "pricing", "view", "runtime_host", "pipeline",
+    "pricing", "view", "runtime_host", "pipeline", "thread",
 ] as const;
 export type AuditTargetType = (typeof AUDIT_TARGET_TYPES)[number];
 
@@ -73,6 +73,8 @@ export const AUDIT_FIELD_ALLOWLIST: Record<AuditTargetType, Record<string, Field
         access: "enum", ownerUserId: "id", accessCount: "number", toName: "label",
         // The runtime host it runs on (0.21, lib/runtime-hosts) and its Hermes profile there.
         runtimeHostId: "id", runtimeProfile: "enum",
+        // agent.deleted: how many of its direct chats were deleted with it.
+        deletedThreadCount: "number",
     },
     task: {
         title: "label", state: "enum", priority: "number", projectId: "id",
@@ -93,6 +95,8 @@ export const AUDIT_FIELD_ALLOWLIST: Record<AuditTargetType, Record<string, Field
         // Settings → Modules (lib/modules.ts): one on/off per module, and the template that set them.
         customersModule: "bool", automationsModule: "bool", timelineModule: "bool", costsModule: "bool",
         approvalsModule: "bool", viewsModule: "bool", displaysModule: "bool", template: "enum",
+        // Settings → Direct chats: several chats per person and agent (lib/multi-chat.ts).
+        multiChatEnabled: "bool", multiChatMaxOpen: "number", multiChatIdleArchiveDays: "number",
     },
     organization: { leaderKind: "enum", leaderId: "id", nodeCount: "number", teamCount: "number" },
     project: {
@@ -125,6 +129,10 @@ export const AUDIT_FIELD_ALLOWLIST: Record<AuditTargetType, Record<string, Field
         // A person's edit in the app: which fields, and the schedule (never the texts).
         fields: "label", trigger: "enum", cron: "label", timezone: "label",
     },
+    // A person's private chat with an agent (lib/private-chats.ts): ids, the
+    // agent's name as the label and the archive reason. NEVER the chat's title
+    // (it comes from the first message) or any content.
+    thread: { agentId: "id", reason: "enum" },
 };
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -226,7 +234,7 @@ export function scopeAuditFields(scopeJson: unknown): AuditFields {
 const TARGET_NOUNS: Record<string, string> = {
     agent: "agent", task: "task", approval: "approval", member: "", invitation: "an invitation for",
     company: "", organization: "", project: "project", customer: "customer", knowledge_note: "note",
-    pricing: "pricing for", view: "view", runtime_host: "host", pipeline: "automation",
+    pricing: "pricing for", view: "view", runtime_host: "host", pipeline: "automation", thread: "a chat with",
 };
 
 /** "<verb> <noun> <label>"; a verb with "{target}" places the target itself. */
@@ -259,6 +267,8 @@ const VERBS: Record<string, string> = {
     "member.access_removed": "removed the access of",
     "invitation.revoked": "revoked",
     "company.settings_changed": "changed company settings",
+    // The retention sweep's idle auto-archive (lib/idle-chat-archive.ts): one row per company and run, a count only.
+    "company.idle_chats_archived": "archived idle private chats",
     "organization.updated": "edited the org chart",
     "project.created": "created",
     "project.updated": "updated",
@@ -288,6 +298,9 @@ const VERBS: Record<string, string> = {
     "pipeline.paused": "paused",
     "pipeline.resumed": "resumed",
     "pipeline.updated": "updated",
+    "thread.created": "started",
+    "thread.archived": "archived",
+    "thread.restored": "restored",
     "runtime_host.paired": "paired",
     "runtime_host.renamed": "renamed",
     "runtime_host.revoked": "revoked",
@@ -309,7 +322,12 @@ const VERBS: Record<string, string> = {
 export const AUDIT_SENTENCE_ACTIONS: readonly string[] = Object.keys(VERBS);
 
 const SETTING_LABELS: Record<string, string> = {
-    directChatMode: "direct chat mode", contextNotes: "company context", agentRoutine: "daily agent routine", instance: "instance settings", modules: "modules", approvals: "approval routing",
+    directChatMode: "direct chat mode", contextNotes: "company context", agentRoutine: "daily agent routine", instance: "instance settings", modules: "modules", approvals: "approval routing", multiChat: "multiple chats",
+};
+
+/** Why a chat was archived (thread.archived meta.reason, lib/multi-chat.ts ARCHIVE_REASONS). */
+const ARCHIVE_REASON_WORDS: Record<string, string> = {
+    manual: "by its owner", idle: "after being idle", member_left: "when its owner left", agent_sealed: "when the agent was sealed",
 };
 
 const STATE_LABELS: Record<string, string> = {
@@ -430,6 +448,10 @@ function detailCopyFor(action: string, payload: AuditPayload, names: Readonly<Re
         case "approval.rejected":
         case "approval.dismissed":
             return typeof meta.count === "number" && meta.count > 1 ? d("taskCount", { count: String(meta.count) }) : null;
+        case "thread.archived":
+            return typeof meta.reason === "string" && ARCHIVE_REASON_WORDS[meta.reason] ? d(`archiveReason.${meta.reason}`) : null;
+        case "company.idle_chats_archived":
+            return typeof meta.count === "number" ? d("chatCount", { count: meta.count }) : null;
         default:
             return null;
     }
@@ -494,6 +516,10 @@ function detailFor(action: string, payload: AuditPayload, names: Readonly<Record
         case "approval.rejected":
         case "approval.dismissed":
             return typeof meta.count === "number" && meta.count > 1 ? `(${meta.count} tasks)` : null;
+        case "thread.archived":
+            return typeof meta.reason === "string" && ARCHIVE_REASON_WORDS[meta.reason] ? `(${ARCHIVE_REASON_WORDS[meta.reason]})` : null;
+        case "company.idle_chats_archived":
+            return typeof meta.count === "number" ? `(${meta.count} ${meta.count === 1 ? "chat" : "chats"})` : null;
         default:
             return null;
     }
@@ -582,6 +608,8 @@ export const AUDIT_FIELD_LABELS: Record<string, string> = {
     actionKey: "Action", permission: "Permission",
     customersModule: "Customers module", automationsModule: "Automations module", timelineModule: "Timeline module", costsModule: "Costs module",
     approvalsModule: "Approval history module", viewsModule: "Views module", displaysModule: "Display screens module", template: "Template",
+    multiChatEnabled: "Multiple chats", multiChatMaxOpen: "Open chats per agent", multiChatIdleArchiveDays: "Archive idle chats after (days)",
+    deletedThreadCount: "Chats deleted",
 };
 
 /** One value of a diff, as text. Lists of ids collapse to a count. */

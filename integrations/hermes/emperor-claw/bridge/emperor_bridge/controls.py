@@ -7,10 +7,13 @@
   every queued message, interrupt every running turn, retire every thread's generation (the next
   message starts a fresh session, like 0.3 wiping `sessions`), run the runtime's hook (W4 pauses
   objectives), then acknowledge each command.
-- Thread-scoped replace (`runtimeControl.scope == "thread"`, private direct-chat mode: one person's
-  own direct thread): only the command's thread is touched. Its queued messages created before the
-  command are dropped, its running turn is interrupted, its session generation is retired; every
-  other thread (other people's chats) keeps running. Kill and unscoped replace stay agent-wide.
+- Thread-scoped kill / replace (`runtimeControl.scope == "thread"`, private direct-chat mode: one
+  of a person's own chats with the agent): only the command's thread is touched. Its queued
+  messages created before the command are dropped, its running turn is interrupted, its session
+  generation is retired (like an agent-wide kill does for every thread: the next message in that
+  chat starts a fresh session); every other thread (the person's other chats, other people's
+  chats) keeps its queue, its running turn and its session. Emperor only sends a scoped kill to a
+  bridge that advertises `thread-kill-v1`; unscoped kill and replace stay agent-wide.
 """
 from __future__ import annotations
 
@@ -39,9 +42,9 @@ def command_action(command: Mapping[str, Any]) -> Optional[str]:
 
 
 def command_thread_scope(command: Mapping[str, Any]) -> Optional[str]:
-    """The thread a scoped replace is limited to, or None for an agent-wide command."""
+    """The thread a scoped kill or replace is limited to, or None for an agent-wide command."""
     thread_id = str(command.get("threadId") or command.get("thread_id") or "")
-    if command_action(command) == "replace" and _control(command).get("scope") == "thread" and thread_id:
+    if command_action(command) in KILL_ACTIONS and _control(command).get("scope") == "thread" and thread_id:
         return thread_id
     return None
 
@@ -58,7 +61,7 @@ class ControlOutcome:
 class ControlPlane:
     def __init__(self, scheduler: Scheduler, runner: TurnRunner, sessions: SessionManager, emperor: EmperorPort, *,
                  on_kill: Optional[Callable[[str], Awaitable[None]]] = None,
-                 on_thread_reset: Optional[Callable[[str], Awaitable[None]]] = None,
+                 on_thread_reset: Optional[Callable[[str, str], Awaitable[None]]] = None,
                  logger: Optional[logging.Logger] = None) -> None:
         self._scheduler = scheduler
         self._runner = runner
@@ -86,7 +89,7 @@ class ControlPlane:
             return outcome
         if all(command_thread_scope(c) for c in kills):
             for command in kills:
-                await self._apply_thread_replace(command, outcome)
+                await self._apply_thread_control(command, outcome)
             return outcome
         action = command_action(kills[-1]) or "kill"
         outcome.actions = [command_action(c) or "" for c in kills]
@@ -107,21 +110,22 @@ class ControlPlane:
                        len(outcome.dropped_messages), len(outcome.retired_threads))
         return outcome
 
-    async def _apply_thread_replace(self, command: Mapping[str, Any], outcome: ControlOutcome) -> None:
+    async def _apply_thread_control(self, command: Mapping[str, Any], outcome: ControlOutcome) -> None:
         thread_id = command_thread_scope(command) or ""
-        outcome.actions.append("replace")
+        action = command_action(command) or "kill"
+        outcome.actions.append(action)
         dropped = self._scheduler.clear_thread(thread_id, before=command.get("createdAt"))
         outcome.dropped_messages.extend(m.id for m in dropped)
-        if await self._runner.interrupt(thread_id, "replace"):
+        if await self._runner.interrupt(thread_id, action):
             outcome.interrupted_threads.append(thread_id)
-        if self._sessions.bump_generation(thread_id, "replace") is not None:
+        if self._sessions.bump_generation(thread_id, action) is not None:
             outcome.retired_threads.append(thread_id)
         await self._sessions.save()  # the fresh session is persisted before the acknowledgement
         await self._sessions.close_retired()
         if self._on_thread_reset is not None:
-            await self._on_thread_reset(thread_id)
+            await self._on_thread_reset(thread_id, action)
         await self._ack(command, outcome)
-        self._log.info("control replace (thread %s): interrupted=%d dropped=%d", thread_id,
+        self._log.info("control %s (thread %s): interrupted=%d dropped=%d", action, thread_id,
                        int(thread_id in outcome.interrupted_threads), len(dropped))
 
     async def _ack(self, command: Mapping[str, Any], outcome: ControlOutcome) -> None:

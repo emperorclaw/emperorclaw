@@ -151,6 +151,29 @@ maybe("mark all as read clears the listed chats only: not the Work log, other pe
     assert.equal(await badge(c), 2, "another company's badge is unchanged");
 });
 
+maybe("extra chats: the badge counts every open chat with the agent, and mark all as read clears them all", async () => {
+    const { companyId, a, agent, privA, team, group } = await seedPrivateCompany();
+    const { createPrivateChat, updatePrivateChat } = await import("@/lib/private-chats");
+    const extra = (await createPrivateChat({ companyId, userId: a.userId, agentId: agent.id, firstMessage: "side topic", clientKey: `unread-${Date.now()}-1` })).thread;
+    const archived = (await createPrivateChat({ companyId, userId: a.userId, agentId: agent.id, firstMessage: "old topic", clientKey: `unread-${Date.now()}-2` })).thread;
+    await rewindReadCursors([extra.id, archived.id]);
+    await agentSays(companyId, extra.id, agent.id, 6);
+    await agentSays(companyId, archived.id, agent.id, 7);
+    await updatePrivateChat(companyId, a.userId, archived.id, { archived: true });
+
+    const { loadMessagesListing } = await import("@/lib/messages-listing");
+    const listing = await loadMessagesListing({ companyId, userId: a.userId, role: "owner", scope: null });
+    assert.deepEqual(listing.listedThreadIds, [privA.id, team.id, group.id, extra.id], "the open extra chat is listed; the archived one is not");
+    assert.equal(listing.direct.filter((d) => d.kind === "primary" && d.agent.id === agent.id).length, 1, "still one sidebar entry for the agent");
+    assert.equal(await badge(a), 2 + 1 + 4 + 6);
+
+    const res = await readAll(a);
+    assert.equal(res.status, 200, res.text);
+    assert.equal(res.json.threads, 4, "the main chat, the extra chat, the team and the group");
+    assert.equal(await badge(a), 0);
+    assert.equal((await readCursor(archived.id, a.userId))?.getTime(), LONG_AGO.getTime(), "an archived chat is not listed, so not touched");
+});
+
 maybe("read-all needs a signed-in member", async () => {
     await resetDb();
     const { POST } = await import("@/app/api/chat/read-all/route");

@@ -109,10 +109,18 @@ def cmd_redeliver(message_id: str, profile: Optional[str]) -> int:
     async def delivered(_entry, _reply_id):
         return None
 
+    dropped: list[str] = []
+
+    async def on_dropped(_entry):
+        dropped.append(message_id)
+
     try:
-        reply_id = asyncio.run(box.deliver(entry, send, delivered, attempts=3))
+        reply_id = asyncio.run(box.deliver(entry, send, delivered, attempts=3, on_dropped=on_dropped))
     except Exception as exc:
         print(f"FAILED: {exc}")
+        return 1
+    if dropped:
+        print("DROPPED: the chat was archived, so the reply can never be delivered (entry removed)")
         return 1
     print(f"DELIVERED as {reply_id or '<deduplicated by the server>'} (the run ledger is finished by the bridge only)")
     return 0

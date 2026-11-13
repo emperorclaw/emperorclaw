@@ -6,7 +6,9 @@ reply is parked in ``<profile_home>/emperor/outbox/<messageId>.json`` and the PO
 retried until it lands. The Idempotency-Key is the turn's submission id (D5: ``emp-<msgId>``,
 ``-r<n>`` for retries): stable across bridge restarts, so a retry whose earlier attempt was stored
 is not stored twice. A refusal (any 4xx, 429 included) spends a budget of ``max_attempts``; no
-answer or a 5xx never does. A given-up entry is kept as ``.failed`` for ``redeliver``.
+answer or a 5xx never does. A given-up entry is kept as ``.failed`` for ``redeliver``. A final
+refusal (409 chat_archived: the chat became read-only) is never retried: the entry is dropped with
+a log line and ``on_dropped`` settles the run.
 """
 from __future__ import annotations
 
@@ -19,8 +21,8 @@ import uuid
 from pathlib import Path
 from typing import Any, Awaitable, Callable, Mapping, Optional, Sequence
 
-from .emperor_api import (clear_retry, environment_wait_exhausted, is_soft_failure, remember_seen, schedule_retry,
-                          sender_type_of, thread_of, thread_type_of)
+from .emperor_api import (clear_retry, environment_wait_exhausted, is_chat_archived, is_soft_failure, remember_seen,
+                          schedule_retry, sender_type_of, thread_of, thread_type_of)
 from .interfaces import Turn, TurnOutcome, TurnResult
 from .ledger import PROVIDER_CREDITS_ERROR, PROVIDER_REASONS, failure_notice_reason, usage_report
 
@@ -137,9 +139,11 @@ class Outbox:
     def _backoff(self, attempts: int) -> float:
         return min(self._max, self._base * (2 ** max(0, min(attempts - 1, 6))))
 
-    async def deliver(self, entry: dict[str, Any], send: Send, on_delivered: Delivered, *, attempts: int = 3) -> Optional[str]:
+    async def deliver(self, entry: dict[str, Any], send: Send, on_delivered: Delivered, *, attempts: int = 3,
+                      on_dropped: Optional[GivenUp] = None) -> Optional[str]:
         """POST one parked reply, retrying only the POST. Returns the stored reply id (None when
-        the server deduplicated it or the text was empty). Raises the last error."""
+        the server deduplicated it, the text was empty or the chat was archived). Raises the last
+        error."""
         if not entry.get("idempotency_key"):
             entry["idempotency_key"] = str(uuid.uuid4())  # parked by an older bridge: pin it first
             self.save(entry)
@@ -149,6 +153,9 @@ class Outbox:
                 text = str((entry.get("body") or {}).get("text") or "")
                 reply_id = await send(entry.get("body") or {}, str(entry["idempotency_key"])) if text else None
             except Exception as exc:
+                if is_chat_archived(exc):
+                    await self._drop(entry, exc, on_dropped)
+                    return None
                 last = exc
                 if attempt < attempts:
                     delay = self._backoff(attempt)
@@ -163,9 +170,17 @@ class Outbox:
         assert last is not None
         raise last
 
+    async def _drop(self, entry: dict[str, Any], exc: BaseException, on_dropped: Optional[GivenUp]) -> None:
+        self.forget(entry)
+        self._log.warning("reply for %s dropped, not retried: the chat %s was archived (%s)", entry.get("message_id"),
+                          (entry.get("message_ref") or {}).get("threadId"), str(exc)[:200])
+        if on_dropped is not None:
+            await on_dropped(entry)
+
     async def flush(self, send: Send, on_delivered: Delivered, on_given_up: GivenUp, *,
-                    budget_s: float = 60.0) -> int:
-        """Retry parked replies whose backoff expired. Returns how many landed."""
+                    budget_s: float = 60.0, on_dropped: Optional[GivenUp] = None) -> int:
+        """Retry parked replies whose backoff expired. Returns how many settled (landed, or dropped
+        because their chat was archived)."""
         async with self._lock:
             started, delivered = time.monotonic(), 0
             for path in self.files(include_failed=False):
@@ -178,7 +193,7 @@ class Outbox:
                 if float(entry.get("next_at") or 0) > time.time():
                     continue
                 try:
-                    await self.deliver(entry, send, on_delivered, attempts=1)
+                    await self.deliver(entry, send, on_delivered, attempts=1, on_dropped=on_dropped)
                     delivered += 1
                 except Exception as exc:
                     await self._record_failure(path, entry, exc, on_given_up)
@@ -290,7 +305,7 @@ class ReplyDesk:
         except OSError as exc:
             self.log.warning("outbox unavailable (%s); delivering %s from memory", exc, answers)
         try:
-            return await self.outbox.deliver(entry, self.send, self.on_delivered), False
+            return await self.outbox.deliver(entry, self.send, self.on_delivered, on_dropped=self.on_dropped), False
         except Exception as exc:
             self.log.warning("reply for %s parked after POST failure (%s); retrying the POST only", answers, exc)
             self._spawn(self.status(thread_id, None, typing=False))
@@ -346,6 +361,16 @@ class ReplyDesk:
         ref = entry.get("message_ref") or {}
         await self.status(str(ref.get("threadId") or ""), str(ref.get("id") or ""), typing=False,
                            execution_state="failed")
+
+    async def on_dropped(self, entry: dict[str, Any]) -> None:
+        """The reply's chat was archived (409 chat_archived): the run itself finished, so it is
+        settled as it ended (without a reply id); the trigger is cancelled, never retried."""
+        ledger = entry.get("ledger_finish") or {}
+        if ledger.get("run_id"):
+            await self.ledger.finish(str(ledger["run_id"]), dict(ledger.get("payload") or {}))
+        ref = entry.get("message_ref") or {}
+        await self.status(str(ref.get("threadId") or ""), str(ref.get("id") or ""), typing=False,
+                          execution_state="cancelled", reason="chat_archived")
 
     async def defer(self, raws: list[dict[str, Any]], *, environment: bool, reason: str,
                     error: Optional[BaseException] = None, gateway: bool = False) -> bool:

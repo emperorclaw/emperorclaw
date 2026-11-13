@@ -7,6 +7,7 @@ import {
     closeLostRuns,
     rollupFinishedRuns,
 } from "@/lib/run-ledger";
+import { archiveIdlePrivateChats } from "@/lib/idle-chat-archive";
 
 /**
  * Data retention: prune high-volume tables on a schedule so nothing grows
@@ -17,7 +18,8 @@ import {
  *
  * PR 2 adds the run-ledger tables (`agent_runs`, `message_routes`) and the
  * rollup step by appending entries to `RETENTION_STEPS`; 0.9 adds
- * `agent_run_events`.
+ * `agent_run_events`. Multiple chats per agent adds the idle auto-archive of
+ * extra private chats (an UPDATE, not a delete; lib/idle-chat-archive.ts).
  */
 
 /** Rows deleted per statement. Small enough to keep each batch's lock short. */
@@ -188,6 +190,14 @@ export const RETENTION_STEPS: readonly RegisteredRetentionStep[] = [
         table: "agent_run_daily",
         timeColumn: "day",
         cutoff: (now) => dayCutoff(now, RUN_DAILY_RETENTION_DAYS),
+    },
+    {
+        // Archives (never deletes) extra private chats idle past the company's
+        // window, one summary audit row per company. Self-bounded per run.
+        id: "private_chats_idle_archive",
+        label: "Archive idle chats",
+        kind: "prepare",
+        run: (now) => archiveIdlePrivateChats(now),
     },
 ];
 

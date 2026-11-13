@@ -15,6 +15,8 @@ export default defineConfig({
   globalSetup: resolve(__dirname, "global-setup.ts"),
   testMatch: /.*\.spec\.ts$/,
   fullyParallel: false,
+  // A stray test.only must never pass CI by running one test.
+  forbidOnly: !!process.env.CI,
   workers: 1,
   retries: 0,
   timeout: 90_000,

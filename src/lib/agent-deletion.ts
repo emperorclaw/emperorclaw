@@ -67,7 +67,7 @@ export async function deleteAgentAndData(input: {
         throw error;
     }
 
-    await db.transaction(async (tx) => {
+    const deletedThreadCount = await db.transaction(async (tx) => {
         const agentParticipants = await tx.select({
             threadId: threadParticipants.threadId,
         }).from(threadParticipants).where(
@@ -148,9 +148,12 @@ export async function deleteAgentAndData(input: {
             modelPolicyJson: {},
             lastSeenAt: null,
         }).where(and(eq(agents.id, agentId), eq(agents.companyId, companyId)));
+        return directThreadIds.length;
     });
 
-    await recordAudit({ companyId, actor: { type: actorType, id: actorId }, action: "agent.deleted", target: { type: "agent", id: agentId }, before: existing });
+    // Every direct chat with the agent (people's main and extra chats, its
+    // Operations thread) was deleted with it: the count, never their contents.
+    await recordAudit({ companyId, actor: { type: actorType, id: actorId }, action: "agent.deleted", target: { type: "agent", id: agentId }, before: existing, meta: { deletedThreadCount } });
     scheduleOrganizationNoteRefresh(companyId);
 
     // Docker teardown isn't transactional with Postgres, so it runs post-commit

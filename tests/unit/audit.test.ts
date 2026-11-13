@@ -202,7 +202,8 @@ const DETAIL_PAYLOADS: Record<string, AuditPayload[]> = {
     "agent.access_changed": [{ after: { access: "everyone" } }, { after: { access: "people" } }, { after: { access: "owner" } }],
     "agent.owner_transferred": [{ meta: { toName: "Bo" } }],
     "view.owner_transferred": [{ meta: { toName: "Bo" } }],
-    "company.settings_changed": [{ meta: { setting: "directChatMode" } }, { meta: { setting: "modules" } }],
+    "company.settings_changed": [{ meta: { setting: "directChatMode" } }, { meta: { setting: "modules" } }, { meta: { setting: "multiChat" } }],
+    "thread.archived": [{ meta: { reason: "manual" } }, { meta: { reason: "idle" } }, { meta: { reason: "member_left" } }, { meta: { reason: "agent_sealed" } }, {}],
     "agent.permission_changed": [{ after: { actionKey: "create_task", permission: "ask" } }, { after: { actionKey: "not_a_real_action", permission: null } }],
     "company.permission_changed": [{ after: { actionKey: "create_task", permission: "allowed" } }],
     "agent.budget_changed": [{ after: { monthlyBudgetCents: 2500 } }, { after: { monthlyBudgetCents: 0 } }],
@@ -210,6 +211,7 @@ const DETAIL_PAYLOADS: Record<string, AuditPayload[]> = {
     "view.visibility_changed": [{ after: { visibility: "private" } }, { after: { visibility: "shared" } }, { after: { visibility: "scope" } }],
     "knowledge_note.moved": [{ after: { path: "ops/runbooks" } }, {}],
     "approval.approved": [{ meta: { count: 3 } }],
+    "company.idle_chats_archived": [{ meta: { count: 1 } }, { meta: { count: 12 } }, {}],
 };
 
 test("every known action has a template that reads like the English sentence", () => {
@@ -229,6 +231,17 @@ test("every known action has a template that reads like the English sentence", (
             }
         }
     }
+});
+
+test("a chat's audit row keeps ids, the agent's name and the reason, never its title or text", () => {
+    const payload = redactAuditPayload("thread", {
+        after: { title: "Ask about the Q3 invoices", text: "secret plan" },
+        meta: { agentId: AGENT_ID, label: "Scout", reason: "manual", title: "Ask about the Q3 invoices" },
+    });
+    assert.deepEqual(payload, { meta: { agentId: AGENT_ID, label: "Scout", reason: "manual" } });
+    const sentence = describeAuditEntry({ action: "thread.archived", targetType: "thread", targetId: AGENT_ID, actorType: "human", actorName: "Ana", payload });
+    assert.equal(auditSentenceText(sentence), "Ana archived a chat with Scout (by its owner)");
+    assert.equal(auditTargetHref("thread", AGENT_ID, payload), null, "admins cannot open someone's private chat");
 });
 
 test("an unknown action has no template: the UI shows the English parts", () => {

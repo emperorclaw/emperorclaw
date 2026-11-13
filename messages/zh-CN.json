@@ -855,7 +855,21 @@
       "intro": "谁能看到某人与智能体的对话。",
       "saved": "已保存",
       "switchNote": "切换为私密不会拆分现有对话：每个智能体当前的共享聊天仍作为其“运营”线程对所有人可见，系统更新也会落在那里。切换回共享不会改变私密聊天的私密性；新聊天使用共享线程。",
-      "adminsOnly": "只有所有者和管理员可以更改此设置。"
+      "adminsOnly": "只有所有者和管理员可以更改此设置。",
+      "multiChat": {
+        "title": "每个智能体多个聊天",
+        "intro": "每个人可以与同一个智能体保留多个私密聊天，每个聊天有独立的上下文。",
+        "enabledLabel": "允许新建聊天",
+        "enabledDescription": "成员可以在主聊天之外与智能体新建聊天。",
+        "maxOpenLabel": "每人每个智能体的开启聊天数",
+        "maxOpenHint": "{min} 到 {max}。达到上限时，归档一个聊天即可新建。",
+        "idleLabel": "闲置聊天自动归档时间",
+        "idleNever": "从不",
+        "idleDays": "{count, plural, other {# 天}}",
+        "idleHint": "超过这段时间没有消息的额外聊天会被归档，一键即可恢复。主聊天永远不会被归档。",
+        "offNote": "关闭后现有聊天仍可使用：不会丢失任何聊天，聊天也仍可归档。只会阻止新建和恢复聊天。",
+        "sharedNote": "仅在私密模式下生效。共享模式下每个智能体只有一个聊天。"
+      }
     },
     "modules": {
       "items": {
@@ -3146,7 +3160,8 @@
         "permission_changed": "<who>{actor}</who> 更改了一项公司操作权限 {detail}",
         "settings_changed": "<who>{actor}</who> 更改了公司设置 {detail}",
         "host_pairing_created": "<who>{actor}</who> 创建了一个用于连接主机的代码 {detail}",
-        "direct_chat_mode_changed": "<who>{actor}</who> 更改了公司设置 {detail}"
+        "direct_chat_mode_changed": "<who>{actor}</who> 更改了公司设置 {detail}",
+        "idle_chats_archived": "<who>{actor}</who> 归档了闲置的私人对话 {detail}"
       },
       "task": {
         "state_changed": "<who>{actor}</who> 移动了 <target>任务 {label}</target> {detail}",
@@ -3227,6 +3242,11 @@
         "paused": "<who>{actor}</who> 暂停了<target>自动化 {label}</target> {detail}",
         "resumed": "<who>{actor}</who> 恢复了<target>自动化 {label}</target> {detail}",
         "updated": "<who>{actor}</who> 更新了<target>自动化 {label}</target> {detail}"
+      },
+      "thread": {
+        "created": "<who>{actor}</who> 发起了<target>与 {label} 的对话</target> {detail}",
+        "archived": "<who>{actor}</who> 归档了<target>与 {label} 的对话</target> {detail}",
+        "restored": "<who>{actor}</who> 恢复了<target>与 {label} 的对话</target> {detail}"
       }
     },
     "unnamedActors": {
@@ -3263,7 +3283,14 @@
       },
       "toPath": "至 {path}",
       "toTopLevel": "至顶层",
-      "taskCount": "（{count} 个任务）"
+      "chatCount": "（{count} 个对话）",
+      "taskCount": "（{count} 个任务）",
+      "archiveReason": {
+        "manual": "（由其所有者）",
+        "idle": "（因闲置）",
+        "member_left": "（因其所有者离开）",
+        "agent_sealed": "（因智能体被封存）"
+      }
     },
     "words": {
       "aPerson": "一个人",
@@ -3281,7 +3308,8 @@
         "agentRoutine": "每日智能体例行任务",
         "instance": "实例设置",
         "modules": "模块",
-        "approvals": "审批路由"
+        "approvals": "审批路由",
+        "multiChat": "多个对话"
       },
       "permissions": {
         "off": "关闭",
@@ -4186,7 +4214,93 @@
     "cancel": "取消",
     "retry": "重试",
     "requestSource": "{source}（通过 API）",
-    "requestSourceOnBehalf": "{source}（通过 API）· 代表 {by}"
+    "requestSourceOnBehalf": "{source}（通过 API）· 代表 {by}",
+    "chats": {
+      "mainChat": "主聊天",
+      "untitled": "未命名聊天",
+      "newChat": "新聊天",
+      "archivedChat": "已归档的聊天",
+      "working": "处理中",
+      "queuedCount": "{count} 条排队中",
+      "unread": "{count, plural, other {# 条未读消息}}",
+      "noMessages": "还没有消息",
+      "switcherLabel": "切换聊天。当前聊天：{title}",
+      "switcherDescription": "选择你与该智能体的一个聊天，或打开完整列表。",
+      "otherUnread": "其他聊天中有未读消息",
+      "chatsWith": "与 {name} 的聊天",
+      "countHint": "{open} / {limit}",
+      "countHintLabel": "已开启 {open} / {limit} 个聊天",
+      "allChats": "全部聊天",
+      "allChatsMore": "全部聊天（另有 {count} 个）",
+      "allChatsTitle": "与 {name} 的全部聊天",
+      "allChatsDescription": "你与该智能体的聊天，只有你能看到。",
+      "filterPlaceholder": "按标题筛选",
+      "filterLabel": "按标题筛选聊天",
+      "groups": {
+        "today": "今天",
+        "last7Days": "最近 7 天",
+        "older": "更早"
+      },
+      "noMatches": "没有符合筛选的聊天。",
+      "archivedSection": "已归档",
+      "showArchived": "显示已归档的聊天",
+      "noArchived": "没有已归档的聊天。",
+      "loading": "加载中…",
+      "chatMenu": "聊天选项",
+      "rename": "重命名",
+      "renameTitle": "重命名聊天",
+      "renameDescription": "只有你能看到这个名称。",
+      "renameLabel": "聊天名称",
+      "archive": "归档",
+      "archiveNamed": "归档 {title}",
+      "archivedDone": "已归档",
+      "restore": "恢复",
+      "restoreNamed": "恢复 {title}",
+      "mainChatLocked": "主聊天不能重命名或归档。",
+      "cancel": "取消",
+      "save": "保存",
+      "ok": "好",
+      "tryAgain": "重试",
+      "limitTitle": "开启的聊天过多",
+      "limitDescription": "你与该智能体已开启 {open} / {limit} 个聊天。归档一个即可新建，之后仍可恢复。",
+      "limitListLabel": "最久未使用的聊天",
+      "limitNoSuggestions": "智能体在其他每个聊天中都在忙。请打开全部聊天归档一个。",
+      "newChatEmptyTitle": "与 {name} 的新聊天",
+      "newChatEmptyBody": "{name} 在这个聊天中不会带上你之前的对话。发送第一条消息前不会保存任何内容。",
+      "newChatPlaceholder": "与 {name} 开始新聊天…",
+      "archivedNotice": "{reason}。恢复之前，这个聊天为只读。",
+      "queuedOtherChats": "{count, plural, other {已排队。{name} 正在另外 # 个聊天中工作。}}",
+      "stopThisChatTitle": "停止此聊天并清空其队列",
+      "stopThisChatLabel": "停止此聊天",
+      "stopAllChatsTitle": "这会停止 {name} 的所有聊天",
+      "stopAllChatsLabel": "停止该智能体的所有聊天",
+      "stopAll": "停止所有聊天",
+      "stopAllConfirm": "停止所有聊天",
+      "stopAllConfirmTitle": "在所有聊天中停止 {name}？",
+      "stopAllConfirmBody": "这会停止 {name} 在所有聊天中的工作（包括其他人的聊天），并清空所有排队的消息。",
+      "stopOlderRuntimeTitle": "这会停止 {name} 的所有聊天",
+      "stopOlderRuntimeBody": "{name} 的运行时暂时无法只停止一个聊天。现在停止会同时停止它在你其他聊天和其他人聊天中的工作。",
+      "archiveReason": {
+        "manual": "由你归档",
+        "idle": "长时间没有消息后自动归档",
+        "member_left": "在其所有者离开公司时归档",
+        "agent_sealed": "在该智能体的访问权限受限时归档"
+      },
+      "errors": {
+        "title": "无法更新聊天",
+        "limitReached": "你与该智能体开启的聊天已达上限。归档一个后继续。",
+        "disabled": "本公司已关闭新建聊天。",
+        "mainCannotArchive": "主聊天不能归档。",
+        "mainCannotRename": "主聊天保留其名称。",
+        "archived": "这个聊天已归档。恢复后继续。",
+        "rateLimited": "新建聊天过于频繁，请一分钟后再试。",
+        "generic": "出了点问题，请重试。",
+        "objectiveRunning": "该智能体的目标正在这个聊天中运行。请先停止或完成目标，再归档这个聊天。"
+      },
+      "archivedBadge": "已归档",
+      "alreadyStarted": "这个聊天已用你的第一条消息开始。新内容没有发送，已放回输入框。",
+      "queuedBusyElsewhere": "已排队。{name} 正在处理其他工作，接下来会处理这条。"
+    }
   },
   "docs": {
     "contentNotFound": "未找到内容。",

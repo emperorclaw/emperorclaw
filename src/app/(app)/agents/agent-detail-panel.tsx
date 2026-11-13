@@ -824,7 +824,7 @@ export function AgentDetailPanel({ agentId, agentName, runtime = null }: {
                 </TabsContent>
 
                 <TabsContent value="chat" className="mt-4">
-                    <AgentDirectChat agentId={agent.id} agentName={agent.name} />
+                    <AgentDirectChat agentId={agent.id} agentName={agent.name} showStopAll />
                 </TabsContent>
 
                 <TabsContent value="threads" className="mt-4">

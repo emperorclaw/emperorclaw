@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useFormatter, useTranslations } from "next-intl";
 import {
@@ -37,6 +37,8 @@ import { GroupIcon } from "@/components/group-icon";
 import { EmptyState } from "@/components/ui/empty-state";
 import { refreshNavBadges } from "@/components/use-nav-badges";
 import { toast } from "sonner";
+import { readLastChat, rememberableSelection, rememberLastChat, resolveDirectSelection, type DirectSelection } from "@/lib/chat-selection";
+import { hasChatDraft } from "@/lib/chat-draft";
 
 type Agent = {
     id: string;
@@ -83,7 +85,8 @@ export type GroupThreadSummary = {
 /** Matches `.ec-push-out` in globals.css. */
 const MOBILE_POP_MS = 260;
 const GROUP_PREFIX = "group:";
-// A secondary direct thread (an agent's Operations thread, or an earlier private one).
+// A direct thread by id: one of the person's own chats with an agent (main or extra), or a
+// secondary one (an agent's Operations thread, or an earlier private one).
 const DIRECT_THREAD_PREFIX = "thread:";
 
 
@@ -92,6 +95,24 @@ const ACTIVE_CONVERSATION_KEY = "emperor-messages-active-conversation";
 const AGENT_CONVERSATIONS_KEY = "emperor-messages-show-agent-conversations";
 const FOCUS_MODE_KEY = "emperor-messages-focus-mode";
 const TEAM_CONVERSATION = "team";
+
+/** Keep the address bar on the open conversation (`?agent=&thread=`, `?group=`), so a reload or a copied link opens it again. */
+function syncUrl(query: { agent?: string | null; thread?: string | null; group?: string | null }) {
+    try {
+        const url = new URL(window.location.href);
+        for (const key of ["agent", "thread", "group"] as const) {
+            url.searchParams.delete(key);
+            const value = query[key];
+            if (value) url.searchParams.set(key, value);
+        }
+        const next = `${url.pathname}${url.search}${url.hash}`;
+        if (`${window.location.pathname}${window.location.search}${window.location.hash}` !== next) {
+            window.history.replaceState(window.history.state, "", next);
+        }
+    } catch {
+        // History unavailable: the remembered conversation still restores it.
+    }
+}
 
 /** "5m ago", "3d ago" or "Oct 29" for a conversation's last message, in the viewer's language. */
 function useRelativeMessageTime() {
@@ -125,10 +146,13 @@ export function MessagingHub({
     groups = [],
     humans = [],
     currentUserId = null,
+    extraChatAgents = {},
 }: {
     agents: Agent[];
     directThreads: DirectThreadSummary[];
     secondaryDirectThreads?: DirectThreadSummary[];
+    /** Private mode: the person's open extra chats, thread id → agent id (they share the agent's row). */
+    extraChatAgents?: Record<string, string>;
     initialTeamMessages?: TeamMessage[];
     initialTeamHasMore?: boolean;
     teamThreadId: string;
@@ -142,8 +166,14 @@ export function MessagingHub({
     const secondaryThreadLabel = (thread: DirectThreadSummary) => (thread.kind === "private" ? t("privateThread", { name: thread.agentName }) : workLogThreadTitle(thread.agentName));
     const router = useRouter();
     const [selectedAgentId, setSelectedAgentId] = useState<string | null>(null);
-    // Set only for a secondary direct thread; null = the agent's main conversation.
+    // The exact direct thread open for the selected agent: one of the person's chats
+    // (main or extra) or a secondary thread; null = the agent's main chat.
     const [selectedDirectThreadId, setSelectedDirectThreadId] = useState<string | null>(null);
+    // Unread across all of the person's chats with the open agent, live from its chat list.
+    const [liveUnread, setLiveUnread] = useState<{ agentId: string; count: number } | null>(null);
+    // Chats this page learned about after the server props (a chat created or opened here):
+    // thread id → agent id, so the agent's row reopens them; archived ones are dropped.
+    const [clientChatAgents, setClientChatAgents] = useState<Record<string, string>>({});
     const [selectedGroupId, setSelectedGroupId] = useState<string | null>(null);
     const [groupDialog, setGroupDialog] = useState<{ mode: "create" } | { mode: "edit"; groupId: string } | null>(null);
     const [showAgentConversations, setShowAgentConversations] = useState(false);
@@ -211,6 +241,16 @@ export function MessagingHub({
         [secondaryDirectThreads, selectedDirectThreadId],
     );
 
+    // Every listed chat of the person by thread id → agent id: the main chats and the extra ones.
+    const knownThreads = useMemo(() => {
+        const map: Record<string, string> = { ...extraChatAgents, ...clientChatAgents };
+        for (const thread of directThreads) if (thread.threadId) map[thread.threadId] = thread.agentId;
+        return map;
+    }, [directThreads, extraChatAgents, clientChatAgents]);
+    const agentUnread = (thread: DirectThreadSummary) => unread(
+        liveUnread && liveUnread.agentId === thread.agentId && selectedAgentId === thread.agentId && !activeSecondaryThread ? liveUnread.count : thread.unreadCount,
+    );
+
     const activeAgent = useMemo(() => {
         return agents.find(a => a.id === selectedAgentId);
     }, [agents, selectedAgentId]);
@@ -242,18 +282,24 @@ export function MessagingHub({
         // `?thread=<id>`: a notification names the exact direct conversation.
         const requestedThread = new URLSearchParams(window.location.search).get("thread");
         const requestedSecondary = requestedThread ? secondaryDirectThreads.find((t) => t.threadId === requestedThread) : undefined;
-        const requestedPrimary = requestedThread ? directThreads.find((t) => t.threadId === requestedThread) : undefined;
+        // `?thread=` is exact for any of the person's chats (an archived one too, when the link names its agent).
+        const requestedDirect = requestedThread && !requestedSecondary ? resolveDirect(requestedThread, requestedAgent) : null;
         const savedSecondary = savedConversationThread(localStorage.getItem(ACTIVE_CONVERSATION_KEY));
         const savedConversation = localStorage.getItem(ACTIVE_CONVERSATION_KEY);
+        const savedThreadId = savedConversation?.startsWith(DIRECT_THREAD_PREFIX) && !savedSecondary
+            ? savedConversation.slice(DIRECT_THREAD_PREFIX.length)
+            : null;
+        // A remembered chat that is no longer listed (archived meanwhile, e.g. idle): its agent's main chat.
+        const savedDirect = savedThreadId
+            ? resolveDirect(savedThreadId, null) ?? agentOfRememberedChat(savedThreadId)
+            : null;
         setShowAgentConversations(localStorage.getItem(AGENT_CONVERSATIONS_KEY) === "1");
         const savedFocusMode = localStorage.getItem(FOCUS_MODE_KEY) === "1";
 
         if (requestedSecondary) {
             openSecondaryState(requestedSecondary);
-        } else if (requestedPrimary) {
-            setSelectedAgentId(requestedPrimary.agentId);
-            setMobileChatOpen(true);
-            localStorage.setItem(ACTIVE_CONVERSATION_KEY, requestedPrimary.agentId);
+        } else if (requestedDirect) {
+            openDirectSelection(requestedDirect);
         } else if (requestedGroup && groups.some((g) => g.id === requestedGroup)) {
             setSelectedGroupId(requestedGroup);
             if (groups.find((g) => g.id === requestedGroup)?.isAgentPair) setShowAgentConversations(true);
@@ -261,21 +307,21 @@ export function MessagingHub({
             setMobileChatOpen(true);
             localStorage.setItem(ACTIVE_CONVERSATION_KEY, `${GROUP_PREFIX}${requestedGroup}`);
         } else if (requestedAgent && agents.some((agent) => agent.id === requestedAgent)) {
-            setSelectedAgentId(requestedAgent);
-            setMobileChatOpen(true);
-            localStorage.setItem(ACTIVE_CONVERSATION_KEY, requestedAgent);
+            // `?agent=` alone: the chat last viewed with that agent, else its main chat.
+            openDirectThread(requestedAgent);
         } else if (savedConversation?.startsWith(GROUP_PREFIX) && groups.some((g) => `${GROUP_PREFIX}${g.id}` === savedConversation)) {
             setSelectedGroupId(savedConversation.slice(GROUP_PREFIX.length));
             setSelectedAgentId(null);
             setMobileChatOpen(true);
         } else if (savedSecondary) {
             openSecondaryState(savedSecondary);
+        } else if (savedDirect) {
+            openDirectSelection(savedDirect);
         } else if (savedConversation === TEAM_CONVERSATION) {
             setSelectedAgentId(null);
             setMobileChatOpen(true);
         } else if (savedConversation && agents.some((agent) => agent.id === savedConversation)) {
-            setSelectedAgentId(savedConversation);
-            setMobileChatOpen(true);
+            openDirectThread(savedConversation);
         } else if (savedConversation) {
             localStorage.setItem(ACTIVE_CONVERSATION_KEY, TEAM_CONVERSATION);
         }
@@ -284,9 +330,27 @@ export function MessagingHub({
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [agents]);
 
+    /** The agent whose last-viewed chat is `threadId` (it is no longer listed): open its main chat. */
+    function agentOfRememberedChat(threadId: string): DirectSelection | null {
+        const agent = agents.find((a) => readLastChat(a.id) === threadId);
+        return agent ? { agentId: agent.id, threadId: null } : null;
+    }
+
     function savedConversationThread(saved: string | null) {
         if (!saved?.startsWith(DIRECT_THREAD_PREFIX)) return undefined;
         return secondaryDirectThreads.find((t) => `${DIRECT_THREAD_PREFIX}${t.threadId}` === saved);
+    }
+
+    function resolveDirect(thread: string | null, agent: string | null) {
+        return resolveDirectSelection({
+            thread,
+            agent,
+            knownThreads,
+            lastChatFor: readLastChat,
+            agentKnown: (agentId) => agents.some((a) => a.id === agentId),
+            // A draft handed over from another page lands in the agent's main chat.
+            preferMain: Boolean(agent) && hasChatDraft(agent!),
+        });
     }
 
     function openSecondaryState(thread: DirectThreadSummary) {
@@ -295,6 +359,27 @@ export function MessagingHub({
         setSelectedDirectThreadId(thread.threadId);
         setMobileChatOpen(true);
         localStorage.setItem(ACTIVE_CONVERSATION_KEY, `${DIRECT_THREAD_PREFIX}${thread.threadId}`);
+        syncUrl({ agent: thread.agentId, thread: thread.threadId });
+    }
+
+    /**
+     * One of the person's own chats with an agent (an archived one too, by link): the agent's row
+     * is the selected conversation and the URL names the exact thread. Only a listed chat is
+     * remembered as the one to reopen; an archived one leaves its agent's main chat remembered.
+     */
+    function openDirectSelection(selection: DirectSelection) {
+        setSelectedGroupId(null);
+        setSelectedAgentId(selection.agentId);
+        setSelectedDirectThreadId(selection.threadId);
+        setMobileChatOpen(true);
+        rememberDirect(rememberableSelection(selection, knownThreads));
+        syncUrl({ agent: selection.agentId, thread: selection.threadId });
+    }
+
+    function rememberDirect({ agentId, threadId }: DirectSelection) {
+        localStorage.setItem(ACTIVE_CONVERSATION_KEY, threadId ? `${DIRECT_THREAD_PREFIX}${threadId}` : agentId);
+        rememberLastChat(agentId, threadId);
+        syncUrl({ agent: agentId, thread: threadId });
     }
 
     const openGroup = (groupId: string) => {
@@ -303,6 +388,7 @@ export function MessagingHub({
         setSelectedGroupId(groupId);
         setMobileChatOpen(true);
         localStorage.setItem(ACTIVE_CONVERSATION_KEY, `${GROUP_PREFIX}${groupId}`);
+        syncUrl({ group: groupId });
     };
 
     const openTeamChannel = () => {
@@ -311,15 +397,42 @@ export function MessagingHub({
         setSelectedAgentId(null);
         setMobileChatOpen(true);
         localStorage.setItem(ACTIVE_CONVERSATION_KEY, TEAM_CONVERSATION);
+        syncUrl({});
     };
 
+    /** The agent's row: the chat last viewed with it, else its main chat. */
     const openDirectThread = (agentId: string) => {
-        setSelectedDirectThreadId(null);
-        setSelectedGroupId(null);
-        setSelectedAgentId(agentId);
-        setMobileChatOpen(true);
-        localStorage.setItem(ACTIVE_CONVERSATION_KEY, agentId);
+        openDirectSelection(resolveDirect(null, agentId) ?? { agentId, threadId: null });
     };
+
+    // The open chat switched inside the agent's chat (switcher, New chat, a fallback to main).
+    const selectedAgentRef = useRef(selectedAgentId);
+    useEffect(() => { selectedAgentRef.current = selectedAgentId; });
+    const onDirectThreadChange = useCallback((threadId: string | null, info?: { archived?: boolean }) => {
+        const agentId = selectedAgentRef.current;
+        if (!agentId) return;
+        setSelectedDirectThreadId(threadId);
+        if (threadId && info?.archived) {
+            // An archived chat stays on screen (and in the URL) but is never reopened later:
+            // the agent's row and a bare /messages open its main chat instead.
+            setClientChatAgents((current) => {
+                if (!(threadId in current)) return current;
+                const next = { ...current };
+                delete next[threadId];
+                return next;
+            });
+            localStorage.setItem(ACTIVE_CONVERSATION_KEY, agentId);
+            rememberLastChat(agentId, null);
+            syncUrl({ agent: agentId, thread: threadId });
+            return;
+        }
+        if (threadId) setClientChatAgents((current) => (current[threadId] === agentId ? current : { ...current, [threadId]: agentId }));
+        rememberDirect({ agentId, threadId });
+    }, []);
+    const onAgentUnread = useCallback((count: number) => {
+        const agentId = selectedAgentRef.current;
+        if (agentId) setLiveUnread((current) => (current?.agentId === agentId && current.count === count ? current : { agentId, count }));
+    }, []);
 
     const toggleFocusMode = () => {
         setIsFocused((value) => {
@@ -346,7 +459,9 @@ export function MessagingHub({
     const teamSelected = selectedAgentId === null && selectedGroupId === null;
     const tMenu = useTranslations("contextMenu");
     const copy = useCopyToClipboard();
-    const conversationKey = activeGroup ? `group:${activeGroup.id}` : selectedAgentId === null ? `team:${teamThreadId ?? ""}` : `agent:${selectedAgentId}:${selectedDirectThreadId ?? ""}`;
+    // The person's own chats with one agent share a key: switching between them happens inside the chat.
+    const directChatKey = activeSecondaryThread ? `${selectedAgentId}:${selectedDirectThreadId ?? ""}` : `${selectedAgentId}`;
+    const conversationKey = activeGroup ? `group:${activeGroup.id}` : selectedAgentId === null ? `team:${teamThreadId ?? ""}` : `agent:${directChatKey}`;
     const editingGroup = groupDialog?.mode === "edit" ? groups.find((g) => g.id === groupDialog.groupId) ?? null : null;
 
     return (
@@ -507,7 +622,7 @@ export function MessagingHub({
                                 onClick={() => openDirectThread(thread.agentId)}
                                 className={cn(
                                     "group flex min-h-16 w-full items-start gap-3 rounded-xl p-3 text-left transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400/70",
-                                    selectedAgentId === thread.agentId && !selectedDirectThreadId
+                                    selectedAgentId === thread.agentId && !activeSecondaryThread
                                         ? "border border-cyan-400/30 bg-cyan-400/10"
                                         : "border border-transparent hover:bg-zinc-900/70"
                                 )}
@@ -528,7 +643,7 @@ export function MessagingHub({
                                         <div className="min-w-0">
                                             <span className={cn(
                                                 "block text-sm font-semibold tracking-tight truncate",
-                                                selectedAgentId === thread.agentId && !selectedDirectThreadId ? "text-cyan-100" : "text-zinc-300"
+                                                selectedAgentId === thread.agentId && !activeSecondaryThread ? "text-cyan-100" : "text-zinc-300"
                                             )}>
                                                 {thread.agentName}
                                             </span>
@@ -537,8 +652,8 @@ export function MessagingHub({
                                             </span>
                                         </div>
                                         <div className="flex flex-col items-end gap-1 shrink-0">
-                                            <PopPresence show={unread(thread.unreadCount) > 0} className="min-w-5 rounded-full bg-cyan-400 px-1.5 py-0.5 text-center text-[10px] font-bold text-cyan-950">
-                                                {unread(thread.unreadCount)}
+                                            <PopPresence show={agentUnread(thread) > 0} className="min-w-5 rounded-full bg-cyan-400 px-1.5 py-0.5 text-center text-[10px] font-bold text-cyan-950">
+                                                {agentUnread(thread)}
                                             </PopPresence>
                                             <span className="text-[10px] text-zinc-600">
                                                 {formatRelativeMessageTime(thread.lastMessageAt)}
@@ -819,7 +934,15 @@ export function MessagingHub({
                     </div>
                 ) : (
                     <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
-                        <AgentDirectChat key={`${selectedAgentId}:${selectedDirectThreadId ?? ""}`} agentId={selectedAgentId} agentName={activeAgent?.name || t("agent")} hideHeader={true} directThreadId={selectedDirectThreadId} />
+                        <AgentDirectChat
+                            key={directChatKey}
+                            agentId={selectedAgentId}
+                            agentName={activeAgent?.name || t("agent")}
+                            hideHeader={true}
+                            directThreadId={selectedDirectThreadId}
+                            onThreadChange={activeSecondaryThread ? undefined : onDirectThreadChange}
+                            onUnreadTotal={activeSecondaryThread ? undefined : onAgentUnread}
+                        />
                     </div>
                 )}
                 </Swap>

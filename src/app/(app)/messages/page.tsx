@@ -41,7 +41,13 @@ export default async function MessagesPage() {
     const listing = await loadMessagesListing({ companyId, userId, role: guard?.role ?? null, scope: memberScope });
     const allAgents = listing.agents;
     // Work logs too: they are not listed, but open from the agent's panel.
-    const unreadBy = await unreadCountsForUser(companyId, userId, [...listing.direct.map((d) => d.thread.id), teamThread.id]);
+    const extraChats = listing.extraChats ?? [];
+    const unreadBy = await unreadCountsForUser(companyId, userId, [...listing.direct.map((d) => d.thread.id), teamThread.id, ...extraChats.map((d) => d.thread.id)]);
+    // One sidebar row per agent: its unread is the sum over all of the person's open chats with it.
+    const extraUnreadByAgent = new Map<string, number>();
+    for (const { agent, thread } of extraChats) {
+        extraUnreadByAgent.set(agent.id, (extraUnreadByAgent.get(agent.id) ?? 0) + (unreadBy.get(thread.id) ?? 0));
+    }
 
     const directThreadByAgentId = new Map<string, DirectThreadSummary>();
     // Besides the one conversation per agent in the main list: in private mode
@@ -55,7 +61,7 @@ export default async function MessagesPage() {
             agentRole: agent.role,
             avatarUrl: agent.avatarUrl,
             status: agent.status,
-            unreadCount: unreadBy.get(thread.id) ?? 0,
+            unreadCount: (unreadBy.get(thread.id) ?? 0) + (kind === "primary" ? extraUnreadByAgent.get(agent.id) ?? 0 : 0),
             lastMessageText: latest?.text || null,
             lastMessageAt: latest ? latest.createdAt.toISOString() : null,
         };
@@ -124,6 +130,7 @@ export default async function MessagesPage() {
                     }))}
                     humans={humans}
                     currentUserId={userId}
+                    extraChatAgents={Object.fromEntries(extraChats.map(({ agent, thread }) => [thread.id, agent.id]))}
                 />
             </div>
         </div>
