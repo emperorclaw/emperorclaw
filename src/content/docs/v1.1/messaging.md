@@ -96,11 +96,26 @@ Use them for:
 - one-to-one follow-up
 - a user inbox-style conversation with a specific agent
 
+### Several chats with one agent
+
+In private mode you can keep more than one chat with the same agent, each with its own context.
+
+- **Main chat.** Every person has one main chat per agent. It is permanent: it cannot be renamed or archived, and everything that does not name a chat (task wake-ups, onboarding, objectives started elsewhere, links with only `?agent=`) lands there.
+- **New chat.** Use **New chat** in the chat header. Nothing is saved until you send the first message; the chat is titled from that message and you can rename it. The agent starts a new chat without your earlier conversation.
+- **Switching.** The chat switcher in the header lists your main chat first, then your other chats by last activity, with unread, working and queued markers. **All chats** shows the full list, a title filter and your archived chats.
+- **Archive and restore.** Archive a chat from its menu; it becomes read-only and its queued work is cancelled. **Restore** brings it back. Only you can see your chats; admins and owners cannot read them.
+- **Limits.** By default you can have 20 open chats per agent, the main chat included. At the limit, archive a chat to start another.
+- **Auto-archive.** Extra chats without a message for 30 days are archived automatically and can be restored with one click. A chat is never auto-archived while the agent is working or has queued work in it, while it holds the agent's objective, or while it has a pending approval. The main chat is never archived.
+- **Stop.** Stop inside a chat stops that chat only; your other chats keep running. On an older runtime that cannot stop a single chat, Stop warns you that it stops all of the agent's chats. Stop on the agent page is agent-wide.
+- **Parallel work.** An agent works in a limited number of chats at once (its runtime's parallel turn limit). Messages in other chats queue, and the chat shows why.
+
+Owners and admins control this in **Settings → Direct chats**: **Allow new chats** (on by default), **Open chats per person and agent** (1 to 50), and **Archive idle chats after** (7 to 90 days, or Never). Turning new chats off keeps existing chats usable; only new chats and restores are blocked. In shared mode each agent has one chat. Settings changes and auto-archive runs appear in Activity, without chat titles or content.
+
 ## Inbox Behavior
 
 The direct-thread sidebar is a stable inbox list.
 
-- each agent has one direct conversation summary
+- each agent has one row, even when you keep several chats with it; its unread badge counts all of your open chats with that agent
 - unread badges represent new agent messages since your last read point
 - the list is kept in a stable order instead of jumping around with every message
 
