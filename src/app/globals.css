@@ -1190,7 +1190,11 @@
 }
 
 .ec-message-in {
+  /* `--ec-stagger` is a row's step in a freshly opened chat's first page
+     (chat-enter.ts): 30 ms apart, so the list ripples in instead of landing in
+     one frame. A live arrival carries no step and starts at once. */
   animation: ec-message-in var(--duration-spring-snappy) var(--ease-spring-snappy) backwards;
+  animation-delay: calc(var(--ec-stagger, 0) * 30ms);
 }
 
 /* 8. Disclosures: every <details> opens and closes on the spring (height +

@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import Link from "next/link";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { useSession } from "next-auth/react";
@@ -12,6 +12,7 @@ import { ApprovalCard } from "@/components/approval-card";
 import { TypingReveal } from "@/components/typing-reveal";
 import { markLiveReveal } from "@/lib/typing-reveal";
 import { useLiveArrivals } from "@/lib/use-live-arrivals";
+import { useChatEnter } from "@/lib/chat-enter";
 import { approvalCardIdOf } from "@/lib/approval-card-copy";
 import { isPersistedUuid } from "@/lib/run-ledger-copy";
 import { cn } from "@/lib/utils";
@@ -25,7 +26,7 @@ import { takeChatDraft } from "@/lib/chat-draft";
 import { AgentGoalControls } from "@/components/agent-goal-controls";
 import { requestSourceCopy, requestSourceLabel } from "@/lib/request-label";
 import { LiveStatusRow } from "@/components/live-status-row";
-import { MotionItem, MotionList, Presence, TextSwap } from "@/components/ui/motion";
+import { FadeRise, MotionItem, MotionList, Presence, TextSwap } from "@/components/ui/motion";
 import { LiveRunSteps, ReplyRunFooter, type ReplyRun } from "@/components/run-timeline";
 import { chatPollDelayMs, eventsSinceParam, formatElapsed, isTimedStepKind, lastReasoningCopy, lastReasoningLine, mergeLiveRuns, runningRun, type ClientLiveRun } from "@/lib/live-activity";
 import { useLivePoll } from "@/lib/use-realtime";
@@ -284,6 +285,13 @@ export function AgentDirectChat({
     const [attachError, setAttachError] = useState<string | null>(null);
     const fileInputRef = useRef<HTMLInputElement>(null);
     const formRef = useRef<HTMLFormElement>(null);
+    // A chat that just opened puts the caret in its composer, so typing starts there.
+    // Desktop pointers only: on a phone that would raise the keyboard over the new chat.
+    const composerRef = useRef<HTMLTextAreaElement>(null);
+    const focusComposer = useCallback(() => {
+        if (typeof window === "undefined" || !window.matchMedia("(pointer: fine)").matches) return;
+        requestAnimationFrame(() => composerRef.current?.focus({ preventScroll: true }));
+    }, []);
     const typingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
     const mediaRecorderRef = useRef<MediaRecorder | null>(null);
     const recordingChunksRef = useRef<Blob[]>([]);
@@ -306,6 +314,9 @@ export function AgentDirectChat({
     rowVirtualizer.shouldAdjustScrollPositionOnItemSizeChange = (item, _delta, instance) =>
         !isAtBottomRef.current && item.start < (instance.scrollOffset ?? 0);
     const isLiveArrival = useLiveArrivals(messages);
+    // A chat that just opened: its first page enters staggered (chat-enter.ts), so the
+    // transcript does not land in one frame. Live arrivals keep their own entrance.
+    const enterStepOf = useChatEnter(messages, chatViewKey(activeThreadId, newChatKey));
 
 
     const loadMessages = useCallback(async ({ since, before }: { since?: string | null; before?: string | null } = {}) => {
@@ -682,6 +693,7 @@ export function AgentDirectChat({
         setNewChatKey(null);
         setActiveThreadId(created.id);
         setIsLoading(false);
+        focusComposer();
         if (notSent) {
             setDraft(notSent);
             setControlError(tChats("alreadyStarted"));
@@ -738,6 +750,7 @@ export function AgentDirectChat({
         setSendMode("queue");
         setPendingAttachments([]);
         setNewChatKey(key);
+        focusComposer();
     };
 
     const restoreChat = async () => {
@@ -1208,6 +1221,9 @@ export function AgentDirectChat({
                         {t("loading")}
                     </div>
                 ) : messages.length === 0 ? (
+                    // A chat that just opened (New chat, or an empty earlier one) rises in instead of
+                    // landing settled: opacity and 6 px, no height, so the panel keeps its final frame.
+                    <FadeRise key={chatViewKey(activeThreadId, newChatKey)} className="h-full">
                     <div className="h-full flex items-center justify-center">
                         <div className="max-w-sm rounded-2xl border border-dashed border-zinc-800 bg-zinc-950/50 p-6 text-center">
                             <div className="text-sm text-zinc-300 mb-2">{newChatKey ? tChats("newChatEmptyTitle", { name: agentName }) : t("emptyTitle")}</div>
@@ -1216,6 +1232,7 @@ export function AgentDirectChat({
                             </div>
                         </div>
                     </div>
+                    </FadeRise>
                 ) : (
                     <div>
                         {hasOlderMessages && (
@@ -1250,6 +1267,8 @@ export function AgentDirectChat({
                             const messageAttachments = getMessageAttachments(message);
                             const isOwn = isHuman && message.senderId === currentUserId;
                             const isRich = !isHuman && hasRichBlocks(message.text);
+                            // Its step in a freshly opened chat's entrance (0 = first row), or undefined.
+                            const enterStep = enterStepOf(message.id);
 
                             return (
                                 <div
@@ -1283,14 +1302,15 @@ export function AgentDirectChat({
                                                 // Both chats: your bubble is a neutral raised surface, the agent's a quieter
                                                 // outlined one; the tail corner sits on the speaker's side of the last bubble.
                                                 "min-w-0 max-w-full rounded-2xl border px-4 py-3",
-                                                isLiveArrival(message.id) && "ec-message-in",
+                                                (enterStep !== undefined || isLiveArrival(message.id)) && "ec-message-in",
                                                 isRich && "w-full",
                                                 isHuman
                                                     ? "border-transparent bg-secondary text-secondary-foreground"
                                                     : "border-border bg-background/60 text-foreground",
                                                 isLastInGroup && isHuman && "rounded-br-md",
                                                 isLastInGroup && !isHuman && "rounded-bl-md"
-                                            )}>
+                                            )}
+                                            style={enterStep !== undefined ? ({ "--ec-stagger": enterStep } as CSSProperties) : undefined}>
                                                 {!isHuman && hasChoicesBlock(message.text) ? (
                                                     <RichMessageActionsContext.Provider value={{ sendPrompt: sendWidgetPrompt, laterReplies: laterHumanTexts(messages, i) }}>
                                                         <MessageContent text={message.text} isHuman={isHuman} />
@@ -1592,6 +1612,7 @@ export function AgentDirectChat({
                         aria-label={t("attachFiles")}
                     />
                     <textarea
+                        ref={composerRef}
                         value={draft}
                         onChange={(event) => handleTyping(event.target.value)}
                         onKeyDown={(event) => {
