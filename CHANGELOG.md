@@ -11,6 +11,11 @@ ships in the release notes.
 
 ## [Unreleased]
 
+### Added
+
+- **A chat that opens arrives, instead of appearing.** Opening a chat — a new one or an existing one — enters with the shared snappy spring instead of landing in one frame: the empty state rises, and the first page of messages comes in row by row, 30 ms apart and capped at six rows. The rows ride the same critically damped 400 ms spring as live arrivals, so nothing overshoots and the transcript keeps its final height from the first frame (no layout shift). A live arrival, a background poll and an older page loaded above keep their own entrance and are not staged. Under reduced motion the entrance is a 160 ms fade on opacity only, with no stagger.
+- **The caret is where you will type.** Opening or starting a chat puts the cursor in the composer on a desktop; on a phone it does not, so the keyboard does not cover the chat you just opened.
+
 ## [0.33.0] — 2026-11-13
 
 ### Added
