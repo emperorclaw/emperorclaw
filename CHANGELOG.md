@@ -9,14 +9,23 @@ tagged (e.g. `## [1.2.0] — 2026-07-22`). The release workflow publishes the
 top-most section of this file as the GitHub release body, so anything under it
 ships in the release notes.
 
-## [Unreleased]
-
-## [0.34.0] — 2026-11-13
+## [0.34.0] — 2026-11-16
 
 ### Added
 
+- **Agents see the files you attach.** A chat message with files now reaches Hermes agents with an **Attached files** list (name, type, size, id), and the new `emperor_download_attachment` tool saves a file locally so the agent can open it instead of guessing. MCP `read_thread` returns each message's `attachments` (`id`, `name`, `contentType`, `sizeBytes`); download one with `GET /api/mcp/artifacts/{id}/download`. Hermes gateways load the new tool after `emperor-hermes update --restart-gateways`.
+- **My uploads.** Files and voice messages you send in chat are saved in your own Storage folder, shown as **My uploads** with a lock inside a managed **Uploads** folder. They count toward the company's storage quota like any other upload. Upload folders can't be renamed, moved or deleted (admins included), since messages keep pointing at the files inside; single files can still be deleted by their uploader or an admin.
 - **A chat that opens arrives, instead of appearing.** Opening a chat — a new one or an existing one — enters with the shared snappy spring instead of landing in one frame: the empty state rises, and the first page of messages comes in row by row, 30 ms apart and capped at six rows. The rows ride the same critically damped 400 ms spring as live arrivals, so nothing overshoots and the transcript keeps its final height from the first frame (no layout shift). A live arrival, a background poll and an older page loaded above keep their own entrance and are not staged. Under reduced motion the entrance is a 160 ms fade on opacity only, with no stagger.
 - **The caret is where you will type.** Opening or starting a chat puts the cursor in the composer on a desktop; on a phone it does not, so the keyboard does not cover the chat you just opened.
+
+### Changed
+
+- **Private files are private everywhere.** A person's private upload (chat files and voice messages now included) shows in Storage lists, folder contents and global search only for them and for owners/admins, and only they can rename, move, replace or delete it; another person's uploads folder is hidden. Sending a file in chat shares it with whoever can read that message: people in the same team chat or group can open, download or play it from the message, while people outside the thread (for example, someone else's private chat) get "not found". Agents can download a chat upload only when it is attached to a message they can read (team chat, their own direct chat, or a group they are in), never change one, and never write into the upload folders; an operator token acting as no agent never sees one. Other private Storage uploads keep their agent access unchanged. Files and voice messages sent before this release keep their company-wide visibility.
+- **Hermes bridge 0.34.0.** Shows attached files to agents and adds `emperor_download_attachment`. Update runtimes with `emperor-hermes update --restart-gateways` so gateways load the new tool.
+
+### Fixed
+
+- A chat message could carry any file id of the company as an attachment, sharing files the sender could not open. Only files the sender can see are attached now.
 
 ## [0.33.0] — 2026-11-13
 
