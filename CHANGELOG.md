@@ -11,10 +11,18 @@ ships in the release notes.
 
 ## [Unreleased]
 
+## [0.35.0] — 2026-11-16
+
 ### Added
 
+- **GitHub Copilot as an LLM provider for Hermes agents.** Pick **GitHub Copilot** as an agent's provider and give it a Copilot-enabled GitHub token (fine-grained or OAuth; classic `ghp_` tokens are refused without being echoed). Hermes v0.22.4 has native Copilot support, so the token goes to the agent's profile as `COPILOT_GITHUB_TOKEN` and is redacted in host logs. Easy Setup and the setup wizard don't offer it yet.
 - **Codex connects without approval prompts on every call.** Every Emperor MCP tool now says whether it only reads or changes something, so Codex (CLI and IDE) runs reads straight away and asks before tools that overwrite, archive, remove or decide; in `codex exec` those were all cancelled before. `codex mcp login` can now sign in with OAuth, since its local `http://127.0.0.1` callback is accepted. See **Connecting an MCP Client** in the MCP docs for the `config.toml` approval settings.
 - **Paste images into chat.** Ctrl/Cmd+V with an image on the clipboard attaches it to the message, exactly like the attach button: it lands in your **My uploads** folder and agents get it in their **Attached files** list. Several images in one paste each become an attachment, and a screenshot without a real filename is saved as `pasted-image-<date>-<time>.png`. Pasting text works as before, including cells or paragraphs copied from Excel, Word or PowerPoint (which also carry a picture of the selection): the text wins.
+
+### Changed
+
+- **Who can decide approvals.** Owners and admins can decide any approval; so can the owner of the agent that asked, people you grant **Can decide any approval** in **Settings → Approvals**, and the approvers a routed approval names. Everyone else sees the card read-only with the reason, and the API answers 403. The rationale and arguments are shown only to people who can decide. An approval raised in a private direct chat is visible only to that chat's owner and the people who can decide it. The audit log records in what capacity each decision was made.
+- **Hermes bridge 0.35.0.** `emperor-hermes update --restart-gateways`, `restart-gateway` and `rollback --bridge-only` now restart only profiles that were enabled or running and have a token, so a retired profile stays stopped; `status` lists it as skipped instead of a problem. A bridge with a configuration error now stops instead of crash-looping. Update agent hosts with `emperor-hermes update --restart-gateways` after downloading the v0.35.0 installer.
 
 ## [0.34.0] — 2026-11-16
 
