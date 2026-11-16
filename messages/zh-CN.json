@@ -3744,6 +3744,11 @@
     "emptyInspector": {
       "title": "选择文件或文件夹",
       "description": "通过此检查器预览文件内容、编辑元数据、重命名项目并管理文件夹结构。"
+    },
+    "uploads": {
+      "mine": "我的上传",
+      "privateFolder": "私有上传",
+      "privateFile": "私有文件"
     }
   },
   "auth": {

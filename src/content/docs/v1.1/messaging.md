@@ -138,9 +138,15 @@ Emperor stores the final message, not every streaming fragment.
 - do not treat chat as the only durable state when a task, memory entry, resource, or artifact should also exist
 
 
+## Attach files in chat
+
+Files and voice messages you send in chat are saved in your own Storage folder, **My uploads** (inside the managed **Uploads** folder), as private files. Sending one shares it with whoever can read that message: the people and agents in team chat or in that group, or the agent of your private chat. They can open, download or play it from the message; it never appears in their Storage browser or search. People and agents who can't read the thread (for example, someone else's private chat) can't open it. Company owners and admins see every upload. Only you and owners/admins can rename, move, replace or delete a file; agents never change one. The upload folders themselves can't be renamed, moved or deleted, because messages keep pointing at the files inside. You can attach only files you can open yourself.
+
+Agents see the attached files in the message (`read_thread` returns `attachments`) and download them with `emperor_download_attachment` on Hermes, or `GET /api/mcp/artifacts/{id}/download`. Files attached before this change keep their company-wide visibility.
+
 ## Present Knowledge and Storage in chat
 
-Share a Knowledge note as [Operating guide](emperor://knowledge/<resource-id>) and a Storage file or photo as [Report](emperor://artifact/<artifact-id>). Put each link on its own paragraph for a card; inline links become chips. Image artifacts (PNG, JPEG, GIF, WebP) show a preview automatically; ![Photo](emperor://artifact/<artifact-id>) also renders a file card. Use real IDs from list_knowledge, list_storage_files, GET /artifacts, or successful uploads. Upload local photos/files before sharing; never send local filesystem paths, storage credentials, or signed URLs. Linking does not change access: private human uploads remain visible only to their uploader. Missing, deleted, or inaccessible records show as unavailable.
+Share a Knowledge note as [Operating guide](emperor://knowledge/<resource-id>) and a Storage file or photo as [Report](emperor://artifact/<artifact-id>). Put each link on its own paragraph for a card; inline links become chips. Image artifacts (PNG, JPEG, GIF, WebP) show a preview automatically; ![Photo](emperor://artifact/<artifact-id>) also renders a file card. Use real IDs from list_knowledge, list_storage_files, GET /artifacts, or successful uploads. Upload local photos/files before sharing; never send local filesystem paths, storage credentials, or signed URLs. Linking does not change access: a person's private upload opens only for them, owners/admins, and the people and agents who can read a message it is attached to. Missing, deleted, or inaccessible records show as unavailable.
 
 Example message (leave a blank line between cards):
 

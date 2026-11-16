@@ -7,6 +7,7 @@ import { memberMaySeeRecord } from "@/lib/member-scope";
 import { recordsWriteDenied } from "@/lib/resource-access";
 import { buildFolderPath, sanitizeFolderName, findActiveFolder } from "@/lib/artifact-folders";
 import { storageAdapter } from "@/lib/storage";
+import { humanMayWriteIntoFolder, isReservedFolderKind } from "@/lib/artifact-visibility";
 
 type ArtifactFolderRecord = InferModel<typeof artifactFolders>;
 
@@ -20,9 +21,12 @@ export async function POST(req: NextRequest) {
             return NextResponse.json({ error: "Folder name is required" }, { status: 400 });
         }
 
+        if (isReservedFolderKind(body.kind)) {
+            return NextResponse.json({ error: "That folder kind is reserved for Emperor's upload folders" }, { status: 400 });
+        }
         const parentFolderId = body.parentFolderId || null;
         const parentFolder = parentFolderId ? await findActiveFolder(companyId, parentFolderId) : null;
-        if (parentFolderId && !parentFolder) {
+        if (parentFolderId && (!parentFolder || !humanMayWriteIntoFolder(parentFolder, session))) {
             return NextResponse.json({ error: "Parent folder not found" }, { status: 404 });
         }
 

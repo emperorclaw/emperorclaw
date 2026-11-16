@@ -6,6 +6,8 @@ import { artifactFolders, projects, customers } from "@/db/schema";
 import { and, eq, isNull, ilike, or, desc, type InferModel, type SQL } from "drizzle-orm";
 import { buildFolderPath, sanitizeFolderName, findActiveFolder } from "@/lib/artifact-folders";
 import { storageAdapter } from "@/lib/storage";
+import { AGENT_UPLOADS_FOLDER_READ_ONLY } from "@/lib/artifact-visibility-server";
+import { agentMayWriteIntoFolder, isReservedFolderKind } from "@/lib/artifact-visibility";
 
 const CREATED_BY_TYPE = "mcp";
 type ArtifactFolderRecord = InferModel<typeof artifactFolders>;
@@ -98,12 +100,18 @@ export async function POST(req: NextRequest) {
             return NextResponse.json({ error: "Folder name is required" }, { status: 400 });
         }
 
+        if (isReservedFolderKind(body.kind)) {
+            return NextResponse.json({ error: "That folder kind is reserved for Emperor's upload folders" }, { status: 400 });
+        }
         const parentFolderId = body.parentFolderId || null;
         const parentFolder = parentFolderId
             ? await findActiveFolder(companyId, parentFolderId)
             : null;
         if (parentFolderId && !parentFolder) {
             return NextResponse.json({ error: "Parent folder not found" }, { status: 404 });
+        }
+        if (!agentMayWriteIntoFolder(parentFolder)) {
+            return NextResponse.json({ error: AGENT_UPLOADS_FOLDER_READ_ONLY }, { status: 403 });
         }
 
         const projectId = await resolveScopedProject(companyId, body.projectId);

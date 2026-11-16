@@ -8,6 +8,15 @@ import { storageAdapter, getStorageProviderName } from "@/lib/storage";
 import { prepareArtifactRecord } from "@/lib/artifacts";
 import { sanitizeFilenameSegment } from "@/lib/storage/path-sanitizer";
 import { companyRouteAccess } from "@/lib/company-access";
+import { buildChildPath } from "@/lib/path-utils";
+import { ensureUserUploadsFolder } from "@/lib/artifact-folders";
+import {
+    ArtifactFileTooLargeError,
+    ArtifactStorageQuotaError,
+    assertArtifactIngressAllowed,
+    buildArtifactFileTooLargeErrorResponse,
+    buildArtifactQuotaErrorResponse,
+} from "@/lib/artifact-quota";
 
 const MAX_BYTES = 25 * 1024 * 1024; // 25 MB
 
@@ -62,8 +71,14 @@ export async function POST(req: NextRequest) {
             return NextResponse.json({ error: "Attachment too large (max 25 MB)" }, { status: 413 });
         }
 
+        await assertArtifactIngressAllowed({ companyId, incomingSizeBytes: file.size });
+
+        // The uploader's own folder, uploads/<userId>: private to them (and
+        // owners/admins); agents read it only through a message it is
+        // attached to (lib/artifact-visibility.ts).
+        const folder = await ensureUserUploadsFolder(companyId, userId);
         const filename = file.name || `attachment-${randomUUID()}`;
-        const logicalPath = `chat-attachments/${randomUUID()}-${sanitizeFilenameSegment(filename)}`;
+        const logicalPath = buildChildPath(folder.path, `${randomUUID()}-${sanitizeFilenameSegment(filename)}`);
         const buffer = Buffer.from(await file.arrayBuffer());
 
         let uploadCompleted = false;
@@ -91,13 +106,14 @@ export async function POST(req: NextRequest) {
 
             const [artifact] = await db.insert(artifacts).values({
                 companyId,
+                folderId: folder.id,
                 path: logicalPath,
                 ...preparedArtifact,
                 createdByType: "human",
                 createdById: userId,
-                // Attaching to a message is the explicit consent to share it
-                // with the company's agents — company-visible, not private.
-                visibility: "company",
+                // Private: attaching it to a message shares it with the agents
+                // who can read that message, not with the whole company.
+                visibility: "private",
                 sourceKind: "chat-attachment",
             }).returning();
 
@@ -119,6 +135,12 @@ export async function POST(req: NextRequest) {
             throw error;
         }
     } catch (err) {
+        if (err instanceof ArtifactFileTooLargeError) {
+            return NextResponse.json(buildArtifactFileTooLargeErrorResponse(err), { status: 413 });
+        }
+        if (err instanceof ArtifactStorageQuotaError) {
+            return NextResponse.json(buildArtifactQuotaErrorResponse(err), { status: 413 });
+        }
         console.error("Chat attachment upload error:", err);
         return NextResponse.json({ error: "Internal Server Error" }, { status: 500 });
     }

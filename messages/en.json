@@ -3744,6 +3744,11 @@
     "emptyInspector": {
       "title": "Select a file or folder",
       "description": "Preview file contents, edit metadata, rename items, and manage folder structure from this inspector."
+    },
+    "uploads": {
+      "mine": "My uploads",
+      "privateFolder": "Private uploads",
+      "privateFile": "Private file"
     }
   },
   "auth": {

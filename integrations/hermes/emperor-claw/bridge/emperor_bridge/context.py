@@ -73,6 +73,7 @@ Where to look in Emperor (fetch on demand; nothing below is pushed into your mes
 - Objective check-in: emperor_update_objective(objectiveId, action='update'|'block'|'complete').
 - Company Brain / Knowledge & Rules: emperor_request GET /resources/context for resolved context, POST /resources for established knowledge (active) or uncertain proposals (draft), GET /resources for lookup.
 - Storage/files: emperor_list_folder_contents to browse; emperor_create_folder (projectId/customerId, parentFolderId for subfolders) then emperor_upload_artifact(filePath, kind, projectId, folderId); emperor_verify_artifact to check an upload.
+- Attached files: when a message lists "Attached files:", download each one you need with emperor_download_attachment(artifactId) and read it (e.g. python with openpyxl for .xlsx, pandas for .csv) before replying. Never say nothing was attached and never guess a file's contents.
 - emperor_request is not a generic external HTTP client; for external APIs use terminal/curl or a dedicated plugin.
 
 Storage rules:
@@ -306,6 +307,76 @@ def sender_label(message: Mapping[str, Any], roster: Mapping[str, str]) -> str:
     return clean_line(name or sender_type_of(message) or "someone", 40)
 
 
+ATTACHMENTS_MAX = 20
+ATTACHMENT_NAME_MAX = 120
+ATTACHMENT_HINT = ("Download a file with emperor_download_attachment(artifactId) and read it before replying; "
+                   "never guess its contents.")
+
+
+def message_attachments(message: Mapping[str, Any]) -> list[dict[str, Any]]:
+    """The file refs a message carries in ``metadataJson.attachments``; malformed entries are skipped."""
+    meta = message.get("metadataJson") if isinstance(message.get("metadataJson"), Mapping) else {}
+    raw = meta.get("attachments")
+    if not isinstance(raw, list):
+        return []
+    found = []
+    for item in raw:
+        if not isinstance(item, Mapping):
+            continue
+        artifact_id = clean_line(item.get("id"), 80)
+        if not artifact_id:
+            continue
+        size = item.get("sizeBytes")
+        found.append({"id": artifact_id, "name": clean_line(item.get("name"), ATTACHMENT_NAME_MAX) or "file",
+                      "contentType": clean_line(item.get("contentType"), 100),
+                      "sizeBytes": size if isinstance(size, int) and not isinstance(size, bool) and size >= 0 else None})
+    return found
+
+
+def format_bytes(size: Optional[int]) -> str:
+    if size is None:
+        return ""
+    if size < 1024:
+        return f"{size} B"
+    if size < 1024 * 1024:
+        return f"{size / 1024:.1f} KB"
+    return f"{size / (1024 * 1024):.1f} MB"
+
+
+def attachment_lines(message: Mapping[str, Any], *, hint: bool = True) -> list[str]:
+    """``Attached files:`` plus one line per file (capped at ATTACHMENTS_MAX), or [] when there are none."""
+    files = message_attachments(message)
+    if not files:
+        return []
+    lines = ["Attached files:"]
+    for item in files[:ATTACHMENTS_MAX]:
+        details = ", ".join(d for d in (item["contentType"], format_bytes(item["sizeBytes"])) if d)
+        lines.append(f"- {item['name']}" + (f" ({details})" if details else "") + f" [artifact {item['id']}]")
+    if len(files) > ATTACHMENTS_MAX:
+        lines.append(f"- +{len(files) - ATTACHMENTS_MAX} more")
+    if hint:
+        lines.append(ATTACHMENT_HINT)
+    return lines
+
+
+def message_body(message: Mapping[str, Any], *, hint: bool = True) -> str:
+    """The message text with its attached files listed under it ("" when it has neither)."""
+    text = str(message.get("text") or "").strip()
+    files = attachment_lines(message, hint=hint)
+    return "\n".join(([text] if text else []) + files)
+
+
+def attachment_summary(message: Mapping[str, Any], limit: int = 5) -> str:
+    """One-line file list for the continuity seed: ``[attached: a.xlsx (artifact <id>); +2 more]``."""
+    files = message_attachments(message)
+    if not files:
+        return ""
+    shown = [f"{clean_line(f['name'], 60)} (artifact {f['id']})" for f in files[:limit]]
+    if len(files) > limit:
+        shown.append(f"+{len(files) - limit} more")
+    return "[attached: " + "; ".join(shown) + "]"
+
+
 def task_lines(tasks: Sequence[Mapping[str, Any]], agent_id: str) -> tuple[str, list[str], int]:
     """(hash of this agent's open-task set, up to 2 short lines, open count) for the delta."""
     active = [t for t in tasks if isinstance(t, Mapping) and str(t.get("state") or "") in OPEN_TASK_STATES
@@ -347,7 +418,7 @@ def format_seed(history: Sequence[Mapping[str, Any]], exclude: set[str], roster:
     for entry in (h for h in history if isinstance(h, Mapping)):  # newest first: keep the most recent
         if str(entry.get("id") or "") in exclude:
             continue
-        text = clean_line(entry.get("text"), 600)
+        text = " ".join(p for p in (clean_line(entry.get("text"), 600), attachment_summary(entry)) if p)
         if not text:
             continue
         line = f"- {sender_label(entry, roster)}: {text}"
@@ -577,14 +648,17 @@ class ContextBuilder:
 
 def compose_api_text(messages: Sequence[Mapping[str, Any]], delta: str, seed: str = "") -> tuple[str, str]:
     """(text, api_text): the message(s) first, then the delta, then (first turn only) the seed."""
-    texts = [str(m.get("text") or "").strip() for m in messages]
+    texts = [message_body(m, hint=False) for m in messages]
     text = "\n\n".join(t for t in texts if t) or "(empty message)"
+    if any(message_attachments(m) for m in messages):
+        text += "\n" + ATTACHMENT_HINT
     api_text = f"{text}\n\n{delta}"
     if seed:
         api_text += "\n\n" + seed
     return text, api_text
 
 
-__all__ = ["ContextBuilder", "compose_api_text", "build_delta", "format_seed", "parse_server_capabilities",
+__all__ = ["ContextBuilder", "compose_api_text", "build_delta", "format_seed", "message_attachments",
+           "attachment_lines", "message_body", "parse_server_capabilities",
            "load_operating_guide", "format_roster", "format_company_brain_context", "format_organization",
            "format_thread_context", "format_team_roles", "task_lines", "thread_of", "thread_type_of"]

@@ -9,6 +9,8 @@
  * UI, exports, another agent reading history) it degrades to its label.
  */
 
+import { humanMayViewArtifact } from "@/lib/artifact-visibility";
+
 export const ENTITY_KINDS = ["task", "project", "agent", "knowledge", "artifact"] as const;
 export type EntityKind = (typeof ENTITY_KINDS)[number];
 
@@ -88,8 +90,13 @@ export interface ArtifactSummary {
     downloadUrl: string | null; href: string;
 }
 export const CHAT_IMAGE_TYPES = new Set(["image/png", "image/jpeg", "image/gif", "image/webp"]);
-export function canViewSharedArtifact(file: { visibility: string; createdByType: string; createdById: string | null }, userId?: string | null): boolean {
-    return !(file.visibility === "private" && file.createdByType === "human" && file.createdById && file.createdById !== userId);
+/** May this person open a file shared in chat? The Storage rule (lib/artifact-visibility.ts). */
+export function canViewSharedArtifact(
+    file: { visibility: string; createdByType: string; createdById: string | null },
+    userId?: string | null,
+    role?: string | null,
+): boolean {
+    return humanMayViewArtifact(file, { userId, role });
 }
 export type EntitySummary = TaskSummary | ProjectSummary | AgentSummary | KnowledgeSummary | ArtifactSummary;
 

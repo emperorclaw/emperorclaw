@@ -4,6 +4,7 @@ import { db } from "@/db";
 import { artifacts } from "@/db/schema";
 import { eq, and, isNull } from "drizzle-orm";
 import { mcpMayUseRecord, mcpRouteAccess } from "@/lib/mcp-access";
+import { AGENT_PRIVATE_UPLOAD_READ_ONLY, agentArtifactAccess } from "@/lib/artifact-visibility-server";
 
 export async function DELETE(
     req: NextRequest,
@@ -42,6 +43,12 @@ export async function DELETE(
         if (!mcpMayUseRecord(scoped.access, existing)) {
             return NextResponse.json({ error: "Artifact is outside this agent's scope" }, { status: 403 });
         }
+        // Agents never change a person's private upload (lib/artifact-visibility.ts).
+        const fileAccess = await agentArtifactAccess(companyId, scoped.access.agentId, existing);
+        if (fileAccess === "none") {
+            return NextResponse.json({ error: "Artifact not found or already deleted." }, { status: 404 });
+        }
+        if (fileAccess !== "write") return NextResponse.json({ error: AGENT_PRIVATE_UPLOAD_READ_ONLY }, { status: 403 });
 
         const [deleted] = await db.update(artifacts).set({
             deletedAt: new Date(),

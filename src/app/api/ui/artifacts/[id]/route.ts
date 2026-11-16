@@ -6,6 +6,8 @@ import { prepareArtifactRecord } from "@/lib/artifacts";
 import { sanitizeArtifactClientPayload } from "@/lib/artifacts";
 import { requireCompanyFromSession } from "@/lib/company-session";
 import { memberMaySeeRecord } from "@/lib/member-scope";
+import { humanMayChangeArtifact } from "@/lib/artifact-visibility";
+import { humanMayOpenArtifact } from "@/lib/artifact-visibility-server";
 import { recordResource, resourceWriteDenied } from "@/lib/resource-access";
 
 type ArtifactRecord = InferModel<typeof artifacts>;
@@ -15,7 +17,7 @@ export async function GET(
     { params }: { params: Promise<{ id: string }> }
 ) {
     try {
-        const { companyId, userId, scope } = await requireCompanyFromSession("viewer");
+        const { companyId, userId, role, scope } = await requireCompanyFromSession("viewer");
         const { id: artifactId } = await params;
 
         const [artifact] = await db.select({
@@ -68,15 +70,9 @@ export async function GET(
             return NextResponse.json({ error: "Artifact not found" }, { status: 404 });
         }
 
-        // Mirror the download route's visibility rule: a private human upload is
-        // only readable by its uploader. Without this, the metadata/contentText
-        // of other users' private artifacts leaks here.
-        if (
-            artifact.visibility === "private" &&
-            artifact.createdByType === "human" &&
-            artifact.createdById &&
-            artifact.createdById !== userId
-        ) {
+        // Another person's private upload reads as missing unless it is attached
+        // to a message this person can read (lib/artifact-visibility.ts).
+        if (!(await humanMayOpenArtifact({ companyId, userId, role, scope }, artifact))) {
             return NextResponse.json({ error: "Artifact not found" }, { status: 404 });
         }
 
@@ -100,7 +96,8 @@ export async function PATCH(
             eq(artifacts.companyId, companyId),
             isNull(artifacts.deletedAt),
         )).limit(1);
-        if (!artifact || !(await memberMaySeeRecord(companyId, scope, artifact))) {
+        if (!artifact || !(await memberMaySeeRecord(companyId, scope, artifact))
+            || !humanMayChangeArtifact(artifact, session)) {
             return NextResponse.json({ error: "Artifact not found" }, { status: 404 });
         }
         // Resource-aware (0.20): edit access to the file's project or customer.
@@ -163,7 +160,7 @@ export async function PATCH(
             metadataJson: prepared.metadataJson,
             isCanonical: prepared.isCanonical,
             promotedAt: prepared.promotedAt,
-            visibility: body.visibility ?? artifactRecord.visibility,
+            visibility: body.visibility === "private" || body.visibility === "company" ? body.visibility : artifactRecord.visibility,
             retentionPolicy: body.retentionPolicy ?? artifactRecord.retentionPolicy,
             updatedAt: new Date(),
         }).where(and(

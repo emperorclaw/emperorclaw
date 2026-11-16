@@ -6,6 +6,7 @@ import { requireCompanyFromSession } from "@/lib/company-session";
 import { memberMaySeeRecord } from "@/lib/member-scope";
 import { recordResource, resourceWriteDenied } from "@/lib/resource-access";
 import { findActiveFolder } from "@/lib/artifact-folders";
+import { humanMayChangeArtifact, humanMayWriteIntoFolder } from "@/lib/artifact-visibility";
 import { buildChildPath, deriveArtifactLogicalPath, sanitizePathSegment } from "@/lib/path-utils";
 import { storageAdapter } from "@/lib/storage";
 import { getFormStringValue, parseJsonMetadata } from "@/lib/form-utils";
@@ -29,7 +30,8 @@ export async function PATCH(req: NextRequest, context: RouteContext<"/api/ui/art
             isNull(artifacts.deletedAt),
         )).limit(1);
 
-        if (!artifact || !(await memberMaySeeRecord(companyId, scope, artifact))) {
+        if (!artifact || !(await memberMaySeeRecord(companyId, scope, artifact))
+            || !humanMayChangeArtifact(artifact, session)) {
             return NextResponse.json({ error: "Artifact not found" }, { status: 404 });
         }
         // Resource-aware (0.20): edit access to the file's project or customer.
@@ -44,7 +46,7 @@ export async function PATCH(req: NextRequest, context: RouteContext<"/api/ui/art
 
         const folderId = getFormStringValue(form, "folderId");
         const folder = folderId ? await findActiveFolder(companyId, folderId) : null;
-        if (folderId && !folder) {
+        if (folderId && (!folder || !humanMayWriteIntoFolder(folder, session))) {
             return NextResponse.json({ error: "Folder not found" }, { status: 404 });
         }
 

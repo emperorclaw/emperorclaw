@@ -15,6 +15,8 @@ import { getGroupThread, GroupError, joinGroupAsHuman, isAgentPairThread, isComp
 import { parseEventsSince } from "@/lib/run-events";
 import { loadChatRunState } from "@/lib/run-ledger-reads";
 import { companyRouteAccess } from "@/lib/company-access";
+import { humanArtifactCondition } from "@/lib/artifact-visibility-server";
+import { memberRecordCondition } from "@/lib/member-scope";
 import { agentUseFor, mentionedAgentsNotUsable, type AgentAccessViewer } from "@/lib/agent-access-server";
 import { requireGroupInScope } from "@/lib/group-route";
 import { createPrivateChat, findOwnedPrivateChat, PrivateChatError } from "@/lib/private-chats";
@@ -248,8 +250,10 @@ export async function POST(req: NextRequest) {
         }
 
         // Resolve attachment artifact ids to compact company-scoped refs.
-        // Unknown/deleted ids are silently dropped — only real company
-        // artifacts travel with the message.
+        // Unknown/deleted ids, and files the sender may not open themselves
+        // (another person's private upload), are silently dropped: attaching a
+        // file shares it with the agents reading the message, so only files
+        // the sender can already see travel with it.
         let resolvedAttachments: ThreadMessageAttachment[] = [];
         const attachmentIds = Array.isArray(attachments)
             ? attachments.filter((a: unknown): a is string => typeof a === "string")
@@ -265,6 +269,8 @@ export async function POST(req: NextRequest) {
                 eq(artifacts.companyId, companyId),
                 inArray(artifacts.id, attachmentIds),
                 isNull(artifacts.deletedAt),
+                humanArtifactCondition({ userId, role: access.ctx.role }),
+                memberRecordCondition(access.ctx.scope, { projectId: artifacts.projectId, customerId: artifacts.customerId }),
             ));
             resolvedAttachments = rows.map((row) => ({
                 id: row.id as string,

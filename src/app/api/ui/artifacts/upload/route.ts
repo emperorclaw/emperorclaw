@@ -7,6 +7,7 @@ import { db } from "@/db";
 import { artifacts, customers, projects, tasks } from "@/db/schema";
 import { storageAdapter, getStorageProviderName } from "@/lib/storage";
 import { findActiveFolder } from "@/lib/artifact-folders";
+import { humanMayWriteIntoFolder } from "@/lib/artifact-visibility";
 import { and, eq, isNull } from "drizzle-orm";
 import { getFormStringValue, parseJsonMetadata } from "@/lib/form-utils";
 import { sanitizeArtifactClientPayload } from "@/lib/artifacts";
@@ -60,7 +61,8 @@ export async function POST(req: NextRequest) {
         }
         const folderId = getFormStringValue(form, "folderId");
         const folder = folderId ? await findActiveFolder(companyId, folderId) : null;
-        if (folderId && !folder) {
+        // Another person's uploads folder reads as missing (lib/artifact-visibility.ts).
+        if (folderId && (!folder || !humanMayWriteIntoFolder(folder, session))) {
             return NextResponse.json({ error: "Folder not found" }, { status: 404 });
         }
         // A restricted member files only into projects/customers/folders in their scope.

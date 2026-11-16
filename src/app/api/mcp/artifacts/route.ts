@@ -11,6 +11,8 @@ import { and, desc, eq, ilike, isNull, or, gte, lte, type SQL } from "drizzle-or
 import { z } from "zod";
 import { prepareArtifactRecord } from "@/lib/artifacts";
 import { findActiveFolder } from "@/lib/artifact-folders";
+import { AGENT_UPLOADS_FOLDER_READ_ONLY, agentArtifactCondition } from "@/lib/artifact-visibility-server";
+import { agentMayWriteIntoFolder } from "@/lib/artifact-visibility";
 import { getStorageProviderName } from "@/lib/storage";
 import { parseJsonBody, optionalString } from "@/lib/validation";
 import { mcpMayUseCustomer, mcpMayUseProject, mcpRecordCondition, mcpRouteAccess } from "@/lib/mcp-access";
@@ -110,6 +112,8 @@ export async function GET(req: NextRequest) {
         if (scoped.response) return scoped.response;
         const scopeOr = mcpRecordCondition(scoped.access, { projectId: artifacts.projectId, customerId: artifacts.customerId });
         if (scopeOr) conditions.push(scopeOr);
+        // A person's private upload only when attached to a message this agent may read.
+        conditions.push(agentArtifactCondition(companyId, scoped.access.agentId));
 
         const startDate = startDateParam ? new Date(startDateParam) : null;
         if (startDate && !Number.isNaN(startDate.getTime())) {
@@ -296,6 +300,9 @@ export async function POST(req: NextRequest) {
         const folder = folderId ? await findActiveFolder(companyId, folderId) : null;
         if (folderId && !folder) {
             return NextResponse.json({ error: "Folder not found" }, { status: 404 });
+        }
+        if (!agentMayWriteIntoFolder(folder)) {
+            return NextResponse.json({ error: AGENT_UPLOADS_FOLDER_READ_ONLY }, { status: 403 });
         }
 
         const resolvedPath =

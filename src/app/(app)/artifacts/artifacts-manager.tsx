@@ -14,7 +14,7 @@ import {
 } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import dynamic from "next/dynamic";
-import { IconArrowDown, IconChevronDown, IconChevronRight, IconFile, IconFilePlus, IconFileZip, IconFileCode, IconPhoto, IconFileTypeJs, IconFileSpreadsheet, IconFileText, IconFolder, IconFolderOpen, IconFolderPlus, IconLoader2, IconArrowsMaximize, IconDots, IconPencil, IconPlus, IconQuestionMark, IconRefresh, IconDeviceFloppy, IconSearch, IconSettings, IconTrash, IconUpload } from "@tabler/icons-react";
+import { IconArrowDown, IconChevronDown, IconChevronRight, IconFile, IconFilePlus, IconFileZip, IconFileCode, IconPhoto, IconFileTypeJs, IconFileSpreadsheet, IconFileText, IconFolder, IconFolderOpen, IconFolderPlus, IconLoader2, IconLock, IconArrowsMaximize, IconDots, IconPencil, IconPlus, IconQuestionMark, IconRefresh, IconDeviceFloppy, IconSearch, IconSettings, IconTrash, IconUpload } from "@tabler/icons-react";
 import { toast } from "sonner";
 import { useFormatter, useTranslations } from "next-intl";
 import { Select } from "@/components/ui/select";
@@ -93,6 +93,9 @@ type FolderSummary = {
     id: string;
     name: string;
     path: string;
+    /** `user_uploads` = a person's private uploads folder (lib/artifact-visibility.ts). */
+    kind?: string;
+    ownerUserId?: string | null;
     projectId: string | null;
     customerId: string | null;
     metadataJson: Record<string, unknown>;
@@ -126,6 +129,7 @@ type ArtifactSummary = {
     agentId?: string | null;
     taskId: string | null;
     taskType?: string | null;
+    visibility?: string;
 };
 
 type ArtifactDetail = ArtifactSummary & {
@@ -274,7 +278,37 @@ type Props = {
     projects: ProjectOption[];
     tasks: TaskOption[];
     customers: CustomerOption[];
+    /** The signed-in person: their own uploads folder reads "My uploads". */
+    currentUserId?: string;
 };
+
+const USER_UPLOADS_KIND = "user_uploads";
+
+/** Show the viewer's own uploads folder as `mineLabel`; other people's keep their name. */
+function labelUploadsFolders(payload: FolderContentsResponse, currentUserId: string | undefined, mineLabel: string): FolderContentsResponse {
+    const relabel = <T extends FolderSummary>(folder: T): T =>
+        folder.kind === USER_UPLOADS_KIND && currentUserId && folder.ownerUserId === currentUserId ? { ...folder, name: mineLabel } : folder;
+    const mineIds = new Set([payload.folder, ...payload.folders]
+        .filter((folder) => folder.kind === USER_UPLOADS_KIND && currentUserId && folder.ownerUserId === currentUserId)
+        .map((folder) => folder.id));
+    return {
+        ...payload,
+        folder: relabel(payload.folder),
+        folders: payload.folders.map(relabel),
+        ancestors: payload.ancestors.map((ancestor) => mineIds.has(ancestor.id) ? { ...ancestor, name: mineLabel } : ancestor),
+    };
+}
+
+/** A folder icon, with a lock for a person's private uploads folder. */
+function renderFolderIcon(folder: Pick<FolderSummary, "kind">, className = "size-4 text-amber-300") {
+    if (folder.kind !== USER_UPLOADS_KIND) return <IconFolder className={className} />;
+    return (
+        <span className="relative inline-flex shrink-0">
+            <IconFolder className={className} />
+            <IconLock className="absolute -bottom-1 -right-1 size-2.5 text-zinc-300" aria-hidden="true" />
+        </span>
+    );
+}
 
 /** The hash algorithm's name: never translated. */
 const HASH_LABEL = "SHA256";
@@ -284,7 +318,7 @@ const untitledFileName = (type: CreatableFileType) => `untitled${getCreatableFil
 /** File kinds the filters and forms offer (stored values; the labels are artifacts.kinds.*). */
 const ARTIFACT_KINDS = ["report", "invoice", "statement", "document", "export"] as const;
 
-export default function ArtifactsManager({ projects, tasks, customers }: Props) {
+export default function ArtifactsManager({ projects, tasks, customers, currentUserId }: Props) {
     const t = useTranslations("artifacts");
     const formatDate = useRelativeDate();
     const linkedArtifactId = useSearchParams().get("artifact");
@@ -433,7 +467,7 @@ export default function ArtifactsManager({ projects, tasks, customers }: Props) 
             if (!response.ok) {
                 throw new Error(await readError(response, t("errors.fetchFolder")));
             }
-            const payload = await response.json() as FolderContentsResponse;
+            const payload = labelUploadsFolders(await response.json() as FolderContentsResponse, currentUserId, t("uploads.mine"));
             const cacheKey = folderId === ROOT_ID ? ROOT_ID : payload.folder.id;
             startTransition(() => {
                 setFolderCache((current) => ({
@@ -1747,10 +1781,10 @@ export default function ArtifactsManager({ projects, tasks, customers }: Props) 
                                 {!isSearchMode && visibleFolders.map((folder) => (
                                     <BrowserRow
                                         key={folder.id}
-                                        icon={<IconFolder className="size-4 text-amber-300" />}
+                                        icon={renderFolderIcon(folder)}
                                         title={folder.name}
                                         subtitle={folder.path || t("root")}
-                                        context={folder.projectId ? projects.find((project) => project.id === folder.projectId)?.name || t("scopedFolder") : t("folder")}
+                                        context={folder.kind === USER_UPLOADS_KIND ? t("uploads.privateFolder") : folder.projectId ? projects.find((project) => project.id === folder.projectId)?.name || t("scopedFolder") : t("folder")}
                                         sizeLabel={t("folder")}
                                         dateLabel={formatDate(folder.createdAt)}
                                         selected={selectedEntry?.type === "folder" && selectedEntry.id === folder.id}
@@ -1786,7 +1820,12 @@ export default function ArtifactsManager({ projects, tasks, customers }: Props) 
                                 {visibleArtifacts.map((artifact) => (
                                     <BrowserRow
                                         key={artifact.id}
-                                        icon={renderArtifactIcon(artifact)}
+                                        icon={artifact.visibility === "private" ? (
+                                            <span className="relative inline-flex shrink-0" title={t("uploads.privateFile")}>
+                                                {renderArtifactIcon(artifact)}
+                                                <IconLock className="absolute -bottom-1 -right-1 size-2.5 text-zinc-300" aria-label={t("uploads.privateFile")} />
+                                            </span>
+                                        ) : renderArtifactIcon(artifact)}
                                         title={deriveDisplayName(artifact)}
                                         subtitle={artifact.path || artifact.originalFilename || artifact.kind}
                                         context={buildArtifactContextLabel(artifact)}
@@ -2146,7 +2185,7 @@ function FolderTreeBranch(props: {
 }
 
 function TreeFolderRow(props: {
-    folder: Pick<FolderSummary, "id" | "name" | "path" | "projectId" | "customerId">;
+    folder: Pick<FolderSummary, "id" | "name" | "path" | "projectId" | "customerId" | "kind">;
     depth: number;
     isExpanded: boolean;
     isSelected: boolean;
@@ -2183,7 +2222,7 @@ function TreeFolderRow(props: {
             >
                 {props.isExpanded ? <IconChevronDown className="size-3.5" /> : <IconChevronRight className="size-3.5" />}
             </span>
-            <IconFolder className="size-4 shrink-0 text-amber-300" />
+            {renderFolderIcon(props.folder, "size-4 shrink-0 text-amber-300")}
             <span className="truncate flex-1 min-w-0">{props.folder.name}</span>
         </button>
     );

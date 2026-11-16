@@ -71,6 +71,7 @@ export default async function ArtifactsPage() {
             projects={projectOptions}
             tasks={taskOptions}
             customers={customerOptions}
+            currentUserId={sessionUserId}
         />
     );
 }

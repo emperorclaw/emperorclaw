@@ -1,5 +1,6 @@
 import { and, desc, eq, inArray, isNull, lt, or, type SQL } from "drizzle-orm";
 import { db } from "@/db";
+import { humanArtifactCondition } from "@/lib/artifact-visibility-server";
 import {
     agentRequests,
     agentRuns,
@@ -336,7 +337,8 @@ export async function loadTaskStory(
             createdAt: artifacts.createdAt,
         })
             .from(artifacts)
-            .where(and(eq(artifacts.companyId, companyId), eq(artifacts.taskId, taskId), isNull(artifacts.deletedAt), olderThan(artifacts.createdAt)))
+            .where(and(eq(artifacts.companyId, companyId), eq(artifacts.taskId, taskId), isNull(artifacts.deletedAt), olderThan(artifacts.createdAt),
+                humanArtifactCondition({ userId: viewer.userId, role: viewer.role })))
             .orderBy(desc(artifacts.createdAt))
             .limit(perSource),
         db.select().from(agentRuns)

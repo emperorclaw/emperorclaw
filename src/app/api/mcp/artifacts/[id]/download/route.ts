@@ -5,6 +5,7 @@ import { artifacts } from "@/db/schema";
 import { and, eq, isNull } from "drizzle-orm";
 import { storageAdapter } from "@/lib/storage";
 import { mcpMayUseRecord, mcpOutOfScope, mcpRouteAccess } from "@/lib/mcp-access";
+import { agentArtifactAccess } from "@/lib/artifact-visibility-server";
 
 export async function GET(req: NextRequest, context: RouteContext<"/api/mcp/artifacts/[id]/download">) {
     const auth = await verifyMcpToken(req);
@@ -27,6 +28,8 @@ export async function GET(req: NextRequest, context: RouteContext<"/api/mcp/arti
     const scopedAccess = await mcpRouteAccess(companyId, auth.companyToken!, req.nextUrl.searchParams.get("agentId"));
     if (scopedAccess.response) return scopedAccess.response;
     if (!mcpMayUseRecord(scopedAccess.access, artifact)) return mcpOutOfScope("Artifact");
+    // A person's private upload: only through a message the agent may read (lib/artifact-visibility.ts).
+    if ((await agentArtifactAccess(companyId, scopedAccess.access.agentId, artifact)) === "none") return mcpOutOfScope("Artifact");
 
     if (!artifact.storageKey) {
         return NextResponse.json({ error: "Artifact is not stored externally" }, { status: 400 });

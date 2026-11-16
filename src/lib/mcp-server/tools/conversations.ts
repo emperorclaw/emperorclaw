@@ -6,6 +6,7 @@ import { agents, messageThreads, threadMessages, threadParticipants } from "@/db
 import { AGENT_PAIR_DESCRIPTION, GROUP_THREAD_TYPE, pairThreadCounterpart } from "@/lib/groups";
 import { resolveAgentId } from "@/lib/mcp";
 import { mcpThreadReadVerdict } from "@/lib/thread-access";
+import type { ThreadMessageAttachment } from "@/lib/control-plane";
 import { jsonResult, errorResult } from "../result";
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -41,7 +42,36 @@ export type ConversationMessage = {
     text: string;
     createdAt: string;
     ack?: true;
+    /** Files attached to the message; download one with GET /api/mcp/artifacts/{id}/download. */
+    attachments?: ThreadMessageAttachment[];
 };
+
+/** Attachments listed per message at most; the rest are dropped from read results. */
+export const MESSAGE_ATTACHMENTS_MAX = 20;
+
+/**
+ * The file refs a message carries in metadataJson.attachments ({id, name,
+ * contentType, sizeBytes}); malformed entries are skipped.
+ */
+export function messageAttachments(metadata: unknown): ThreadMessageAttachment[] {
+    const raw = metadata && typeof metadata === "object" ? (metadata as Record<string, unknown>).attachments : undefined;
+    if (!Array.isArray(raw)) return [];
+    const refs: ThreadMessageAttachment[] = [];
+    for (const item of raw) {
+        if (!item || typeof item !== "object") continue;
+        const a = item as Record<string, unknown>;
+        const id = typeof a.id === "string" ? a.id.trim() : "";
+        if (!id) continue;
+        refs.push({
+            id,
+            name: typeof a.name === "string" && a.name.trim() ? a.name.trim() : "file",
+            contentType: typeof a.contentType === "string" && a.contentType ? a.contentType : "application/octet-stream",
+            sizeBytes: typeof a.sizeBytes === "number" && Number.isFinite(a.sizeBytes) && a.sizeBytes >= 0 ? a.sizeBytes : 0,
+        });
+        if (refs.length >= MESSAGE_ATTACHMENTS_MAX) break;
+    }
+    return refs;
+}
 
 /**
  * The messages a conversation shows: not cancelled, and not runtime control
@@ -108,15 +138,19 @@ function isAck(row: Pick<MessageRow, "metadataJson">): boolean {
 
 export async function toConversationMessages(companyId: string, rows: readonly MessageRow[]): Promise<ConversationMessage[]> {
     const nameOf = await describeSenders(companyId, rows);
-    return rows.map((row) => ({
-        messageId: row.id,
-        senderType: row.senderType,
-        senderId: row.senderId,
-        senderName: nameOf(row),
-        text: row.text,
-        createdAt: row.createdAt.toISOString(),
-        ...(isAck(row) ? { ack: true as const } : {}),
-    }));
+    return rows.map((row) => {
+        const attachments = messageAttachments(row.metadataJson);
+        return {
+            messageId: row.id,
+            senderType: row.senderType,
+            senderId: row.senderId,
+            senderName: nameOf(row),
+            text: row.text,
+            createdAt: row.createdAt.toISOString(),
+            ...(isAck(row) ? { ack: true as const } : {}),
+            ...(attachments.length > 0 ? { attachments } : {}),
+        };
+    });
 }
 
 /**
@@ -220,7 +254,7 @@ export function registerConversationTools(server: McpServer, companyId: string, 
 
     server.registerTool("read_thread", {
         title: "Read Thread",
-        description: `Read the messages of one thread, oldest first. Pass threadId (from send_message or list_threads), or agentId for your conversation with that agent (an operator connection reads the agent's shared direct thread). Paging: with no cursor you get the newest messages; go back with beforeMessageId=oldestMessageId (or before=<ISO date>) while hasMore is true. With afterMessageId or since (and no before cursor) you get the OLDEST messages after it, and hasMore means newer ones exist: continue with afterMessageId=newestMessageId. limit defaults to ${READ_THREAD_DEFAULT_LIMIT} (max ${READ_THREAD_MAX_LIMIT}). A person's private chat with an agent, or another pair of agents' thread, is not readable from an operator connection.`,
+        description: `Read the messages of one thread, oldest first. Pass threadId (from send_message or list_threads), or agentId for your conversation with that agent (an operator connection reads the agent's shared direct thread). Paging: with no cursor you get the newest messages; go back with beforeMessageId=oldestMessageId (or before=<ISO date>) while hasMore is true. With afterMessageId or since (and no before cursor) you get the OLDEST messages after it, and hasMore means newer ones exist: continue with afterMessageId=newestMessageId. limit defaults to ${READ_THREAD_DEFAULT_LIMIT} (max ${READ_THREAD_MAX_LIMIT}). A person's private chat with an agent, or another pair of agents' thread, is not readable from an operator connection. A message with files has attachments [{id, name, contentType, sizeBytes}]: download one with GET /api/mcp/artifacts/{id}/download (same token), never guess its contents.`,
         inputSchema: {
             threadId: z.string().optional(),
             agentId: z.string().optional().describe("Agent id or name: read your conversation with it (ignored when threadId is given)"),
@@ -280,7 +314,7 @@ export function registerConversationTools(server: McpServer, companyId: string, 
 
     server.registerTool("wait_for_reply", {
         title: "Wait for Reply",
-        description: `Wait for new messages in a thread that you did not send, e.g. an agent's answer after send_message. Pass threadId and afterMessageId (the messageId send_message returned), or since. Returns as soon as something arrives, oldest first (up to ${WAIT_BATCH_MAX}; call again with afterMessageId=nextAfterMessageId for more). Agents often post a short acknowledgement (ack: true) before the real answer, so keep waiting until you have it. Waits at most timeoutSeconds (default ${WAIT_DEFAULT_SECONDS}, max ${WAIT_MAX_SECONDS}); on timedOut: true just call it again. At most ${WAIT_MAX_CONCURRENT_PER_TOKEN} waits per connection at once.`,
+        description: `Wait for new messages in a thread that you did not send, e.g. an agent's answer after send_message. Pass threadId and afterMessageId (the messageId send_message returned), or since. Returns as soon as something arrives, oldest first (up to ${WAIT_BATCH_MAX}; call again with afterMessageId=nextAfterMessageId for more). Agents often post a short acknowledgement (ack: true) before the real answer, so keep waiting until you have it. Waits at most timeoutSeconds (default ${WAIT_DEFAULT_SECONDS}, max ${WAIT_MAX_SECONDS}); on timedOut: true just call it again. Messages have the same shape as in read_thread, including attachments. At most ${WAIT_MAX_CONCURRENT_PER_TOKEN} waits per connection at once.`,
         inputSchema: {
             threadId: z.string(),
             afterMessageId: z.string().optional().describe("Only messages after this one (same thread)"),

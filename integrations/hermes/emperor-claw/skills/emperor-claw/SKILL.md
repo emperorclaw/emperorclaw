@@ -41,6 +41,9 @@ to `POST /resources` (or `PATCH /resources/{id}` to move a misfiled note).
   `emperor_get_thread_messages`, `emperor_list_projects`, `emperor_list_tasks`,
   `emperor_get_task_overview`, `emperor_create_folder` + `emperor_upload_artifact`
   (verify with `emperor_verify_artifact`).
+- When a message lists `Attached files:`, download each file you need with
+  `emperor_download_attachment(artifactId)` and read it from the returned path
+  before replying; never claim nothing was attached.
 - Share a Knowledge note as `[title](emperor://knowledge/<resource-id>)` and a
   Storage file as `[title](emperor://artifact/<artifact-id>)`; use real IDs only.
 - When a tool fails, report the actual error and keep IDs for retry; never invent

@@ -8,6 +8,9 @@ import { recordsWriteDenied } from "@/lib/resource-access";
 import { buildFolderPath, findActiveFolder, isDescendantPath, sanitizeFolderName } from "@/lib/artifact-folders";
 import { moveFolderArtifactBlobs } from "@/lib/folder-artifact-moves";
 import { storageAdapter } from "@/lib/storage";
+import { humanMayViewFolder, humanMayWriteIntoFolder, isManagedUploadsFolder, isReservedFolderKind } from "@/lib/artifact-visibility";
+
+const MANAGED_UPLOADS_FOLDER = "Upload folders are managed by Emperor: they cannot be renamed, moved or deleted";
 
 export async function PATCH(req: NextRequest, context: RouteContext<"/api/ui/folders/[id]">) {
     try {
@@ -15,14 +18,21 @@ export async function PATCH(req: NextRequest, context: RouteContext<"/api/ui/fol
         const { companyId, scope } = session;
         const { id: folderId } = await context.params;
         const folder = await findActiveFolder(companyId, folderId);
-        if (!folder || !(await memberMaySeeRecord(companyId, scope, { projectId: folder.projectId as string | null, customerId: folder.customerId as string | null }))) {
+        if (!folder || !(await memberMaySeeRecord(companyId, scope, { projectId: folder.projectId as string | null, customerId: folder.customerId as string | null }))
+            || !humanMayViewFolder(folder, session)) {
             return NextResponse.json({ error: "Folder not found" }, { status: 404 });
+        }
+        if (isManagedUploadsFolder(folder)) {
+            return NextResponse.json({ error: MANAGED_UPLOADS_FOLDER }, { status: 409 });
         }
         // Resource-aware (0.20): edit access to the folder's project/customer.
         const denied = await recordsWriteDenied(session, [{ projectId: folder.projectId as string | null, customerId: folder.customerId as string | null }], "member", "Folder");
         if (denied) return denied;
 
         const body = await req.json();
+        if (isReservedFolderKind(body.kind)) {
+            return NextResponse.json({ error: "That folder kind is reserved for Emperor's upload folders" }, { status: 400 });
+        }
         const newName = body.name ? sanitizeFolderName(body.name) : folder.name;
         if (!newName) {
             return NextResponse.json({ error: "Folder name cannot be empty" }, { status: 400 });
@@ -33,7 +43,7 @@ export async function PATCH(req: NextRequest, context: RouteContext<"/api/ui/fol
                 ? folder.parentFolderId
                 : body.parentFolderId;
         const parentFolder = targetParentId ? await findActiveFolder(companyId, targetParentId) : null;
-        if (targetParentId && !parentFolder) {
+        if (targetParentId && (!parentFolder || !humanMayWriteIntoFolder(parentFolder, session))) {
             return NextResponse.json({ error: "Parent folder not found" }, { status: 404 });
         }
 
@@ -175,8 +185,15 @@ export async function DELETE(req: NextRequest, context: RouteContext<"/api/ui/fo
         const { companyId, scope } = session;
         const { id: folderId } = await context.params;
         const folder = await findActiveFolder(companyId, folderId);
-        if (!folder || !(await memberMaySeeRecord(companyId, scope, { projectId: folder.projectId as string | null, customerId: folder.customerId as string | null }))) {
+        if (!folder || !(await memberMaySeeRecord(companyId, scope, { projectId: folder.projectId as string | null, customerId: folder.customerId as string | null }))
+            || !humanMayViewFolder(folder, session)) {
             return NextResponse.json({ error: "Folder not found" }, { status: 404 });
+        }
+        // Upload folders stay, admins included: messages and agents still
+        // reference the attachments inside. Single files can still be deleted
+        // by their uploader or an admin.
+        if (isManagedUploadsFolder(folder)) {
+            return NextResponse.json({ error: MANAGED_UPLOADS_FOLDER }, { status: 409 });
         }
         // Resource-aware (0.20): edit access to the folder's project/customer.
         const denied = await recordsWriteDenied(session, [{ projectId: folder.projectId as string | null, customerId: folder.customerId as string | null }], "member", "Folder");

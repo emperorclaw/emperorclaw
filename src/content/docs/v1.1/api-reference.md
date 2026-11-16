@@ -911,6 +911,13 @@ Important storage rule:
 - use `emperor_replace_artifact` (or `PATCH /artifacts/{id}/replace`) to edit bytes while preserving the artifact identity
 - after an important upload or replacement, call `GET /artifacts/{id}/verify`; it returns `ok: true` only when the bytes exist and match the recorded size and SHA-256
 
+Private uploads:
+
+- Files and voice messages a person sends in chat ("chat uploads") are stored in their own folder (kind `user_uploads`, `<uploads root>/<userId>`) with visibility `private`. The uploads root (kind `uploads_root`, shown as "Uploads") lives at `uploads`, or at `user-uploads` when a regular folder already uses that path. Only that person and company owners/admins see the folder and its files in Storage lists, folder contents and search. Another person can open or download one file (`/api/ui/artifacts/{id}`, `/download`, chat file cards) only when it is attached to a message in a thread they can read; otherwise `404`. Changes stay with the uploader and owners/admins.
+- An agent may read (list, `GET /artifacts/{id}/download`, `/verify`) a chat upload only when it is attached to a message in a thread the agent can read: team chat, its own direct chat, or a group it is a participant of. Any other thread never counts. Read the attachment ids from `read_thread` (`attachments: [{id, name, contentType, sizeBytes}]`). Agents never change a chat upload: `move`, `replace`, `delete` and `DELETE /artifacts/{id}` answer `403`. An operator token acting as no agent never sees one; pass `agentId` to act as an agent.
+- Other private files uploaded in Storage keep their agent access: agents and operator tokens list, download and change them within their project/customer scope, as before. `list_storage_files` still leaves out every private human upload except chat uploads attached to a message you can read.
+- Upload folders are managed: nobody (admins included) renames, moves or deletes them (`409` in the UI API, `403` over MCP), creates a folder with kind `user_uploads` or `uploads_root` (`400`), or writes into them from an agent (`403`). Single files inside can still be deleted by their uploader or an admin.
+
 ### `POST /artifacts/upload`
 
 This route uses `multipart/form-data`.
@@ -1268,7 +1275,7 @@ This is the rule to keep:
 
 ## Present Knowledge and Storage in chat
 
-Share a Knowledge note as [Operating guide](emperor://knowledge/<resource-id>) and a Storage file or photo as [Report](emperor://artifact/<artifact-id>). Put each link on its own paragraph for a card; inline links become chips. Image artifacts (PNG, JPEG, GIF, WebP) show a preview automatically; ![Photo](emperor://artifact/<artifact-id>) also renders a file card. Use real IDs from list_knowledge, list_storage_files, GET /artifacts, or successful uploads. Upload local photos/files before sharing; never send local filesystem paths, storage credentials, or signed URLs. Linking does not change access: private human uploads remain visible only to their uploader. Missing, deleted, or inaccessible records show as unavailable.
+Share a Knowledge note as [Operating guide](emperor://knowledge/<resource-id>) and a Storage file or photo as [Report](emperor://artifact/<artifact-id>). Put each link on its own paragraph for a card; inline links become chips. Image artifacts (PNG, JPEG, GIF, WebP) show a preview automatically; ![Photo](emperor://artifact/<artifact-id>) also renders a file card. Use real IDs from list_knowledge, list_storage_files, GET /artifacts, or successful uploads. Upload local photos/files before sharing; never send local filesystem paths, storage credentials, or signed URLs. Linking does not change access: a person's private upload opens only for them, owners/admins, and the people and agents who can read a message it is attached to. Missing, deleted, or inaccessible records show as unavailable.
 
 Example message (leave a blank line between cards):
 
@@ -1284,7 +1291,7 @@ Here are the sources and the result.
 
 Open on a Knowledge card selects the exact note. Open on a file card selects that file in Storage; Download retrieves the original through the authenticated UI endpoint. Image previews use that same permission-checked endpoint. SVG and HTML files are never embedded as image previews. Files stored as text-only records still open in Storage but do not offer a download until binary storage exists. No message attachment metadata is needed: put the links in the message text (send_message / emperor_send_message or the normal reply).
 
-Native MCP tool `list_storage_files({search?, limit?})` returns `{files: [{id, title, name, contentType, sizeBytes, shareUrl}]}` (default 30, maximum 100), newest updated first. It excludes private human uploads. `list_knowledge` includes `shareUrl` for Knowledge notes. Both tools are read-only.
+Native MCP tool `list_storage_files({search?, limit?})` returns `{files: [{id, title, name, contentType, sizeBytes, shareUrl}]}` (default 30, maximum 100), newest updated first. It excludes a person's private uploads unless the file is attached to a message you can read. `list_knowledge` includes `shareUrl` for Knowledge notes. Both tools are read-only.
 
 ### Retrying guided agent and team setup
 

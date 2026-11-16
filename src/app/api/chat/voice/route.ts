@@ -7,6 +7,15 @@ import { artifacts } from "@/db/schema";
 import { storageAdapter, getStorageProviderName } from "@/lib/storage";
 import { prepareArtifactRecord } from "@/lib/artifacts";
 import { companyRouteAccess } from "@/lib/company-access";
+import { buildChildPath } from "@/lib/path-utils";
+import { ensureUserUploadsFolder } from "@/lib/artifact-folders";
+import {
+    ArtifactFileTooLargeError,
+    ArtifactStorageQuotaError,
+    assertArtifactIngressAllowed,
+    buildArtifactFileTooLargeErrorResponse,
+    buildArtifactQuotaErrorResponse,
+} from "@/lib/artifact-quota";
 
 const MAX_BYTES = 10 * 1024 * 1024; // 10 MB
 
@@ -50,8 +59,14 @@ export async function POST(req: NextRequest) {
         };
         const subtype = contentType.replace("audio/", "");
         const ext = SUBTYPE_EXT[subtype] ?? "webm";
+        await assertArtifactIngressAllowed({ companyId, incomingSizeBytes: file.size });
+
+        // The sender's own uploads folder, private like any chat upload: the
+        // people and agents who can read the message open it from there
+        // (lib/artifact-visibility.ts).
+        const folder = await ensureUserUploadsFolder(companyId, userId);
         const filename = `voice-${Date.now()}.${ext}`;
-        const logicalPath = `voice-messages/${randomUUID()}.${ext}`;
+        const logicalPath = buildChildPath(folder.path, `${randomUUID()}-voice.${ext}`);
         const buffer = Buffer.from(await file.arrayBuffer());
 
         let uploadCompleted = false;
@@ -83,11 +98,12 @@ export async function POST(req: NextRequest) {
 
             const [artifact] = await db.insert(artifacts).values({
                 companyId,
+                folderId: folder.id,
                 path: logicalPath,
                 ...preparedArtifact,
                 createdByType: "human",
                 createdById: userId,
-                visibility: "company",
+                visibility: "private",
                 sourceKind: "voice-message",
             }).returning();
 
@@ -108,6 +124,12 @@ export async function POST(req: NextRequest) {
             throw error;
         }
     } catch (err) {
+        if (err instanceof ArtifactFileTooLargeError) {
+            return NextResponse.json(buildArtifactFileTooLargeErrorResponse(err), { status: 413 });
+        }
+        if (err instanceof ArtifactStorageQuotaError) {
+            return NextResponse.json(buildArtifactQuotaErrorResponse(err), { status: 413 });
+        }
         console.error("Voice upload error:", err);
         return NextResponse.json({ error: "Internal Server Error" }, { status: 500 });
     }

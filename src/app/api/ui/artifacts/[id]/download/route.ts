@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireCompanyFromSession } from "@/lib/company-session";
 import { memberMaySeeRecord } from "@/lib/member-scope";
+import { humanMayOpenArtifact } from "@/lib/artifact-visibility-server";
 import { artifacts } from "@/db/schema";
 import { db } from "@/db";
 import { and, eq, isNull } from "drizzle-orm";
@@ -9,7 +10,7 @@ import { deriveArtifactLogicalPath } from "@/lib/path-utils";
 
 export async function GET(req: NextRequest, context: RouteContext<"/api/ui/artifacts/[id]/download">) {
     try {
-        const { companyId, userId, scope } = await requireCompanyFromSession("viewer");
+        const { companyId, userId, role, scope } = await requireCompanyFromSession("viewer");
         const { id: artifactId } = await context.params;
         const [artifact] = await db.select().from(artifacts).where(and(
             eq(artifacts.id, artifactId),
@@ -21,15 +22,12 @@ export async function GET(req: NextRequest, context: RouteContext<"/api/ui/artif
             return NextResponse.json({ error: "Artifact not found" }, { status: 404 });
         }
 
-        // Enforce visibility: "private" human uploads are only downloadable by
-        // their uploader. Agent/system-created artifacts stay company-visible —
-        // the operator must always be able to retrieve agent output.
-        if (
-            artifact.visibility === "private" &&
-            artifact.createdByType === "human" &&
-            artifact.createdById &&
-            artifact.createdById !== userId
-        ) {
+        // Enforce visibility: a "private" human upload is downloadable only by
+        // its uploader, owners/admins, and people who can read a message it is
+        // attached to. Agent/system-created artifacts stay company-visible: the
+        // operator must always be able to retrieve agent output
+        // (lib/artifact-visibility.ts).
+        if (!(await humanMayOpenArtifact({ companyId, userId, role, scope }, artifact))) {
             return NextResponse.json({ error: "Artifact not found" }, { status: 404 });
         }
 

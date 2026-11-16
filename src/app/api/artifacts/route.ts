@@ -3,6 +3,7 @@ export const dynamic = "force-dynamic";
 import { NextResponse } from "next/server";
 import { companyRouteAccess } from "@/lib/company-access";
 import { memberRecordCondition } from "@/lib/member-scope";
+import { humanArtifactCondition } from "@/lib/artifact-visibility-server";
 import { db } from "@/db";
 import { artifacts, projects, tasks, customers } from "@/db/schema";
 import { eq, desc, and, isNull } from "drizzle-orm";
@@ -35,6 +36,7 @@ export async function GET() {
             .leftJoin(customers, eq(projects.customerId, customers.id))
             .leftJoin(tasks, eq(artifacts.taskId, tasks.id))
             .where(and(eq(artifacts.companyId, companyId), isNull(artifacts.deletedAt),
+                humanArtifactCondition({ userId: access.ctx.userId, role: access.ctx.role }),
                 memberRecordCondition(access.ctx.scope, { projectId: artifacts.projectId, customerId: artifacts.customerId, projectCustomerId: projects.customerId })))
             .orderBy(desc(artifacts.createdAt));
 

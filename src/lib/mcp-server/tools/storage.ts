@@ -1,15 +1,16 @@
 import { z } from "zod";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import { and, desc, eq, ilike, isNull, ne, or } from "drizzle-orm";
+import { and, desc, eq, ilike, isNull, or } from "drizzle-orm";
 import { db } from "@/db";
 import { artifacts } from "@/db/schema";
 import { jsonResult, errorResult } from "../result";
 import { mcpAccessForAgent, mcpRecordCondition } from "@/lib/mcp-access";
+import { agentArtifactCondition } from "@/lib/artifact-visibility-server";
 
 export function registerStorageTools(server: McpServer, companyId: string, callerAgentId?: string | null) {
     server.registerTool("list_storage_files", {
         title: "List Storage Files",
-        description: "Find uploaded files, reports, and photos to present in chat. Returns real IDs and shareUrl; send a standalone [label](shareUrl) in message text for an Open/Download card and image preview. Does not grant access or expose private human uploads. Upload local files through /artifacts/upload before sharing.",
+        description: "Find uploaded files, reports, and photos to present in chat. Returns real IDs and shareUrl; send a standalone [label](shareUrl) in message text for an Open/Download card and image preview. Does not grant access or list private human uploads, except a chat upload attached to a message you can read. Upload local files through /artifacts/upload before sharing.",
         inputSchema: {
             search: z.string().max(200).optional(),
             limit: z.number().int().min(1).max(100).default(30),
@@ -23,7 +24,8 @@ export function registerStorageTools(server: McpServer, companyId: string, calle
                 contentType: artifacts.contentType, sizeBytes: artifacts.sizeBytes,
             }).from(artifacts).where(and(
                 eq(artifacts.companyId, companyId), isNull(artifacts.deletedAt),
-                or(ne(artifacts.visibility, "private"), ne(artifacts.createdByType, "human")),
+                // A person's private upload only when attached to a message this agent may read.
+                agentArtifactCondition(companyId, callerAgentId ?? null, undefined, { hideOtherPrivateUploads: true }),
                 search ? or(ilike(artifacts.title, `%${search}%`), ilike(artifacts.originalFilename, `%${search}%`)) : undefined,
                 scope,
             )).orderBy(desc(artifacts.updatedAt)).limit(limit);

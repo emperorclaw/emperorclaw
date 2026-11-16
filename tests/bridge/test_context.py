@@ -13,8 +13,9 @@ BRIDGE_DIR = REPO / "integrations" / "hermes" / "emperor-claw" / "bridge"
 if str(BRIDGE_DIR) not in sys.path:
     sys.path.insert(0, str(BRIDGE_DIR))
 
-from emperor_bridge.context import (DELTA_MAX, SEED_MAX, ContextBuilder, build_delta, compose_api_text,  # noqa: E402
-                                    format_seed, task_lines)
+from emperor_bridge.context import (ATTACHMENTS_MAX, DELTA_MAX, SEED_MAX, ContextBuilder,  # noqa: E402
+                                    attachment_lines, build_delta, compose_api_text, format_seed,
+                                    message_attachments, task_lines)
 
 
 def run(coro):
@@ -149,6 +150,89 @@ class SystemPromptTests(unittest.TestCase):
         off, _ = builder({}, rich_replies=False)
         off.set_capabilities(frozenset({"rich-blocks-v1"}), "RICH GUIDE")
         self.assertNotIn("RICH GUIDE", off.system_prompt("t", "direct")[0])
+
+
+XLSX = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+
+
+def with_files(text, files):
+    return {"id": "m1", "senderType": "human", "text": text, "metadataJson": {"attachments": files}}
+
+
+class AttachmentTests(unittest.TestCase):
+    FILE = {"id": "art-1", "name": "report.xlsx", "contentType": XLSX, "sizeBytes": 43622}
+
+    def test_attachments_are_listed_under_the_text_with_the_download_hint(self):
+        text, api_text = compose_api_text([with_files("Summarize this", [self.FILE])], "[emperor msg=m1]")
+        self.assertTrue(text.startswith("Summarize this\nAttached files:\n"))
+        self.assertIn(f"- report.xlsx ({XLSX}, 42.6 KB) [artifact art-1]", text)
+        self.assertIn("emperor_download_attachment", text)
+        self.assertTrue(api_text.startswith(text))
+        self.assertTrue(api_text.endswith("[emperor msg=m1]"))
+
+    def test_attachment_only_message_is_not_empty(self):
+        text, _ = compose_api_text([with_files("", [self.FILE])], "d")
+        self.assertNotIn("(empty message)", text)
+        self.assertTrue(text.startswith("Attached files:"))
+        self.assertIn("[artifact art-1]", text)
+
+    def test_coalesced_messages_keep_each_files_and_one_hint(self):
+        second = {**with_files("", [{"id": "art-2", "name": "b.csv"}]), "id": "m2"}
+        text, _ = compose_api_text([with_files("look", [self.FILE]), {"id": "m3", "text": "thanks"}, second], "d")
+        self.assertIn("[artifact art-1]", text)
+        self.assertIn("- b.csv [artifact art-2]", text)
+        self.assertEqual(text.count("emperor_download_attachment"), 1)
+        self.assertLess(text.index("art-1"), text.index("thanks"))
+        self.assertLess(text.index("thanks"), text.index("art-2"))
+
+    def test_messages_without_files_are_unchanged(self):
+        text, _ = compose_api_text([{"id": "m", "text": "hi"}], "d")
+        self.assertEqual(text, "hi")
+        self.assertEqual(compose_api_text([{"id": "m", "text": ""}], "d")[0], "(empty message)")
+
+    def test_malformed_metadata_is_ignored(self):
+        for meta in (None, "x", {"attachments": "nope"}, {"attachments": {"id": "a"}},
+                     {"attachments": [None, 3, "a", {"name": "no id"}, {"id": ""}]}):
+            message = {"id": "m", "text": "hi", "metadataJson": meta}
+            self.assertEqual(message_attachments(message), [])
+            self.assertEqual(compose_api_text([message], "d")[0], "hi")
+
+    def test_missing_fields_and_hostile_values_are_tolerated(self):
+        files = message_attachments(with_files("", [{"id": "a1", "sizeBytes": "big", "name": "x\n" * 200},
+                                                    {"id": "a2", "sizeBytes": True}]))
+        self.assertEqual([f["id"] for f in files], ["a1", "a2"])
+        self.assertIsNone(files[0]["sizeBytes"])
+        self.assertIsNone(files[1]["sizeBytes"])
+        self.assertNotIn("\n", files[0]["name"])
+        self.assertLessEqual(len(files[0]["name"]), 120)
+        lines = attachment_lines(with_files("", [{"id": "a3"}]), hint=False)
+        self.assertEqual(lines, ["Attached files:", "- file [artifact a3]"])
+
+    def test_list_is_capped(self):
+        files = [{"id": f"a{i}", "name": f"f{i}.txt"} for i in range(ATTACHMENTS_MAX + 7)]
+        lines = attachment_lines(with_files("", files), hint=False)
+        self.assertEqual(len(lines), 1 + ATTACHMENTS_MAX + 1)
+        self.assertEqual(lines[-1], "- +7 more")
+
+    def test_seed_keeps_attachment_only_messages(self):
+        history = [with_files("", [self.FILE]) | {"id": "old", "senderName": "Jose"},
+                   {"id": "older", "text": "hello", "senderName": "Jose"}]
+        seed = format_seed(history, set(), {})
+        self.assertIn("- Jose: [attached: report.xlsx (artifact art-1)]", seed)
+        self.assertLess(seed.index("hello"), seed.index("report.xlsx"))
+
+    def test_seed_lists_files_after_text_and_caps_them(self):
+        files = [{"id": f"a{i}", "name": f"f{i}.pdf"} for i in range(8)]
+        seed = format_seed([with_files("see these", files) | {"senderName": "Jose"}], set(), {})
+        self.assertIn("- Jose: see these [attached: f0.pdf (artifact a0);", seed)
+        self.assertIn("; +3 more]", seed)
+        self.assertNotIn("f5.pdf", seed)
+
+    def test_rules_tell_the_agent_to_download_attachments(self):
+        ctx, _ = builder({"/agents": {"agents": []}})
+        text, _ = ctx.system_prompt("t1", "direct")
+        self.assertIn("emperor_download_attachment(artifactId)", text)
+        self.assertIn("Never say nothing was attached", text)
 
 
 if __name__ == "__main__":

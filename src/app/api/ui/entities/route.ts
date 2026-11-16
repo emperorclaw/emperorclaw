@@ -15,6 +15,7 @@ import {
     type EntitySummary,
 } from "@/lib/emperor-entities";
 import { companyRouteAccess } from "@/lib/company-access";
+import { humanMayOpenArtifact } from "@/lib/artifact-visibility-server";
 import { agentsNotUsableBy } from "@/lib/agent-access-server";
 
 export const dynamic = "force-dynamic";
@@ -100,7 +101,10 @@ export async function GET(req: NextRequest) {
             scope: note.scope, updatedAt: note.updatedAt.toISOString(), href: `/resources?resource=${note.id}`,
         };
         for (const file of files) {
-            if (!canViewSharedArtifact(file, session?.user?.id)) continue;
+            // Private uploads: the uploader, owners/admins, or anyone who can read a
+            // message the file is attached to (lib/artifact-visibility.ts).
+            if (!canViewSharedArtifact(file, session?.user?.id, access.ctx.role)
+                && !(await humanMayOpenArtifact(access.ctx, file))) continue;
             // A restricted member resolves only files of their customers/projects.
             if (!(await memberMaySeeRecord(companyId, memberScope, file))) continue;
             const downloadUrl = file.storageKey ? `/api/ui/artifacts/${file.id}/download` : null;

@@ -18,6 +18,11 @@ test("private human uploads remain restricted while agent outputs are company-vi
     assert.equal(canViewSharedArtifact(file, "owner"), true);
     assert.equal(canViewSharedArtifact({ ...file, createdByType: "agent" }, "other"), true);
     assert.equal(canViewSharedArtifact({ ...file, visibility: "company" }, "other"), true);
+    // Owners and admins see every private upload; members and viewers do not.
+    assert.equal(canViewSharedArtifact(file, "other", "admin"), true);
+    assert.equal(canViewSharedArtifact(file, "other", "owner"), true);
+    assert.equal(canViewSharedArtifact(file, "other", "member"), false);
+    assert.equal(canViewSharedArtifact(file, "other", "viewer"), false);
 });
 test("image cards allow raster previews and exclude active content", () => {
     for (const type of ["image/png", "image/jpeg", "image/gif", "image/webp"]) assert.equal(CHAT_IMAGE_TYPES.has(type), true);

@@ -1046,5 +1046,12 @@
     "loading": "Loading…",
     "cleared": "Removed approvers were cleared. Save to keep the change.",
     "personStep": "a person"
+  },
+  "artifacts": {
+    "uploads": {
+      "mine": "My uploads",
+      "privateFolder": "Private uploads",
+      "privateFile": "Private file"
+    }
   }
 }

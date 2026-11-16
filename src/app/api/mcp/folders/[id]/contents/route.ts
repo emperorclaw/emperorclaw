@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { verifyMcpToken } from "@/lib/mcp";
 import { mcpMayUseRecord, mcpOutOfScope, mcpRecordCondition, mcpRouteAccess } from "@/lib/mcp-access";
+import { agentArtifactCondition } from "@/lib/artifact-visibility-server";
 import { db } from "@/db";
 import { artifactFolders, artifacts, projects, customers, tasks } from "@/db/schema";
 import { and, eq, isNull, desc, ilike } from "drizzle-orm";
@@ -54,6 +55,8 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
         isNull(artifacts.deletedAt),
     ];
     if (artifactScope) artifactConditions.push(artifactScope);
+    // A person's private upload only when attached to a message this agent may read.
+    artifactConditions.push(agentArtifactCondition(companyId, scoped.access.agentId));
     if (query) {
         artifactConditions.push(ilike(artifacts.title, `%${query}%`));
     }

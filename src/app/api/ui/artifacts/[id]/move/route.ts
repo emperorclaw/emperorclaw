@@ -6,6 +6,7 @@ import { artifacts } from "@/db/schema";
 import { db } from "@/db";
 import { and, eq, isNull } from "drizzle-orm";
 import { findActiveFolder } from "@/lib/artifact-folders";
+import { humanMayChangeArtifact, humanMayWriteIntoFolder } from "@/lib/artifact-visibility";
 import { deriveArtifactLogicalPath, buildChildPath, sanitizePathSegment } from "@/lib/path-utils";
 import { relocateArtifactBlob } from "@/lib/artifact-storage";
 import { sanitizeArtifactClientPayload } from "@/lib/artifacts";
@@ -21,7 +22,8 @@ export async function PATCH(req: NextRequest, context: RouteContext<"/api/ui/art
             isNull(artifacts.deletedAt),
         )).limit(1);
 
-        if (!artifact || !(await memberMaySeeRecord(companyId, scope, artifact))) {
+        if (!artifact || !(await memberMaySeeRecord(companyId, scope, artifact))
+            || !humanMayChangeArtifact(artifact, session)) {
             return NextResponse.json({ error: "Artifact not found" }, { status: 404 });
         }
         // Resource-aware (0.20): edit access to the file's project or customer.
@@ -31,7 +33,7 @@ export async function PATCH(req: NextRequest, context: RouteContext<"/api/ui/art
         const body = await req.json();
         const targetFolderId = body.folderId || null;
         const targetFolder = targetFolderId ? await findActiveFolder(companyId, targetFolderId) : null;
-        if (targetFolderId && !targetFolder) {
+        if (targetFolderId && (!targetFolder || !humanMayWriteIntoFolder(targetFolder, session))) {
             return NextResponse.json({ error: "Destination folder not found" }, { status: 404 });
         }
         // The folder lives in a project/customer too: it must be visible and editable (0.20).

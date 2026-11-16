@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireCompanyFromSession } from "@/lib/company-session";
 import { memberMaySeeRecord } from "@/lib/member-scope";
+import { humanMayChangeArtifact } from "@/lib/artifact-visibility";
 import { recordResource, resourceWriteDenied } from "@/lib/resource-access";
 import { artifacts } from "@/db/schema";
 import { db } from "@/db";
@@ -19,7 +20,8 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
             isNull(artifacts.deletedAt),
         )).limit(1);
 
-        if (!artifact || !(await memberMaySeeRecord(companyId, scope, artifact))) {
+        if (!artifact || !(await memberMaySeeRecord(companyId, scope, artifact))
+            || !humanMayChangeArtifact(artifact, session)) {
             return NextResponse.json({ error: "Artifact not found" }, { status: 404 });
         }
         // Resource-aware (0.20): edit access to the file's project or customer.

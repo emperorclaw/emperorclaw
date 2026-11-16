@@ -67,8 +67,8 @@ test("artifact download enforces nosniff, safe inline types, and visibility", ()
   assert.ok(source.includes("X-Content-Type-Options"), "download must set nosniff");
   assert.ok(source.includes("SAFE_INLINE_TYPES"), "inline disposition must be allowlisted");
   assert.ok(
-    source.includes('artifact.visibility === "private"'),
-    "download must enforce private-visibility ownership"
+    source.includes("humanMayOpenArtifact("),
+    "download must enforce private-visibility ownership (lib/artifact-visibility.ts)"
   );
 });
 

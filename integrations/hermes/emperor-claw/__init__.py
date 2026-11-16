@@ -956,8 +956,170 @@ def _message_summary(message: Dict[str, Any]) -> Dict[str, Any]:
         "createdAt": message.get("createdAt"),
         "text": _cut_string(text, MESSAGE_TEXT_MAX_CHARS) if isinstance(text, str) else text,
         "replyToMessageId": message.get("replyToMessageId") or meta.get("replyToMessageId"),
+        "attachments": _attachment_refs(meta.get("attachments")) or None,
     }
     return {k: v for k, v in row.items() if v not in (None, "", {})}
+
+
+MESSAGE_ATTACHMENTS_MAX = 20
+
+
+def _attachment_refs(raw: Any) -> list[Dict[str, Any]]:
+    """Compact refs of the files a message carries (metadataJson.attachments); malformed entries are skipped."""
+    if not isinstance(raw, list):
+        return []
+    refs: list[Dict[str, Any]] = []
+    for item in raw:
+        if not isinstance(item, dict) or not str(item.get("id") or "").strip():
+            continue
+        size = item.get("sizeBytes")
+        ref = {
+            "id": str(item["id"]).strip(),
+            "name": _one_line(item.get("name"), 160) or "file",
+            "contentType": _one_line(item.get("contentType"), 100),
+            "sizeBytes": size if isinstance(size, int) and not isinstance(size, bool) and size >= 0 else None,
+        }
+        refs.append({k: v for k, v in ref.items() if v is not None})
+        if len(refs) >= MESSAGE_ATTACHMENTS_MAX:
+            break
+    return refs
+
+
+# ---- Attachment download ----------------------------------------------------
+# Files a person attaches to a chat message are artifacts. The agent fetches
+# them on demand: the bytes land in a per-agent folder so terminal/python
+# tools can open them. Chat uploads are capped at 25 MB by the server.
+
+DEFAULT_ATTACHMENT_MAX_BYTES = 25 * 1024 * 1024
+_DOWNLOAD_CHUNK = 64 * 1024
+_UNSAFE_FILENAME_CHARS = re.compile(r"[^A-Za-z0-9._ ()+,=@-]+")
+_WINDOWS_RESERVED = re.compile(r"^(con|prn|aux|nul|com[0-9]|lpt[0-9])(\..*)?$", re.IGNORECASE)
+_FILENAME_STAR = re.compile(r"filename\*\s*=\s*(?:UTF-8|utf-8)''([^;]+)")
+_FILENAME_PLAIN = re.compile(r'filename\s*=\s*"?([^";]+)"?')
+
+
+def _attachment_max_bytes() -> int:
+    raw = os.environ.get("EMPEROR_ATTACHMENT_MAX_BYTES", "").strip()
+    try:
+        value = int(raw) if raw else DEFAULT_ATTACHMENT_MAX_BYTES
+    except ValueError:
+        return DEFAULT_ATTACHMENT_MAX_BYTES
+    return value if value > 0 else DEFAULT_ATTACHMENT_MAX_BYTES
+
+
+def _safe_filename(name: Any, fallback: str = "attachment") -> str:
+    """A plain file name: no directories, no traversal, no control or shell-hostile characters."""
+    base = re.split(r"[\\/]", str(name or ""))[-1]
+    base = _UNSAFE_FILENAME_CHARS.sub("_", base).strip(" .")
+    base = re.sub(r"_+", "_", base)
+    if not base or set(base) <= {".", "_"}:
+        base = fallback
+    if _WINDOWS_RESERVED.match(base):
+        base = "_" + base
+    if len(base) > 120:
+        stem, dot, ext = base.rpartition(".")
+        base = (stem[: 120 - len(ext) - 1] + "." + ext) if dot and 0 < len(ext) <= 10 else base[:120]
+    return base
+
+
+def _disposition_filename(header: str) -> str:
+    match = _FILENAME_STAR.search(header or "") or _FILENAME_PLAIN.search(header or "")
+    return urllib.parse.unquote(match.group(1).strip()) if match else ""
+
+
+def _attachments_dir() -> Path:
+    """<profile home>/emperor/attachments for an Emperor session, else the Hermes home."""
+    home = _profile_home(_bound_env())
+    if home is None:
+        home = Path(os.environ["HERMES_HOME"]) if os.environ.get("HERMES_HOME") else _hermes_root()
+    return home / "emperor" / "attachments"
+
+
+def _download_artifact(artifact_id: str, max_bytes: int, timeout: int = 120) -> Dict[str, Any]:
+    """GET /api/mcp/artifacts/{id}/download as bytes. {ok, bytes, contentType, filename} or an error."""
+    creds = _creds()
+    token = creds["token"]
+    if not token:
+        return _missing_token_error(creds)
+    url = creds["url"] + f"/api/mcp/artifacts/{urllib.parse.quote(artifact_id)}/download"
+    agent = creds["agent_ref"]
+    if agent:
+        url += "?" + urllib.parse.urlencode({"agentId": agent})
+    headers = {
+        "Authorization": f"Bearer {token}",
+        "Accept": "*/*",
+        "User-Agent": f"hermes-emperor-claw-plugin/{PLUGIN_VERSION}",
+    }
+    req = urllib.request.Request(url, method="GET", headers=headers)
+    too_large = {"ok": False, "error": f"Attachment is larger than the {max_bytes} byte download limit"}
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as res:
+            declared = res.headers.get("Content-Length")
+            if declared and declared.isdigit() and int(declared) > max_bytes:
+                return too_large
+            chunks: list[bytes] = []
+            total = 0
+            while True:
+                chunk = res.read(_DOWNLOAD_CHUNK)
+                if not chunk:
+                    break
+                total += len(chunk)
+                if total > max_bytes:
+                    return too_large
+                chunks.append(chunk)
+            return {
+                "ok": True,
+                "status": res.status,
+                "bytes": b"".join(chunks),
+                "contentType": (res.headers.get("Content-Type") or "application/octet-stream").split(";")[0].strip(),
+                "filename": _disposition_filename(res.headers.get("Content-Disposition") or ""),
+            }
+    except urllib.error.HTTPError as exc:
+        text = exc.read(4096).decode("utf-8", errors="replace")
+        try:
+            data = json.loads(text) if text else {}
+        except json.JSONDecodeError:
+            data = {"text": text}
+        return {"ok": False, "status": exc.code, "error": data}
+    except Exception as exc:
+        return {"ok": False, "error": str(exc)}
+
+
+def emperor_download_attachment(args: Dict[str, Any], **_: Any) -> str:
+    artifact_id = str(args.get("artifactId") or args.get("artifact_id") or args.get("id") or "").strip()
+    if not artifact_id:
+        return _json({"ok": False, "error": "artifactId is required (the id after 'artifact' in the Attached files list)"})
+    if not _SAFE_ID.match(artifact_id):
+        return _json({"ok": False, "error": "artifactId is not a valid artifact id"})
+    result = _download_artifact(artifact_id, _attachment_max_bytes())
+    if not result.get("ok"):
+        return _json(result)
+    name = _safe_filename(result.get("filename") or args.get("name"), fallback=f"artifact-{artifact_id}")
+    folder = _attachments_dir() / artifact_id
+    data: bytes = result["bytes"]
+    try:
+        folder.mkdir(parents=True, exist_ok=True)
+        target = folder / name
+        if target.resolve().parent != folder.resolve():  # belt and braces: never write outside the folder
+            return _json({"ok": False, "error": "Refusing an attachment name that leaves the download folder"})
+        partial = folder / f".{name}.{uuid.uuid4().hex}.part"
+        try:
+            with open(partial, "wb") as fh:
+                fh.write(data)
+            os.replace(partial, target)
+        finally:
+            if partial.exists():
+                partial.unlink()
+    except OSError as exc:
+        return _json({"ok": False, "error": f"Could not save the attachment: {exc}"})
+    return _json({
+        "ok": True,
+        "artifactId": artifact_id,
+        "path": str(target),
+        "name": name,
+        "contentType": result.get("contentType"),
+        "sizeBytes": len(data),
+    })
 
 
 def emperor_create_folder(args: Dict[str, Any], **_: Any) -> str:
@@ -1460,6 +1622,24 @@ def register(ctx: Any) -> None:
         check_fn=_available,
         requires_env=requires,
         description="Read Emperor thread messages",
+    )
+    ctx.register_tool(
+        "emperor_download_attachment",
+        TOOLSET,
+        _schema(
+            "Download a file attached to an Emperor chat message (the artifact id listed under 'Attached files:') "
+            "to a local folder, then open it from the returned path with your file or python tools "
+            "(e.g. openpyxl for .xlsx). Binary safe; max 25 MB.",
+            {
+                "artifactId": {"type": "string", "description": "The attachment's artifact id."},
+                "name": {"type": "string", "description": "Optional file name to use when the server sends none."},
+            },
+            ["artifactId"],
+        ),
+        emperor_download_attachment,
+        check_fn=_available,
+        requires_env=requires,
+        description="Download an Emperor chat attachment",
     )
     ctx.register_tool(
         "emperor_create_folder",

@@ -7,6 +7,8 @@ import { and, eq, isNull, like, or, sql } from "drizzle-orm";
 import { buildFolderPath, isDescendantPath, sanitizeFolderName, findActiveFolder } from "@/lib/artifact-folders";
 import { moveFolderArtifactBlobs } from "@/lib/folder-artifact-moves";
 import { storageAdapter } from "@/lib/storage";
+import { AGENT_UPLOADS_FOLDER_READ_ONLY } from "@/lib/artifact-visibility-server";
+import { agentMayWriteIntoFolder, isManagedUploadsFolder, isReservedFolderKind } from "@/lib/artifact-visibility";
 
 export async function GET(req: NextRequest, context: RouteContext<"/api/mcp/folders/[id]">) {
     const auth = await verifyMcpToken(req);
@@ -42,8 +44,14 @@ export async function PATCH(req: NextRequest, context: RouteContext<"/api/mcp/fo
         const scopedAccess = await mcpRouteAccess(companyId, auth.companyToken!, req.nextUrl.searchParams.get("agentId"));
         if (scopedAccess.response) return scopedAccess.response;
         if (!mcpMayUseRecord(scopedAccess.access, folder)) return mcpOutOfScope("Folder");
+        if (isManagedUploadsFolder(folder)) {
+            return NextResponse.json({ error: AGENT_UPLOADS_FOLDER_READ_ONLY }, { status: 403 });
+        }
 
         const body = await req.json();
+        if (isReservedFolderKind(body.kind)) {
+            return NextResponse.json({ error: "That folder kind is reserved for Emperor's upload folders" }, { status: 400 });
+        }
         const newName = body.name ? sanitizeFolderName(body.name) : folder.name;
         if (!newName) {
             return NextResponse.json({ error: "Folder name cannot be empty" }, { status: 400 });
@@ -56,6 +64,9 @@ export async function PATCH(req: NextRequest, context: RouteContext<"/api/mcp/fo
         const parentFolder = targetParentId ? await findActiveFolder(companyId, targetParentId) : null;
         if (targetParentId && !parentFolder) {
             return NextResponse.json({ error: "Parent folder not found" }, { status: 404 });
+        }
+        if (!agentMayWriteIntoFolder(parentFolder)) {
+            return NextResponse.json({ error: AGENT_UPLOADS_FOLDER_READ_ONLY }, { status: 403 });
         }
 
         const parentPathString = parentFolder && typeof parentFolder.path === "string" ? parentFolder.path : null;
@@ -206,6 +217,10 @@ export async function DELETE(req: NextRequest, context: RouteContext<"/api/mcp/f
     const scopedAccess = await mcpRouteAccess(companyId, auth.companyToken!, req.nextUrl.searchParams.get("agentId"));
     if (scopedAccess.response) return scopedAccess.response;
     if (!mcpMayUseRecord(scopedAccess.access, folder)) return mcpOutOfScope("Folder");
+    // People's uploads are theirs to delete, never an agent's (lib/artifact-visibility.ts).
+    if (isManagedUploadsFolder(folder)) {
+        return NextResponse.json({ error: AGENT_UPLOADS_FOLDER_READ_ONLY }, { status: 403 });
+    }
 
     // Collect all artifacts in this folder tree that have a Bunny blob before wiping DB records.
     const matchPattern = `${folder.path}/%`;

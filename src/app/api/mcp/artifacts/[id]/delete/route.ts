@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { verifyMcpToken, logAudit } from "@/lib/mcp";
 import { mcpMayUseRecord, mcpOutOfScope, mcpRouteAccess } from "@/lib/mcp-access";
+import { AGENT_PRIVATE_UPLOAD_READ_ONLY, agentArtifactAccess } from "@/lib/artifact-visibility-server";
 import { db } from "@/db";
 import { artifacts } from "@/db/schema";
 import { and, eq, isNull } from "drizzle-orm";
@@ -27,6 +28,10 @@ export async function DELETE(req: NextRequest, context: RouteContext<"/api/mcp/a
     const scopedAccess = await mcpRouteAccess(companyId, auth.companyToken!, req.nextUrl.searchParams.get("agentId"));
     if (scopedAccess.response) return scopedAccess.response;
     if (!mcpMayUseRecord(scopedAccess.access, artifact)) return mcpOutOfScope("Artifact");
+    // Agents never change a person's private upload (lib/artifact-visibility.ts).
+    const fileAccess = await agentArtifactAccess(companyId, scopedAccess.access.agentId, artifact);
+    if (fileAccess === "none") return mcpOutOfScope("Artifact");
+    if (fileAccess !== "write") return NextResponse.json({ error: AGENT_PRIVATE_UPLOAD_READ_ONLY }, { status: 403 });
 
     const artifactIdValue = artifact.id as string;
     const deleteContent = req.nextUrl.searchParams.get("purgeStorage") !== "false";

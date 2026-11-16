@@ -4,10 +4,11 @@ import { db } from "@/db";
 import { and, desc, eq, gte, ilike, isNull, lte, or, type SQL } from "drizzle-orm";
 import { requireCompanyFromSession } from "@/lib/company-session";
 import { memberRecordCondition } from "@/lib/member-scope";
+import { humanArtifactCondition } from "@/lib/artifact-visibility-server";
 
 export async function GET(req: NextRequest) {
     try {
-        const { companyId, scope } = await requireCompanyFromSession("viewer");
+        const { companyId, userId, role, scope } = await requireCompanyFromSession("viewer");
         const { searchParams } = new URL(req.url);
         const limit = Math.min(Math.max(parseInt(searchParams.get("limit") || "100", 10), 1), 500);
         const projectId = searchParams.get("projectId");
@@ -30,6 +31,9 @@ export async function GET(req: NextRequest) {
         ];
         const scoped = memberRecordCondition(scope, { projectId: artifacts.projectId, customerId: artifacts.customerId, projectCustomerId: projects.customerId });
         if (scoped) conditions.push(scoped);
+        // Another person's private upload is never listed (lib/artifact-visibility.ts).
+        const visible = humanArtifactCondition({ userId, role });
+        if (visible) conditions.push(visible);
         if (projectId) conditions.push(eq(artifacts.projectId, projectId));
         if (taskId) conditions.push(eq(artifacts.taskId, taskId));
         if (folderId) conditions.push(eq(artifacts.folderId, folderId));

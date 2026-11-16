@@ -1,5 +1,6 @@
 import { and, eq, inArray, isNull, or, sql, type AnyColumn } from "drizzle-orm";
 import { db } from "@/db";
+import { humanArtifactCondition } from "@/lib/artifact-visibility-server";
 import { agents, artifacts, companyMembers, customers, projectMemory, projects, recurringTaskDefinitions, resourceMemberships, taskEvents, tasks, users } from "@/db/schema";
 import { agentsNotUsableBy, usableAgentCondition } from "@/lib/agent-access-server";
 import { memberAgentCondition, memberProjectCondition, memberRecordCondition } from "@/lib/member-scope";
@@ -69,7 +70,9 @@ export async function loadProjectsBoard(viewer: GuardContext) {
         db.select().from(customers).where(and(eq(customers.companyId, companyId), isNull(customers.deletedAt),
             scope ? (customerIds.length ? inArray(customers.id, customerIds) : sql`false`) : undefined)),
         db.select().from(artifacts).leftJoin(projects, eq(projects.id, artifacts.projectId)).where(and(eq(artifacts.companyId, companyId), isNull(artifacts.deletedAt),
-            memberRecordCondition(scope, { projectId: artifacts.projectId, customerId: artifacts.customerId, projectCustomerId: projects.customerId }))),
+            memberRecordCondition(scope, { projectId: artifacts.projectId, customerId: artifacts.customerId, projectCustomerId: projects.customerId }),
+            // Another person's private upload is never shown (lib/artifact-visibility.ts).
+            humanArtifactCondition({ userId: viewer.userId, role: viewer.role }))),
         db.select().from(projectMemory).where(and(eq(projectMemory.companyId, companyId), inProjects(projectMemory.projectId))),
         db.select().from(recurringTaskDefinitions).where(and(eq(recurringTaskDefinitions.companyId, companyId), isNull(recurringTaskDefinitions.deletedAt),
             scope ? (projectIds.length ? inArray(recurringTaskDefinitions.projectId, projectIds) : sql`false`) : undefined)),

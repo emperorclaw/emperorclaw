@@ -13,6 +13,8 @@
  *   scope stays hidden, as in the palette); files follow memberRecordCondition;
  *   Knowledge & Rules notes follow memberMaySeeResource; agents and customers
  *   their allow-lists; a message only when every agent on it is in scope;
+ * - files: another person's private upload only for owners/admins
+ *   (lib/artifact-visibility.ts);
  * - private direct chats (lib/direct-chat-mode.ts userMayUseThread): only the
  *   owner's own; an orphaned one belongs to nobody;
  * - agent pair threads (lib/groups.ts isAgentPairThread): owners/admins only,
@@ -26,6 +28,7 @@ import { directThreadLink } from "@/lib/direct-chat-mode";
 import { AGENT_PAIR_DESCRIPTION } from "@/lib/groups";
 import type { MemberScope } from "@/lib/member-scope";
 import { agentsNotUsableBy } from "@/lib/agent-access-server";
+import { humanArtifactCondition } from "@/lib/artifact-visibility-server";
 import {
     buildTsQuery, encodeSearchCursor, HEADLINE_START, HEADLINE_STOP, parseHeadline, plainText, SEARCH_MAX_OFFSET,
     SEARCH_TYPES, type SearchResponse, type SearchResult, type SearchType,
@@ -81,6 +84,10 @@ function branches(viewer: SearchViewer, perBranch: number, limited: { hidden: Re
     const taskTitle = sql`coalesce(nullif(btrim(t.input_json->>'title'), ''), t.task_type)`;
     const taskInScope = when(sql`(p.customer_id = ANY(${customers}) OR p.id = ANY(${grantedProjects})) AND (t.assigned_agent_id IS NULL OR t.assigned_agent_id = ANY(${agents}))`);
     const limit = sql`LIMIT ${perBranch}`;
+    // Another person's private upload never matches (lib/artifact-visibility.ts).
+    const fileVisible = humanArtifactCondition({ userId, role: viewer.isAdmin ? "admin" : "member" }, {
+        id: sql`a.id`, visibility: sql`a.visibility`, createdByType: sql`a.created_by_type`, createdById: sql`a.created_by_id`,
+    });
 
     return [
         {
@@ -179,6 +186,7 @@ function branches(viewer: SearchViewer, perBranch: number, limited: { hidden: Re
                 CROSS JOIN q
                 WHERE a.company_id = ${companyId}::uuid AND a.deleted_at IS NULL AND a.search_vector @@ q.query
                   AND (a.project_id IS NULL OR p.deleted_at IS NULL)
+                  ${fileVisible ? sql`AND ${fileVisible}` : sql``}
                   ${when(sql`((a.project_id IS NULL AND a.customer_id IS NULL) OR a.customer_id = ANY(${customers}) OR p.customer_id = ANY(${customers}) OR a.project_id = ANY(${grantedProjects}))`)}
                 ORDER BY score DESC ${limit})`,
         },

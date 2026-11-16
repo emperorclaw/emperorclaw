@@ -8,6 +8,7 @@ import { memberMaySeeRecord } from "@/lib/member-scope";
 import { recordResource, resourceWriteDenied } from "@/lib/resource-access";
 import { storageAdapter, getStorageProviderName } from "@/lib/storage";
 import { findActiveFolder } from "@/lib/artifact-folders";
+import { humanMayWriteIntoFolder } from "@/lib/artifact-visibility";
 import { prepareArtifactRecord } from "@/lib/artifacts";
 import { buildChildPath } from "@/lib/path-utils";
 import { sanitizeArtifactClientPayload } from "@/lib/artifacts";
@@ -76,7 +77,8 @@ export async function POST(req: NextRequest) {
         const denied = await resourceWriteDenied(session, await recordResource(companyId, { projectId: project?.id ?? null, customerId: project?.customerId ?? customer?.id ?? null }), "member", project ? "Project" : "Customer");
         if (denied) return denied;
         const folder = folderId ? await findActiveFolder(companyId, folderId) : null;
-        if (folderId && !folder) {
+        // Another person's uploads folder reads as missing (lib/artifact-visibility.ts).
+        if (folderId && (!folder || !humanMayWriteIntoFolder(folder, session))) {
             return NextResponse.json({ error: "Folder not found" }, { status: 404 });
         }
         // The folder lives in a project/customer too: it must be visible and editable (0.20).

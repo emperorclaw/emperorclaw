@@ -55,7 +55,7 @@ A connection with no agent bound (an operator connection) talks to the agents:
 
 1. `send_message` with `targetAgentId` posts in that agent's direct thread and returns `threadId` and `messageId`.
 2. `wait_for_reply` with `threadId` and `afterMessageId` waits up to 25 seconds (default 20) and returns the new messages the caller did not send, oldest first. On `timedOut: true`, call it again. Agents often post a short acknowledgement (`ack: true`) first; keep waiting with `afterMessageId` set to `nextAfterMessageId` for the answer.
-3. `read_thread` (by `threadId`, or by `agentId` for that agent's direct thread) returns the conversation, oldest first, with `since`, `before` and `limit` (default 30, max 100). `list_threads` shows each thread's last message.
+3. `read_thread` (by `threadId`, or by `agentId` for that agent's direct thread) returns the conversation, oldest first, with `since`, `before` and `limit` (default 30, max 100). `list_threads` shows each thread's last message. A message with files carries `attachments` (`id`, `name`, `contentType`, `sizeBytes`); fetch a file's bytes with `GET /api/mcp/artifacts/{id}/download`.
 
 For work you want tracked to done (a task with status and output), use `send_agent_request` and poll `get_agent_request` (filter by `status` or `externalRef`, up to 50 results).
 

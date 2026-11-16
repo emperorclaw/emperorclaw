@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { verifyMcpToken, logAudit } from "@/lib/mcp";
 import { mcpMayUseRecord, mcpOutOfScope, mcpRouteAccess } from "@/lib/mcp-access";
+import { AGENT_PRIVATE_UPLOAD_READ_ONLY, AGENT_UPLOADS_FOLDER_READ_ONLY, agentArtifactAccess } from "@/lib/artifact-visibility-server";
+import { agentMayWriteIntoFolder } from "@/lib/artifact-visibility";
 import { db } from "@/db";
 import { artifacts } from "@/db/schema";
 import { and, eq, isNull } from "drizzle-orm";
@@ -28,6 +30,10 @@ export async function PATCH(req: NextRequest, context: RouteContext<"/api/mcp/ar
     const scopedAccess = await mcpRouteAccess(companyId, auth.companyToken!, req.nextUrl.searchParams.get("agentId"));
     if (scopedAccess.response) return scopedAccess.response;
     if (!mcpMayUseRecord(scopedAccess.access, artifact)) return mcpOutOfScope("Artifact");
+    // Agents never change a person's private upload (lib/artifact-visibility.ts).
+    const fileAccess = await agentArtifactAccess(companyId, scopedAccess.access.agentId, artifact);
+    if (fileAccess === "none") return mcpOutOfScope("Artifact");
+    if (fileAccess !== "write") return NextResponse.json({ error: AGENT_PRIVATE_UPLOAD_READ_ONLY }, { status: 403 });
     const artifactIdValue = artifact.id as string;
 
     try {
@@ -36,6 +42,9 @@ export async function PATCH(req: NextRequest, context: RouteContext<"/api/mcp/ar
         const targetFolder = folderId ? await findActiveFolder(companyId, folderId) : null;
         if (folderId && !targetFolder) {
             return NextResponse.json({ error: "Folder not found" }, { status: 404 });
+        }
+        if (!agentMayWriteIntoFolder(targetFolder)) {
+            return NextResponse.json({ error: AGENT_UPLOADS_FOLDER_READ_ONLY }, { status: 403 });
         }
 
         const targetFolderIdValue = targetFolder && typeof targetFolder.id === "string" ? targetFolder.id : null;

@@ -11,6 +11,8 @@ import { db } from "@/db";
 import { artifacts, customers, projects, tasks } from "@/db/schema";
 import { storageAdapter, getStorageProviderName } from "@/lib/storage";
 import { findActiveFolder } from "@/lib/artifact-folders";
+import { AGENT_UPLOADS_FOLDER_READ_ONLY } from "@/lib/artifact-visibility-server";
+import { agentMayWriteIntoFolder } from "@/lib/artifact-visibility";
 import { and, eq, isNull } from "drizzle-orm";
 import { getFormStringValue, parseJsonMetadata } from "@/lib/form-utils";
 import { sanitizeFilenameSegment } from "@/lib/storage/path-sanitizer";
@@ -90,6 +92,9 @@ export async function POST(req: NextRequest) {
             || (effectiveCustomerId && !mcpMayUseCustomer(scoped.access, effectiveCustomerId))
             || (folder && !mcpMayUseRecord(scoped.access, folder))) {
             return NextResponse.json({ error: "Project/customer is outside this agent's scope" }, { status: 403 });
+        }
+        if (!agentMayWriteIntoFolder(folder)) {
+            return NextResponse.json({ error: AGENT_UPLOADS_FOLDER_READ_ONLY }, { status: 403 });
         }
 
         const metadataJson = parseJsonMetadata(form.get("metadataJson"));

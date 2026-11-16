@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import { NextRequest, NextResponse } from "next/server";
 import { verifyMcpToken } from "@/lib/mcp";
 import { mcpMayUseRecord, mcpOutOfScope, mcpRouteAccess } from "@/lib/mcp-access";
+import { agentArtifactAccess } from "@/lib/artifact-visibility-server";
 import { db } from "@/db";
 import { artifacts } from "@/db/schema";
 import { and, eq, isNull } from "drizzle-orm";
@@ -21,6 +22,8 @@ export async function GET(req: NextRequest, context: { params: Promise<{ id: str
     const scopedAccess = await mcpRouteAccess(companyId, auth.companyToken!, req.nextUrl.searchParams.get("agentId"));
     if (scopedAccess.response) return scopedAccess.response;
     if (!mcpMayUseRecord(scopedAccess.access, artifact)) return mcpOutOfScope("Artifact");
+    // A person's private upload: only through a message the agent may read (lib/artifact-visibility.ts).
+    if ((await agentArtifactAccess(companyId, scopedAccess.access.agentId, artifact)) === "none") return mcpOutOfScope("Artifact");
     if (!artifact.storageKey || !artifact.path) {
         return NextResponse.json({ ok: false, artifactId: artifact.id, error: "Artifact has no file-backed storage" }, { status: 409 });
     }

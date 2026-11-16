@@ -5,6 +5,8 @@ import { and, desc, eq, ilike, isNull, or, type SQL } from "drizzle-orm";
 import { requireCompanyFromSession } from "@/lib/company-session";
 import { memberMaySeeRecord, memberRecordCondition } from "@/lib/member-scope";
 import { findActiveFolder } from "@/lib/artifact-folders";
+import { humanMayViewFolder } from "@/lib/artifact-visibility";
+import { humanArtifactCondition, humanFolderCondition } from "@/lib/artifact-visibility-server";
 import { discoverDirectStorageEntries, isStorageDiscoveryEnabled } from "@/lib/storage/discovery";
 import { reconcileTrackedLocalArtifacts } from "@/lib/storage/artifact-reconciliation";
 
@@ -12,6 +14,8 @@ type FolderDto = {
     id: string;
     name: string;
     path: string;
+    kind: string;
+    ownerUserId: string | null;
     projectId: string | null;
     customerId: string | null;
     metadataJson: Record<string, unknown>;
@@ -19,7 +23,8 @@ type FolderDto = {
 
 export async function GET(req: NextRequest) {
     try {
-        const { companyId, scope } = await requireCompanyFromSession("viewer");
+        const { companyId, userId, role, scope } = await requireCompanyFromSession("viewer");
+        const viewer = { userId, role };
         const { searchParams } = new URL(req.url);
         const folderId = searchParams.get("folderId");
         const limit = Math.min(Math.max(parseInt(searchParams.get("limit") || "100", 10), 1), 500);
@@ -29,7 +34,9 @@ export async function GET(req: NextRequest) {
             ? await findActiveFolder(companyId, folderId)
             : null;
 
-        if (folder && !(await memberMaySeeRecord(companyId, scope, { projectId: folder.projectId as string | null, customerId: folder.customerId as string | null }))) {
+        // Another person's uploads folder reads as missing (lib/artifact-visibility.ts).
+        if (folder && (!(await memberMaySeeRecord(companyId, scope, { projectId: folder.projectId as string | null, customerId: folder.customerId as string | null }))
+            || !humanMayViewFolder(folder, viewer))) {
 
             return NextResponse.json({ error: "Folder not found" }, { status: 404 });
 
@@ -42,6 +49,8 @@ export async function GET(req: NextRequest) {
                 id: folder.id as string,
                 name: folder.name as string,
                 path: folder.path as string,
+                kind: folder.kind,
+                ownerUserId: folder.ownerUserId ?? null,
                 projectId: typeof folder.projectId === "string" ? folder.projectId : null,
                 customerId: typeof folder.customerId === "string" ? folder.customerId : null,
                 metadataJson: folder.metadataJson as Record<string, unknown>,
@@ -50,6 +59,8 @@ export async function GET(req: NextRequest) {
                 id: "root",
                 name: "Root",
                 path: "",
+                kind: "root",
+                ownerUserId: null,
                 projectId: null,
                 customerId: null,
                 metadataJson: {},
@@ -59,6 +70,8 @@ export async function GET(req: NextRequest) {
             id: artifactFolders.id,
             name: artifactFolders.name,
             path: artifactFolders.path,
+            kind: artifactFolders.kind,
+            ownerUserId: artifactFolders.ownerUserId,
             projectId: artifactFolders.projectId,
             customerId: artifactFolders.customerId,
             metadataJson: artifactFolders.metadataJson,
@@ -71,6 +84,7 @@ export async function GET(req: NextRequest) {
                     : isNull(artifactFolders.parentFolderId),
                 isNull(artifactFolders.deletedAt),
                 memberRecordCondition(scope, { projectId: artifactFolders.projectId, customerId: artifactFolders.customerId }),
+                humanFolderCondition(viewer),
             ))
             .orderBy(artifactFolders.createdAt);
 
@@ -80,6 +94,8 @@ export async function GET(req: NextRequest) {
         ];
         const scopedArtifacts = memberRecordCondition(scope, { projectId: artifacts.projectId, customerId: artifacts.customerId, projectCustomerId: projects.customerId });
         if (scopedArtifacts) artifactConditions.push(scopedArtifacts);
+        const visibleArtifacts = humanArtifactCondition(viewer);
+        if (visibleArtifacts) artifactConditions.push(visibleArtifacts);
         if (folder) {
             artifactConditions.push(eq(artifacts.folderId, folder.id));
         } else {
@@ -109,6 +125,7 @@ export async function GET(req: NextRequest) {
             originalFilename: artifacts.originalFilename,
             sizeBytes: artifacts.sizeBytes,
             sha256: artifacts.sha256,
+            visibility: artifacts.visibility,
             metadataJson: artifacts.metadataJson,
             isCanonical: artifacts.isCanonical,
             updatedAt: artifacts.updatedAt,
@@ -143,9 +160,13 @@ export async function GET(req: NextRequest) {
             const updated = reconciled.get(artifact.id);
             return updated ? { ...artifact, ...updated } : artifact;
         });
+        // Files and folders hidden from this viewer are still registered: they
+        // must not resurface as "discovered" untracked entries.
+        const hiddenPaths = isStorageDiscoveryEnabled() ? await hiddenRegisteredPaths(companyId, folder?.id ?? null) : [];
         const registeredPaths = new Set([
             ...folders.map((child) => child.path),
             ...reconciledArtifactRows.map((artifact) => artifact.path).filter((value): value is string => Boolean(value)),
+            ...hiddenPaths,
         ]);
         const discoveredEntries = (await discoverDirectStorageEntries({
             companyId,
@@ -164,6 +185,24 @@ export async function GET(req: NextRequest) {
         const message = error instanceof Error ? error.message : "Internal Server Error";
         return NextResponse.json({ error: message }, { status: message === "Unauthorized" ? 401 : message.startsWith("Forbidden") ? 403 : 500 });
     }
+}
+
+/** Every live folder/file path directly in this folder, regardless of who may see it. */
+async function hiddenRegisteredPaths(companyId: string, folderId: string | null): Promise<string[]> {
+    const [folderRows, artifactRows] = await Promise.all([
+        db.select({ path: artifactFolders.path }).from(artifactFolders).where(and(
+            eq(artifactFolders.companyId, companyId),
+            folderId ? eq(artifactFolders.parentFolderId, folderId) : isNull(artifactFolders.parentFolderId),
+            isNull(artifactFolders.deletedAt),
+        )),
+        db.select({ path: artifacts.path }).from(artifacts).where(and(
+            eq(artifacts.companyId, companyId),
+            folderId ? eq(artifacts.folderId, folderId) : isNull(artifacts.folderId),
+            isNull(artifacts.deletedAt),
+        )),
+    ]);
+    return [...folderRows.map((row) => row.path), ...artifactRows.map((row) => row.path)]
+        .filter((value): value is string => Boolean(value));
 }
 
 async function buildAncestors(companyId: string, parentFolderId: string | null) {

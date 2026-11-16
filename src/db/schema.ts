@@ -361,10 +361,20 @@ export const artifactFolders = pgTable("artifact_folders", {
     metadataJson: jsonb("metadata_json").default('{}').notNull(),
     createdByType: text("created_by_type").notNull(),
     createdById: uuid("created_by_id").references(() => users.id, { onDelete: 'set null' }),
+    // The person a `user_uploads` folder belongs to (lib/artifact-folders.ts
+    // ensureUserUploadsFolder); null for every other folder.
+    ownerUserId: uuid("owner_user_id").references(() => users.id, { onDelete: 'set null' }),
     createdAt: timestamp("created_at").defaultNow().notNull(),
     updatedAt: timestamp("updated_at").defaultNow().notNull(),
     deletedAt: timestamp("deleted_at"),
-});
+}, (table) => [
+    // One live uploads folder per person per company.
+    uniqueIndex("artifact_folders_user_uploads_unique").on(table.companyId, table.ownerUserId)
+        .where(sql`${table.kind} = 'user_uploads' AND ${table.deletedAt} IS NULL`),
+    // One live shared `uploads` root per company.
+    uniqueIndex("artifact_folders_uploads_root_unique").on(table.companyId)
+        .where(sql`${table.kind} = 'uploads_root' AND ${table.deletedAt} IS NULL`),
+]);
 
 export const runtimeNodes = pgTable("runtime_nodes", {
     id: uuid("id").primaryKey().defaultRandom(),
@@ -1036,6 +1046,8 @@ export const threadMessages = pgTable("thread_messages", {
     // company + sender_type + created_at; without these it falls back to scans.
     companyCreatedIdx: index("thread_messages_company_created_idx").on(table.companyId, table.createdAt),
     companySenderCreatedIdx: index("thread_messages_company_sender_created_idx").on(table.companyId, table.senderType, table.createdAt),
+    // "Was this file attached to a message the agent can read?" (lib/artifact-visibility.ts).
+    attachmentsIdx: index("thread_messages_attachments_idx").using("gin", sql`(${table.metadataJson} -> 'attachments') jsonb_path_ops`),
 }));
 
 // Work an external platform sent to one agent ("send task to agent" buttons).
