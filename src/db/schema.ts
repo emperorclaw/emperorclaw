@@ -321,7 +321,7 @@ export const agents = pgTable("agents", {
 
 export const llmPricing = pgTable("llm_pricing", {
     id: uuid("id").primaryKey().defaultRandom(),
-    provider: text("provider").notNull(), // openai, anthropic, google, deepseek, openrouter, grok
+    provider: text("provider").notNull(), // openai, anthropic, google, deepseek, openrouter, grok, copilot
     model: text("model").notNull(),       // e.g. "deepseek-chat", "gpt-4o", "claude-sonnet-4-20250514"
     label: text("label").notNull(),       // human-friendly name
     inputPricePer1k: integer("input_price_per_1k").notNull(),   // cents per 1M input tokens (14 = $0.14/1M)

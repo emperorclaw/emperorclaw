@@ -73,7 +73,17 @@ PROVIDER_KEY_NAMES: dict[str, tuple[str, ...]] = {
     "openrouter": ("OPENROUTER_API_KEY",),
     "grok": ("XAI_API_KEY", "GROK_API_KEY"),
     "deepseek": ("DEEPSEEK_API_KEY",),
+    # Hermes' copilot provider also reads GH_TOKEN/GITHUB_TOKEN, but those often belong to other
+    # tools on a host: only the dedicated name is copied into a new agent's profile.
+    "copilot": ("COPILOT_GITHUB_TOKEN",),
 }
+#: GitHub token prefixes the Copilot API accepts (hermes-agent v0.22.4 hermes_cli/copilot_auth.py);
+#: classic PATs (ghp_) are refused by the API.
+COPILOT_TOKEN_PREFIXES = ("gho_", "ghu_", "github_pat_")
+COPILOT_CLASSIC_PAT_ERROR = (
+    "Classic PATs (ghp_) are not supported by the Copilot API; use `gh auth login` (gho_) "
+    "or a fine-grained PAT with Copilot Requests permission"
+)
 #: restart-gateway --when-idle waits at most this long, inside the 300 s job deadline.
 WHEN_IDLE_TIMEOUT_SEC = 240
 
@@ -266,8 +276,26 @@ def find_provider_key(paths: HostPaths, provider: str, target: str) -> Optional[
     return None
 
 
+def copilot_token_usable(value: str) -> bool:
+    """Whether a GitHub token has a shape the Copilot API accepts (never logs the value)."""
+    token = value.strip()
+    return token.startswith(COPILOT_TOKEN_PREFIXES) and not any(c.isspace() for c in token)
+
+
+def provider_key_problem(provider: str, key_name: str, value: str, where: str) -> Optional[str]:
+    """Why a found key cannot work for this provider, or None. Names the key, never its value."""
+    if provider != "copilot" or copilot_token_usable(value):
+        return None
+    if value.strip().startswith("ghp_"):
+        return f"{key_name} in {where}: {COPILOT_CLASSIC_PAT_ERROR}"
+    return f"{key_name} in {where} is not a GitHub token the Copilot API accepts (gho_, ghu_ or github_pat_)"
+
+
 def no_key_message(provider: str) -> str:
     names = PROVIDER_KEY_NAMES.get(provider, ("<PROVIDER>_API_KEY",))
+    if provider == "copilot":
+        return (f"No copilot credential on this host; add {names[0]}=... (from `gh auth token`, or a fine-grained "
+                "PAT with Copilot Requests permission) to ~/.hermes/.env and try again")
     return f"No {provider} API key on this host; add {names[0]}=... to ~/.hermes/.env and try again"
 
 
@@ -408,8 +436,12 @@ def plan_provision(paths: HostPaths, args: dict[str, Any]) -> Plan:
         owner = profile_agent_id(paths, profile)
         raise CommandRefused("profile_conflict", f"profile {profile} already exists on this host for "
                              + ("another agent" if owner else "something else (no agent id in its .env)"))
-    if not find_provider_key(paths, args["llmProvider"], profile):
+    found = find_provider_key(paths, args["llmProvider"], profile)
+    if not found:
         raise CommandRefused("no_api_key", no_key_message(args["llmProvider"]))
+    problem = provider_key_problem(args["llmProvider"], *found)
+    if problem:
+        raise CommandRefused("no_api_key", problem)
     token = args["apiToken"]
     spec = {k: v for k, v in args.items()}
     public = {k: v for k, v in args.items() if k != "apiToken"}

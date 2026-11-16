@@ -45,6 +45,7 @@ import type { AgentRuntimeInfo } from "@/lib/agent-activity";
 import { HERMES_MIGRATION_DOC_HREF } from "@/lib/live-activity";
 import { directThreadLink, workLogThreadTitle } from "@/lib/direct-chat-mode";
 import { CUSTOM_LLM_PROVIDER } from "@/lib/llm-endpoint";
+import { modelFitsProvider, modelOptionsFor, resolvePickedProvider } from "@/lib/copilot-provider";
 import { planLlmEndpointEdit } from "@/lib/llm-endpoint-edit";
 import { installerDownloadCommand } from "@/lib/runtime-hosts/connect-command";
 import { RestartAgentButton } from "@/components/runtime-hosts/restart-agent-button";
@@ -67,6 +68,7 @@ const LLM_PROVIDER_LABELS: Record<string, string> = {
     openrouter: "OpenRouter",
     grok: "Grok",
     deepseek: "DeepSeek",
+    copilot: "GitHub Copilot",
 };
 const PROVIDER_EMOJI: Record<string, string> = { hermes: "👑", openclaw: "🦀", codex: "🧠" };
 /** Runtime product names (Generic MCP is labelled by agents.detail.genericMcp). */
@@ -318,8 +320,7 @@ export function AgentDetailPanel({ agentId, agentName, runtime = null }: {
         if (llmDraft.pendingModel !== null) return llmDraft.pendingModel;
         // A custom endpoint's model name means nothing to a named provider: use that provider's default.
         if (agent.llmProvider === CUSTOM_LLM_PROVIDER && llmDraft.provider) return "";
-        const configuredModel = pricingOpts.find((option) => option.model === agent.llmModel);
-        return configuredModel && llmDraft.provider && configuredModel.provider !== llmDraft.provider ? "" : undefined;
+        return llmDraft.provider && !modelFitsProvider(llmDraft.provider, agent.llmModel, pricingOpts) ? "" : undefined;
     };
     const llmPlan = planLlmEndpointEdit({
         currentProvider: agent.llmProvider,
@@ -673,20 +674,22 @@ export function AgentDetailPanel({ agentId, agentName, runtime = null }: {
                         {t("modelLabel")}{" "}
                         {/* A custom endpoint serves its own model names; the priced catalog would call them unavailable. */}
                         {data.agent.llmProvider === "custom" || !canAdmin ? <span className="font-medium text-zinc-300">{data.agent.llmModel || "—"}</span> : <ModelSearchSelect
-                            options={pricingOpts}
+                            options={modelOptionsFor(data.agent.llmProvider, pricingOpts)}
                             value={data.agent.llmModel || ""}
                             provider={data.agent.llmProvider || ""}
                             disabled={saving}
                             saving={saving}
                             compact
                             onChange={async (selection) => {
+                                // A Copilot agent picking a model Copilot serves stays on Copilot (same key).
+                                const provider = resolvePickedProvider(agent.llmProvider, selection);
                                 // A model of another provider moves the agent to that provider's endpoint: ask for its key first.
-                                if (selection.provider && selection.provider !== (agent.llmProvider || "")) {
-                                    startLlmEdit(selection.provider, selection.model);
+                                if (provider && provider !== (agent.llmProvider || "")) {
+                                    startLlmEdit(provider, selection.model);
                                     return;
                                 }
                                 await updateAgent({
-                                    llmProvider: selection.provider,
+                                    llmProvider: provider,
                                     llmModel: selection.model,
                                 });
                             }}

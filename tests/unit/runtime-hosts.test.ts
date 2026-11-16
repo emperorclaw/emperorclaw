@@ -68,6 +68,13 @@ test("protocol: redactHostText removes tokens and keys", () => {
     assert.equal(redactHostText(null), null);
 });
 
+test("protocol: redactHostText removes bare GitHub tokens", () => {
+    const tokens = [`gho_${"c".repeat(36)}`, `ghp_${"d".repeat(36)}`, `ghu_${"e".repeat(36)}`, `github_pat_${"f".repeat(60)}`];
+    const text = redactHostText(`copilot failed with ${tokens.join(" and ")} (gho_short stays)`)!;
+    for (const token of tokens) assert.ok(!text.includes(token), token.slice(0, 4));
+    assert.ok(text.includes("gho_short"));
+});
+
 // ── pairing ─────────────────────────────────────────────────────────────────
 
 test("pairing: codes are 8 Crockford characters shown XXXX-XXXX", () => {

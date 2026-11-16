@@ -123,6 +123,9 @@ case "${EMPEROR_CLAW_LLM_PROVIDER:-}" in
     openrouter) cfg model.provider openrouter; cfg_unset model.base_url; DEFAULT_MODEL="nvidia/nemotron-3-ultra-550b-a55b:free" ;;
     grok) cfg model.provider xai; cfg_unset model.base_url; DEFAULT_MODEL="grok-2-latest" ;;
     deepseek) cfg model.provider deepseek; cfg_unset model.base_url; DEFAULT_MODEL="deepseek-chat" ;;
+    # GitHub Copilot: Hermes' native provider (api.githubcopilot.com), authenticated with
+    # COPILOT_GITHUB_TOKEN (a gho_/ghu_/github_pat_ token, exchanged by Hermes itself).
+    copilot) cfg model.provider copilot; cfg_unset model.base_url; DEFAULT_MODEL="gpt-5-mini" ;;
     custom)
         # Any OpenAI-compatible endpoint (Ollama, LM Studio, vLLM, LiteLLM): Hermes' "custom"
         # provider with model.base_url, authenticated with OPENAI_API_KEY. A keyless local
@@ -293,7 +296,7 @@ for key in EMPEROR_CLAW_API_URL EMPEROR_CLAW_API_TOKEN EMPEROR_CLAW_AGENT_ID EMP
     EMPEROR_CLAW_HERMES_TOOLSETS EMPEROR_CLAW_HERMES_MAX_PARALLEL_TURNS EMPEROR_CLAW_HERMES_CWD \
     EMPEROR_CLAW_HERMES_COMPACT_AFTER_TOKENS EMPEROR_CLAW_HERMES_TURN_TIMEOUT_SECONDS \
     EMPEROR_CLAW_HERMES_TURN_IDLE_TIMEOUT_SECONDS OPENAI_API_KEY ANTHROPIC_API_KEY GOOGLE_API_KEY \
-    OPENROUTER_API_KEY GROK_API_KEY DEEPSEEK_API_KEY; do
+    OPENROUTER_API_KEY GROK_API_KEY DEEPSEEK_API_KEY COPILOT_GITHUB_TOKEN; do
     eval "present=\${$key+x}"
     if [ -n "$present" ]; then
         eval "value=\${$key}"

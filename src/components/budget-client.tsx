@@ -10,7 +10,7 @@ import { useTranslations } from "next-intl";
 import { Select } from "@/components/ui/select";
 
 /** Providers offered when adding a price (brand names: never translated). */
-const PRICING_PROVIDERS = [["openai", "OpenAI"], ["anthropic", "Anthropic"], ["google", "Google"], ["deepseek", "DeepSeek"], ["grok", "Grok"], ["openrouter", "OpenRouter"]] as const;
+const PRICING_PROVIDERS = [["openai", "OpenAI"], ["anthropic", "Anthropic"], ["google", "Google"], ["deepseek", "DeepSeek"], ["grok", "Grok"], ["openrouter", "OpenRouter"], ["copilot", "GitHub Copilot"]] as const;
 /** Input hints for a model id and a price (technical, never translated). */
 const MODEL_ID_HINT = "model-id";
 const PRICE_HINT = "0.00";

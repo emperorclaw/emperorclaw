@@ -15,6 +15,7 @@ import { checkLlmEndpointForSave } from "@/lib/llm-endpoint-policy";
 import { mintAgentSetupToken, provisionHermesContainer, recordRuntimeSetup, revokeAgentSetupTokens, type SetupOutput } from "@/lib/hermes-provisioning";
 import { hermesSafeName } from "@/lib/hermes-names";
 import { resolveAgentModelConfiguration } from "@/lib/agent-model-config";
+import { COPILOT_PROVIDER, llmKeyError } from "@/lib/copilot-provider";
 import { humanActor, recordAudit } from "@/lib/audit";
 import { EASY_SETUP_REASONS, type EasySetupReasonCode } from "@/lib/easy-setup-reasons";
 
@@ -23,7 +24,7 @@ export const dynamic = "force-dynamic";
 export const MAX_EASY_SETUP_AGENTS = 10;
 
 // "custom" is any OpenAI-compatible endpoint (Ollama, LM Studio, vLLM, LiteLLM): a base URL, a model, an optional key.
-const VALID_LLM_PROVIDERS = ["openai", "anthropic", "google", "openrouter", "grok", "deepseek", CUSTOM_LLM_PROVIDER];
+const VALID_LLM_PROVIDERS = ["openai", "anthropic", "google", "openrouter", "grok", "deepseek", COPILOT_PROVIDER, CUSTOM_LLM_PROVIDER];
 
 // GET /api/agents/easy-setup — availability check for the Easy Setup entry
 // point: only meaningful when the app itself is running in Docker with the
@@ -125,6 +126,8 @@ export async function POST(req: NextRequest) {
     }
     const custom = llmProvider === CUSTOM_LLM_PROVIDER;
     if (!llmProvider || (!custom && !llmApiKey)) return NextResponse.json({ error: "Choose an existing Hermes configuration or provide an LLM provider and API key" }, { status: 400 });
+    const keyError = llmKeyError(llmProvider, llmApiKey);
+    if (keyError) return NextResponse.json({ error: keyError }, { status: 400 });
     let llmBaseUrl: string | null = null;
     if (custom) {
         const checked = normalizeLlmBaseUrl(body.llmBaseUrl);

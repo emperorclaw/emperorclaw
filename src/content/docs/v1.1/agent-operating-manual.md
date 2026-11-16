@@ -253,6 +253,7 @@ GET /llms/agent-configuration?provider=openai&format=txt
 | OpenRouter | `OPENROUTER_API_KEY` | `sk-or-v1-...` |
 | Grok | `GROK_API_KEY` | `xai-...` |
 | DeepSeek | `DEEPSEEK_API_KEY` | `sk-...` |
+| GitHub Copilot | `COPILOT_GITHUB_TOKEN` | `gho_...` or `github_pat_...` (not classic `ghp_...`) |
 
 ---
 

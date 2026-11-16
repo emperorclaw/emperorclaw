@@ -937,7 +937,7 @@ Required parts:
 Returns available LLM providers and their configuration requirements. API keys are NOT stored in EmperorClaw — they live in the agent runtime.
 
 **Query params**:
-- `provider` (optional) — filter to one provider (`openai`, `anthropic`, `google`, `openrouter`, `grok`, `deepseek`)
+- `provider` (optional) — filter to one provider (`openai`, `anthropic`, `google`, `openrouter`, `grok`, `deepseek`, `copilot`)
 - `format` (optional) — `json` (default) or `txt` (plain text docs)
 
 **Index response** (`GET /llms/agent-configuration`):

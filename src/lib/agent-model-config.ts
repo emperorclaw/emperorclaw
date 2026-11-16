@@ -1,3 +1,5 @@
+import { COPILOT_PROVIDER, isCopilotModel } from "./copilot-provider";
+
 export type ModelPricingIdentity = {
     provider: string;
     model: string;
@@ -14,6 +16,8 @@ export type AgentModelConfiguration = {
  * - A known model carries its provider with it.
  * - Changing only the provider clears a known incompatible model.
  * - Unknown/custom models remain supported for self-hosted installations.
+ * - Copilot serves other vendors' models under their own ids (gpt-4o,
+ *   claude-sonnet-4.5): one of its models never moves the agent off Copilot.
  * - Undefined means "leave unchanged"; an empty string explicitly clears.
  */
 export function resolveAgentModelConfiguration({
@@ -31,6 +35,10 @@ export function resolveAgentModelConfiguration({
     const modelProvided = model !== undefined;
     let llmProvider = providerProvided ? normalizeOptional(provider) : current.llmProvider;
     let llmModel = modelProvided ? normalizeOptional(model) : current.llmModel;
+
+    if (llmProvider === COPILOT_PROVIDER && (!llmModel || isCopilotModel(llmModel))) {
+        return { llmProvider, llmModel };
+    }
 
     if (modelProvided && llmModel) {
         const matches = pricing.filter((row) => row.model === llmModel);

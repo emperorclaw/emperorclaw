@@ -23,6 +23,7 @@
 // the model provider's API key from a file on the host: neither comes from here.
 
 import { PROFILE_NAME_RE } from "./protocol";
+import { COPILOT_DEFAULT_MODEL } from "../copilot-provider";
 
 export const ALL_HOST_COMMANDS = [
     "provision_agent", "update_runtime", "restart_agent", "remove_agent", "rotate_agent_token", "refresh_inventory", "disconnect",
@@ -46,7 +47,7 @@ export function hostSupports(hostCommands: readonly string[], command: HostComma
 }
 
 /** LLM providers a host can set a new agent up with (the daemon maps each to its Hermes provider and key name). */
-export const HOST_LLM_PROVIDERS = ["openrouter", "deepseek", "openai", "anthropic", "google", "grok"] as const;
+export const HOST_LLM_PROVIDERS = ["openrouter", "deepseek", "openai", "anthropic", "google", "grok", "copilot"] as const;
 export type HostLlmProvider = (typeof HOST_LLM_PROVIDERS)[number];
 
 export function isHostLlmProvider(value: unknown): value is HostLlmProvider {
@@ -65,6 +66,7 @@ export const DEFAULT_HOST_MODEL: Record<HostLlmProvider, string> = {
     anthropic: "claude-3-5-haiku-latest",
     google: "gemini-1.5-flash",
     grok: "grok-2-latest",
+    copilot: COPILOT_DEFAULT_MODEL,
 };
 
 /**

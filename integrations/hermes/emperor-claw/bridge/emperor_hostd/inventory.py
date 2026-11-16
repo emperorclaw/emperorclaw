@@ -18,7 +18,7 @@ from typing import Any, Callable, Optional, Sequence
 
 from emperor_bridge.config import host_fingerprint, read_env_file
 
-from .commands import ENABLED_COMMANDS
+from .commands import ENABLED_COMMANDS, copilot_token_usable
 from .config import HostPaths, url_origin
 from .protocol import Redactor
 from .version import HOSTD_VERSION, HOST_PROTOCOL
@@ -36,6 +36,7 @@ PROVIDER_BY_KEY = {
     "GROK_API_KEY": "grok",
     "XAI_API_KEY": "grok",
     "DEEPSEEK_API_KEY": "deepseek",
+    "COPILOT_GITHUB_TOKEN": "copilot",
 }
 
 Runner = Callable[[Sequence[str]], "subprocess.CompletedProcess[str]"]
@@ -212,12 +213,14 @@ def build_inventory(paths: HostPaths, emperor_origin: str, redactor: Redactor, r
     def note_env(values: dict[str, str]) -> None:
         redactor.add_env(values)
         for key, value in values.items():
-            if not value.strip() or not key.endswith("_API_KEY"):
-                continue
             # LLM providers Emperor knows only (a FIRECRAWL_API_KEY is a tool, not a model provider).
             name = PROVIDER_BY_KEY.get(key)
-            if name:
-                providers.add(name)
+            if not name or not value.strip():
+                continue
+            # A classic PAT (ghp_) is refused by the Copilot API: not a usable copilot key.
+            if name == "copilot" and not copilot_token_usable(value):
+                continue
+            providers.add(name)
 
     note_env(read_env_file(paths.hermes_root / ".env"))
     records = _managed_records(paths)

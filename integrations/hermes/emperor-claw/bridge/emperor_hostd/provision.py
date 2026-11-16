@@ -52,7 +52,7 @@ from typing import Any, Callable, Optional, Sequence
 from emperor_bridge.config import read_env_file
 
 from .commands import (HERMES_PROFILE_RE, LINE_BREAKING_RE, RESERVED_PROFILE_NAMES, SECRET_ENV_KEY_RE, CommandRefused, drop_marker,
-                       find_provider_key, no_key_message, profile_agent_id, profile_belongs_to, validate, write_marker)
+                       find_provider_key, no_key_message, profile_agent_id, provider_key_problem, profile_belongs_to, validate, write_marker)
 from .config import HostdConfigError, HostPaths, load_hostd_config
 from .inventory import meminfo
 
@@ -77,6 +77,9 @@ HERMES_PROVIDER: dict[str, tuple[str, Optional[str]]] = {
     "openrouter": ("openrouter", None),
     "grok": ("xai", None),
     "deepseek": ("deepseek", None),
+    # Hermes' native copilot provider (https://api.githubcopilot.com by default) exchanges the
+    # GitHub token for a short-lived Copilot API token itself.
+    "copilot": ("copilot", None),
 }
 
 #: The .env keys this job owns (rewritten on every run).
@@ -404,6 +407,10 @@ class Provisioner:
             if not found:
                 raise ProvisionError(EXIT_NO_KEY, no_key_message(self.args["llmProvider"]))
             key_name, key_value, where = found
+            # Refused before anything is written; the message names the key, never its value.
+            problem = provider_key_problem(self.args["llmProvider"], key_name, key_value, where)
+            if problem:
+                raise ProvisionError(EXIT_NO_KEY, problem)
             say(f"using {key_name} from {where} (copied on this host only)")
 
             if not rerun:

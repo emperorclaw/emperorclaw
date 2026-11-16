@@ -34,6 +34,11 @@ _SECRET_PATTERNS = (
     re.compile(r"(?i)\b(bearer)\s+[A-Za-z0-9._~+/=-]{8,}"),
     re.compile(r"\b([A-Z0-9_]*(?:API_KEY|TOKEN|SECRET|PASSWORD))\s*=\s*\S+"),
 )
+#: Bare GitHub tokens (a Copilot credential is one): OAuth/app/user tokens and fine-grained PATs.
+_GITHUB_TOKEN_PATTERNS = (
+    re.compile(r"\bgh[pousr]_[A-Za-z0-9]{20,}\b"),
+    re.compile(r"\bgithub_pat_[A-Za-z0-9_]{20,}\b"),
+)
 SECRET_KEY_RE = re.compile(r"(KEY|TOKEN|SECRET|PASSWORD|PASSWD|CREDENTIAL)", re.I)
 
 
@@ -61,6 +66,8 @@ class Redactor:
                 out = out.replace(secret, "[redacted]")
         out = _SECRET_PATTERNS[0].sub("[redacted]", out)
         out = _SECRET_PATTERNS[1].sub("[redacted]", out)
+        for pattern in _GITHUB_TOKEN_PATTERNS:
+            out = pattern.sub("[redacted]", out)
         out = _SECRET_PATTERNS[2].sub(lambda m: f"{m.group(1)} [redacted]", out)
         out = _SECRET_PATTERNS[3].sub(lambda m: f"{m.group(1)}=[redacted]", out)
         return out

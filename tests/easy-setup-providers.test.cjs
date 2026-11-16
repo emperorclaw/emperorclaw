@@ -93,4 +93,47 @@ test("entrypoint.sh never writes a config record from a value with a tab or line
   const carriage = run({ EMPEROR_CLAW_LLM_PROVIDER: "deepseek\r", EMPEROR_CLAW_LLM_MODEL: "m" });
   assert.equal(carriage.status, 0, carriage.stderr);
   assert.ok(!carriage.stdout.includes("\r"), "no carriage return reaches the config");
+
+  // GitHub Copilot: Hermes' native provider, its default endpoint, Copilot's default model.
+  const copilot = run({ EMPEROR_CLAW_LLM_PROVIDER: "copilot" });
+  assert.equal(copilot.status, 0, copilot.stderr);
+  assert.match(copilot.stdout, /^set\tmodel\.provider\tcopilot$/m);
+  assert.match(copilot.stdout, /^unset\tmodel\.base_url/m);
+  assert.match(copilot.stdout, /^set\tmodel\.default\tgpt-5-mini$/m);
+  const copilotModel = run({ EMPEROR_CLAW_LLM_PROVIDER: "copilot", EMPEROR_CLAW_LLM_MODEL: "claude-sonnet-4.5" });
+  assert.equal(copilotModel.status, 0, copilotModel.stderr);
+  assert.match(copilotModel.stdout, /^set\tmodel\.default\tclaude-sonnet-4\.5$/m);
+});
+
+test("entrypoint.sh copies the Copilot token into the profile .env", (t) => {
+  const { spawnSync } = require("node:child_process");
+  const fs = require("node:fs");
+  const os = require("node:os");
+  const path = require("node:path");
+  const entrypoint = read("integrations/hermes/entrypoint.sh").replace(/\r\n/g, "\n");
+  const start = entrypoint.indexOf("dotenv_value() {");
+  const loop = entrypoint.indexOf("for key in EMPEROR_CLAW_API_URL", start);
+  const end = entrypoint.indexOf("\ndone\n", loop);
+  assert.ok(start > 0 && loop > start && end > loop, "the .env section is where the test expects it");
+  if (spawnSync("sh", ["-c", "exit 0"]).error) {
+    t.skip("no POSIX sh on this machine");
+    return;
+  }
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "ec-copilot-env-"));
+  try {
+    const envFile = path.join(dir, ".env").replace(/\\/g, "/");
+    fs.writeFileSync(envFile, "");
+    const script = `log() { printf '[entrypoint] %s\\n' "$*" >&2; }\nENV_FILE='${envFile}'\n${entrypoint.slice(start, end)}\ndone\n`;
+    const token = `gho_${"x".repeat(36)}`; // fake, shape only
+    const res = spawnSync("sh", ["-c", script], { env: { PATH: process.env.PATH, COPILOT_GITHUB_TOKEN: token, EMPEROR_CLAW_LLM_PROVIDER: "copilot" }, encoding: "utf8" });
+    assert.equal(res.status, 0, res.stderr);
+    const written = fs.readFileSync(envFile, "utf8");
+    assert.match(written, new RegExp(`^COPILOT_GITHUB_TOKEN=${token}$`, "m"));
+    assert.match(written, /^EMPEROR_CLAW_LLM_PROVIDER=copilot$/m);
+    assert.ok(!res.stdout.includes(token) && !res.stderr.includes(token), "the token is never printed");
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+  const provisioning = read("src/lib/hermes-provisioning.ts");
+  assert.match(provisioning, /\[COPILOT_PROVIDER\]: COPILOT_TOKEN_ENV/);
 });

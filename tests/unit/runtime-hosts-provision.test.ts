@@ -126,6 +126,8 @@ test("hire readiness: online, updated, a provider key and enough memory", () => 
     const ok = hireReadiness(host());
     assert.equal(ok.ok, true);
     assert.deepEqual(ok.providers, ["openrouter", "deepseek"], "only providers a host can configure");
+    assert.deepEqual(hireReadiness(host({ llmProviders: ["copilot", "deepseek"] })).providers, ["deepseek", "copilot"],
+        "a host with a Copilot token offers Copilot, in HOST_LLM_PROVIDERS order");
     assert.equal(ok.gateway, "standalone");
     assert.equal(ok.skipBrowser, false);
     assert.equal(hireReadiness(host({ browser: false })).skipBrowser, true);

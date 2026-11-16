@@ -30,6 +30,7 @@ const PROVIDER_LABEL: Record<HostLlmProvider, string> = {
     anthropic: "Anthropic",
     google: "Google Gemini",
     grok: "Grok (xAI)",
+    copilot: "GitHub Copilot",
 };
 
 function mb(value: number | null): string {

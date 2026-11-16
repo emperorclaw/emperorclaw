@@ -6,6 +6,7 @@ import { writeAgentMemory } from "@/lib/control-plane";
 import { resolveAgentModelConfiguration } from "@/lib/agent-model-config";
 import { encryptSecretPayload } from "@/lib/secrets";
 import { checkLlmModelName } from "@/lib/llm-endpoint";
+import { COPILOT_PROVIDER, llmKeyError } from "@/lib/copilot-provider";
 import { legacyAvatarToAppearance, normalizeAppearance, resolveAvatarPhoto } from "@/lib/character/model";
 import { companyRouteAccess } from "@/lib/company-access";
 import { humanActor, recordAudit } from "@/lib/audit";
@@ -93,7 +94,7 @@ export async function POST(req: NextRequest) {
 
         // LLM provider (metadata only — keys live in the runtime)
         const requestedLlmProvider = (typeof body.llmProvider === "string" &&
-            ["openai", "anthropic", "google", "openrouter", "grok", "deepseek"].includes(body.llmProvider))
+            ["openai", "anthropic", "google", "openrouter", "grok", "deepseek", COPILOT_PROVIDER].includes(body.llmProvider))
             ? body.llmProvider : null;
         const checkedModel = checkLlmModelName(body.llmModel);
         if (!checkedModel.ok) return NextResponse.json({ error: checkedModel.error }, { status: 400 });
@@ -120,6 +121,8 @@ export async function POST(req: NextRequest) {
         const llmApiKey = typeof body.llmApiKey === "string" ? body.llmApiKey.trim() : "";
         let llmApiKeyEncrypted: string | null = null;
         let llmApiKeyVersion: string | null = null;
+        const keyError = llmKeyError(hosted ? hosted.llmProvider : requestedLlmProvider, llmApiKey);
+        if (keyError) return NextResponse.json({ error: keyError }, { status: 400 });
         if (llmApiKey) {
             const encrypted = encryptSecretPayload({ apiKey: llmApiKey });
             if (!encrypted) {

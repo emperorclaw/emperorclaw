@@ -15,6 +15,7 @@ import {
     threadParticipants,
 } from "@/db/schema";
 import { and, desc, eq, inArray, isNull } from "drizzle-orm";
+import { COPILOT_PROVIDER, llmKeyError } from "@/lib/copilot-provider";
 import { isMissingSchemaError } from "@/lib/schema-compat";
 import { userMayUseThread } from "@/lib/direct-chat-mode";
 import { getDirectChatMode } from "@/lib/control-plane";
@@ -63,7 +64,7 @@ function agentUseDenied(use: AgentUse): NextResponse | null {
 }
 
 const LLM_FIELDS = ["llmProvider", "llmModel", "llmApiKey", "llmBaseUrl"] as const;
-const LLM_PROVIDERS = ["", "openai", "anthropic", "google", "openrouter", "grok", "deepseek", CUSTOM_LLM_PROVIDER];
+const LLM_PROVIDERS = ["", "openai", "anthropic", "google", "openrouter", "grok", "deepseek", COPILOT_PROVIDER, CUSTOM_LLM_PROVIDER];
 
 type LlmAudit = { before: { llmEndpointHost: string | null }; after: { llmEndpointHost: string | null; llmKeyChanged?: true } };
 type LlmChange = { error: string; status: number } | { updates: Record<string, unknown>; audit: LlmAudit };
@@ -129,6 +130,9 @@ async function resolveLlmChange(body: Record<string, unknown>, agentId: string, 
     if (custom && !nextBaseUrl) return { error: "A custom endpoint needs its base URL (llmBaseUrl).", status: 400 };
     if (!custom && newBaseUrl) return { error: "A base URL only applies to the custom (OpenAI-compatible) provider.", status: 400 };
     const endpointChanged = (resolved.llmProvider ?? null) !== (current.llmProvider ?? null) || nextBaseUrl !== previousBaseUrl;
+
+    const keyError = llmKeyError(resolved.llmProvider, newKey);
+    if (keyError) return { error: keyError, status: 400 };
 
     let nextKey: string | null;
     if (newKey) nextKey = newKey;

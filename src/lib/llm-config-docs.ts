@@ -1,3 +1,5 @@
+import { COPILOT_MODELS, COPILOT_PROVIDER, COPILOT_TOKEN_ENV } from "./copilot-provider";
+
 /**
  * LLM Agent Configuration — self-documenting endpoint (PaperClip-style).
  *
@@ -144,6 +146,30 @@ GROK_API_KEY=xai-your-key-here
 \`\`\`bash
 # Add to ~/.hermes/.env
 DEEPSEEK_API_KEY=sk-your-key-here
+\`\`\`
+`,
+    },
+    [COPILOT_PROVIDER]: {
+        label: "GitHub Copilot",
+        envVar: COPILOT_TOKEN_ENV,
+        docs: `# GitHub Copilot provider configuration
+
+## Prerequisites
+- A GitHub account with an active Copilot subscription (premium-request quotas apply)
+- A GitHub token Copilot accepts: an OAuth token from \`gh auth login\` (device flow), printed by \`gh auth token\` (gho_), or a fine-grained PAT with the Copilot Requests permission (github_pat_)
+- Classic PATs (ghp_) are rejected by the Copilot API
+
+## Configuration
+- Set \`${COPILOT_TOKEN_ENV}\` in your environment or \`~/.hermes/.env\` (Hermes also reads GH_TOKEN and GITHUB_TOKEN)
+- Hermes provider: \`model.provider: copilot\` (base URL https://api.githubcopilot.com, no override needed)
+- Models: ${COPILOT_MODELS.join(", ")}
+- Hermes exchanges the GitHub token for a short-lived Copilot API token itself
+- Usage is billed by the Copilot subscription, so cost tracking shows no per-token cost
+
+## Hermes setup
+\`\`\`bash
+# Add to ~/.hermes/.env
+${COPILOT_TOKEN_ENV}=gho_your-token-here
 \`\`\`
 `,
     },

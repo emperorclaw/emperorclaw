@@ -88,6 +88,7 @@ The bridge reads `llmProvider` from EmperorClaw at startup and:
 | OpenRouter | `OPENROUTER_API_KEY` | `sk-or-v1-...` |
 | Grok | `GROK_API_KEY` | `xai-...` |
 | DeepSeek | `DEEPSEEK_API_KEY` | `sk-...` |
+| GitHub Copilot | `COPILOT_GITHUB_TOKEN` | `gho_...` (from `gh auth token`) or `github_pat_...`; classic `ghp_...` PATs are refused |
 
 ### 3.3 Hermes can't authenticate even with the key set
 
@@ -103,8 +104,29 @@ The bridge reads `llmProvider` from EmperorClaw at startup and:
 
 **Solutions**:
 - **Google**: Use a Google AI Studio API key (`GOOGLE_API_KEY`) instead of Google Cloud OAuth. Get one at https://aistudio.google.com/apikey
-- **GitHub**: Use a personal access token or switch to an API-key-based provider.
+- **GitHub Copilot**: Run the device flow once on any machine with a browser (`gh auth login`), then copy the token from `gh auth token` into `COPILOT_GITHUB_TOKEN`. A fine-grained PAT with the **Copilot Requests** permission also works and never expires unless you set an expiry. Classic PATs (`ghp_`) are refused by the Copilot API. See 3.5 GitHub Copilot below.
 - **General**: Prefer API-key-based providers (OpenAI, Anthropic, OpenRouter, DeepSeek) for headless/server deployments.
+
+### 3.5 GitHub Copilot
+
+Hermes (v0.22.4 and later) has a native `copilot` provider: Emperor sets `model.provider: copilot` and leaves `model.base_url` unset, so Hermes talks to `https://api.githubcopilot.com`. Hermes exchanges the GitHub token for a short-lived Copilot API token on its own.
+
+**What you need**:
+- A GitHub account with an active Copilot subscription. Copilot's premium-request quotas apply to the agent's turns.
+- A GitHub token the Copilot API accepts:
+  - an OAuth token: run `gh auth login` (device flow), then `gh auth token` prints a `gho_...` token; or
+  - a fine-grained PAT (`github_pat_...`) with the **Copilot Requests** permission.
+- Classic PATs (`ghp_...`) do not work: Emperor refuses them when you save the key, and a host refuses them when it sets an agent up.
+
+**Where the token goes**:
+- **Managed (Docker) agent**: choose **GitHub Copilot** as the agent's LLM provider and paste the token as its API key. Emperor stores it encrypted and the runtime writes it to the profile `.env` as `COPILOT_GITHUB_TOKEN`.
+- **Runtime host**: add `COPILOT_GITHUB_TOKEN=<token>` to `~/.hermes/.env` on the host (or to an existing profile's `.env`). The host then offers **GitHub Copilot** when you hire an agent on it; the token is copied into the new profile only, never sent to Emperor. Hermes also reads `GH_TOKEN` and `GITHUB_TOKEN`, but the host only copies `COPILOT_GITHUB_TOKEN` so a token meant for other tools is never reused.
+
+**Models** (from Hermes' Copilot catalog; which ones you can use depends on your Copilot plan): `gpt-5.4`, `gpt-5.4-mini`, `gpt-5-mini` (default), `gpt-5.3-codex`, `gpt-5.2-codex`, `gpt-4.1`, `gpt-4o`, `gpt-4o-mini`, `claude-sonnet-5`, `claude-sonnet-4.6`, `claude-sonnet-4.5`, `claude-haiku-4.5`, `gemini-3.1-pro-preview`, `gemini-2.5-pro`.
+
+**Costs**: usage is billed by the Copilot subscription, not per token, so Emperor's cost tracking shows no token cost for Copilot agents.
+
+**Check it on the machine**: `hermes -p <profile> chat -q "hello"`. A `401` usually means the token expired or was revoked (run `gh auth refresh` or mint a new one); a `403` means the account has no Copilot seat or the model is not in its plan.
 
 ---
 

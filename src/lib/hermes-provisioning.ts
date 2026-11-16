@@ -5,6 +5,7 @@ import { agents } from "@/db/schema";
 import { LOCAL_SETUP_TOKEN_SUFFIX, mintAgentRuntimeToken, revokeAgentRuntimeTokens } from "@/lib/agent-runtime-tokens";
 import { decryptSecretPayload } from "@/lib/secrets";
 import { CUSTOM_LLM_PROVIDER, DOCKER_HOST_ALIAS, llmEndpointHost, parseLlmSecret } from "@/lib/llm-endpoint";
+import { COPILOT_PROVIDER, COPILOT_TOKEN_ENV } from "@/lib/copilot-provider";
 import { appVersion } from "@/lib/app-version";
 import type { RuntimeSetupRecord } from "@/lib/runtime-setup";
 import { hermesContainerName, hermesSafeName, hermesVolumeName } from "@/lib/hermes-names";
@@ -93,6 +94,8 @@ const PROVIDER_ENV_VAR: Record<string, string> = {
     openrouter: "OPENROUTER_API_KEY",
     grok: "GROK_API_KEY",
     deepseek: "DEEPSEEK_API_KEY",
+    // Hermes' copilot provider reads COPILOT_GITHUB_TOKEN first (then GH_TOKEN, GITHUB_TOKEN).
+    [COPILOT_PROVIDER]: COPILOT_TOKEN_ENV,
     // Hermes' "custom" provider authenticates with OPENAI_API_KEY (its docs: custom endpoints).
     [CUSTOM_LLM_PROVIDER]: "OPENAI_API_KEY",
 };

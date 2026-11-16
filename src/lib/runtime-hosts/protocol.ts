@@ -207,6 +207,8 @@ export function redactHostText(text: string | null | undefined, max = 1000): str
     return clipped
         .replace(/\b(ech|ec)_[A-Za-z0-9_]{16,}\b/g, "[redacted]")
         .replace(/\bsk-[A-Za-z0-9_-]{8,}\b/g, "[redacted]")
+        .replace(/\bgh[pousr]_[A-Za-z0-9]{20,}\b/g, "[redacted]")
+        .replace(/\bgithub_pat_[A-Za-z0-9_]{20,}\b/g, "[redacted]")
         .replace(/\b(Bearer)\s+[A-Za-z0-9._~+/=-]{8,}/gi, "$1 [redacted]")
         .replace(/\b([A-Z0-9_]*(?:API_KEY|TOKEN|SECRET|PASSWORD))\s*=\s*\S+/g, "$1=[redacted]");
 }

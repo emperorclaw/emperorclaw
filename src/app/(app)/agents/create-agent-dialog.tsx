@@ -8,6 +8,7 @@ import { RoleTemplatePicker } from "./role-template-picker";
 import { getAgentTemplate, type AgentRoleTemplate } from "@/lib/agent-templates";
 import { getAvailableProviders, getProvider, type AgentProvider } from "@/lib/agent-providers";
 import { ModelSearchSelect } from "@/components/model-search-select";
+import { modelFitsProvider, modelOptionsFor, resolvePickedProvider } from "@/lib/copilot-provider";
 import { CharacterAvatar } from "@/components/character/character-avatar";
 import { cn } from "@/lib/utils";
 import { DEFAULT_HOST_MODEL } from "@/lib/runtime-hosts/commands";
@@ -33,6 +34,7 @@ const LLM_PROVIDER_OPTIONS = [
     { value: "openrouter", label: "OpenRouter" },
     { value: "grok", label: "Grok" },
     { value: "deepseek", label: "DeepSeek" },
+    { value: "copilot", label: "GitHub Copilot" },
 ];
 const DOCTRINE_FILES = "SOUL.md, AGENTS.md, BOOTSTRAP.md, IDENTITY.md";
 const PROVIDER_EMOJI: Record<string, string> = { openclaw: "🦀", hermes: "👑", codex: "🧠" };
@@ -422,8 +424,7 @@ export function CreateAgentDialog({
                                 onChange={(event) => {
                                     const nextProvider = event.target.value;
                                     setLlmProvider(nextProvider);
-                                    const selectedModel = pricingOptions.find((option) => option.model === llmModel);
-                                    if (selectedModel && selectedModel.provider !== nextProvider) setLlmModel("");
+                                    if (!modelFitsProvider(nextProvider, llmModel, pricingOptions)) setLlmModel("");
                                 }}
                                 className="h-8 rounded-lg border border-zinc-800 bg-zinc-900 px-2 text-xs text-zinc-200 outline-none focus:border-cyan-400 mt-1"
                             >
@@ -440,11 +441,11 @@ export function CreateAgentDialog({
                                 {t("llmModel")} <span className="text-zinc-500 font-normal">{t("forCostTracking")}</span>
                             </label>
                             <ModelSearchSelect
-                                options={pricingOptions}
+                                options={modelOptionsFor(llmProvider, pricingOptions)}
                                 value={llmModel}
                                 provider={llmProvider}
                                 onChange={(selection) => {
-                                    setLlmProvider(selection.provider);
+                                    setLlmProvider(resolvePickedProvider(llmProvider, selection));
                                     setLlmModel(selection.model);
                                 }}
                             />
