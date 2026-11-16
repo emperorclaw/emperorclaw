@@ -105,3 +105,106 @@ test("workspace filing guidance is added without replacing a company's customize
         action: "create", name: "workspace-filing-guide",
     });
 });
+
+const ROLE_NOTES: Record<string, string> = {
+    "role-playbook-developer": "role-developer",
+    "role-playbook-ops": "role-ops",
+    "role-playbook-qa": "role-qa",
+    "role-playbook-marketing": "role-marketing",
+    "role-playbook-outreach": "role-outreach",
+};
+
+test("every starter note stays under the per-note context cap; role playbooks under 4000 chars", () => {
+    for (const name of Object.keys(starterNoteHashes())) {
+        const text = renderStarterNote(name, "A Fairly Long Company Name Inc")!;
+        assert.ok(text.length < 8000, `${name} is ${text.length} chars`);
+    }
+    for (const name of Object.keys(ROLE_NOTES)) {
+        const text = renderStarterNote(name, "Acme")!;
+        assert.ok(text.length < 4000, `${name} is ${text.length} chars`);
+    }
+});
+
+test("v3 role playbooks exist with the team-playbook, role-playbook and role tags", () => {
+    assert.ok(STARTER_DOCTRINE_VERSION >= 3);
+    for (const [name, roleTag] of Object.entries(ROLE_NOTES)) {
+        const text = renderStarterNote(name, "Acme");
+        assert.ok(text, `${name} is a starter note`);
+        const tags = /^tags: \[(.*)\]$/m.exec(text!)?.[1].split(", ") ?? [];
+        for (const tag of ["team-playbook", "role-playbook", roleTag]) {
+            assert.ok(tags.includes(tag), `${name} is tagged ${tag}`);
+        }
+    }
+});
+
+test("an unedited v2 copy of the two changed notes is updated, even without stored hashes", () => {
+    const v2Rules = renderLegacyStarterNote("agent-operating-rules", 5, "Acme")!;
+    const v2Lead = renderLegacyStarterNote("team-playbook-lead", 1, "Acme")!;
+    assert.ok(v2Rules && v2Lead);
+    assert.notEqual(v2Rules, renderStarterNote("agent-operating-rules", "Acme"));
+    assert.notEqual(v2Lead, renderStarterNote("team-playbook-lead", "Acme"));
+    const decisions = planStarterDoctrineUpgrade({
+        companyName: "Acme",
+        existingNotes: [
+            { name: "agent-operating-rules", contentText: v2Rules },
+            { name: "team-playbook-lead", contentText: v2Lead },
+        ],
+        storedHashes: {},
+    });
+    assert.equal(decisions.find((d) => d.name === "agent-operating-rules")?.action, "update");
+    assert.equal(decisions.find((d) => d.name === "team-playbook-lead")?.action, "update");
+});
+
+test("an unedited v1 copy of the two changed notes is updated, even without stored hashes", () => {
+    const v1Rules = renderLegacyStarterNote("agent-operating-rules", 4, "Acme")!;
+    const v1Lead = renderLegacyStarterNote("team-playbook-lead", 0, "Acme")!;
+    assert.ok(v1Rules && v1Lead);
+    assert.notEqual(v1Rules, renderLegacyStarterNote("agent-operating-rules", 5, "Acme"));
+    assert.notEqual(v1Lead, renderLegacyStarterNote("team-playbook-lead", 1, "Acme"));
+    const decisions = planStarterDoctrineUpgrade({
+        companyName: "Acme",
+        existingNotes: [
+            { name: "agent-operating-rules", contentText: v1Rules },
+            { name: "team-playbook-lead", contentText: v1Lead },
+        ],
+        storedHashes: {},
+    });
+    assert.equal(decisions.find((d) => d.name === "agent-operating-rules")?.action, "update");
+    assert.equal(decisions.find((d) => d.name === "team-playbook-lead")?.action, "update");
+});
+
+test("an edited v2 copy is kept and reported as a suggestion", () => {
+    const edited = renderLegacyStarterNote("team-playbook-lead", 1, "Acme")! + "\n- Our own lead rule.\n";
+    const decisions = planStarterDoctrineUpgrade({
+        companyName: "Acme",
+        existingNotes: [{ name: "team-playbook-lead", contentText: edited }],
+        storedHashes: { "team-playbook-lead": "hash-of-the-v2-text" },
+    });
+    assert.deepEqual(decisions.find((d) => d.name === "team-playbook-lead"), {
+        action: "keep", name: "team-playbook-lead", edited: true,
+    });
+});
+
+test("a note the company received and deleted is not recreated; a note new in v3 is", () => {
+    // Stored hashes as a v2 company has them: every v2 note, no role playbooks.
+    const storedHashes = Object.fromEntries(
+        Object.entries(starterNoteHashes()).filter(([name]) => !(name in ROLE_NOTES)),
+    );
+    const decisions = planStarterDoctrineUpgrade({
+        companyName: "Acme",
+        existingNotes: [{ name: "agent-operating-rules", contentText: renderStarterNote("agent-operating-rules", "Acme")! }],
+        storedHashes,
+    });
+    assert.deepEqual(decisions.find((d) => d.name === "team-template-research"), {
+        action: "skip-deleted", name: "team-template-research",
+    });
+    for (const name of Object.keys(ROLE_NOTES)) {
+        assert.equal(decisions.find((d) => d.name === name)?.action, "create", `${name} is created`);
+    }
+});
+
+test("with no stored hashes every missing note is created", () => {
+    const decisions = planStarterDoctrineUpgrade({ companyName: "Acme", existingNotes: [], storedHashes: {} });
+    assert.ok(decisions.every((d) => d.action === "create"));
+    assert.equal(decisions.length, Object.keys(starterNoteHashes()).length);
+});

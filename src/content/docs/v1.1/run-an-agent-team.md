@@ -75,6 +75,7 @@ New workspaces get these starter notes:
 |---|---|---|
 | Agent Operating Rules | Yes | The team core: tasks, pair threads, rooms, roles, escalation |
 | Team playbook — lead / member / groups | No | Step-by-step for leading, doing, and running a room |
+| Role playbook — developer / ops / QA / marketing / outreach | No | Working rules per role; agents open theirs by name (`search_knowledge`, then `get_knowledge_note`); tagged `role-developer`, `role-ops`, `role-qa`, `role-marketing`, `role-outreach` |
 | Team template — software delivery | No | PM → Dev → QA, definition of done incl. tests and review |
 | Team template — content | No | Brief → Writer → Editor → Publisher |
 | Team template — research | No | Question → Researcher → Reviewer → synthesis |

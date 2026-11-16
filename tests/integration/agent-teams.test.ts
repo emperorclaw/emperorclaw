@@ -633,6 +633,80 @@ maybe("W3-seed: re-saving a legacy company's onboarding profile still upgrades i
     assert.equal(again.suggestions, 0);
 });
 
+maybe("doctrine v3: a fresh company gets every starter note, including the role playbooks", async () => {
+    await resetDb();
+    const { companyId } = await seedCompanyWithToken();
+    const db = await getDb();
+    const { scopedResources, companies } = await getSchema();
+    const { and, eq, isNull } = await import("drizzle-orm");
+    const { seedStarterKnowledge, starterNoteHashes, STARTER_DOCTRINE_VERSION } = await import("@/lib/starter-knowledge");
+
+    const { created } = await seedStarterKnowledge({ companyId, companyName: "Fresh Co" });
+    const expected = Object.keys(starterNoteHashes());
+    assert.equal(created, expected.length);
+    const rows = await db.select().from(scopedResources)
+        .where(and(eq(scopedResources.companyId, companyId), isNull(scopedResources.deletedAt)));
+    const names = new Set(rows.map((row) => row.name));
+    for (const name of expected) assert.ok(names.has(name), `${name} is seeded`);
+    for (const name of ["role-playbook-developer", "role-playbook-ops", "role-playbook-qa", "role-playbook-marketing", "role-playbook-outreach"]) {
+        const row = rows.find((r) => r.name === name)!;
+        assert.equal(row.path, "Agents");
+        assert.equal(row.isShared, false, "role playbooks load on demand, not every turn");
+    }
+    const [company] = await db.select().from(companies).where(eq(companies.id, companyId));
+    assert.equal(company.starterDoctrineJson?.version, STARTER_DOCTRINE_VERSION);
+});
+
+maybe("doctrine v3: a v2 company gets the role playbooks, keeps its edits, and deleted notes stay deleted", async () => {
+    await resetDb();
+    const { companyId } = await seedCompanyWithToken();
+    const db = await getDb();
+    const { scopedResources, companies } = await getSchema();
+    const { and, eq, inArray, isNull } = await import("drizzle-orm");
+    const {
+        LEGACY_STARTER_HASHES, renderLegacyStarterNote, renderStarterNote, seedStarterKnowledge,
+        starterNoteHashes, upgradeStarterDoctrine,
+    } = await import("@/lib/starter-knowledge");
+    const roleNotes = ["role-playbook-developer", "role-playbook-ops", "role-playbook-qa", "role-playbook-marketing", "role-playbook-outreach"];
+
+    // Rebuild the state of a company seeded at doctrine v2.
+    await seedStarterKnowledge({ companyId, companyName: "Test Co" });
+    await db.delete(scopedResources).where(and(eq(scopedResources.companyId, companyId), inArray(scopedResources.name, roleNotes)));
+    const setText = async (name: string, configText: string) => {
+        await db.update(scopedResources).set({ configText })
+            .where(and(eq(scopedResources.companyId, companyId), eq(scopedResources.name, name)));
+    };
+    await setText("agent-operating-rules", renderLegacyStarterNote("agent-operating-rules", 5, "Test Co")!);
+    await setText("team-playbook-lead", renderLegacyStarterNote("team-playbook-lead", 1, "Test Co")!);
+    const editedMember = renderStarterNote("team-playbook-member", "Test Co")! + "\n- Our own member rule.\n";
+    await setText("team-playbook-member", editedMember);
+    await db.update(scopedResources).set({ deletedAt: new Date() })
+        .where(and(eq(scopedResources.companyId, companyId), eq(scopedResources.name, "team-template-research")));
+    const lastLegacy = (name: string) => [...LEGACY_STARTER_HASHES[name]].pop()!;
+    const v2Hashes = Object.fromEntries(Object.entries(starterNoteHashes()).filter(([name]) => !roleNotes.includes(name)));
+    v2Hashes["agent-operating-rules"] = lastLegacy("agent-operating-rules");
+    v2Hashes["team-playbook-lead"] = lastLegacy("team-playbook-lead");
+    await db.update(companies).set({ starterDoctrineJson: { version: 2, hashes: v2Hashes, name: "Test Co" } })
+        .where(eq(companies.id, companyId));
+
+    const result = await upgradeStarterDoctrine({ companyId, companyName: "Test Co" });
+    assert.deepEqual(result, { created: roleNotes.length, updated: 2, suggestions: 1 });
+
+    const live = await db.select().from(scopedResources)
+        .where(and(eq(scopedResources.companyId, companyId), isNull(scopedResources.deletedAt)));
+    const text = (name: string) => live.find((row) => row.name === name)?.configText;
+    for (const name of roleNotes) assert.equal(text(name), renderStarterNote(name, "Test Co"), `${name} is created`);
+    assert.equal(text("agent-operating-rules"), renderStarterNote("agent-operating-rules", "Test Co"));
+    assert.equal(text("team-playbook-lead"), renderStarterNote("team-playbook-lead", "Test Co"));
+    assert.equal(text("team-playbook-member"), editedMember, "the edited note is kept");
+    assert.equal(text("team-template-research"), undefined, "the deleted note is not resurrected");
+
+    // Re-running onboarding does not resurrect it either.
+    assert.equal((await seedStarterKnowledge({ companyId, companyName: "Test Co" })).created, 0);
+    const [company] = await db.select().from(companies).where(eq(companies.id, companyId));
+    assert.equal(company.starterDoctrineJson?.version, 3);
+});
+
 maybe("W3: addTaskNote enforces project scope and caps the note at 4000 chars", async () => {
     await resetDb();
     const { companyId } = await seedCompanyWithToken();

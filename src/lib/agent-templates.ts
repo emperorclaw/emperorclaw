@@ -85,6 +85,7 @@ Before replying, read:
 4. USER.md (if exists)
 5. Emperor Knowledge & Rules — company operating rules and business rules
 6. Emperor project memory for current goals and open work
+7. Your lead playbook: open "Team playbook — lead" (search_knowledge, then get_knowledge_note) before starting work
 Then list the roster (GET /agents) and open tasks before assigning anything.`,
         identity: `Name: Boss
 Role: Team Lead & Coordination
@@ -136,7 +137,8 @@ Before replying, read:
 3. IDENTITY.md
 4. USER.md (if exists)
 5. Emperor Knowledge & Rules — search for SEO-related resources
-6. Emperor project memory for current client context`,
+6. Emperor project memory for current client context
+7. Your role playbook: open "Role playbook — marketing" (search_knowledge, then get_knowledge_note) before starting work`,
         identity: `Name: SEO Specialist
 Role: Search Engine Optimization & Visibility
 Emoji: 🔍
@@ -186,7 +188,8 @@ Before replying, read:
 2. SOUL.md
 3. IDENTITY.md
 4. TOOLS.md — for local machine paths and scripts
-5. Emperor project memory for architecture decisions and current sprint context`,
+5. Emperor project memory for architecture decisions and current sprint context
+6. Your role playbooks: open "Role playbook — developer" (search_knowledge, then get_knowledge_note) before starting work; "Role playbook — ops" before any deploy`,
         identity: `Name: Developer
 Role: Technical Implementation & Development
 Emoji: ⚡
@@ -237,7 +240,8 @@ Before replying, read:
 2. SOUL.md
 3. IDENTITY.md
 4. Emperor project memory for test plans and known issues
-5. Emperor Knowledge & Rules for QA procedures and checklists`,
+5. Emperor Knowledge & Rules for QA procedures and checklists
+6. Your role playbook: open "Role playbook — QA" (search_knowledge, then get_knowledge_note) before starting work`,
         identity: `Name: QA Agent
 Role: Quality Assurance & Testing
 Emoji: 🧪
@@ -288,7 +292,8 @@ Before replying, read:
 2. SOUL.md
 3. IDENTITY.md
 4. Emperor customer profiles — understand who we're targeting
-5. Emperor Knowledge & Rules for outreach templates and ICP definition`,
+5. Emperor Knowledge & Rules for outreach templates and ICP definition
+6. Your role playbook: open "Role playbook — outreach" (search_knowledge, then get_knowledge_note) before starting work`,
         identity: `Name: Growth Agent
 Role: Lead Generation & Growth Marketing
 Emoji: 📈
@@ -339,7 +344,8 @@ Before replying, read:
 2. SOUL.md
 3. IDENTITY.md
 4. Emperor Knowledge & Rules for brand voice guide and content templates
-5. Emperor project memory for editorial calendar and content strategy`,
+5. Emperor project memory for editorial calendar and content strategy
+6. Your role playbook: open "Role playbook — marketing" (search_knowledge, then get_knowledge_note) before starting work`,
         identity: `Name: Content Writer
 Role: Content Creation & Copywriting
 Emoji: ✍️
@@ -441,7 +447,8 @@ Before replying, read:
 2. SOUL.md
 3. IDENTITY.md
 4. Emperor Knowledge & Rules for FAQ, escalation procedures, and SLAs
-5. Emperor customer profiles for context on who you're helping`,
+5. Emperor customer profiles for context on who you're helping
+6. Your role playbook: open "Role playbook — outreach" (search_knowledge, then get_knowledge_note) before starting work`,
         identity: `Name: Support Agent
 Role: Customer Support & Success
 Emoji: 💬

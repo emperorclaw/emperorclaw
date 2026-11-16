@@ -41,17 +41,35 @@ Injected text is paid for on every turn by every agent. Keep the always-on layer
 |---|---|---|---|
 | Company Overview | Company | Yes | `company` |
 | Brand Voice | Company | Yes | `brand` |
-| Agent Operating Rules | Agents | Yes (~2.3k chars) | `agents`, `team` |
+| Agent Operating Rules | Agents | Yes (~2.7k chars) | `agents`, `team` |
 | Team playbook — lead | Agents | No | `team-playbook`, `lead` |
 | Team playbook — member | Agents | No | `team-playbook`, `member` |
 | Team playbook — groups | Agents | No | `team-playbook`, `group` |
+| Role playbook — developer | Agents | No | `team-playbook`, `role-playbook`, `role-developer` |
+| Role playbook — ops | Agents | No | `team-playbook`, `role-playbook`, `role-ops` |
+| Role playbook — QA | Agents | No | `team-playbook`, `role-playbook`, `role-qa` |
+| Role playbook — marketing | Agents | No | `team-playbook`, `role-playbook`, `role-marketing` |
+| Role playbook — outreach | Agents | No | `team-playbook`, `role-playbook`, `role-outreach` |
 | Team template — software delivery | Company | No | `team-playbook`, `team-template`, `software` |
 | Team template — content | Company | No | `team-playbook`, `team-template`, `content` |
 | Team template — research | Company | No | `team-playbook`, `team-template`, `research` |
 | Project Brief Template | Projects | No | `projects`, `template` |
 | Customer Note Template | Customers | No | `customers`, `template` |
 
-The three injected notes total about 3k characters, leaving most of the budget for your own rules.
+The three injected notes total about 3.4k characters, leaving most of the budget for your own rules.
+
+### Role playbooks
+
+Each role playbook holds the working rules for one kind of work (code, deploys, testing, marketing, outreach), each under 3.5k characters. They are never injected. An agent opens its own by name with `search_knowledge` and `get_knowledge_note` before starting work, which returns the full note; the role templates name it (Developer: developer, plus ops before a deploy; QA: QA; SEO and Content: marketing; Growth and Support: outreach; Boss: "Team playbook — lead"). The `role-<role>` tags still let `get_knowledge_context` fetch them, but that call returns shared notes first and can trim a long playbook.
+
+### Upgrades
+
+The starter set is versioned (currently version 3). When a new version ships, existing companies receive it on the next upgrade sweep:
+
+- Notes new in this version are added.
+- A note still exactly as shipped is replaced with the new text.
+- A note you edited is left as-is, and owners and admins get one "New team doctrine available" notification.
+- A starter note you deleted stays deleted; neither the upgrade nor re-running onboarding brings it back. The exception is a company that has never been through an upgrade (no stored doctrine version): there is no record of what it received, so every missing starter note is created once.
 
 ## Placement rules
 

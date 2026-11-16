@@ -308,4 +308,4 @@ Use Company for business facts and policy, Agents for operating playbooks, Proje
 
 Storage folders are created as outputs are needed. Reuse the company's convention; for customer work the default is Customer / Project / YYYY-MM, followed by deliverables or evidence where useful. Create each folder level separately and upload with its returned folder ID. Verify the file before sharing an artifact link.
 
-Starter doctrine upgrades preserve operator-edited notes. Missing starter notes are added and unchanged defaults can be refreshed; customized notes remain intact. Role templates carry a short routing protocol, while detailed playbooks stay in the vault.
+Starter doctrine upgrades preserve operator-edited notes. Starter notes new in a release are added and unchanged defaults can be refreshed; customized notes remain intact, and a starter note you deleted is not recreated. Role templates carry a short routing protocol, while detailed playbooks stay in the vault.
