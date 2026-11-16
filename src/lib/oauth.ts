@@ -2,6 +2,7 @@ import { randomBytes, createHash } from "crypto";
 import { db } from "@/db";
 import { oauthClients, oauthAuthorizationCodes, companyTokens } from "@/db/schema";
 import { eq, and, isNull } from "drizzle-orm";
+import { isAllowedRedirectUri } from "./oauth-redirect";
 
 const AUTH_CODE_TTL_MS = 10 * 60 * 1000; // 10 minutes, single-use
 const ACCESS_TOKEN_TTL_MS = 90 * 24 * 60 * 60 * 1000; // matches mcp_full company_tokens TTL elsewhere
@@ -27,8 +28,8 @@ export async function registerOAuthClient(input: { clientName?: string; redirect
         throw new OAuthError("invalid_client_metadata", "redirect_uris is required and must be non-empty");
     }
     for (const uri of input.redirectUris) {
-        if (typeof uri !== "string" || !uri.startsWith("https://")) {
-            throw new OAuthError("invalid_redirect_uri", "Each redirect_uri must be an https:// URL");
+        if (!isAllowedRedirectUri(uri)) {
+            throw new OAuthError("invalid_redirect_uri", "Each redirect_uri must be an https:// URL, or http:// on 127.0.0.1, [::1] or localhost");
         }
     }
 

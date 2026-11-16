@@ -18,6 +18,7 @@ import { resolveAgentId } from "@/lib/mcp";
 import { moduleForTool, type ModuleState } from "@/lib/modules";
 import { loadCompanyModules } from "@/lib/modules-server";
 import { jsonResult } from "./result";
+import { annotateTools } from "./tool-annotations";
 
 /**
  * Route every governed tool through the agent's action permissions
@@ -94,6 +95,7 @@ export async function buildMcpServer(companyId: string, callerAgentId?: string |
     );
     gateToolsByActionPolicy(server, companyId, callerAgentId ?? null, tokenId ?? null);
     omitToolsOfModulesOff(server, await loadCompanyModules(companyId));
+    annotateTools(server as unknown as Parameters<typeof annotateTools>[0]);
 
     // Only a connection acting as no agent acts as its person.
     const person = callerAgentId ? null : operatorUserId ?? null;

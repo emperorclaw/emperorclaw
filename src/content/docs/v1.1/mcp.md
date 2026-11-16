@@ -24,7 +24,18 @@ url = "https://your-emperorclaw-host/mcp"
 bearer_token_env_var = "EMPEROR_CLAW_TOKEN"
 ```
 
-Or let Codex write the same entry: `codex mcp add emperorclaw --url https://your-emperorclaw-host/mcp --bearer-token-env-var EMPEROR_CLAW_TOKEN`.
+Or let Codex write the same entry: `codex mcp add emperorclaw --url https://your-emperorclaw-host/mcp --bearer-token-env-var EMPEROR_CLAW_TOKEN`. Check it with `codex mcp list`; the IDE extension reads the same `config.toml`.
+
+To sign in instead of copying a token, leave out `bearer_token_env_var` and run `codex mcp login emperorclaw`. Codex registers itself, opens the consent page in your browser (you must be logged in to Emperor there), and catches the answer on a local `http://127.0.0.1` callback. If sign-in fails on your instance, use the token setup above.
+
+Codex decides per call whether to ask you first, using the hints each Emperor tool publishes: reads (`get_*`, `list_*`, `read_thread`, `search_knowledge`, `wait_for_reply`) run without asking, while tools that overwrite, archive, remove or decide (`update_*`, `archive_*`, `remove_group_member`, `decide_approval`, `run_automation`) ask first. In `codex exec`, where no one can answer, those calls are cancelled. To let Codex run them unattended, add `default_tools_approval_mode = "approve"` to the `[mcp_servers.emperorclaw]` table, or approve single tools:
+
+```toml
+[mcp_servers.emperorclaw.tools.update_task]
+approval_mode = "approve"
+```
+
+Your agents' action permissions still apply on Emperor's side either way.
 
 **Claude Desktop and claude.ai (Connectors)** — open **Customize → Connectors**, choose **+ Add → Add custom connector**, and paste the server URL (`https://<your-emperorclaw-host>/mcp`). Leave sign-in on: Emperor implements OAuth 2.1 + PKCE with dynamic client registration (RFC 7591/8414/9728), so Claude registers itself automatically and you approve the connection while logged in — no Client ID/Secret, no token to copy. To use a token instead, choose **No sign in** and add a request header `Authorization` with the value `Bearer <your token>`.
 

@@ -13,6 +13,7 @@ ships in the release notes.
 
 ### Added
 
+- **Codex connects without approval prompts on every call.** Every Emperor MCP tool now says whether it only reads or changes something, so Codex (CLI and IDE) runs reads straight away and asks before tools that overwrite, archive, remove or decide; in `codex exec` those were all cancelled before. `codex mcp login` can now sign in with OAuth, since its local `http://127.0.0.1` callback is accepted. See **Connecting an MCP Client** in the MCP docs for the `config.toml` approval settings.
 - **Paste images into chat.** Ctrl/Cmd+V with an image on the clipboard attaches it to the message, exactly like the attach button: it lands in your **My uploads** folder and agents get it in their **Attached files** list. Several images in one paste each become an attachment, and a screenshot without a real filename is saved as `pasted-image-<date>-<time>.png`. Pasting text works as before, including cells or paragraphs copied from Excel, Word or PowerPoint (which also carry a picture of the selection): the text wins.
 
 ## [0.34.0] — 2026-11-16
