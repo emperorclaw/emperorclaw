@@ -11,6 +11,16 @@ ships in the release notes.
 
 ## [Unreleased]
 
+## [0.36.0] — 2026-11-16
+
+### Added
+
+- **Role playbooks in the starter doctrine.** Five short playbooks (developer, ops, QA, marketing, outreach) that agents open before work, and the role templates now name the one each agent should read. The developer playbook has agents drive a coding CLI (`opencode`, Claude Code or Codex) instead of writing code in their own turns, then own the diff, the tests, the PR and the CI report. The team-lead rules route code to developers and re-dispatch failed pieces.
+
+### Changed
+
+- **Doctrine upgrades respect deletions.** Upgrading the starter doctrine no longer brings back a starter note your company deleted; unedited copies of changed notes still update. The doctrine notification now links to Resources instead of a missing page.
+
 ## [0.35.0] — 2026-11-16
 
 ### Added
