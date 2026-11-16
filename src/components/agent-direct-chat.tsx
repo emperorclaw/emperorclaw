@@ -20,6 +20,7 @@ import { MarkdownRenderer } from "@/components/markdown-renderer";
 import { RichMessageActionsContext } from "@/components/rich/rich-message-actions";
 import { hasChoicesBlock, hasRichBlocks } from "@/lib/rich-blocks";
 import { AttachmentChip, isAttachmentRef, type AttachmentRef } from "@/components/chat-attachments";
+import { imageFilesFromClipboard } from "@/lib/clipboard-images";
 import { MessageReasoningDisclosure } from "@/components/message-reasoning-disclosure";
 import { queuePromptPreview } from "@/lib/queue-prompt-preview";
 import { takeChatDraft } from "@/lib/chat-draft";
@@ -936,9 +937,21 @@ export function AgentDirectChat({
     };
 
 
-    const handleAttachFiles = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const handleAttachFiles = (event: React.ChangeEvent<HTMLInputElement>) => {
         const files = Array.from(event.target.files || []);
         event.target.value = "";
+        void uploadAttachments(files);
+    };
+
+    // Pasted images take the same upload path as the attach button; text pastes fall through untouched.
+    const handleComposerPaste = (event: React.ClipboardEvent<HTMLTextAreaElement>) => {
+        const images = imageFilesFromClipboard(event.clipboardData);
+        if (images.length === 0) return;
+        event.preventDefault();
+        void uploadAttachments(images);
+    };
+
+    const uploadAttachments = async (files: File[]) => {
         if (files.length === 0) return;
         setAttachError(null);
         for (const file of files) {
@@ -1615,6 +1628,7 @@ export function AgentDirectChat({
                         ref={composerRef}
                         value={draft}
                         onChange={(event) => handleTyping(event.target.value)}
+                        onPaste={handleComposerPaste}
                         onKeyDown={(event) => {
                             if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) {
                                 event.preventDefault();
@@ -1631,7 +1645,7 @@ export function AgentDirectChat({
                         <button
                             type="button"
                             onClick={() => fileInputRef.current?.click()}
-                            title={t("attachFiles")}
+                            title={t("attachFilesHint")}
                             aria-label={t("attachFiles")}
                             className={composerIconButton}
                         >

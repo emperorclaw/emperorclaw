@@ -279,7 +279,8 @@
       "archivedBadge": "Archived",
       "alreadyStarted": "This chat was already started with your first message. The new text was not sent; it is back in the box.",
       "queuedBusyElsewhere": "Queued. {name} is busy with other work; it will pick this up next."
-    }
+    },
+    "attachFilesHint": "Attach files or paste images (Ctrl+V)"
   },
   "agents": {
     "roles": {
@@ -1053,5 +1054,8 @@
       "privateFolder": "Private uploads",
       "privateFile": "Private file"
     }
+  },
+  "teamChat": {
+    "attachFilesHint": "Attach files or paste images (Ctrl+V)"
   }
 }

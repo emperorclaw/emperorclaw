@@ -27,6 +27,7 @@ import { LiveRunSteps, ReplyRunFooter, type ReplyRun } from "@/components/run-ti
 import { chatPollDelayMs, eventsSinceParam, isTimedStepKind, lastReasoningCopy, lastReasoningLine, mergeLiveRuns, type ClientLiveRun } from "@/lib/live-activity";
 import { useLivePoll } from "@/lib/use-realtime";
 import type { RunLive } from "@/lib/run-events";
+import { imageFilesFromClipboard } from "@/lib/clipboard-images";
 
 const CHAT_PAGE_SIZE = 25;
 
@@ -362,9 +363,21 @@ export function AgentTeamChat({
         });
     }, [readThreadId, isAtBottom, messages]);
 
-    const handleAttachFiles = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const handleAttachFiles = (event: React.ChangeEvent<HTMLInputElement>) => {
         const files = Array.from(event.target.files || []);
         event.target.value = "";
+        void uploadAttachments(files);
+    };
+
+    // Pasted images take the same upload path as the attach button; text pastes fall through untouched.
+    const handleComposerPaste = (event: React.ClipboardEvent<HTMLTextAreaElement>) => {
+        const images = imageFilesFromClipboard(event.clipboardData);
+        if (images.length === 0) return;
+        event.preventDefault();
+        void uploadAttachments(images);
+    };
+
+    const uploadAttachments = async (files: File[]) => {
         if (files.length === 0) return;
         setAttachError(null);
         for (const file of files) {
@@ -798,7 +811,8 @@ export function AgentTeamChat({
                         <button
                             type="button"
                             onClick={() => fileInputRef.current?.click()}
-                            title={t("attachFiles")}
+                            title={t("attachFilesHint")}
+                            aria-label={t("attachFiles")}
                             className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-zinc-700 bg-zinc-800 text-zinc-500 transition-colors hover:border-cyan-500/50 hover:text-cyan-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400/70"
                         >
                             <IconPaperclip className="h-4 w-4" />
@@ -819,6 +833,7 @@ export function AgentTeamChat({
                             ref={teamTextareaRef}
                             value={draft}
                             onValueChange={setDraft}
+                            onPaste={handleComposerPaste}
                             agents={mentionAgents ?? agents}
                             onSubmit={sendMessage}
                             placeholder={placeholder}

@@ -9,6 +9,12 @@ tagged (e.g. `## [1.2.0] — 2026-07-22`). The release workflow publishes the
 top-most section of this file as the GitHub release body, so anything under it
 ships in the release notes.
 
+## [Unreleased]
+
+### Added
+
+- **Paste images into chat.** Ctrl/Cmd+V with an image on the clipboard attaches it to the message, exactly like the attach button: it lands in your **My uploads** folder and agents get it in their **Attached files** list. Several images in one paste each become an attachment, and a screenshot without a real filename is saved as `pasted-image-<date>-<time>.png`. Pasting text works as before, including cells or paragraphs copied from Excel, Word or PowerPoint (which also carry a picture of the selection): the text wins.
+
 ## [0.34.0] — 2026-11-16
 
 ### Added

@@ -1,6 +1,6 @@
 "use client";
 
-import { forwardRef, useImperativeHandle, useMemo, useRef, useState, type KeyboardEvent } from "react";
+import { forwardRef, useImperativeHandle, useMemo, useRef, useState, type ClipboardEvent, type KeyboardEvent } from "react";
 import { useTranslations } from "next-intl";
 import { agentAvatarSrc } from "@/lib/avatar";
 import { cn } from "@/lib/utils";
@@ -27,6 +27,7 @@ type MentionTextareaProps = {
     rows?: number;
     style?: React.CSSProperties;
     disabled?: boolean;
+    onPaste?: (event: ClipboardEvent<HTMLTextAreaElement>) => void;
 };
 
 /**
@@ -36,7 +37,7 @@ type MentionTextareaProps = {
  * text is always the agent's full name, matching that convention exactly.
  */
 export const MentionTextarea = forwardRef<HTMLTextAreaElement, MentionTextareaProps>(function MentionTextarea(
-    { value, onValueChange, agents, onSubmit, placeholder, className, rows = 1, style, disabled },
+    { value, onValueChange, agents, onSubmit, placeholder, className, rows = 1, style, disabled, onPaste },
     forwardedRef
 ) {
     const t = useTranslations("mentions");
@@ -183,6 +184,7 @@ export const MentionTextarea = forwardRef<HTMLTextAreaElement, MentionTextareaPr
                 value={value}
                 onChange={handleChange}
                 onKeyDown={handleKeyDown}
+                onPaste={onPaste}
                 placeholder={placeholder}
                 rows={rows}
                 disabled={disabled}
