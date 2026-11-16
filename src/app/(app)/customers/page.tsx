@@ -4,6 +4,8 @@ import { eq, and, isNull, inArray } from "drizzle-orm";
 import { getCompanyId, getValidatedServerSession } from "@/lib/auth";
 import { getMemberScopeForSession, getScopedCustomerIds } from "@/lib/member-scope";
 import { redirect } from "next/navigation";
+import { requireRole } from "@/lib/roles";
+import { approvalViewsFor } from "@/lib/approval-access";
 import { getTranslations } from "next-intl/server";
 import CustomersClient from "./customers-client";
 
@@ -27,13 +29,18 @@ export default async function CustomersPage() {
     const allApprovals = await db.select().from(approvals).where(eq(approvals.companyId, companyId));
     const allPipelines = await db.select().from(pipelines).where(and(eq(pipelines.companyId, companyId), isNull(pipelines.deletedAt)));
     const t = await getTranslations("customers");
+    // Pending approvals as this person may see them (lib/approval-access.ts): no
+    // private-chat ask they have no part in, and the rationale only for readers.
+    const guard = await requireRole("viewer")().catch(() => null);
+    const pendingRows = allApprovals.filter((approval) => approval.status === "pending");
+    const approvalViews = guard ? await approvalViewsFor(guard, pendingRows) : new Map();
 
     const customerSummaries = allCustomers.map((customer) => {
         const customerProjects = allProjects.filter((project) => project.customerId === customer.id);
         const projectIds = new Set(customerProjects.map((project) => project.id));
         const customerTasks = allTasks.filter((task) => projectIds.has(task.projectId));
         const customerIncidents = allIncidents.filter((incident) => projectIds.has(incident.projectId) && incident.status !== "resolved");
-        const pendingApprovals = allApprovals.filter((approval) => approval.projectId && projectIds.has(approval.projectId) && approval.status === "pending");
+        const pendingApprovals = pendingRows.filter((approval) => approval.projectId && projectIds.has(approval.projectId) && approvalViews.get(approval.id)?.visible);
         // Only open work can be blocked; a finished task with stale dependencies is not.
         const blockedTasks = customerTasks.filter((task) => {
             if (["done", "failed", "dead_letter"].includes(task.state)) return false;
@@ -50,7 +57,7 @@ export default async function CustomersPage() {
         const taskLink = (task: { id: string; projectId: string }) => `/projects?project=${task.projectId}&task=${task.id}`;
         // What "needs attention" means, item by item, each with where to fix it.
         const attention = [
-            ...pendingApprovals.map((approval) => ({ kind: "approval", label: approval.rationale || t("approvalRequested"), href: "/approvals" })),
+            ...pendingApprovals.map((approval) => ({ kind: "approval", label: (approvalViews.get(approval.id)?.mayReadDetails && approval.rationale) || t("approvalRequested"), href: "/approvals" })),
             ...blockedTasks.map((task) => ({ kind: "blocked", label: titleOf(task), href: taskLink(task) })),
             ...customerIncidents.map((incident) => ({ kind: "incident", label: incident.summary, href: "/projects?attention=1" })),
             ...reviewTasks.map((task) => ({ kind: "review", label: titleOf(task), href: taskLink(task) })),

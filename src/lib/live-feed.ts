@@ -741,6 +741,9 @@ function loadPendingApprovals(companyId: string) {
         rationale: sql<string | null>`left(${approvals.rationale}, 300)`,
         requestedAt: approvals.requestedAt,
         task: firstTask,
+        // Carded into a person's private direct chat (lib/approval-routing.ts approvalHiddenByPrivateThread).
+        privateThread: sql<boolean>`exists (select 1 from message_threads mt where mt.id = ${approvals.threadId}
+            and mt.type = 'direct' and (mt.is_private or mt.owner_user_id is not null))`,
     }).from(approvals)
         .where(and(eq(approvals.companyId, companyId), eq(approvals.status, "pending")))
         .orderBy(desc(approvals.requestedAt), approvals.id)
@@ -892,6 +895,12 @@ export async function buildLiveFeed(companyId: string, options: {
     privateChatsUserId?: string | null;
     /** Carry each agent's `thought` (opted-in read_only tokens only). When false, reasoning is never queried. */
     agentThoughts?: boolean;
+    /**
+     * A screen for a restricted viewer: pending approvals never carry their
+     * rationale, and asks in a private chat are left out. Unscoped feeds keep
+     * the rationale, except for private-chat asks.
+     */
+    scopedApprovals?: boolean;
 } = {}): Promise<LiveFeed> {
     const now = options.now ?? new Date();
     const messageLimit = Math.min(LIVE_MAX_MESSAGES, Math.max(0, options.messages ?? LIVE_DEFAULT_MESSAGES));
@@ -1011,8 +1020,10 @@ export async function buildLiveFeed(companyId: string, options: {
     // v2 inputs.
     const pending: PendingApprovalRow[] = [];
     for (const a of approvalRows) {
+        if (options.scopedApprovals && a.privateThread) continue;
         const task = a.task ? titleOf({ title: a.task.title, taskType: a.task.taskType }) : null;
-        pending.push({ id: a.id, requesterAgentId: a.requesterAgentId, title: approvalTitle({ actionType: a.actionType, rationale: a.rationale, taskTitle: task }), requestedAtMs: a.requestedAt.getTime() });
+        const rationale = options.scopedApprovals || a.privateThread ? null : a.rationale;
+        pending.push({ id: a.id, requesterAgentId: a.requesterAgentId, title: approvalTitle({ actionType: a.actionType, rationale, taskTitle: task }), requestedAtMs: a.requestedAt.getTime() });
     }
     const approvalByAgent = new Map<string, { id: string; title: string }>();
     for (const a of pending) if (a.requesterAgentId && !approvalByAgent.has(a.requesterAgentId)) approvalByAgent.set(a.requesterAgentId, { id: a.id, title: a.title });

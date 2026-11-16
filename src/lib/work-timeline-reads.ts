@@ -1,4 +1,5 @@
 import { and, desc, eq, gte, inArray, isNotNull, isNull, lt, lte, ne, or, sql, type SQL } from "drizzle-orm";
+import { approvalViewsForPerson } from "@/lib/approval-access";
 import { db } from "@/db";
 import {
     agentRuns,
@@ -395,16 +396,22 @@ export async function loadWorkTimeline(companyId: string, viewer: TaskViewer, qu
         if (ASSIGNMENT_EVENTS.has(row.eventType)) assignedByOtherTaskIds.add(row.taskId);
     }
 
+    // The approval rule: an ask in someone else's private chat draws no marker,
+    // and who decided is named only to people who may read its details.
+    const approvalViews = await approvalViewsForPerson(companyId, viewer, approvalRows.map((row) => ({ ...row, id: row.approvalId })));
     for (const row of approvalRows) {
         if (!row.taskId) continue;
+        const approvalView = approvalViews.get(row.approvalId);
+        if (!approvalView?.visible) continue;
         // Both markers sit on the requesting agent's row; without one, there is nowhere to draw.
         const requester = agentCanonical(row.requesterAgentId);
         if (!requester) continue;
         if (row.requestedAt.getTime() >= fromMs && row.requestedAt.getTime() <= toMs) {
             events.push({ id: `apr:${row.approvalId}`, actorId: requester, taskId: row.taskId, kind: "approval_requested", atMs: row.requestedAt.getTime() });
         }
-        const byName = personName(row.resolverUserId);
-        if (byName && row.resolvedAt && row.resolvedAt.getTime() >= fromMs && row.resolvedAt.getTime() <= toMs) {
+        const decider = personName(row.resolverUserId);
+        if (decider && row.resolvedAt && row.resolvedAt.getTime() >= fromMs && row.resolvedAt.getTime() <= toMs) {
+            const byName = approvalView.mayReadDetails ? decider : null;
             events.push({ id: `apd:${row.approvalId}`, actorId: requester, taskId: row.taskId, kind: "approval_decided", atMs: row.resolvedAt.getTime(), byName, decision: row.status });
         }
     }
@@ -583,6 +590,13 @@ async function loadApprovalRows(companyId: string, viewer: TaskViewer, from: Dat
         status: approvals.status,
         requestedAt: approvals.requestedAt,
         resolvedAt: approvals.resolvedAt,
+        // What the per-person approval rule needs (lib/approval-access.ts).
+        projectId: approvals.projectId,
+        threadId: approvals.threadId,
+        approverKind: approvals.approverKind,
+        approverChainJson: approvals.approverChainJson,
+        escalationLevel: approvals.escalationLevel,
+        metadataJson: approvals.metadataJson,
     }).from(approvalTaskLinks)
         .innerJoin(approvals, eq(approvals.id, approvalTaskLinks.approvalId))
         .innerJoin(tasks, eq(tasks.id, approvalTaskLinks.taskId))

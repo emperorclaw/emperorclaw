@@ -1,4 +1,5 @@
 import { and, desc, eq, inArray, isNull, lt, or, type SQL } from "drizzle-orm";
+import { approvalViewsForPerson } from "@/lib/approval-access";
 import { db } from "@/db";
 import { humanArtifactCondition } from "@/lib/artifact-visibility-server";
 import {
@@ -318,6 +319,13 @@ export async function loadTaskStory(
             resolverUserId: approvals.resolverUserId,
             requestedAt: approvals.requestedAt,
             resolvedAt: approvals.resolvedAt,
+            // What the per-person approval rule needs (lib/approval-access.ts).
+            projectId: approvals.projectId,
+            threadId: approvals.threadId,
+            approverKind: approvals.approverKind,
+            approverChainJson: approvals.approverChainJson,
+            escalationLevel: approvals.escalationLevel,
+            metadataJson: approvals.metadataJson,
         })
             .from(approvalTaskLinks)
             .innerJoin(approvals, eq(approvals.id, approvalTaskLinks.approvalId))
@@ -412,19 +420,26 @@ export async function loadTaskStory(
         }, names),
     }));
 
+    // The approval rule (lib/approval-access.ts): an ask in someone else's
+    // private chat is left out; the rationale, the note and who decided only
+    // for people who may read its details (everyone else gets the status).
+    const approvalViews = await approvalViewsForPerson(companyId, viewer, approvalRows);
+    const visibleApprovals = approvalRows.filter((row) => approvalViews.get(row.id)?.visible);
+    const readsApproval = (id: string) => approvalViews.get(id)?.mayReadDetails === true;
     const approvalEntries: StoryApprovalEntry[] = [];
-    for (const row of approvalRows) {
+    for (const row of visibleApprovals) {
+        const reader = readsApproval(row.id);
         const base = {
             kind: "approval" as const,
             approvalId: row.id,
             status: row.status,
             actionType: row.actionType,
             requesterName: names.agent(row.requesterAgentId),
-            resolverName: names.member(row.resolverUserId),
+            resolverName: reader ? names.member(row.resolverUserId) : null,
         };
-        approvalEntries.push({ ...base, id: `${row.id}:requested`, at: row.requestedAt.toISOString(), phase: "requested", note: row.rationale?.trim() || null });
+        approvalEntries.push({ ...base, id: `${row.id}:requested`, at: row.requestedAt.toISOString(), phase: "requested", note: reader ? row.rationale?.trim() || null : null });
         if (row.resolvedAt && row.status !== "pending") {
-            approvalEntries.push({ ...base, id: `${row.id}:decided`, at: row.resolvedAt.toISOString(), phase: "decided", note: row.resolutionNote?.trim() || null });
+            approvalEntries.push({ ...base, id: `${row.id}:decided`, at: row.resolvedAt.toISOString(), phase: "decided", note: reader ? row.resolutionNote?.trim() || null : null });
         }
     }
     const pagedApprovals = before ? approvalEntries.filter((entry) => Date.parse(entry.at) < before.getTime()) : approvalEntries;
@@ -463,7 +478,7 @@ export async function loadTaskStory(
             };
         });
 
-    const pendingApprovalTimes = approvalRows
+    const pendingApprovalTimes = visibleApprovals
         .filter((row) => row.status === "pending")
         .map((row) => row.requestedAt.getTime());
     const runEntries: StoryRunEntry[] = runRows
@@ -517,8 +532,8 @@ export async function loadTaskStory(
     const live = await buildLiveView(companyId, running, runVisibility.visible, threads, names, task.state, now, viewer.userId);
 
     // ── Header ──
-    const pending = approvalRows.filter((row) => row.status === "pending").length;
-    const latestDecided = approvalRows
+    const pending = visibleApprovals.filter((row) => row.status === "pending").length;
+    const latestDecided = visibleApprovals
         .filter((row) => row.status !== "pending" && row.resolvedAt)
         .sort((a, b) => (b.resolvedAt?.getTime() ?? 0) - (a.resolvedAt?.getTime() ?? 0))[0];
     const owner = task.assignedAgentId
@@ -547,7 +562,7 @@ export async function loadTaskStory(
             owner,
             approval: {
                 pending,
-                latest: latestDecided ? { status: latestDecided.status, at: latestDecided.resolvedAt!.toISOString(), resolverName: names.member(latestDecided.resolverUserId) } : null,
+                latest: latestDecided ? { status: latestDecided.status, at: latestDecided.resolvedAt!.toISOString(), resolverName: readsApproval(latestDecided.id) ? names.member(latestDecided.resolverUserId) : null } : null,
             },
         },
         entries: page.entries,

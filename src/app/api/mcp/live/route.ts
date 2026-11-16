@@ -56,11 +56,13 @@ export async function GET(req: NextRequest) {
         // A screen shows what its creator may see: a token minted by someone who
         // is now a restricted member carries that member's current agent scope.
         const creatorScope = token.createdByUserId ? await loadMemberScope(token.createdByUserId, token.companyId) : null;
-        let feed = scopeLiveFeed(await buildLiveFeed(token.companyId, { messages, privateChatsUserId, agentThoughts }), getScopedAgentIds(creatorScope));
         // Agents limited to other people (0.20) stay off a screen unless its
         // creator may use them; a token with no known creator shows none of them.
         const creator = token.createdByUserId ? await viewerForUser(token.companyId, token.createdByUserId) : null;
         const notUsable = creator ? (await agentsNotUsableBy(creator)).hidden : new Set((await loadLimitedAgents(token.companyId)).keys());
+        // A restricted screen never shows an approval's rationale or a private-chat ask.
+        const scopedApprovals = Boolean(getScopedAgentIds(creatorScope)) || notUsable.size > 0;
+        let feed = scopeLiveFeed(await buildLiveFeed(token.companyId, { messages, privateChatsUserId, agentThoughts, scopedApprovals }), getScopedAgentIds(creatorScope));
         if (notUsable.size > 0) feed = scopeLiveFeed(feed, feed.agents.map((agent) => agent.id).filter((id) => !notUsable.has(id)));
         const etag = liveFeedEtag(feed);
         const headers = { ETag: etag, "Cache-Control": "no-store" };

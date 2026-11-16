@@ -80,7 +80,8 @@ export const AUDIT_FIELD_ALLOWLIST: Record<AuditTargetType, Record<string, Field
         title: "label", state: "enum", priority: "number", projectId: "id",
         assigneeType: "enum", assigneeId: "id", archived: "bool",
     },
-    approval: { status: "enum", actionType: "enum", taskIds: "ids", projectId: "id" },
+    // decidedAs: why the person could decide it (lib/approval-routing.ts decisionBasis).
+    approval: { status: "enum", actionType: "enum", taskIds: "ids", projectId: "id", decidedAs: "enum" },
     member: {
         name: "label", email: "email", role: "enum", instanceRole: "enum",
         scopeMode: "enum", scopeCustomerIds: "ids", scopeAgentIds: "ids",
@@ -97,6 +98,8 @@ export const AUDIT_FIELD_ALLOWLIST: Record<AuditTargetType, Record<string, Field
         approvalsModule: "bool", viewsModule: "bool", displaysModule: "bool", template: "enum",
         // Settings → Direct chats: several chats per person and agent (lib/multi-chat.ts).
         multiChatEnabled: "bool", multiChatMaxOpen: "number", multiChatIdleArchiveDays: "number",
+        // Settings → Approvals: how many people may decide any approval, and who was added or removed.
+        deciders: "number", decidersAdded: "ids", decidersRemoved: "ids",
     },
     organization: { leaderKind: "enum", leaderId: "id", nodeCount: "number", teamCount: "number" },
     project: {

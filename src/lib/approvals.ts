@@ -126,6 +126,8 @@ type ResolveApprovalInput = {
    * is an action ask and the person may change the agent's permissions.
    */
   alwaysAllow?: boolean;
+  /** Why the person may decide it (lib/approval-routing.ts decisionBasis), kept in the audit as `decidedAs`. */
+  decidedAs?: string | null;
 };
 
 export async function resolveApproval(input: ResolveApprovalInput) {
@@ -229,7 +231,7 @@ export async function resolveApprovalOutcome(input: ResolveApprovalInput): Promi
   }
 
   await recordAudits([
-    { companyId: input.companyId, actor, action: `approval.${input.status}`, target: { type: "approval", id: approval.id }, before: { status: "pending" }, after: { status: input.status, actionType: approval.actionType, taskIds }, meta: { label: linkedTaskRows[0] ? auditTaskTitle(linkedTaskRows[0].task) : null, count: taskIds.length, projectId: approval.projectId, ...(approval.approverKind ? { approverKind: approval.approverKind, escalationLevel: approval.escalationLevel } : {}) } },
+    { companyId: input.companyId, actor, action: `approval.${input.status}`, target: { type: "approval", id: approval.id }, before: { status: "pending" }, after: { status: input.status, actionType: approval.actionType, taskIds }, meta: { label: linkedTaskRows[0] ? auditTaskTitle(linkedTaskRows[0].task) : null, count: taskIds.length, projectId: approval.projectId, ...(approval.approverKind ? { approverKind: approval.approverKind, escalationLevel: approval.escalationLevel } : {}), ...(input.decidedAs && input.resolverUserId ? { decidedAs: input.decidedAs } : {}) } },
     ...(nextState ? linkedTaskRows.flatMap((row) => taskChangeEntries(input.companyId, actor, row.task, { ...row.task, state: nextState })) : []),
   ]);
   await broadcastMcpEvent(input.companyId, {

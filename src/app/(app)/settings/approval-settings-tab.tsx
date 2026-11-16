@@ -11,6 +11,10 @@ import { DEFAULT_ESCALATE_AFTER_MINUTES, MAX_ESCALATE_AFTER_MINUTES, MIN_ESCALAT
 type Settings = {
     escalateAfterMinutes: number;
     teamApprovers: Record<string, ApproverSetting>;
+    /** People granted "Can decide any approval". */
+    deciderUserIds: string[];
+    /** Members who can be granted it (owners and admins always decide). */
+    deciderOptions: { id: string; name: string }[];
     teams: { id: string; title: string }[];
     options: ApproverOptions;
     canEdit: boolean;
@@ -21,7 +25,8 @@ const AUTO: ApproverSetting = { mode: "auto" };
 /**
  * Settings → Approvals (approval routing): how long an approver has before an
  * ask moves up the chain, and who approves for each org chart team. Who
- * approves for one agent is on that agent's Actions tab. Owners and admins.
+ * approves for one agent is on that agent's Actions tab; and who, besides
+ * owners, admins and an agent's owner, may decide any approval. Owners and admins.
  */
 export function ApprovalSettingsTab() {
     const t = useTranslations("settings.approvals");
@@ -30,6 +35,7 @@ export function ApprovalSettingsTab() {
     const [loadError, setLoadError] = useState(false);
     const [minutes, setMinutes] = useState("");
     const [teams, setTeams] = useState<Record<string, ApproverSetting>>({});
+    const [deciders, setDeciders] = useState<string[]>([]);
     const [saving, setSaving] = useState<string | null>(null);
     const [saved, setSaved] = useState(false);
     const [error, setError] = useState<string | null>(null);
@@ -44,6 +50,8 @@ export function ApprovalSettingsTab() {
             const data = (await res.json()) as Settings;
             setSettings(data);
             setMinutes(String(data.escalateAfterMinutes));
+            // People who left are dropped from the form (the server already ignores them).
+            setDeciders(data.deciderUserIds ?? []);
             let anyCleared = false;
             const drafts: Record<string, ApproverSetting> = {};
             for (const [teamId, setting] of Object.entries(data.teamApprovers)) {
@@ -71,6 +79,7 @@ export function ApprovalSettingsTab() {
             const next = data as Settings;
             setSettings(next);
             if (key === "minutes") setMinutes(String(next.escalateAfterMinutes));
+            else if (key === "deciders") setDeciders(next.deciderUserIds ?? []);
             else setTeams((prev) => ({ ...prev, [key]: next.teamApprovers[key] ?? AUTO }));
             setSaved(true);
             setTimeout(() => setSaved(false), 1500);
@@ -85,6 +94,8 @@ export function ApprovalSettingsTab() {
     if (!settings) return <div className="emperor-panel h-40 animate-pulse rounded-3xl" />;
 
     const minutesDirty = minutes.trim() !== String(settings.escalateAfterMinutes);
+    const storedDeciders = settings.deciderUserIds ?? [];
+    const decidersDirty = [...storedDeciders].sort().join(",") !== [...deciders].sort().join(",");
     const disabled = !settings.canEdit || saving !== null;
 
     return (
@@ -142,6 +153,33 @@ export function ApprovalSettingsTab() {
                 )}
                 {cleared && <p className="mt-3 text-xs text-amber-700 dark:text-amber-300">{t("cleared")}</p>}
                 <p className="mt-4 text-xs text-muted-foreground">{t("agentHint")}</p>
+            </article>
+            <article className="emperor-panel rounded-2xl p-4 sm:p-6">
+                <h2 className="text-base font-semibold text-foreground">{t("decidersTitle")}</h2>
+                <p className="text-xs text-muted-foreground">{t("decidersIntro")}</p>
+                {settings.deciderOptions.length === 0 ? (
+                    <p className="mt-4 text-sm text-muted-foreground">{t("decidersNobody")}</p>
+                ) : (
+                    <ul className="mt-4 max-h-64 divide-y divide-border overflow-y-auto rounded-xl border border-border">
+                        {settings.deciderOptions.map((person) => (
+                            <li key={person.id}>
+                                <label className="flex cursor-pointer items-center gap-3 px-3 py-2 text-sm text-foreground hover:bg-accent/60">
+                                    <input type="checkbox" className="h-4 w-4 accent-current" disabled={disabled}
+                                        checked={deciders.includes(person.id)}
+                                        onChange={(e) => setDeciders((prev) => e.target.checked ? [...prev, person.id] : prev.filter((id) => id !== person.id))} />
+                                    <span className="truncate">{person.name}</span>
+                                </label>
+                            </li>
+                        ))}
+                    </ul>
+                )}
+                {decidersDirty && settings.canEdit && (
+                    <div className="mt-2 flex flex-wrap gap-2">
+                        <Button type="button" size="sm" disabled={disabled} onClick={() => void save("deciders", { deciderUserIds: deciders })}>{t("save")}</Button>
+                        <Button type="button" size="sm" variant="outline" disabled={disabled} onClick={() => setDeciders(storedDeciders)}>{t("cancel")}</Button>
+                    </div>
+                )}
+                <p className="mt-4 text-xs text-muted-foreground">{t("decidersHint")}</p>
             </article>
             {error && <p role="alert" className="text-xs text-destructive">{error}</p>}
         </section>

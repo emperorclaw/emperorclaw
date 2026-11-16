@@ -19,8 +19,9 @@ import { computeCompanyHealth, OFFLINE_AFTER_MS, type CompanyHealth } from "@/li
 import { listPendingDecisions } from "@/lib/approvals";
 import { isActionApproval, storedActionArgs } from "@/lib/action-policy-rules";
 import { actionLabel } from "@/lib/action-policy";
-import { currentApproverStep, humanMayDecide, isAssignedToHuman, waitingOnParts } from "@/lib/approval-routing";
-import { approvalNames } from "@/lib/approval-routing-server";
+import { approvalView, currentApproverStep, implicitTaskBlockReason, isAssignedToHuman, waitingOnParts, type ApprovalBlockReason, type ApprovalView, type ApprovalViewer } from "@/lib/approval-routing";
+import { approvalViewsFor, implicitTaskReasons } from "@/lib/approval-access";
+import { approvalNames, approvalThreadPrivacy, approvalViewerFor } from "@/lib/approval-routing-server";
 import { directThreadLink, userMayUseThread } from "@/lib/direct-chat-mode";
 import { isAgentPairThread } from "@/lib/groups";
 import { getScopedAgentIds, getScopedCustomerIds, getScopedProjectIds } from "@/lib/member-scope";
@@ -48,6 +49,11 @@ export interface AttentionAccess {
     canAct: boolean;
     /** Null for unrestricted members. */
     scope: AttentionScope | null;
+    /**
+     * The role guard it came from, when there is one: approvals then follow
+     * the full per-person rule (lib/approval-access.ts), "Can view" projects included.
+     */
+    guard?: GuardContext;
 }
 
 /** Access from the central role guard: role and member scope both read from the DB. */
@@ -57,6 +63,7 @@ export function attentionAccessFromGuard(ctx: GuardContext): AttentionAccess {
         isOwnerOrAdmin: canAdmin(ctx.role),
         canAct: canWrite(ctx.role),
         scope: ctx.scope ? { agentIds: getScopedAgentIds(ctx.scope), customerIds: getScopedCustomerIds(ctx.scope), projectIds: getScopedProjectIds(ctx.scope) } : null,
+        guard: ctx,
     };
 }
 
@@ -362,12 +369,30 @@ export async function buildAttention(companyId: string, access: AttentionAccess,
     // ask (lib/approval-routing.ts) needs only its approvers: someone else's is
     // left out, or (owners and admins) kept apart for the "All approvals" filter.
     const otherApprovals: AttentionEntry[] = [];
-    const viewer = { userId: access.userId ?? "", isOwnerOrAdmin: access.isOwnerOrAdmin };
+    // The decision rule's viewer (owners/admins, "Can decide any approval", the agents they own).
+    const viewer: ApprovalViewer = access.userId
+        ? await approvalViewerFor(companyId, access.userId, access.isOwnerOrAdmin ? "admin" : access.canAct ? "member" : "viewer")
+        : { userId: "", isOwnerOrAdmin: false, mayAct: false };
     const names = decisions.approvals.some(({ approval }) => approval.approverKind) ? await approvalNames(companyId) : null;
+    // Only what this person may actually decide: the one rule (lib/approval-access.ts).
+    // Without a role guard (tests, internal callers) member scope is applied below
+    // (applyAttentionScope) and "Can view" projects are not known.
+    let approvalViews: Map<string, ApprovalView>;
+    let implicitReasons: Map<string, ApprovalBlockReason | null>;
+    if (access.guard && access.userId) {
+        [approvalViews, implicitReasons] = await Promise.all([
+            approvalViewsFor(access.guard, decisions.approvals.map(({ approval }) => approval), viewer),
+            implicitTaskReasons(access.guard, decisions.implicit, viewer),
+        ]);
+    } else {
+        const approvalThreads = await approvalThreadPrivacy(companyId, decisions.approvals.map(({ approval }) => approval.threadId));
+        approvalViews = new Map(decisions.approvals.map(({ approval }) => [approval.id, approvalView(approval, viewer, { thread: approval.threadId ? approvalThreads.get(approval.threadId) ?? null : null, inScope: true })]));
+        implicitReasons = new Map(decisions.implicit.map((task) => [task.id, implicitTaskBlockReason(task, viewer, false)]));
+    }
     for (const { approval, tasks: linked } of decisions.approvals) {
+        if (!approvalViews.get(approval.id)?.mayDecide) continue;
         const mineToDecide = isAssignedToHuman(approval, viewer);
         if (!mineToDecide && !(access.isOwnerOrAdmin && access.userId)) continue;
-        if (!access.isOwnerOrAdmin && !humanMayDecide(approval, viewer)) continue;
         const target = mineToDecide ? entries : otherApprovals;
         const first = linked[0];
         const what = first ? taskTitle(first.inputJson, first.taskType) : approval.rationale ? excerpt(approval.rationale, 48) : humanize(approval.actionType);
@@ -390,8 +415,9 @@ export async function buildAttention(companyId: string, access: AttentionAccess,
             ...context(approval.projectId),
         });
     }
-    // Tasks that require approval and have no request yet.
+    // Tasks that require approval and have no request yet: only for those who could decide the ask.
     for (const t of decisions.implicit) {
+        if (implicitReasons.get(t.id) !== null) continue;
         const key = assigneeKey(t);
         coveredTasks.add(t.id);
         entries.push({

@@ -227,9 +227,11 @@ test("who may decide: approvers reached so far, owners and admins always, legacy
     assert.deepEqual(agentDeciders(atJose), [LEAD, CTO], "escalation adds deciders, never removes them");
     assert.equal(activeApproverSteps(atJose).length, 3);
 
+    // An unrouted ask is no longer open to every member (tests/unit/approval-permissions.test.ts).
     const legacy = { approverKind: null };
-    assert.equal(humanMayDecide(legacy, { userId: LUIS, isOwnerOrAdmin: false }), true);
-    assert.equal(isAssignedToHuman(legacy, { userId: LUIS, isOwnerOrAdmin: false }), true);
+    assert.equal(humanMayDecide(legacy, { userId: LUIS, isOwnerOrAdmin: false }), false);
+    assert.equal(isAssignedToHuman(legacy, { userId: LUIS, isOwnerOrAdmin: false }), false);
+    assert.equal(humanMayDecide(legacy, { userId: ADMIN, isOwnerOrAdmin: true }), true);
 });
 
 test("escalation moves to the next step and skips agents that no longer qualify", () => {

@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { verifyMcpToken, resolveBoundAgentId } from "@/lib/mcp";
 import { ApprovalRequestError, listApprovalsForCompany, requestApprovalForTasks } from "@/lib/approvals";
 import { mcpMayUseProject, mcpMayUseTask, mcpRouteAccess } from "@/lib/mcp-access";
+import { mcpApprovalView, redactApproval } from "@/lib/approval-access";
+import { approvalThreadPrivacy } from "@/lib/approval-routing-server";
 
 export async function GET(req: NextRequest) {
     const auth = await verifyMcpToken(req);
@@ -16,13 +18,15 @@ export async function GET(req: NextRequest) {
 
     const scoped = await mcpRouteAccess(companyId, auth.companyToken!, searchParams.get("agentId"));
     if (scoped.response) return scoped.response;
-    const approvals = await listApprovalsForCompany(companyId);
+    const approvals = (await listApprovalsForCompany(companyId)).filter((approval) =>
+        mcpMayUseProject(scoped.access, approval.projectId)
+        && (!projectId || approval.projectId === projectId) && (!status || approval.status === status));
+    // Per row: private-chat asks stay with their agents; details only for those involved.
+    const threads = await approvalThreadPrivacy(companyId, approvals.map((approval) => approval.threadId));
     return NextResponse.json({
-        approvals: approvals.filter((approval) => {
-            if (!mcpMayUseProject(scoped.access, approval.projectId)) return false;
-            if (projectId && approval.projectId !== projectId) return false;
-            if (status && approval.status !== status) return false;
-            return true;
+        approvals: approvals.flatMap((approval) => {
+            const view = mcpApprovalView(scoped.access, approval, approval.threadId ? threads.get(approval.threadId) ?? null : null);
+            return view.visible ? [view.mayReadDetails ? approval : redactApproval(approval)] : [];
         }),
     });
 }

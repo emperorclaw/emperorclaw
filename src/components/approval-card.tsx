@@ -28,6 +28,8 @@ type CardState = {
     label: string;
     requesterName: string | null;
     mayDecide: boolean;
+    /** Why a pending card is read-only for this person (lib/approval-access.ts ApprovalBlockReason). */
+    blockedReason?: "viewer" | "view_only" | "waiting_on_other" | "not_permitted" | null;
     /** A pending routed ask: who it waits on (lib/approval-routing.ts). */
     waitingOn?: WaitingOn | null;
     /** Decided by a boss agent (decide_approval), not a person. */
@@ -188,6 +190,11 @@ export function ApprovalCard({ approvalId }: { approvalId: string }) {
                             {card.resolutionNote ? <span className="block whitespace-pre-wrap break-words text-foreground">{t("note", { note: card.resolutionNote })}</span> : null}
                         </p>
                     </motion.div>
+                ) : null}
+                {pending && !card.mayDecide && card.blockedReason ? (
+                    <motion.p key="readonly" {...collapse} className="overflow-hidden">
+                        <span className="block pt-2 text-muted-foreground">{t(`blocked.${card.blockedReason}`)}</span>
+                    </motion.p>
                 ) : null}
                 {pending && card.mayDecide ? (
                     <motion.div key="decide" {...collapse} className="overflow-hidden">

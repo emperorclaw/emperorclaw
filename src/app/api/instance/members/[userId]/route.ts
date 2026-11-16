@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { auditDeciderPruned, pruneApprovalDeciderIn } from "@/lib/approval-routing-server";
 import { requireRole, AuthError } from "@/lib/roles";
 import { db } from "@/db";
 import { agentAccess, agents, companyMembers, companyTokens, resourceMemberships, sessions, tasks, users } from "@/db/schema";
@@ -126,17 +127,22 @@ export async function PUT(
             }
         }
 
-        // Update company role
+        // Update company role. The "Can decide any approval" grant is for
+        // member-role people only: it goes in the same transaction.
+        let deciderPruned = false;
         if (role) {
-            await db
-                .update(companyMembers)
-                .set({ role })
-                .where(
-                    and(
-                        eq(companyMembers.userId, userId),
-                        eq(companyMembers.companyId, ctx.companyId)
-                    )
-                );
+            deciderPruned = await db.transaction(async (tx) => {
+                await tx
+                    .update(companyMembers)
+                    .set({ role })
+                    .where(
+                        and(
+                            eq(companyMembers.userId, userId),
+                            eq(companyMembers.companyId, ctx.companyId)
+                        )
+                    );
+                return role !== "member" ? pruneApprovalDeciderIn(tx, ctx.companyId, userId) : false;
+            });
         }
 
         // Update instance role
@@ -146,6 +152,8 @@ export async function PUT(
                 .set({ instanceRole })
                 .where(eq(users.id, userId));
         }
+        // The "Can decide any approval" grant is for member-role people only.
+        if (deciderPruned) await auditDeciderPruned(ctx.companyId, userId, ctx.userId);
         if ((role && role !== target.role) || instanceRole) await recordMemberAudit(ctx.companyId, humanActor(ctx.userId), "member.role_changed", userId, { role: target.role }, { role: role || target.role, instanceRole: instanceRole || undefined });
 
         // Update profile fields
@@ -236,6 +244,7 @@ export async function DELETE(
         // Removing a person from the company also releases work assigned to
         // that membership. The FK provides a final safety net, while doing it
         // explicitly keeps updated_at accurate for dashboards and sync.
+        let deciderPruned = false;
         await db.transaction(async (tx) => {
             const [membership] = await tx.select({ id: companyMembers.id })
                 .from(companyMembers)
@@ -277,7 +286,10 @@ export async function DELETE(
             // Sign them out everywhere: an open browser session must not keep
             // reaching company data after removal.
             await tx.delete(sessions).where(eq(sessions.userId, userId));
+            // Off the "Can decide any approval" list, with the removal.
+            deciderPruned = await pruneApprovalDeciderIn(tx, ctx.companyId, userId);
         });
+        if (deciderPruned) await auditDeciderPruned(ctx.companyId, userId, ctx.userId);
         await recordMemberAudit(ctx.companyId, humanActor(ctx.userId), "member.removed", userId, { role: targetMembership.role }, null);
 
         return NextResponse.json({ success: true }, { status: 200 });

@@ -272,7 +272,12 @@ maybe("a person's assignment and approval are markers on the receiving agent's r
     // A restricted member without Nova in scope sees no trace of the assignment.
     const scoped = await loadWorkTimeline(t.companyId, t.scoped, window(t.now));
     assert.ok(!JSON.stringify(scoped).includes(t.nova.id));
-    assert.ok(scoped.events.some((e) => e.label === "Approved by Other Person" && e.actorId === `agent:${t.atlas.id}`));
+    // The decision is still drawn, but who decided is named only to people who may read
+    // the approval's details (lib/approval-access.ts): this member has no decide basis.
+    const scopedDecided = scoped.events.find((e) => e.kind === "approval_decided" && e.actorId === `agent:${t.atlas.id}`);
+    assert.ok(scopedDecided);
+    assert.equal(scopedDecided.byName, null);
+    assert.ok(!JSON.stringify(scoped).includes("Other Person"));
 });
 
 maybe("a board task worked in another person's private chat: no bar, but its markers follow task visibility", async () => {

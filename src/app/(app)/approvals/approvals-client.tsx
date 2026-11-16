@@ -39,6 +39,12 @@ export type ApprovalItem = {
     linkedTasks: { id: string; projectId: string; title: string }[];
     projectName: string | null;
     customerName: string | null;
+    /** False: a pending ask this person sees but may not decide (read-only; the API answers 403). */
+    canDecide?: boolean;
+    /** Why it is read-only (lib/approval-access.ts ApprovalBlockReason). */
+    blockedReason?: "viewer" | "view_only" | "waiting_on_other" | "not_permitted" | null;
+    /** Label only: this person may not read its details (lib/approval-routing.ts approvalView). */
+    redacted?: boolean;
 };
 
 const ACTION_TYPES = new Set(["task_done", "send_email", "spend", "publish", "delete"]);
@@ -128,10 +134,13 @@ function PendingCard({ item, onDecide, busy }: { item: ApprovalItem; onDecide: (
                         {item.waitingOn && (
                             <span>· {item.waitingOn.kind === "agent" ? t("waitingOnAgent", { name: item.waitingOn.names[0] ?? t("anAgent") })
                                 : item.waitingOn.kind === "users" ? t("waitingOnPeople", { names: item.waitingOn.names.join(", ") })
-                                    : t("waitingOnAdmins")}</span>
+                                    : item.waitingOn.kind === "hidden" ? t("waitingOnApprover")
+                                        : t("waitingOnAdmins")}</span>
                         )}
                     </div>
-                    {item.task ? (
+                    {item.redacted ? (
+                        <p className="mt-1.5 text-base font-semibold text-foreground">{t("redactedTitle", { action })}</p>
+                    ) : item.task ? (
                         <Link href={taskHref(item.task)} className="group mt-1.5 inline-flex max-w-full items-center gap-1.5 text-base font-semibold text-zinc-100 hover:text-zinc-50">
                             <span className="truncate">{item.task.title}</span>
                             <IconArrowRight className="h-4 w-4 shrink-0 text-zinc-600 transition-transform group-hover:translate-x-0.5 group-hover:text-zinc-300" />
@@ -151,7 +160,9 @@ function PendingCard({ item, onDecide, busy }: { item: ApprovalItem; onDecide: (
                             </ul>
                         </div>
                     )}
-                    {item.task ? (
+                    {item.redacted ? (
+                        <p className="mt-0.5 text-xs text-muted-foreground">{item.projectName ? `${item.projectName} · ` : ""}{t("redactedHint")}</p>
+                    ) : item.task ? (
                         <div className="mt-0.5 flex flex-wrap gap-x-3 text-xs text-zinc-500">
                             {item.projectName && <span>{item.projectName}</span>}
                             {item.customerName && <span>· {item.customerName}</span>}
@@ -163,7 +174,7 @@ function PendingCard({ item, onDecide, busy }: { item: ApprovalItem; onDecide: (
                             {t("askFirstHint")}
                         </p>
                     )}
-                    {item.action ? (
+                    {item.redacted ? null : item.action ? (
                         <div className="mt-3 rounded-xl border border-border bg-muted/40 px-3.5 py-2.5">
                             <ActionArgs args={item.action.args} />
                         </div>
@@ -182,7 +193,11 @@ function PendingCard({ item, onDecide, busy }: { item: ApprovalItem; onDecide: (
                     )}
                 </div>
             </div>
-            {confirming ? (
+            {item.canDecide === false ? (
+                <p className="mt-4 border-t border-zinc-800/80 pt-3.5 text-xs text-muted-foreground">
+                    <span className="font-medium text-zinc-300">{t("readOnly")}</span> {t(`blocked.${item.blockedReason ?? "not_permitted"}`)}
+                </p>
+            ) : confirming ? (
                 <div role="alertdialog" aria-label={t("staleLabel")} className="mt-4 rounded-xl border border-amber-500/30 bg-amber-500/5 p-3.5">
                     <p className="text-sm text-amber-100">{t("staleQuestion", { days: confirmDays, name: requester })}</p>
                     <div className="mt-2.5 flex flex-wrap items-center gap-2">
@@ -237,7 +252,7 @@ function ResolvedRow({ ref, item }: { ref?: React.Ref<HTMLElement>; item: Approv
     const approved = item.status === "approved";
     const dismissed = item.status === "dismissed";
     const label = approved ? t("status.approved") : dismissed ? t("status.dismissed") : item.status === "expired" ? t("status.expired") : t("status.rejected");
-    const title = item.task?.title ?? t("resolvedTitle", { name: item.requester?.name ?? t("anAgent"), action: actionLabel(item) });
+    const title = item.redacted ? t("redactedTitle", { action: actionLabel(item) }) : item.task?.title ?? t("resolvedTitle", { name: item.requester?.name ?? t("anAgent"), action: actionLabel(item) });
     const href = item.task ? taskHref(item.task) : item.requester ? `/agents?agent=${item.requester.id}` : "/approvals";
     return (
         <MotionItem ref={ref} as="li">
@@ -272,7 +287,10 @@ export default function ApprovalsClient({ items }: { items: ApprovalItem[] }) {
             i.action?.label, ...(i.action?.args.map((a) => `${a.field} ${a.value}`) ?? [])]
             .filter(Boolean).join(" ").toLowerCase().includes(q));
     }, [items, query]);
-    const pending = filtered.filter((i) => i.status === "pending").sort((a, b) => a.requestedAt.localeCompare(b.requestedAt));
+    const open = filtered.filter((i) => i.status === "pending").sort((a, b) => a.requestedAt.localeCompare(b.requestedAt));
+    const pending = open.filter((i) => i.canDecide !== false);
+    // Open requests this person sees but may not decide: listed read-only, with the reason.
+    const readOnly = open.filter((i) => i.canDecide === false);
     const resolved = filtered.filter((i) => i.status !== "pending").sort((a, b) => (b.resolvedAt ?? "").localeCompare(a.resolvedAt ?? "")).slice(0, 30);
 
     const decide = async (item: ApprovalItem, decision: Decision, note: string) => {
@@ -359,6 +377,14 @@ export default function ApprovalsClient({ items }: { items: ApprovalItem[] }) {
                     </MotionItem>
                 ) : pending.map((item) => <MotionItem key={item.key}><PendingCard item={item} onDecide={decide} busy={busyKey === item.key} /></MotionItem>)}
                 </MotionList>
+                {readOnly.length > 0 && (
+                    <>
+                        <h2 className="pt-3 text-sm font-semibold text-zinc-300">{t("othersToDecide")} <span className="ml-1 rounded-full bg-zinc-800 px-2 py-0.5 text-xs tabular-nums text-zinc-400">{readOnly.length}</span></h2>
+                        <MotionList>
+                            {readOnly.map((item) => <MotionItem key={item.key}><PendingCard item={item} onDecide={decide} busy={false} /></MotionItem>)}
+                        </MotionList>
+                    </>
+                )}
             </section>
 
             <section className="emperor-panel h-fit rounded-2xl p-4">

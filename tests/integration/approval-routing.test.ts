@@ -373,13 +373,15 @@ maybe("a company's own escalation time applies, and only owners and admins chang
     assert.equal(next.approverAgentId, w.boss.id);
 });
 
-maybe("an ask from before routing keeps the old rules: owners and admins notified, any member decides", async () => {
+maybe("an ask from before routing is decided by owners and admins, no longer by any member (tests/integration/approval-permissions.test.ts)", async () => {
     const w = await world();
     const task = await w.newTask("Legacy");
     const [legacy] = await w.db.insert(w.schema.approvals).values({ companyId: w.companyId, projectId: w.project.id, requesterAgentId: w.qa.id, rationale: "old" }).returning();
     await w.db.insert(w.schema.approvalTaskLinks).values({ companyId: w.companyId, approvalId: legacy.id, taskId: task.id });
     const asLuis = await patch(w.luis, legacy.id, "approved");
-    assert.equal(asLuis.status, 200, asLuis.text);
+    assert.equal(asLuis.status, 403, asLuis.text);
+    const asOwner = await patch(w.owner, legacy.id, "approved");
+    assert.equal(asOwner.status, 200, asOwner.text);
 });
 
 maybe("REST twins for runtimes without MCP tools: GET /approvals/pending and POST /approvals/{id}/decide", async () => {

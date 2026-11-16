@@ -1369,7 +1369,11 @@
       "noTeams": "组织架构中还没有团队。请在“智能体 → 组织”中添加团队。",
       "teamAuto": "自动（各智能体的上级）",
       "agentHint": "要为单个智能体选择审批人，请打开该智能体的“操作”标签页。",
-      "cleared": "已移除的审批人已清除。逐个保存团队以保留此更改。"
+      "cleared": "已移除的审批人已清除。逐个保存团队以保留此更改。",
+      "decidersTitle": "谁可以决定审批",
+      "decidersIntro": "所有者、管理员以及智能体的所有者始终可以决定其请求，每个请求的审批人也可以决定。你可以选择其他成员，让他们决定自己能看到的任何审批。",
+      "decidersNobody": "目前还没有可选择的成员。",
+      "decidersHint": "其他人只能以只读方式查看审批请求，并会看到无法操作的原因。查看者永远不能决定审批。"
     }
   },
   "runtimeHosts": {
@@ -3387,7 +3391,18 @@
     "waitingOnPeople": "等待 {names}",
     "waitingOnAdmins": "等待所有者或管理员",
     "alreadyDecidedBy": "已由 {name} 决定——你的决策未生效。",
-    "resolvedByAgent": "{label}：{name}（智能体）"
+    "resolvedByAgent": "{label}：{name}（智能体）",
+    "readOnly": "只读。",
+    "othersToDecide": "等待他人决定",
+    "waitingOnApprover": "等待审批人",
+    "blocked": {
+      "viewer": "你只有查看权限，无法决定此请求。",
+      "view_only": "你只能查看此项目，无法决定此请求。",
+      "waiting_on_other": "只有指定的审批人、所有者或管理员可以决定此请求。",
+      "not_permitted": "只有所有者、管理员、该智能体的所有者或被允许决定审批的人可以决定此请求。"
+    },
+    "redactedTitle": "审批请求：{action}",
+    "redactedHint": "详细信息只向可以决定它的人显示。"
   },
   "approvalCard": {
     "title": "审批请求",
@@ -3420,7 +3435,13 @@
     "waitingOnAdmins": "所有者或管理员",
     "alreadyDecidedBy": "已由 {name} 决定。",
     "decidedByAgent": "{status}（{name}，智能体）",
-    "waitingOnApprover": "一位审批人"
+    "waitingOnApprover": "一位审批人",
+    "blocked": {
+      "viewer": "你只有查看权限，无法决定此请求。",
+      "view_only": "你只能查看此项目，无法决定此请求。",
+      "waiting_on_other": "只有指定的审批人、所有者或管理员可以决定此请求。",
+      "not_permitted": "只有所有者、管理员、该智能体的所有者或被允许决定审批的人可以决定此请求。"
+    }
   },
   "artifacts": {
     "preview": {

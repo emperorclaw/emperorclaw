@@ -1,9 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { AuthError, requireRole } from "@/lib/roles";
-import { getApprovalDetail, resolveApprovalOutcome } from "@/lib/approvals";
+import { resolveApprovalOutcome } from "@/lib/approvals";
 import { companyRouteAccess } from "@/lib/company-access";
-import { memberMaySeeApproval, memberVisibleProjectIds } from "@/lib/member-scope";
-import { alreadyDecidedResponse as alreadyDecided, alwaysAllowRefusal, approvalDecisionAccess } from "@/lib/approval-access";
+import { alreadyDecidedResponse as alreadyDecided, alwaysAllowRefusal, approvalDecisionAccess, redactApproval } from "@/lib/approval-access";
 
 export async function GET(
     _req: NextRequest,
@@ -11,15 +10,17 @@ export async function GET(
 ) {
     const access = await companyRouteAccess("viewer");
     if (access.response) return access.response;
-    const companyId = access.ctx.companyId;
 
     const { id } = await params;
-    const detail = await getApprovalDetail(companyId, id);
-    if (!detail || !memberMaySeeApproval(access.ctx.scope, await memberVisibleProjectIds(companyId, access.ctx.scope), detail.approval)) {
-        return NextResponse.json({ error: "Approval not found" }, { status: 404 });
-    }
-
-    return NextResponse.json(detail);
+    // The one rule (lib/approval-access.ts): 404 when not visible, details only for readers.
+    const { detail, view } = await approvalDecisionAccess(access.ctx, id);
+    if (!detail || !view) return NextResponse.json({ error: "Approval not found" }, { status: 404 });
+    if (view.mayReadDetails) return NextResponse.json(detail);
+    return NextResponse.json({
+        approval: redactApproval(detail.approval),
+        // Ids only: task titles and descriptions are details.
+        tasks: detail.tasks.map((task) => ({ id: task.id, projectId: task.projectId })),
+    });
 }
 
 export async function PATCH(
@@ -30,7 +31,8 @@ export async function PATCH(
     try {
         ctx = await requireRole("member")();
     } catch (error) {
-        if (error instanceof AuthError) return NextResponse.json({ error: error.message }, { status: error.statusCode });
+        // A signed-in viewer is refused here: the same reason the decision rule gives (lib/approval-access.ts).
+        if (error instanceof AuthError) return NextResponse.json({ error: error.message, ...(error.statusCode === 403 ? { reason: "viewer" } : {}) }, { status: error.statusCode });
         throw error;
     }
 
@@ -39,7 +41,7 @@ export async function PATCH(
         // A restricted member decides only approvals on projects they can see,
         // and never with only "Can view" on that project (0.20). The chat
         // card's details apply the same rule (lib/approval-access.ts).
-        const { detail, denied } = await approvalDecisionAccess(ctx, id);
+        const { detail, denied, basis } = await approvalDecisionAccess(ctx, id);
         if (denied) return denied;
         if (!detail) return NextResponse.json({ error: "Approval not found" }, { status: 404 });
         // First decision wins: the loser learns who decided.
@@ -67,6 +69,7 @@ export async function PATCH(
             resolverUserId: ctx.userId,
             status,
             resolutionNote: resolutionNote || null,
+            decidedAs: basis ?? null,
             alwaysAllow,
         });
 

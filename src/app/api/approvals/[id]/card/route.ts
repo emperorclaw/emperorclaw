@@ -24,13 +24,15 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
     const companyId = access.ctx.companyId;
     const { id } = await params;
 
-    const { detail, denied, notApprover } = await approvalDecisionAccess(access.ctx, id);
-    if (!detail) return NextResponse.json({ error: "Approval not found" }, { status: 404 });
+    const { detail, view } = await approvalDecisionAccess(access.ctx, id);
+    if (!detail || !view) return NextResponse.json({ error: "Approval not found" }, { status: 404 });
     const { approval } = detail;
-    const mayDecide = !denied;
-    // A member who may act on the ask but is not its approver still reads its
-    // details (as before routing); only the decision is someone else's.
-    const mayReadDetails = mayDecide || notApprover === true;
+    const pending = approval.status === "pending";
+    // The one rule (lib/approval-routing.ts approvalView). On a decided card,
+    // "mayDecide" keeps meaning "may read who decided".
+    const mayReadDetails = view.mayReadDetails;
+    const mayDecide = pending ? view.mayDecide : mayReadDetails;
+    const reason = view.reason;
 
     const [requester] = approval.requesterAgentId
         ? await db.select({ name: agents.name }).from(agents).where(and(eq(agents.id, approval.requesterAgentId), eq(agents.companyId, companyId))).limit(1)
@@ -52,6 +54,8 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
             requestedAt: approval.requestedAt,
             resolvedAt: approval.resolvedAt,
             mayDecide,
+            // Why a pending card is read-only for this person (components/approval-card.tsx).
+            blockedReason: pending && !mayDecide ? reason ?? "not_permitted" : null,
             // Approval routing: who the pending ask waits on ("Architect (agent)", "Jose, Luis"),
             // named only to people who may decide it; others see "Waiting on an approver".
             waitingOn: approval.status !== "pending" || !approval.approverKind ? null

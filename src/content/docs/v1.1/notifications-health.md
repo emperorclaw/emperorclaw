@@ -86,3 +86,22 @@ Agents ask before they spend money, send anything outside the company, publish, 
 - Sending back returns the task to **in progress** with your note.
 
 A decision is final: approving or rejecting twice changes nothing.
+
+### Who can decide
+
+Only some people can approve, send back or dismiss a request. Emperor checks this on the server for every decision (the Approvals page, the Inbox, chat cards and the API), so hiding a button is never the only guard:
+
+- **Owners and admins** can decide any request.
+- **The agent's owner** (the person set as its owner) can decide that agent's requests. This is by design: the owner is accountable for what their agent does. **Always allow** (approving and also changing the agent's permission) stays with owners and admins.
+- **People allowed to decide approvals**: owners and admins pick them in **Settings → Approvals → Who can decide approvals**. They can decide any request they can see. Viewers can never be picked.
+- **The request's approvers**: when a request is routed (an agent's own approvers, its team's approvers, its manager on the org chart), the people it waits on can decide it.
+
+Everyone else sees open requests read-only, with the reason they can't act ("You have view-only access", "You can only view this project", "Only its approvers, an owner or an admin can decide this request", or "Only owners, admins, the agent's owner or people allowed to decide approvals can decide this request"). A restricted member with only **Can view** on a project never decides its requests, even for an agent they own. A decision through the API by someone who may not decide it is refused with `403` and a `reason` (`viewer`, `view_only`, `waiting_on_other` or `not_permitted`), also after the request was decided.
+
+**Details.** The rationale, the action's arguments, who it is routed to, the decision note, who decided and the task titles are shown only to people who may decide the request (or could have, once it is decided), and to members a routed request is waiting on someone else for. Everyone else, on every page and in the API (`GET /api/approvals`, `GET /api/approvals/{id}`), gets only what it is: the action, who asked, its status, when, and its project.
+
+**Private chats.** A request whose card was posted in someone's private chat with an agent is visible only to that chat's owner and to people who may decide it (owners, admins, the agent's owner, people allowed to decide approvals, its approvers). Anyone else gets `404`. The chat's owner sees it even without the right to decide it, read-only.
+
+A task marked **requires approval** with no request yet follows the same rule: owners, admins, people allowed to decide approvals and the owner of the task's agent decide it. Removing a person from the company, or making them an owner, admin or viewer, takes them off the **Who can decide approvals** list.
+
+Every decision records who decided (`resolverUserId`, or the deciding agent) and, in the activity log, on what basis (`decidedAs`: `admin`, `decider`, `agent_owner` or `approver`). Changes to the list record who was added and removed.

@@ -1,25 +1,27 @@
 import { NextResponse } from "next/server";
 import { listPendingDecisions } from "@/lib/approvals";
 import { companyRouteAccess } from "@/lib/company-access";
-import { memberMaySeeApproval, memberVisibleProjectIds } from "@/lib/member-scope";
 import { isAssignedToHuman } from "@/lib/approval-routing";
-import { canAdmin } from "@/lib/role-matrix";
+import { approvalViewerFor } from "@/lib/approval-routing-server";
+import { approvalViewsFor, implicitTaskReasons } from "@/lib/approval-access";
 
 /**
  * Decisions waiting on this person, for the sidebar badge (same definition as
- * the Approvals page): a routed ask counts only for its approvers.
+ * the Approvals page): a routed ask counts only for its approvers, and only
+ * what they may actually decide (never a "Can view" project's, a private chat
+ * they have no part in, or a task they could not approve).
  */
 export async function GET() {
     const access = await companyRouteAccess("viewer");
     if (access.response) return access.response;
-    const companyId = access.ctx.companyId;
-    const decisions = await listPendingDecisions(companyId);
-    const viewer = { userId: access.ctx.userId, isOwnerOrAdmin: canAdmin(access.ctx.role) };
-    const mine = decisions.approvals.filter(({ approval }) => isAssignedToHuman(approval, viewer));
-    const visible = await memberVisibleProjectIds(companyId, access.ctx.scope);
-    if (!visible) return NextResponse.json({ count: mine.length + decisions.implicit.length });
-    // A restricted member's badge counts only decisions on their projects.
-    const count = mine.filter(({ approval }) => memberMaySeeApproval(access.ctx.scope, visible, approval)).length
-        + decisions.implicit.filter((task) => visible.has(task.projectId)).length;
-    return NextResponse.json({ count });
+    const { ctx } = access;
+    const decisions = await listPendingDecisions(ctx.companyId);
+    const viewer = await approvalViewerFor(ctx.companyId, ctx.userId, ctx.role);
+    const [views, implicit] = await Promise.all([
+        approvalViewsFor(ctx, decisions.approvals.map(({ approval }) => approval), viewer),
+        implicitTaskReasons(ctx, decisions.implicit, viewer),
+    ]);
+    const approvals = decisions.approvals.filter(({ approval }) => views.get(approval.id)?.mayDecide && isAssignedToHuman(approval, viewer)).length;
+    const tasks = decisions.implicit.filter((task) => implicit.get(task.id) === null).length;
+    return NextResponse.json({ count: approvals + tasks });
 }

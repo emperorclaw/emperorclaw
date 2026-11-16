@@ -6,7 +6,8 @@
 
 import { and, eq, inArray, isNull } from "drizzle-orm";
 import { db } from "@/db";
-import { agents, approvals, companies, companyMembers, tasks, users } from "@/db/schema";
+import { agents, approvals, companies, companyMembers, messageThreads, tasks, users } from "@/db/schema";
+import { canAdmin, roleGte, type Role } from "./role-matrix";
 import { isActionApproval } from "./action-policy-rules";
 import { actionLabel, isActionKey, resolveActionMode } from "./action-policy";
 import { memberMaySeeApproval, memberVisibleProjectIds, resolveMemberScope } from "./member-scope";
@@ -20,7 +21,7 @@ import { quotedPromptText, sanitizePromptText } from "./task-wake";
 import {
     agentsAbove, approvalActionKey, approverColumns, chainText, currentApproverStep, isExplicitAgentStep, mayAgentApprove,
     normalizeApproverSetting, normalizeCompanyApprovalSettings, resolveApproverChain, waitingOnParts, waitingOnTextForAgent,
-    type AgentAuthority, type ApproverSetting, type ApproverStep, type AuthorityRefusal, type ChartLookup, type ChartRef, type ResolvedChain, type WaitingOn,
+    type AgentAuthority, type ApprovalThreadPrivacy, type ApprovalViewer, type ApproverSetting, type ApproverStep, type AuthorityRefusal, type ChartLookup, type ChartRef, type ResolvedChain, type WaitingOn,
 } from "./approval-routing";
 
 type ApprovalRow = typeof approvals.$inferSelect;
@@ -320,7 +321,9 @@ export async function notifyApprovalApprovers(companyId: string, approval: Appro
         const level = approval.escalationLevel ?? 0;
         const dedupeKey = level > 0 ? `approval-escalated:${approval.id}:${level}` : `approval:${approval.id}`;
         if (!step || step.kind !== "agent") {
-            const recipients = step?.kind === "users" ? step.userIds : await companyAdminIds(companyId);
+            // Only people who can still decide it (and so see it, even in a private chat):
+            // a routed approver demoted to viewer or removed since is left out.
+            const recipients = step?.kind === "users" ? await currentApproverUserIds(companyId, step.userIds) : await companyAdminIds(companyId);
             await notify(companyId, recipients, {
                 kind: "approval",
                 title: options.escalatedFrom !== undefined ? `Escalated to you: ${requesterName} requests approval` : `${requesterName} requests approval`,
@@ -337,6 +340,14 @@ export async function notifyApprovalApprovers(companyId: string, approval: Appro
     } catch (error) {
         console.warn("[approvals] could not tell the approver:", error instanceof Error ? error.message : error);
     }
+}
+
+/** Of these people, those still in the company with a role that decides (never viewers). */
+async function currentApproverUserIds(companyId: string, userIds: readonly string[]): Promise<string[]> {
+    if (!userIds.length) return [];
+    const rows = await db.select({ userId: companyMembers.userId }).from(companyMembers).innerJoin(users, eq(users.id, companyMembers.userId))
+        .where(and(eq(companyMembers.companyId, companyId), inArray(companyMembers.userId, [...userIds]), inArray(companyMembers.role, [...APPROVER_ROLES]), isNull(users.deletedAt)));
+    return rows.map((row) => row.userId);
 }
 
 async function wakeAgentApprover(companyId: string, approval: ApprovalRow, agentId: string, ctx: { requesterName: string; names: Awaited<ReturnType<typeof approvalNames>>; escalatedFrom: string | null }) {
@@ -399,6 +410,14 @@ export class ApprovalSettingsError extends Error {
     }
 }
 
+/** Members who can be granted "Can decide any approval" (owners and admins always can). */
+export async function deciderPickerOptions(companyId: string): Promise<{ id: string; name: string }[]> {
+    const rows = await db.select({ id: users.id, name: users.displayName, email: users.email }).from(companyMembers)
+        .innerJoin(users, eq(users.id, companyMembers.userId))
+        .where(and(eq(companyMembers.companyId, companyId), isNull(users.deletedAt), inArray(companyMembers.role, [...DECIDER_ROLES])));
+    return rows.map((p) => ({ id: p.id, name: p.name?.trim() || p.email })).sort((a, b) => a.name.localeCompare(b.name));
+}
+
 /** Who can be picked as an approver: live agents and company members. */
 export async function approverPickerOptions(companyId: string): Promise<{ agents: { id: string; name: string }[]; people: { id: string; name: string }[] }> {
     const [agentRows, peopleRows] = await Promise.all([
@@ -447,7 +466,54 @@ export async function saveAgentApprovers(companyId: string, agentId: string, set
 /** The company's approval settings (escalation time, team approvers). */
 export async function loadCompanyApprovalSettings(companyId: string) {
     const [company] = await db.select({ approvalSettings: companies.approvalSettingsJson }).from(companies).where(eq(companies.id, companyId)).limit(1);
-    return normalizeCompanyApprovalSettings(company?.approvalSettings);
+    const settings = normalizeCompanyApprovalSettings(company?.approvalSettings);
+    // Only people who may still decide count (a removed or demoted person is
+    // pruned on removal, but never trust the stored list alone).
+    settings.deciderUserIds = await eligibleDeciders(db, companyId, settings.deciderUserIds);
+    return settings;
+}
+
+/** Owners and admins always decide; the "Can decide any approval" grant is for members. */
+export const DECIDER_ROLES = ["member"] as const;
+
+/** Of these ids, the current members (role member, not deleted) who may hold the grant. */
+async function eligibleDeciders(runner: Pick<typeof db, "select">, companyId: string, userIds: readonly string[]): Promise<string[]> {
+    if (!userIds.length) return [];
+    const rows = await runner.select({ userId: companyMembers.userId }).from(companyMembers).innerJoin(users, eq(users.id, companyMembers.userId))
+        .where(and(eq(companyMembers.companyId, companyId), inArray(companyMembers.userId, [...userIds]), inArray(companyMembers.role, [...DECIDER_ROLES]), isNull(users.deletedAt)));
+    const ok = new Set(rows.map((row) => row.userId));
+    return userIds.filter((id) => ok.has(id));
+}
+
+/**
+ * Drop a person from the company's "Can decide any approval" list (they left
+ * the company, or are no longer a member-role person). Call after the
+ * membership change; a no-op when they were not on it.
+ */
+export async function pruneApprovalDecider(companyId: string, userId: string, actorUserId: string | null = null): Promise<void> {
+    const removed = await db.transaction((tx) => pruneApprovalDeciderIn(tx, companyId, userId));
+    if (removed) await auditDeciderPruned(companyId, userId, actorUserId);
+}
+
+type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
+
+/**
+ * The prune itself, in the caller's transaction (the membership change), so
+ * the two commit or fail together. Returns whether the person was on the
+ * list; audit it after the commit with auditDeciderPruned.
+ */
+export async function pruneApprovalDeciderIn(tx: Tx, companyId: string, userId: string): Promise<boolean> {
+    const [row] = await tx.select({ approvalSettings: companies.approvalSettingsJson }).from(companies).where(eq(companies.id, companyId)).for("update");
+    const raw = (row?.approvalSettings ?? {}) as Record<string, unknown>;
+    const current = normalizeCompanyApprovalSettings(raw).deciderUserIds;
+    if (!current.includes(userId)) return false;
+    await tx.update(companies).set({ approvalSettingsJson: { ...raw, deciderUserIds: current.filter((id) => id !== userId) } }).where(eq(companies.id, companyId));
+    return true;
+}
+
+export async function auditDeciderPruned(companyId: string, userId: string, actorUserId: string | null): Promise<void> {
+    const { humanActor, recordAudits } = await import("./audit");
+    await recordAudits([{ companyId, actor: actorUserId ? humanActor(actorUserId) : { type: "system", id: null }, action: "company.settings_changed", target: { type: "company", id: companyId }, before: {}, after: { decidersRemoved: [userId] }, meta: { setting: "approvals" } }]);
 }
 
 /** The chart teams an agent is in (member, or leader of the team node). */
@@ -497,7 +563,7 @@ export async function chartTeams(companyId: string): Promise<{ id: string; title
  * Change the escalation time and/or team approvers ({ teamId: setting | null };
  * null or "auto" removes the team's setting). Owners and admins (the route checks).
  */
-export async function saveCompanyApprovalSettings(companyId: string, input: { escalateAfterMinutes?: number; teamApprovers?: Record<string, ApproverSetting | null> }, actorUserId: string) {
+export async function saveCompanyApprovalSettings(companyId: string, input: { escalateAfterMinutes?: number; teamApprovers?: Record<string, ApproverSetting | null>; deciderUserIds?: string[] }, actorUserId: string) {
     // Validate first (outside the lock), then read-modify-write under a row
     // lock, so two admins saving different teams never lose each other's change.
     if (input.teamApprovers) {
@@ -508,10 +574,21 @@ export async function saveCompanyApprovalSettings(companyId: string, input: { es
             if (setting?.mode === "agent") await assertTeamNotMutual(companyId, teamId, setting.agentId);
         }
     }
+
     const { current, next } = await db.transaction(async (tx) => {
         const [row] = await tx.select({ approvalSettings: companies.approvalSettingsJson }).from(companies).where(eq(companies.id, companyId)).for("update");
         const current = normalizeCompanyApprovalSettings(row?.approvalSettings);
-        const next = { escalateAfterMinutes: input.escalateAfterMinutes ?? current.escalateAfterMinutes, teamApprovers: { ...current.teamApprovers } };
+        // Checked under the row lock, against the members as they are now.
+        if (input.deciderUserIds?.length) {
+            const eligible = await eligibleDeciders(tx, companyId, input.deciderUserIds);
+            if (eligible.length !== input.deciderUserIds.length) throw new ApprovalSettingsError("Only members (not owners, admins or viewers) can be allowed to decide approvals: owners and admins always can.", 400);
+        }
+        current.deciderUserIds = await eligibleDeciders(tx, companyId, current.deciderUserIds);
+        const next = {
+            escalateAfterMinutes: input.escalateAfterMinutes ?? current.escalateAfterMinutes,
+            teamApprovers: { ...current.teamApprovers },
+            deciderUserIds: input.deciderUserIds ?? current.deciderUserIds,
+        };
         for (const [teamId, setting] of Object.entries(input.teamApprovers ?? {})) {
             if (!setting || setting.mode === "auto") delete next.teamApprovers[teamId];
             else next.teamApprovers[teamId] = setting;
@@ -520,6 +597,34 @@ export async function saveCompanyApprovalSettings(companyId: string, input: { es
         return { current, next };
     });
     const { humanActor, recordAudits } = await import("./audit");
-    await recordAudits([{ companyId, actor: humanActor(actorUserId), action: "company.settings_changed", target: { type: "company", id: companyId }, before: { escalateAfterMinutes: current.escalateAfterMinutes, teamApprovers: Object.keys(current.teamApprovers).length }, after: { escalateAfterMinutes: next.escalateAfterMinutes, teamApprovers: Object.keys(next.teamApprovers).length }, meta: { setting: "approvals" } }]);
+    await recordAudits([{ companyId, actor: humanActor(actorUserId), action: "company.settings_changed", target: { type: "company", id: companyId }, before: { escalateAfterMinutes: current.escalateAfterMinutes, teamApprovers: Object.keys(current.teamApprovers).length, deciders: current.deciderUserIds.length }, after: { escalateAfterMinutes: next.escalateAfterMinutes, teamApprovers: Object.keys(next.teamApprovers).length, deciders: next.deciderUserIds.length, decidersAdded: next.deciderUserIds.filter((id) => !current.deciderUserIds.includes(id)), decidersRemoved: current.deciderUserIds.filter((id) => !next.deciderUserIds.includes(id)) }, meta: { setting: "approvals" } }]);
     return next;
+}
+
+// ─── Who may decide ─────────────────────────────────────────────────────────
+
+/**
+ * The signed-in person as the approval decision rule needs them
+ * (lib/approval-routing.ts ApprovalViewer). Owners and admins decide anything;
+ * a member may also hold the "Can decide any approval" grant and own agents.
+ * A viewer gets neither (viewers never decide).
+ */
+export async function approvalViewerFor(companyId: string, userId: string, role: Role | null | undefined): Promise<ApprovalViewer> {
+    const isOwnerOrAdmin = canAdmin(role);
+    const mayAct = Boolean(role) && roleGte(role!, "member");
+    if (!mayAct || isOwnerOrAdmin) return { userId, isOwnerOrAdmin, mayDecideAll: false, ownedAgentIds: new Set(), mayAct };
+    const [settings, owned] = await Promise.all([
+        loadCompanyApprovalSettings(companyId),
+        db.select({ id: agents.id }).from(agents).where(and(eq(agents.companyId, companyId), eq(agents.ownerUserId, userId), isNull(agents.deletedAt))),
+    ]);
+    return { userId, isOwnerOrAdmin, mayDecideAll: settings.deciderUserIds.includes(userId), ownedAgentIds: new Set(owned.map((a) => a.id)), mayAct };
+}
+
+/** The privacy of these approvals' card threads (one query), for approvalHiddenByPrivateThread. */
+export async function approvalThreadPrivacy(companyId: string, threadIds: readonly (string | null | undefined)[]): Promise<Map<string, ApprovalThreadPrivacy & { directAgentId: string | null }>> {
+    const ids = [...new Set(threadIds.filter((id): id is string => Boolean(id)))];
+    if (!ids.length) return new Map();
+    const rows = await db.select({ id: messageThreads.id, type: messageThreads.type, ownerUserId: messageThreads.ownerUserId, isPrivate: messageThreads.isPrivate, directAgentId: messageThreads.directAgentId })
+        .from(messageThreads).where(and(eq(messageThreads.companyId, companyId), inArray(messageThreads.id, ids)));
+    return new Map(rows.map((row) => [row.id, { type: row.type, ownerUserId: row.ownerUserId, isPrivate: row.isPrivate, directAgentId: row.directAgentId }]));
 }

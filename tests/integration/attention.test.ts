@@ -16,6 +16,7 @@ maybe("attention: merged kinds, per-viewer privacy, member scope and palette sco
     const s = await getSchema();
     const { buildAttention, needsYou } = await import("@/lib/attention");
     const { loadPaletteData } = await import("@/lib/palette");
+    const { eq } = await import("drizzle-orm");
     const now = Date.now();
     const ago = (min: number) => new Date(now - min * 60_000);
 
@@ -132,6 +133,12 @@ maybe("attention: merged kinds, per-viewer privacy, member scope and palette sco
     assert.ok(ana.entries.some((e) => e.kind === "decision"), "her decision notification");
     assert.ok(ana.entries.some((e) => e.kind === "stalled" && e.agentId === dee.id && e.runId === deeRunId), "Ana sees the stall in her own private chat");
     assert.ok(!ana.entries.some((e) => e.kind === "mention"), "not the owner's mention");
+
+    // An unrouted ask is decided by owners, admins, the agent's owner and people
+    // granted "Can decide any approval" (lib/approval-routing.ts): a plain member
+    // is not asked. Grant Ana, then check her restricted view keeps it in scope.
+    assert.ok(!ids(ana).includes(`approval:${approval.id}`), "a plain member is not asked to decide it");
+    await db.update(s.companies).set({ approvalSettingsJson: { deciderUserIds: [member.id] } }).where(eq(s.companies.id, companyId));
 
     // A restricted member: Ada and Northwind only.
     const restricted = await buildAttention(companyId, { userId: member.id, isOwnerOrAdmin: false, canAct: true, scope: { agentIds: [ada.id], customerIds: [northwind.id] } });

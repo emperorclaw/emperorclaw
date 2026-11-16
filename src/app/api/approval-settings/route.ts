@@ -1,17 +1,17 @@
 import { NextRequest, NextResponse } from "next/server";
 import { companyRouteAccess } from "@/lib/company-access";
 import { canAdmin } from "@/lib/role-matrix";
-import { parseApproverSetting, parseEscalateAfterMinutes, type ApproverSetting } from "@/lib/approval-routing";
-import { ApprovalSettingsError, approverPickerOptions, chartTeams, loadCompanyApprovalSettings, saveCompanyApprovalSettings } from "@/lib/approval-routing-server";
+import { parseApproverSetting, parseDeciderUserIds, parseEscalateAfterMinutes, type ApproverSetting } from "@/lib/approval-routing";
+import { ApprovalSettingsError, approverPickerOptions, chartTeams, deciderPickerOptions, loadCompanyApprovalSettings, saveCompanyApprovalSettings } from "@/lib/approval-routing-server";
 
 export const dynamic = "force-dynamic";
 
 async function view(companyId: string, canEdit: boolean) {
-    const [settings, teams, options] = await Promise.all([loadCompanyApprovalSettings(companyId), chartTeams(companyId), approverPickerOptions(companyId)]);
-    return { ...settings, teams, options, canEdit };
+    const [settings, teams, options, deciderOptions] = await Promise.all([loadCompanyApprovalSettings(companyId), chartTeams(companyId), approverPickerOptions(companyId), deciderPickerOptions(companyId)]);
+    return { ...settings, teams, options, deciderOptions, canEdit };
 }
 
-/** GET /api/approval-settings — the escalation time and team approvers (Settings → Approvals, owners and admins). */
+/** GET /api/approval-settings — the escalation time, team approvers and "Can decide any approval" people (Settings → Approvals, owners and admins). */
 export async function GET() {
     const access = await companyRouteAccess("admin");
     if (access.response) return access.response;
@@ -19,15 +19,16 @@ export async function GET() {
 }
 
 /**
- * PUT /api/approval-settings { escalateAfterMinutes?: number, teamApprovers?: { teamId: setting | null } }
+ * PUT /api/approval-settings { escalateAfterMinutes?: number, teamApprovers?: { teamId: setting | null }, deciderUserIds?: string[] }
  * Owners and admins only. A null (or "auto") team setting removes it.
+ * deciderUserIds replaces the "Can decide any approval" list (members only, never viewers).
  */
 export async function PUT(req: NextRequest) {
     const access = await companyRouteAccess("admin");
     if (access.response) return access.response;
-    const body = await req.json().catch(() => null) as { escalateAfterMinutes?: unknown; teamApprovers?: unknown } | null;
+    const body = await req.json().catch(() => null) as { escalateAfterMinutes?: unknown; teamApprovers?: unknown; deciderUserIds?: unknown } | null;
     if (!body || typeof body !== "object") return NextResponse.json({ error: "Invalid settings" }, { status: 400 });
-    const input: { escalateAfterMinutes?: number; teamApprovers?: Record<string, ApproverSetting | null> } = {};
+    const input: { escalateAfterMinutes?: number; teamApprovers?: Record<string, ApproverSetting | null>; deciderUserIds?: string[] } = {};
     if (body.escalateAfterMinutes !== undefined) {
         const parsed = parseEscalateAfterMinutes(body.escalateAfterMinutes);
         if ("error" in parsed) return NextResponse.json({ error: parsed.error }, { status: 400 });
@@ -44,6 +45,11 @@ export async function PUT(req: NextRequest) {
             if ("error" in parsed) return NextResponse.json({ error: parsed.error }, { status: 400 });
             input.teamApprovers[teamId] = parsed.setting;
         }
+    }
+    if (body.deciderUserIds !== undefined) {
+        const parsed = parseDeciderUserIds(body.deciderUserIds);
+        if ("error" in parsed) return NextResponse.json({ error: parsed.error }, { status: 400 });
+        input.deciderUserIds = parsed.userIds;
     }
     try {
         await saveCompanyApprovalSettings(access.ctx.companyId, input, access.ctx.userId);

@@ -5,7 +5,8 @@ import { getApprovalDetail, resolveApprovalOutcome } from "@/lib/approvals";
 import { mayProceed } from "@/lib/approval-status";
 import { mcpMayUseProject, mcpRouteAccess } from "@/lib/mcp-access";
 import { agentDeciders } from "@/lib/approval-routing";
-import { alreadyDecidedResponse, approvalDecisionAccess } from "@/lib/approval-access";
+import { alreadyDecidedResponse, approvalDecisionAccess, mcpApprovalView, redactApproval } from "@/lib/approval-access";
+import { approvalThreadPrivacy } from "@/lib/approval-routing-server";
 
 export async function GET(
     req: NextRequest,
@@ -29,9 +30,15 @@ export async function GET(
     if (!detail || !visible) {
         return NextResponse.json({ error: "Approval not found" }, { status: 404 });
     }
+    const threads = await approvalThreadPrivacy(companyId, [detail.approval.threadId]);
+    const view = mcpApprovalView(scoped.access, detail.approval, detail.approval.threadId ? threads.get(detail.approval.threadId) ?? null : null);
+    if (!view.visible) return NextResponse.json({ error: "Approval not found" }, { status: 404 });
 
     // Unambiguous for agents: `mayProceed` is true ONLY for an explicit
     // approval. A dismissed or expired request means DO NOT ACT.
+    if (!view.mayReadDetails) {
+        return NextResponse.json({ approval: redactApproval(detail.approval), tasks: detail.tasks.map((task) => ({ id: task.id, projectId: task.projectId })), mayProceed: mayProceed(detail.approval.status) });
+    }
     return NextResponse.json({ ...detail, mayProceed: mayProceed(detail.approval.status) });
 }
 
@@ -48,7 +55,8 @@ export async function PATCH(
     try {
         ctx = await requireRole("member")();
     } catch (err) {
-        if (err instanceof AuthError) return NextResponse.json({ error: err.message }, { status: err.statusCode });
+        // A signed-in viewer is refused here: the same reason the decision rule gives (lib/approval-access.ts).
+        if (err instanceof AuthError) return NextResponse.json({ error: err.message, ...(err.statusCode === 403 ? { reason: "viewer" } : {}) }, { status: err.statusCode });
         throw err;
     }
 
@@ -56,7 +64,7 @@ export async function PATCH(
         const { id } = await params;
         // The same rule as PATCH /api/approvals/[id] (lib/approval-access.ts):
         // scope, "Can view", and a routed ask's approvers (owners/admins override).
-        const { detail: current, denied } = await approvalDecisionAccess(ctx, id);
+        const { detail: current, denied, basis } = await approvalDecisionAccess(ctx, id);
         if (denied) return denied;
         if (!current) return NextResponse.json({ error: "Approval not found" }, { status: 404 });
         if (current.approval.status !== "pending") return alreadyDecidedResponse(ctx.companyId, current.approval);
@@ -73,6 +81,7 @@ export async function PATCH(
             resolverUserId: ctx.userId,
             status,
             resolutionNote: resolutionNote || null,
+            decidedAs: basis ?? null,
         });
 
         if (!approval) {

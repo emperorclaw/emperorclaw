@@ -23,6 +23,11 @@ export type CompanyApprovalSettings = {
     escalateAfterMinutes?: number;
     /** Approvers per org chart team (keyed by the team's group id). */
     teamApprovers?: Record<string, ApproverSetting>;
+    /**
+     * Members granted "Can decide any approval": like owners and admins, they
+     * may decide every approval they can see (an override, not an assignee).
+     */
+    deciderUserIds?: string[];
 };
 
 export const DEFAULT_ESCALATE_AFTER_MINUTES = 30;
@@ -31,6 +36,8 @@ export const MIN_ESCALATE_AFTER_MINUTES = 5;
 export const MAX_ESCALATE_AFTER_MINUTES = 24 * 60;
 /** At most this many people per approver setting. */
 export const MAX_APPROVER_PEOPLE = 20;
+/** At most this many people granted "Can decide any approval". */
+export const MAX_DECIDER_PEOPLE = 50;
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const AUTO: ApproverSetting = { mode: "auto" };
@@ -87,10 +94,23 @@ export function normalizeCompanyApprovalSettings(raw: unknown): Required<Company
             if (UUID_RE.test(teamId) && normalized.mode !== "auto") teamApprovers[teamId] = normalized;
         }
     }
+    const deciderUserIds = Array.isArray(value.deciderUserIds)
+        ? [...new Set(value.deciderUserIds.filter((id): id is string => typeof id === "string" && UUID_RE.test(id)))].slice(0, MAX_DECIDER_PEOPLE)
+        : [];
     return {
         escalateAfterMinutes: clampEscalateAfterMinutes(value.escalateAfterMinutes),
         teamApprovers,
+        deciderUserIds,
     };
+}
+
+/** "Can decide any approval" people sent by the UI, checked strictly. */
+export function parseDeciderUserIds(raw: unknown): { userIds: string[] } | { error: string } {
+    if (!Array.isArray(raw)) return { error: "deciderUserIds must be a list of people" };
+    if (raw.some((id) => typeof id !== "string" || !UUID_RE.test(id))) return { error: "Invalid person" };
+    const userIds = [...new Set(raw as string[])];
+    if (userIds.length > MAX_DECIDER_PEOPLE) return { error: `Choose at most ${MAX_DECIDER_PEOPLE} people` };
+    return { userIds };
 }
 
 /** What the approver pickers offer: live agents, and members who may decide. */
@@ -368,6 +388,10 @@ export function resolveApproverChain(input: ResolveChainInput): ResolvedChain {
 
 /** The routing columns of an approval row. */
 export type RoutedApproval = {
+    /** The asking agent: its owner may always decide (an override). */
+    requesterAgentId?: string | null;
+    /** A person's ask records the tasks' agent here (approvalAgentId). */
+    metadataJson?: unknown;
     approverKind: string | null;
     approverAgentId?: string | null;
     approverUserIds?: unknown;
@@ -416,22 +440,161 @@ export function approverColumns(steps: readonly ApproverStep[], level: number): 
 }
 
 /**
- * May this person decide this approval (beyond seeing it and having write
- * access, which lib/approval-access.ts checks)? Owners and admins always may
- * (override). An ask from before routing: anyone with access, as before.
- * Otherwise only the people named in the steps reached so far.
+ * The person looking at an approval, as the decision rule needs them:
+ * - `isOwnerOrAdmin`: company owners and admins decide anything (override);
+ * - `mayDecideAll`: granted "Can decide any approval" (company setting);
+ * - `ownedAgentIds`: the agents this person owns (agents.owner_user_id);
+ *   an agent's owner decides that agent's asks.
+ * - `mayAct`: false for the viewer role, which never decides (even when a
+ *   stored routed step still names them from before a demotion).
+ * Viewers never get the grant or owned agents (lib/approval-routing-server.ts approvalViewerFor).
  */
-export function humanMayDecide(approval: RoutedApproval, viewer: { userId: string; isOwnerOrAdmin: boolean }): boolean {
-    if (viewer.isOwnerOrAdmin) return true;
-    if (!approval.approverKind) return true;
-    return activeApproverSteps(approval).some((step) => step.kind === "users" && step.userIds.includes(viewer.userId));
+export type ApprovalViewer = { userId: string; isOwnerOrAdmin: boolean; mayDecideAll?: boolean; ownedAgentIds?: ReadonlySet<string>; mayAct?: boolean };
+
+/** Why this person may decide an approval (kept in the decision's audit), or null. First match wins. */
+export type DecisionBasis = "admin" | "decider" | "agent_owner" | "approver";
+
+/**
+ * The agent an ask is about: its requester, else (a person's ask on a task
+ * flagged "requires approval", POST /api/approvals) the tasks' assigned agent
+ * the server recorded as `metadataJson.taskAgentId`.
+ */
+export function approvalAgentId(approval: Pick<RoutedApproval, "requesterAgentId" | "metadataJson">): string | null {
+    if (approval.requesterAgentId) return approval.requesterAgentId;
+    const meta = approval.metadataJson && typeof approval.metadataJson === "object" ? approval.metadataJson as Record<string, unknown> : {};
+    return typeof meta.taskAgentId === "string" ? meta.taskAgentId : null;
 }
 
-/** Is this approval waiting on this person (not merely decidable by them as an override)? */
-export function isAssignedToHuman(approval: RoutedApproval, viewer: { userId: string; isOwnerOrAdmin: boolean }): boolean {
-    if (!approval.approverKind) return true;
+function ownsRequester(approval: Pick<RoutedApproval, "requesterAgentId" | "metadataJson">, viewer: ApprovalViewer): boolean {
+    const agentId = approvalAgentId(approval);
+    return Boolean(agentId && viewer.ownedAgentIds?.has(agentId));
+}
+
+/**
+ * Why may this person decide this approval (beyond seeing it and having write
+ * access, which lib/approval-access.ts checks)? Owners and admins, people
+ * granted "Can decide any approval" and the requesting agent's owner always
+ * may (override). Otherwise only the people named in the routed steps reached
+ * so far; an unrouted ask (from before routing, or with no requesting agent)
+ * has no named people, so nobody else.
+ */
+export function decisionBasis(approval: RoutedApproval, viewer: ApprovalViewer): DecisionBasis | null {
+    if (viewer.mayAct === false) return null;
+    if (viewer.isOwnerOrAdmin) return "admin";
+    if (viewer.mayDecideAll) return "decider";
+    if (ownsRequester(approval, viewer)) return "agent_owner";
+    if (!approval.approverKind) return null;
+    return activeApproverSteps(approval).some((step) => step.kind === "users" && step.userIds.includes(viewer.userId)) ? "approver" : null;
+}
+
+/** May this person decide this approval? (decisionBasis is not null.) */
+export function humanMayDecide(approval: RoutedApproval, viewer: ApprovalViewer): boolean {
+    return decisionBasis(approval, viewer) !== null;
+}
+
+/**
+ * Why a person who sees an approval may not decide it (null: they may):
+ * "waiting_on_other" — a routed ask that waits on other approvers;
+ * "not_permitted" — an unrouted ask, decided only by the overrides.
+ */
+export function decisionBlockReason(approval: RoutedApproval, viewer: ApprovalViewer): "waiting_on_other" | "not_permitted" | null {
+    if (humanMayDecide(approval, viewer)) return null;
+    return approval.approverKind ? "waiting_on_other" : "not_permitted";
+}
+
+/**
+ * Is this approval waiting on this person (not merely decidable by them as an
+ * override)? An unrouted ask waits on everyone who may decide it.
+ */
+export function isAssignedToHuman(approval: RoutedApproval, viewer: ApprovalViewer): boolean {
+    if (viewer.mayAct === false) return false;
+    if (!approval.approverKind) return humanMayDecide(approval, viewer);
     return activeApproverSteps(approval).some((step) =>
         (step.kind === "users" && step.userIds.includes(viewer.userId)) || (step.kind === "admins" && viewer.isOwnerOrAdmin));
+}
+
+/** A thread's privacy fields, for the private-chat rule below (lib/direct-chat-mode.ts ThreadPrivacy). */
+export type ApprovalThreadPrivacy = { type: string; ownerUserId?: string | null; isPrivate?: boolean | null };
+
+function isPrivateThread(thread: ApprovalThreadPrivacy | null): thread is ApprovalThreadPrivacy {
+    return Boolean(thread) && thread!.type === "direct" && (Boolean(thread!.isPrivate) || Boolean(thread!.ownerUserId));
+}
+
+/**
+ * An approval carded into someone's private direct chat stays private from
+ * people with no part in it: it is visible to that chat's owner and to anyone
+ * with a decide basis (owners/admins, a granted decider, the agent's owner, a
+ * routed approver reached so far), so whoever is asked to decide can always
+ * see it. Everyone else gets "not found". `thread` null: nothing to hide.
+ */
+export function approvalHiddenByPrivateThread(thread: ApprovalThreadPrivacy | null, viewer: Pick<ApprovalViewer, "userId">, basis: DecisionBasis | null): boolean {
+    if (!isPrivateThread(thread) || basis) return false;
+    return !(thread.ownerUserId && thread.ownerUserId === viewer.userId);
+}
+
+/**
+ * Why a person who sees an approval may not decide it, as shown on read-only cards:
+ * - "viewer": the viewer role never decides;
+ * - "view_only": a restricted member with only "Can view" on its project;
+ * - "waiting_on_other": a routed ask that waits on other approvers;
+ * - "not_permitted": no decide basis on an unrouted ask.
+ */
+export type ApprovalBlockReason = "viewer" | "view_only" | "waiting_on_other" | "not_permitted";
+
+/** One person's view of one approval: the single rule every surface reads. */
+export type ApprovalView = {
+    /** False: answer 404 / leave it out (outside their scope, or someone else's private chat). */
+    visible: boolean;
+    basis: DecisionBasis | null;
+    /** Why they may not decide it (null: they may). Also set on a decided ask. */
+    reason: ApprovalBlockReason | null;
+    /** A pending ask they may decide now. */
+    mayDecide: boolean;
+    /**
+     * May read its details (rationale, arguments, routing, note, who decided,
+     * task titles): a decide basis (and write access), or a member a routed
+     * ask waits on someone else for (as before routing). Everyone else gets
+     * the label only.
+     */
+    mayReadDetails: boolean;
+};
+
+/**
+ * The one rule: visibility, decision and details for this person.
+ * `inScope`: their member scope lets them see it at all.
+ * `viewOnly`: a restricted member with only "Can view" on its project.
+ */
+export function approvalView(
+    approval: RoutedApproval & { status: string },
+    viewer: ApprovalViewer,
+    facts: { thread: ApprovalThreadPrivacy | null; inScope: boolean; viewOnly?: boolean },
+): ApprovalView {
+    const basis = decisionBasis(approval, viewer);
+    const hidden = { visible: false, basis: null, reason: null, mayDecide: false, mayReadDetails: false };
+    if (!facts.inScope || approvalHiddenByPrivateThread(facts.thread, viewer, basis)) return hidden;
+    const reason: ApprovalBlockReason | null = viewer.mayAct === false ? "viewer"
+        : facts.viewOnly ? "view_only"
+            : basis ? null
+                : approval.approverKind ? "waiting_on_other" : "not_permitted";
+    return {
+        visible: true,
+        basis,
+        reason,
+        mayDecide: approval.status === "pending" && reason === null,
+        mayReadDetails: (basis !== null && !facts.viewOnly) || reason === "waiting_on_other",
+    };
+}
+
+/**
+ * A task flagged "requires approval" with no request yet: deciding it creates
+ * an unrouted ask, so only those who could decide that may act on it: owners
+ * and admins, granted deciders, and the owner of the task's assigned agent,
+ * with write access to its project.
+ */
+export function implicitTaskBlockReason(task: { assignedAgentId: string | null }, viewer: ApprovalViewer, viewOnly: boolean): ApprovalBlockReason | null {
+    if (viewer.mayAct === false) return "viewer";
+    if (viewOnly) return "view_only";
+    return decisionBasis({ approverKind: null, requesterAgentId: task.assignedAgentId }, viewer) ? null : "not_permitted";
 }
 
 /** The agents that may decide now (decide_approval), before the authority re-check. */

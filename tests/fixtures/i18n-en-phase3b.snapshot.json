@@ -724,7 +724,11 @@
       "noTeams": "No teams on the org chart yet. Add teams in Agents → Organization.",
       "teamAuto": "Automatic (each agent's manager)",
       "agentHint": "To choose approvers for one agent, open that agent's Actions tab.",
-      "cleared": "Removed approvers were cleared. Save each team to keep the change."
+      "cleared": "Removed approvers were cleared. Save each team to keep the change.",
+      "decidersTitle": "Who can decide approvals",
+      "decidersIntro": "Owners, admins and an agent's owner can always decide its requests, and each request's approvers can decide it. Pick other members who may decide any approval they can see.",
+      "decidersNobody": "No members can be picked yet.",
+      "decidersHint": "Everyone else sees approval requests read-only, with the reason they can't act. Viewers never decide."
     },
     "directChats": {
       "multiChat": {
@@ -977,7 +981,13 @@
     "waitingOnAdmins": "An owner or admin",
     "alreadyDecidedBy": "Already decided by {name}.",
     "decidedByAgent": "{status} by {name} (agent)",
-    "waitingOnApprover": "An approver"
+    "waitingOnApprover": "An approver",
+    "blocked": {
+      "viewer": "You have view-only access, so you can't decide this request.",
+      "view_only": "You can only view this project, so you can't decide this request.",
+      "waiting_on_other": "Only its approvers, an owner or an admin can decide this request.",
+      "not_permitted": "Only owners, admins, the agent's owner or people allowed to decide approvals can decide this request."
+    }
   },
   "common": {
     "moreActions": "More actions"
@@ -1009,7 +1019,18 @@
     "waitingOnPeople": "waiting on {names}",
     "waitingOnAdmins": "waiting on an owner or admin",
     "alreadyDecidedBy": "Already decided by {name} — your decision was not applied.",
-    "resolvedByAgent": "{label} by {name} (agent)"
+    "resolvedByAgent": "{label} by {name} (agent)",
+    "readOnly": "Read only.",
+    "othersToDecide": "Waiting on others",
+    "waitingOnApprover": "waiting on an approver",
+    "blocked": {
+      "viewer": "You have view-only access, so you can't decide this request.",
+      "view_only": "You can only view this project, so you can't decide this request.",
+      "waiting_on_other": "Only its approvers, an owner or an admin can decide this request.",
+      "not_permitted": "Only owners, admins, the agent's owner or people allowed to decide approvals can decide this request."
+    },
+    "redactedTitle": "Approval request: {action}",
+    "redactedHint": "Details are shown only to the people who can decide it."
   },
   "approvers": {
     "modeLabel": "Who approves",

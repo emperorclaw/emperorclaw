@@ -2,8 +2,9 @@ import { db } from "@/db";
 import { approvals, approvalTaskLinks, tasks, projects, customers, agents, users, companyMembers } from "@/db/schema";
 import { and, eq, isNull, desc, inArray, ne } from "drizzle-orm";
 import { requireRole } from "@/lib/roles";
-import { canAdmin } from "@/lib/role-matrix";
-import { currentApproverStep, humanMayDecide, waitingOnParts } from "@/lib/approval-routing";
+import { currentApproverStep, waitingOnParts, type ApprovalView } from "@/lib/approval-routing";
+import { approvalViewerFor } from "@/lib/approval-routing-server";
+import { approvalViewsFor, implicitTaskReasons } from "@/lib/approval-access";
 import { listPendingDecisions } from "@/lib/approvals";
 import { redirect } from "next/navigation";
 import ApprovalsClient, { type ApprovalItem } from "./approvals-client";
@@ -29,7 +30,7 @@ export default async function ApprovalsPage() {
     const guard = await requireRole("viewer")().catch(() => null);
     if (!guard) redirect("/login");
     const companyId = guard.companyId;
-    const viewer = { userId: guard.userId, isOwnerOrAdmin: canAdmin(guard.role) };
+    const viewer = await approvalViewerFor(companyId, guard.userId, guard.role);
 
     const [decisions, allApprovals, allLinks, allProjects, allCustomers, allAgents, people] = await Promise.all([
         listPendingDecisions(companyId),
@@ -41,6 +42,16 @@ export default async function ApprovalsPage() {
         db.select({ id: users.id, memberId: companyMembers.id, displayName: users.displayName, email: users.email }).from(companyMembers)
             .innerJoin(users, eq(users.id, companyMembers.userId)).where(eq(companyMembers.companyId, companyId)),
     ]);
+    // The one per-person rule (lib/approval-access.ts): scope, private chats,
+    // "Can view" projects, who may decide and who may read the details.
+    const [views, implicitReasons] = await Promise.all([
+        approvalViewsFor(guard, [...decisions.approvals.map(({ approval }) => approval), ...allApprovals], viewer),
+        implicitTaskReasons(guard, decisions.implicit, viewer),
+    ]);
+    const viewOf = (approval: typeof approvals.$inferSelect): ApprovalView | null => {
+        const view = views.get(approval.id);
+        return view?.visible ? view : null;
+    };
     const linkedTaskIds = [...new Set(allLinks.map((l) => l.taskId))];
     // Tasks of resolved approvals, for the "Recently decided" list.
     const allTasks = linkedTaskIds.length
@@ -113,21 +124,69 @@ export default async function ApprovalsPage() {
         };
     };
 
-    const resolved: ApprovalItem[] = allApprovals.flatMap((approval) => isActionApproval(approval) ? [toActionItem(approval)] :
-        allLinks.filter((l) => l.approvalId === approval.id)
-            .map((l) => tasksById.get(l.taskId))
-            .filter((t): t is typeof tasks.$inferSelect => Boolean(t))
-            .map((task) => toItem(task, approval)));
+    /**
+     * The label only, for someone who may not read the details: no task title
+     * or description, arguments, rationale, routing, note or who decided
+     * (also kept out of the client's search).
+     */
+    const redacted = (approval: typeof approvals.$inferSelect): ApprovalItem => {
+        const requester = approval.requesterAgentId ? agentById.get(approval.requesterAgentId) : null;
+        const project = approval.projectId ? projectById.get(approval.projectId) : null;
+        return {
+            key: approval.id,
+            approvalId: approval.id,
+            status: approval.status as ApprovalItem["status"],
+            actionType: approval.actionType,
+            rationale: null,
+            resolutionNote: null,
+            requestedAt: approval.requestedAt.toISOString(),
+            resolvedAt: approval.resolvedAt ? approval.resolvedAt.toISOString() : null,
+            resolverName: null,
+            waitingOn: approval.status === "pending" && approval.approverKind ? { kind: "hidden", names: [] } : null,
+            requester: requester ? { id: requester.id, name: requester.name, avatarUrl: requester.avatarUrl } : null,
+            task: null,
+            action: isActionApproval(approval) ? { key: approval.actionType, label: actionLabel(approval.actionType), args: [] } : null,
+            linkedTasks: [],
+            projectName: project?.goal ? splitProjectTitle(project.goal).name : null,
+            customerName: null,
+            redacted: true,
+        };
+    };
+
+    const resolved: ApprovalItem[] = allApprovals.flatMap((approval) => {
+        const view = viewOf(approval);
+        if (!view) return [];
+        if (!view.mayReadDetails) return [redacted(approval)];
+        return isActionApproval(approval) ? [toActionItem(approval)] :
+            allLinks.filter((l) => l.approvalId === approval.id)
+                .map((l) => tasksById.get(l.taskId))
+                .filter((t): t is typeof tasks.$inferSelect => Boolean(t))
+                .map((task) => toItem(task, approval));
+    });
 
     // "Waiting on you" is the shared definition (sidebar badge and dashboard
     // read the same list): one card per pending approval, shown through its
     // first live task (deciding it resolves them all), then tasks flagged
-    // "requires approval" with no request yet.
+    // "requires approval" with no request yet. Pending asks this person sees
+    // but may not decide are listed read-only, with the reason (the API
+    // refuses their decision with 403 either way).
     const pending: ApprovalItem[] = [
-        ...decisions.approvals
-            .filter(({ approval }) => humanMayDecide(approval, viewer))
-            .map(({ approval, tasks: linked }) => linked[0] ? toItem(linked[0], approval, linked) : toActionItem(approval)),
-        ...decisions.implicit.map((task) => toItem(task, null)),
+        ...decisions.approvals.flatMap(({ approval, tasks: linked }) => {
+            const view = viewOf(approval);
+            if (!view) return [];
+            if (view.mayDecide) return [linked[0] ? toItem(linked[0], approval, linked) : toActionItem(approval)];
+            const base = view.mayReadDetails ? (linked[0] ? toItem(linked[0], approval, linked) : toActionItem(approval)) : redacted(approval);
+            // Approvers are named only to people who may decide it.
+            return [{ ...base, canDecide: false, blockedReason: view.reason ?? "not_permitted", waitingOn: base.waitingOn ? { kind: "hidden" as const, names: [] } : null }];
+        }),
+        // A task flagged "requires approval" with no request yet: deciding it
+        // creates an unrouted ask, so the same people decide it.
+        ...decisions.implicit.flatMap((task) => {
+            if (!implicitReasons.has(task.id)) return [];
+            const reason = implicitReasons.get(task.id) ?? null;
+            const item = toItem(task, null);
+            return [reason ? { ...item, canDecide: false, blockedReason: reason, task: item.task ? { ...item.task, description: null } : null } : item];
+        }),
     ];
 
     return <ApprovalsClient items={[...pending, ...resolved]} />;
