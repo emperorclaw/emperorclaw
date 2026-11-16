@@ -56,7 +56,7 @@ test("pasting images attaches them; pasting text does not", async ({ page }) => 
 
     const uploads = page.waitForResponse((res) => res.url().endsWith("/api/chat/attachments") && res.request().method() === "POST");
     expect(await paste(page, label, { images: 2 }), "an image paste is taken over").toBe(true);
-    expect((await uploads).status()).toBe(200);
+    expect((await uploads).status(), "the upload route answers 201 Created").toBe(201);
 
     const chips = page.getByText(/^pasted-image-\d{8}-\d{6}-[12]\.png$/);
     await expect(chips).toHaveCount(2);
