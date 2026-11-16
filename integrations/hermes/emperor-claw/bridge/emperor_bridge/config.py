@@ -280,14 +280,27 @@ class AgentConfig:
 
 
 def load_agent_configs(host: HostConfig, logger: Any) -> list[AgentConfig]:
-    """One AgentConfig per profile; deleted 0.3 variables are warned about once per process."""
+    """One AgentConfig per profile; deleted 0.3 variables are warned about once per process.
+
+    A shared bridge skips a profile whose config is unusable (a retired agent with no token) so the
+    other agents keep running; it fails only when no profile is left. A single-profile bridge fails.
+    """
     from .log import warn_deleted_env
     warned: set[str] = set()
     configs = []
+    errors: list[str] = []
     for profile in host.profiles:
         dotenv_path = host.target(profile).profile_home / ".env"
         dotenv = read_env_file(dotenv_path)
         warn_deleted_env([(str(dotenv_path), dotenv)], logger, warned)
-        configs.append(AgentConfig.from_profile(profile, host, dotenv=dotenv))
+        try:
+            configs.append(AgentConfig.from_profile(profile, host, dotenv=dotenv))
+        except ConfigError as exc:
+            if len(host.profiles) == 1:
+                raise
+            logger.warning("skipping %s", exc)
+            errors.append(str(exc))
+    if not configs:
+        raise ConfigError("no usable profile: " + "; ".join(errors))
     warn_deleted_env([("process environment", host.env)], logger, warned)
     return configs

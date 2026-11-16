@@ -19,6 +19,8 @@ WorkingDirectory=%h
 ExecStart=/bin/sh -c 'exec "$${HERMES_PYTHON}" -m emperor_bridge run'
 Restart=always
 RestartSec=3
+# 78 = configuration error (no token): stop instead of crash-looping.
+RestartPreventExitStatus=78
 # The bridge stops dispatch and drains for up to 30 s.
 TimeoutStopSec=45
 StandardOutput=append:%h/.hermes/profiles/%i/bridge.log

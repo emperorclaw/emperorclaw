@@ -276,6 +276,25 @@ recorded_profiles() { # every profile emperor-hermes installed and did not remov
     return 0
 }
 
+skip_reason() { # profile -> "disabled" / "no token" when update/restart must leave it stopped, "" to serve it
+    local p=$1 g="emperor-hermes-gateway@$1.service" b="emperor-hermes-bridge@$1.service"
+    if [ "$(rec_get "$p" topology)" = standalone ] &&
+        ! unit_truly_enabled "$g" && ! unit_truly_enabled "$b" && ! unit_active "$g" && ! unit_active "$b"; then
+        printf 'disabled\n'
+    elif [ -z "$(env_get "$(profile_home "$p")/.env" EMPEROR_CLAW_API_TOKEN)" ]; then
+        printf 'no token\n'
+    fi
+    return 0
+}
+unit_wanted() { # unit -> 0 when it is enabled or running (update/restart may then restart it)
+    unit_truly_enabled "$1" || unit_active "$1"
+}
+served_profiles() { # managed profiles update/restart may (re)start: not disabled, with a token
+    local p
+    for p in $(managed_profiles); do [ -n "$(skip_reason "$p")" ] || printf '%s\n' "$p"; done
+    return 0
+}
+
 ln_atomic() { # target link
     local tmp="$2.new.$$"
     ln -sfn "$1" "$tmp"
@@ -1708,16 +1727,18 @@ cmd_migrate() {
     cmd_install
 }
 
-restart_bridges() {
-    local p
-    for p in $(managed_profiles); do
-        if [ "$(rec_get "$p" topology)" = standalone ]; then sc restart "emperor-hermes-bridge@$p.service"; fi
+restart_bridges() { # profiles... (default: served_profiles); never starts a disabled or token-less one
+    local p u list=("$@")
+    [ "$#" -gt 0 ] || mapfile -t list < <(served_profiles)
+    for p in ${list[@]+"${list[@]}"}; do
+        u="emperor-hermes-bridge@$p.service"
+        if [ "$(rec_get "$p" topology)" = standalone ] && unit_wanted "$u"; then sc restart "$u"; fi
     done
     if [ -n "$(shared_list)" ]; then sc restart emperor-hermes-bridge-shared.service; fi
 }
 
 cmd_update() {
-    local p topo old_py new_py old_launcher profiles=()
+    local p topo old_py new_py old_launcher profiles=() served=()
     take_lock
     [ -f "$HOST_ENV" ] || die "nothing to update: run emperor-hermes install first"
     preflight 1
@@ -1725,6 +1746,13 @@ cmd_update() {
     old_py=$(python_target)
     old_launcher=$(host_get HERMES_LAUNCHER)
     mapfile -t profiles < <(managed_profiles)
+    # Decided before anything changes: only profiles whose units were enabled or running (and
+    # that have a token) are restarted; a retired profile stays stopped.
+    mapfile -t served < <(served_profiles)
+    for p in "${profiles[@]}"; do
+        topo=$(skip_reason "$p")
+        [ -z "$topo" ] || log "  $p: skipped ($topo)"
+    done
     step "Hermes $HERMES_REF"
     ensure_hermes "${profiles[@]}"
     resolve_python
@@ -1744,8 +1772,8 @@ cmd_update() {
     hostd_follow_bundle 1
     if [ "$OPT_RESTART_GATEWAYS" = 1 ] || [ "$old_py" != "$new_py" ] || [ "$old_launcher" != "$HERMES_LAUNCHER" ]; then
         step "Restarting gateways (Hermes changed)"
-        for p in "${profiles[@]}"; do
-            if [ "$(rec_get "$p" topology)" = standalone ]; then
+        for p in ${served[@]+"${served[@]}"}; do
+            if [ "$(rec_get "$p" topology)" = standalone ] && unit_wanted "emperor-hermes-gateway@$p.service"; then
                 sc restart "emperor-hermes-gateway@$p.service"
                 wait_ready "$(profile_home "$p")" "$p" "emperor-hermes-gateway@$p.service"
             fi
@@ -1756,7 +1784,7 @@ cmd_update() {
         fi
     fi
     step "Restarting bridges ($(bridge_version))"
-    restart_bridges
+    if [ "${#served[@]}" -gt 0 ]; then restart_bridges "${served[@]}"; fi
     env_set "$HOST_STATE" bridge_changed 0
     cmd_status || true
 }
@@ -1933,7 +1961,7 @@ cmd_restart_gateway() {
     elif [ -n "$OPT_PROFILES" ]; then
         mapfile -t targets < <(split_csv "$OPT_PROFILES")
     else
-        for p in $(managed_profiles); do [ "$(rec_get "$p" topology)" = standalone ] && targets+=("$p"); done
+        for p in $(served_profiles); do [ "$(rec_get "$p" topology)" = standalone ] && targets+=("$p"); done
         [ -n "$(shared_list)" ] && targets+=(shared)
     fi
     [ "${#targets[@]}" -gt 0 ] || die "no gateways to restart"
@@ -2026,7 +2054,7 @@ print(" ".join("%s=%s" % (k, h[k]) for k in keys if k in h) or "health.json pres
 }
 
 cmd_status() {
-    local p topo bad=0 out u head pids profiles=()
+    local p topo skip bad=0 out u head pids profiles=()
     ensure_user_bus || die "systemd user bus not reachable"
     load_host
     if [ -n "$OPT_PROFILES" ]; then mapfile -t profiles < <(split_csv "$OPT_PROFILES"); else mapfile -t profiles < <(recorded_profiles); fi
@@ -2053,7 +2081,11 @@ cmd_status() {
         topo=$(rec_get "$p" topology)
         printf '%s [%s, %s]\n' "$p" "${topo:-not installed}" "$(rec_get "$p" status)"
         [ "$(rec_get "$p" status)" = active ] || { bad=1; continue; }
-        if [ "$topo" = standalone ]; then
+        skip=$(skip_reason "$p")
+        if [ -n "$skip" ]; then
+            # Left stopped on purpose; the 0.3 duplicate checks below still apply.
+            printf '  skipped (%s)\n' "$skip"
+        elif [ "$topo" = standalone ]; then
             out=$(identify "$(profile_home "$p")")
             printf '  gateway: %s, %s\n' "$(sc is-active "emperor-hermes-gateway@$p.service" 2>/dev/null || true)" "$out"
             printf '  bridge:  %s\n' "$(sc is-active "emperor-hermes-bridge@$p.service" 2>/dev/null || true)"
@@ -2062,7 +2094,7 @@ cmd_status() {
         else
             in_shared "$p" || { printf '  NOT in the shared bridge profile list\n'; bad=1; }
         fi
-        printf '  health:  %s\n' "$(health_summary "$p")"
+        [ -n "$skip" ] || printf '  health:  %s\n' "$(health_summary "$p")"
         u=$(rec_get "$p" legacy_unit)
         if [ -n "$u" ] && [ -f "$UNIT_DIR/$u" ]; then
             printf '  0.3 unit %s: %s/%s\n' "$u" "$(sc is-active "$u" 2>/dev/null || true)" "$(sc is-enabled "$u" 2>/dev/null || true)"
@@ -2152,7 +2184,7 @@ cmd_doctor() {
 # ── status --json ───────────────────────────────────────────────────────────────────────────
 
 cmd_status_json() { # one JSON object on stdout; exit 1 when anything is wrong (same rules as status)
-    local p topo st head bad=0 gw br ident u ustate dup shared_gw="" shared_br="" shared_ident="" profiles=()
+    local p topo st skip head bad=0 gw br ident u ustate dup shared_gw="" shared_br="" shared_ident="" profiles=()
     ensure_user_bus || die "systemd user bus not reachable"
     load_host
     if [ -n "$OPT_PROFILES" ]; then mapfile -t profiles < <(split_csv "$OPT_PROFILES"); else mapfile -t profiles < <(recorded_profiles); fi
@@ -2172,9 +2204,12 @@ cmd_status_json() { # one JSON object on stdout; exit 1 when anything is wrong (
         valid_profile "$p" || continue
         topo=$(rec_get "$p" topology)
         st=$(rec_get "$p" status)
-        gw="" br="" ident="" ustate="" dup=0
+        gw="" br="" ident="" ustate="" dup=0 skip=""
+        [ "$st" != active ] || skip=$(skip_reason "$p")
         if [ "$st" != active ]; then
             bad=1
+        elif [ -n "$skip" ]; then
+            :
         elif [ "$topo" = standalone ]; then
             gw=$(sc is-active "emperor-hermes-gateway@$p.service" 2>/dev/null || true)
             br=$(sc is-active "emperor-hermes-bridge@$p.service" 2>/dev/null || true)
@@ -2193,7 +2228,7 @@ cmd_status_json() { # one JSON object on stdout; exit 1 when anything is wrong (
             ustate=retired
         fi
         if [ -n "$(legacy_procs_for "$p")" ]; then dup=1; bad=1; fi
-        rows+=("$(printf 'P\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s' "$p" "${topo:-}" "${st:-}" "$gw" "$br" "$ident" "$u" "$ustate" "$dup")")
+        rows+=("$(printf 'P\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s' "$p" "${topo:-}" "${st:-}" "$gw" "$br" "$ident" "$u" "$ustate" "$dup" "$skip")")
     done
     {
         printf 'H\tversion\t%s\n' "$EMPEROR_HERMES_VERSION"
@@ -2223,6 +2258,7 @@ for line in sys.stdin.read().splitlines():
         host[parts[1]] = parts[2]
     elif parts[0] == "P" and len(parts) >= 10:
         name, topo, status, gw, br, ident, unit, ustate, dup = parts[1:10]
+        skipped = parts[10] if len(parts) > 10 else ""
         try:
             h = json.load(open(os.path.join(home, name, "emperor", "health.json")))
         except Exception:
@@ -2231,6 +2267,7 @@ for line in sys.stdin.read().splitlines():
         profiles.append({"profile": name, "topology": topo or None, "status": status or None,
                          "gateway": gw or None, "bridge": br or None, "gatewayIdentify": ident or None,
                          "legacyUnit": unit or None, "legacyUnitState": ustate or None, "duplicate": dup == "1",
+                         "skipped": skipped or None,
                          "health": {k: h[k] for k in keys if k in h} if isinstance(h, dict) else {}})
 flag = lambda k: host.get(k) == "1"
 print(json.dumps({

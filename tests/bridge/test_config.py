@@ -2,9 +2,11 @@
 from __future__ import annotations
 
 import logging
+import os
 import sys
 import tempfile
 import unittest
+from unittest import mock
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[2]
@@ -129,6 +131,34 @@ class AgentConfigTests(unittest.TestCase):
             joined = "\n".join(logs.output)
             self.assertEqual(joined.count("HERMES_BIN"), 1)
             self.assertIn("use EMPEROR_CLAW_HERMES_TOOLSETS", joined)
+
+    def test_shared_bridge_skips_a_profile_without_a_token(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            env = Env(tmp, {"a": "EMPEROR_CLAW_API_TOKEN=t\n", "qa": "EMPEROR_CLAW_AGENT_NAME=QA\n"})
+            host = HostConfig.from_env(env.env(), profiles="a,qa")
+            with self.assertLogs("test.config.skip", level="WARNING") as logs:
+                configs = load_agent_configs(host, logging.getLogger("test.config.skip"))
+            self.assertEqual([c.profile_name for c in configs], ["a"])
+            self.assertIn("qa", "\n".join(logs.output))
+
+    def test_no_usable_profile_is_a_config_error(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            env = Env(tmp, {"a": "", "qa": ""})
+            with self.assertRaises(ConfigError):
+                load_agent_configs(HostConfig.from_env(env.env(), profiles="a,qa"), logging.getLogger("test.config.none"))
+            with self.assertRaises(ConfigError):
+                load_agent_configs(HostConfig.from_env(env.env(HERMES_PROFILE="qa")), logging.getLogger("test.config.one"))
+
+    def test_config_error_exits_78_so_systemd_does_not_restart(self):
+        from emperor_bridge import main as bridge_main
+        with tempfile.TemporaryDirectory() as tmp:
+            env = Env(tmp, {"qa": ""})
+            # No clear=True: other suites spawn subprocesses that need the rest of the environment.
+            with mock.patch.dict(os.environ, env.env(HERMES_PROFILE="qa", EMPEROR_CLAW_API_TOKEN="")):
+                self.assertEqual(bridge_main.run(), 78)
+        root = Path(__file__).resolve().parents[2] / "integrations" / "hermes" / "systemd"
+        for unit in ("emperor-hermes-bridge@.service", "emperor-hermes-bridge-shared.service"):
+            self.assertIn("RestartPreventExitStatus=78", (root / unit).read_text())
 
     def test_warning_set_is_shared(self):
         seen: set[str] = set()

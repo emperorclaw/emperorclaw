@@ -561,6 +561,36 @@ inside_main() {
     check "rollback --bridge-only" eh rollback --bridge-only
     eq "current -> 0.9.0" "$(readlink "$HOME/.hermes/emperor-bridge/current")" releases/0.9.0
 
+    section "update leaves a retired (disabled) profile and a token-less one alone"
+    systemctl --user disable --now emperor-hermes-bridge@growth.service emperor-hermes-gateway@growth.service >/dev/null 2>&1
+    cp "$HOME/.hermes/profiles/viktor/.env" "$F/viktor.env"
+    sed -i '/^EMPEROR_CLAW_API_TOKEN=/d' "$HOME/.hermes/profiles/viktor/.env"
+    pid=$(mainpid emperor-hermes-bridge@viktor)
+    check "update --restart-gateways" eh update --bundle "$bundle" --restart-gateways
+    check_not "disabled gateway@growth not started" active emperor-hermes-gateway@growth
+    check_not "disabled bridge@growth not started" active emperor-hermes-bridge@growth
+    check_not "bridge@growth still disabled" enabled emperor-hermes-bridge@growth
+    eq "token-less bridge@viktor not restarted" "$(mainpid emperor-hermes-bridge@viktor)" "$pid"
+    check "bridge@qa still runs" active emperor-hermes-bridge@qa
+    out_rc=0
+    out=$(eh status) || out_rc=$?
+    eq "status ok with skipped profiles" "$out_rc" 0
+    check "status lists growth as skipped (disabled)" grep -Fq "skipped (disabled)" <<<"$out"
+    check "status lists viktor as skipped (no token)" grep -Fq "skipped (no token)" <<<"$out"
+    check_not "status has no problems" grep -Fq "problems found" <<<"$out"
+    out_rc=0
+    eh status --json >"$F/status-skipped.json" || out_rc=$?
+    eq "status --json ok with skipped profiles" "$out_rc" 0
+    eq "status --json skipped" "$(python3 -c 'import json, sys
+d = json.load(open(sys.argv[1])); s = {p["profile"]: p["skipped"] for p in d["profiles"]}
+print(d["ok"], s.get("growth"), s.get("viktor"), s.get("qa"))' "$F/status-skipped.json")" "True disabled no token None"
+    check "restart-gateway (all) works" eh restart-gateway
+    check_not "restart-gateway (all) skips the disabled profile" active emperor-hermes-gateway@growth
+    cp "$F/viktor.env" "$HOME/.hermes/profiles/viktor/.env"
+    systemctl --user enable --now emperor-hermes-gateway@growth.service emperor-hermes-bridge@growth.service >/dev/null 2>&1
+    check "growth back" eh restart-gateway --profile growth
+    check "status ok again" eh status
+
     section "restart-gateway"
     pid=$(mainpid emperor-hermes-gateway@qa)
     mkdir -p "$HOME/.hermes/profiles/qa/emperor"

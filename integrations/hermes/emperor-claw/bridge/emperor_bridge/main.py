@@ -548,17 +548,22 @@ class BridgeHost:
         self.log.info("stopped")
 
 
+# sysexits EX_CONFIG: the units set RestartPreventExitStatus=78, so a profile with no usable
+# config (e.g. a retired agent without a token) stops instead of crash-looping.
+EX_CONFIG = 78
+
+
 def run(profiles: Optional[str] = None) -> int:
     try:
         host = HostConfig.from_env(profiles=profiles)
     except ConfigError as exc:
         setup_logging()
         logging.getLogger("emperor_bridge").error("configuration error: %s", exc)
-        return 2
+        return EX_CONFIG
     setup_logging(host.log_level)
     try:
         return asyncio.run(BridgeHost(host).run())
     except ConfigError as exc:
         logging.getLogger("emperor_bridge").error("configuration error: %s", exc)
-        return 2
+        return EX_CONFIG
 
