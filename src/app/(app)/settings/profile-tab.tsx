@@ -1,5 +1,6 @@
 "use client";
 
+import { MfaSetting } from "./mfa-setting";
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useTranslations } from "next-intl";
@@ -50,6 +51,7 @@ export function ProfileTab({ displayName, setDisplayName, roleTitle, setRoleTitl
                     </button>
                 </div>
             </section>
+            <MfaSetting />
             <LanguageSetting locale={locale} disabled={!loaded} onChange={onLocaleChange} />
         </div>
     );

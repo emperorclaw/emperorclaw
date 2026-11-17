@@ -74,13 +74,13 @@ describe("locale cookie on sign-in and sign-out", { skip: !dbAvailable }, () => 
         return method === "GET" ? GET(req, context as never) : POST(req, context as never);
     };
 
-    const signIn = async (email: string) => {
+    const signIn = async (email: string, code = "") => {
         const csrf = await call("GET", ["csrf"]);
         const { csrfToken } = await csrf.json() as { csrfToken: string };
         const csrfCookie = [...setCookies(csrf).values()].map((c) => c.split(";")[0]).join("; ");
         return call("POST", ["callback", "credentials"], {
             cookie: csrfCookie,
-            form: { csrfToken, email, password, json: "true" },
+            form: { csrfToken, email, password, code, json: "true" },
         });
     };
 
@@ -122,4 +122,23 @@ describe("locale cookie on sign-in and sign-out", { skip: !dbAvailable }, () => 
         assert.match(cookies.get("NEXT_LOCALE") ?? "", /^NEXT_LOCALE=; Path=\/; Max-Age=0;/);
         assert.match(cookies.get("EC_LOCALE_AT") ?? "", /Max-Age=0/);
     });
+    test("MFA failures issue no session cookie; a valid code signs in once", async () => {
+        process.env.EMPEROR_CLAW_MASTER_KEY = "mfa-auth-route-test-key";
+        const db = await getDb(), schema = await getSchema();
+        const { eq } = await import("drizzle-orm");
+        const { generateTotpSecret, totpAt } = await import("@/lib/totp");
+        const { encryptSecretPayload } = await import("@/lib/secrets");
+        const [user] = await db.select().from(schema.users).where(eq(schema.users.email, users.automatic));
+        const secret = generateTotpSecret();
+        await db.insert(schema.userMfa).values({ userId: user.id, secretEncrypted: encryptSecretPayload({ secret })!.encryptedSecret, enabled: true, setupExpiresAt: new Date() });
+        for (const [code, error] of [["", "MFA_REQUIRED"], ["invalid", "MFA_INVALID"]]) {
+            const res = await signIn(users.automatic, code);
+            assert.equal(setCookies(res).has("next-auth.session-token"), false);
+            assert.match((await res.json()).url, new RegExp(error));
+        }
+        const code = totpAt(secret, Math.floor(Date.now() / 30000));
+        assert.ok(setCookies(await signIn(users.automatic, code)).has("next-auth.session-token"));
+        assert.equal(setCookies(await signIn(users.automatic, code)).has("next-auth.session-token"), false);
+    });
+
 });

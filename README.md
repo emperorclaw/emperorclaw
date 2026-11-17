@@ -489,3 +489,11 @@ git pull --ff-only origin main && npm install && npm run build && npm run db:mig
 **Back up your database before upgrading.** Migrations never drop data, but a backup lets you roll back safely.
 
 </details>
+
+### Optional two-factor authentication
+
+Each user can enable an authenticator app in **Settings → Your profile → Two-factor authentication**. The server must have a stable `EMPEROR_CLAW_MASTER_KEY` configured to encrypt authenticator secrets. Preserve that key across deployments and backups.
+
+Enter your current password to start setup, add the displayed setup key to an authenticator app (TOTP, six digits, 30 seconds), and confirm a code within ten minutes. Save the ten recovery codes shown after confirmation; each can be used once instead of an authenticator code. Subsequent logins require your password and a code. Enabling or disabling two-factor authentication signs out your other sessions. Disabling requires your password and a fresh authenticator or unused recovery code. Password reset does not remove two-factor authentication.
+
+Apply the database migrations with `npm run db:migrate` before running this version. Existing users keep password-only login until they choose to enable two-factor authentication.

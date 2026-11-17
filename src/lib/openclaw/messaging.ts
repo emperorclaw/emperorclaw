@@ -175,11 +175,18 @@ export async function sendThreadMessageFromMcp(input: {
   // thread id falls through to a default thread — which for an agent is its
   // own operator DM. Deriving the thread from `replyToMessageId` keeps a
   // two-agent handoff inside its pair thread across every subsequent turn.
-  const explicitThreadId = input.threadId && isUuid(input.threadId)
-    ? input.threadId
-    : input.replyToMessageId
-      ? await sourceThreadId(input.companyId, input.replyToMessageId)
-      : null;
+  const replyThreadId = input.replyToMessageId
+    ? await sourceThreadId(input.companyId, input.replyToMessageId)
+    : null;
+  if (input.replyToMessageId && !replyThreadId) throw new Error("Thread not found");
+  if (input.threadId && !isUuid(input.threadId)) throw new Error("Invalid threadId");
+  if (replyThreadId && input.threadId && input.threadId !== replyThreadId) {
+    throw new Error("A reply must stay in the thread of the message it answers");
+  }
+  const explicitThreadId = replyThreadId || input.threadId || null;
+  if (resolvedSenderId && !explicitThreadId && !resolvedTargetAgentId && !input.threadType) {
+    throw new Error("Choose threadId or replyToMessageId; use threadType=team only for an intentional shared message");
+  }
 
   let responseThread: typeof messageThreads.$inferSelect;
   if (explicitThreadId) {

@@ -1109,5 +1109,24 @@
   },
   "teamChat": {
     "attachFilesHint": "Attach files or paste images (Ctrl+V)"
-  }
+  },
+  "mfa.title": "Two-factor authentication",
+  "mfa.description": "Optionally protect your login with an authenticator app.",
+  "mfa.enabled": "Enabled",
+  "mfa.disabled": "Not enabled",
+  "mfa.password": "Current password",
+  "mfa.code": "Authenticator or recovery code",
+  "mfa.setup": "Set up authenticator",
+  "mfa.confirm": "Enable two-factor authentication",
+  "mfa.disable": "Disable two-factor authentication",
+  "mfa.secret": "Enter this setup key in your authenticator app (time based, 6 digits, 30 seconds), then enter its code below. Setup expires in 10 minutes.",
+  "mfa.recovery": "Save these recovery codes somewhere safe. Each code works once. They will not be shown again.",
+  "mfa.done": "I saved my recovery codes",
+  "mfa.unavailable": "Authenticator setup is unavailable. Ask the server administrator to configure the encryption key.",
+  "mfa.failed": "Could not update two-factor authentication. Please try again.",
+  "mfa.loading": "Loading security settings…",
+  "mfa.retry": "Retry",
+  "mfa.loginLabel": "Authenticator or recovery code",
+  "mfa.required": "Enter a code from your authenticator app or a recovery code.",
+  "mfa.invalid": "Invalid or already used code. Try a fresh authenticator code or a recovery code."
 }

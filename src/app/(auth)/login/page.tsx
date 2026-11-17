@@ -37,6 +37,9 @@ const stagger = { emblem: 0, title: 0.15, subtitle: 0.2, email: 0.25, password: 
 
 export default function LoginPage() {
     const t = useTranslations("auth.login");
+    const mfa = useTranslations("mfa");
+    const [code, setCode] = useState("");
+    const [needsMfa, setNeedsMfa] = useState(false);
     const router = useRouter();
     const [email, setEmail] = useState("");
     const [password, setPassword] = useState("");
@@ -77,9 +80,14 @@ export default function LoginPage() {
         setError("");
         setLoading(true);
         const normalizedEmail = email.trim().toLowerCase();
-        const res = await signIn("credentials", { redirect: false, email: normalizedEmail, password });
+        const res = await signIn("credentials", { redirect: false, email: normalizedEmail, password, code });
         setLoading(false);
         if (res?.error) {
+            if (res.error === "MFA_REQUIRED" || res.error === "MFA_INVALID") {
+                setNeedsMfa(true);
+                setError(mfa(res.error === "MFA_REQUIRED" ? "required" : "invalid"));
+                return;
+            }
             if (res.error === "EMAIL_NOT_VERIFIED") {
                 setError(t("emailNotVerified"));
                 return;
@@ -180,6 +188,11 @@ export default function LoginPage() {
                                     </div>
                                 </FadeUp>
 
+                                {needsMfa && <label className="block text-sm text-zinc-300">
+                                    {mfa("loginLabel")}
+                                    <input autoFocus autoComplete="one-time-code" value={code} onChange={(e) => setCode(e.target.value)} required
+                                        className="mt-2 w-full rounded-xl border border-white/20 bg-transparent px-4 py-3 text-white" />
+                                </label>}
                                 {/* Submit */}
                                 <FadeUp delay={stagger.button}>
                                     <button
@@ -219,9 +232,9 @@ export default function LoginPage() {
                                             <IconShield className="w-3 h-3 transition-colors duration-300 group-hover:text-cyan-300" />{t("createAccount")}
                                         </Link>
                                         <span className="text-zinc-600 select-none">|</span>
-                                        <a href="/docs" className="flex items-center gap-1.5 text-zinc-400 hover:text-zinc-200 transition-colors duration-300 group">
+                                        <Link href="/docs" className="flex items-center gap-1.5 text-zinc-400 hover:text-zinc-200 transition-colors duration-300 group">
                                             <IconCpu className="w-3 h-3 transition-colors duration-300 group-hover:text-cyan-300" />{t("documentation")}
-                                        </a>
+                                        </Link>
                                     </div>
                                 </div>
                             </FadeUp>

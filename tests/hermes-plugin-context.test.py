@@ -306,6 +306,31 @@ class AckFlowTests(PluginContextCase):
             out = json.loads(plugin.emperor_send_message(args))
         return out, request
 
+    def test_unaddressed_send_without_valid_context_is_refused(self):
+        for stale in (False, True):
+            if stale:
+                self.viktor.write_turn(expiresAt=_iso(-5))
+            out, request = self.send(self.viktor.bound(), {"text": "Private answer"})
+            self.assertIn("Choose threadId", out["error"])
+            request.assert_not_called()
+
+    def test_unaddressed_reply_inherits_private_turn(self):
+        self.viktor.write_turn()
+        _, request = self.send(self.viktor.bound(), {"text": "Your private answer"})
+        body = request.call_args.kwargs["body"]
+        self.assertEqual(body["thread_id"], "thread-1")
+        self.assertEqual(body["thread_type"], "direct")
+        self.assertEqual(body["replyToMessageId"], "msg-42")
+        self.assertNotIn("ack", body)
+
+    def test_peer_handoff_does_not_inherit_private_thread(self):
+        self.viktor.write_turn()
+        _, request = self.send(self.viktor.bound(), {"text": "Please review", "targetAgentId": "qa-id"})
+        body = request.call_args.kwargs["body"]
+        self.assertNotIn("thread_id", body)
+        self.assertNotIn("replyToMessageId", body)
+        self.assertEqual(body["targetAgentId"], "qa-id")
+
     def test_ack_posts_into_the_turn_thread_replying_to_the_turn_message(self):
         self.viktor.write_turn()
         out, request = self.send(self.viktor.bound(), {"text": "On it.", "acknowledge": True})
@@ -427,7 +452,7 @@ class ViewToolsTests(PluginContextCase):
         # Reads still go out; an explicit agentId on a message is enough.
         with self.bind(bound), patch.object(plugin, "_request", return_value={"ok": True}) as request:
             plugin.emperor_list_views({})
-            plugin.emperor_send_message({"text": "hello", "agentId": "viktor-id"})
+            plugin.emperor_send_message({"text": "hello", "agentId": "viktor-id", "threadType": "team"})
         self.assertEqual(request.call_count, 2)
 
     def test_update_view_can_clear_the_refresh_interval(self):

@@ -6063,5 +6063,26 @@
     "loading": "Loading…",
     "cleared": "Removed approvers were cleared. Save to keep the change.",
     "personStep": "a person"
+  },
+  "mfa": {
+    "title": "Two-factor authentication",
+    "description": "Optionally protect your login with an authenticator app.",
+    "enabled": "Enabled",
+    "disabled": "Not enabled",
+    "password": "Current password",
+    "code": "Authenticator or recovery code",
+    "setup": "Set up authenticator",
+    "confirm": "Enable two-factor authentication",
+    "disable": "Disable two-factor authentication",
+    "secret": "Enter this setup key in your authenticator app (time based, 6 digits, 30 seconds), then enter its code below. Setup expires in 10 minutes.",
+    "recovery": "Save these recovery codes somewhere safe. Each code works once. They will not be shown again.",
+    "done": "I saved my recovery codes",
+    "unavailable": "Authenticator setup is unavailable. Ask the server administrator to configure the encryption key.",
+    "failed": "Could not update two-factor authentication. Please try again.",
+    "loading": "Loading security settings…",
+    "retry": "Retry",
+    "loginLabel": "Authenticator or recovery code",
+    "required": "Enter a code from your authenticator app or a recovery code.",
+    "invalid": "Invalid or already used code. Try a fresh authenticator code or a recovery code."
   }
 }

@@ -283,7 +283,9 @@ export async function POST(req: NextRequest) {
                 ? 403
                 : message.startsWith("Loop guard")
                     ? 429
-                    : 500;
+                    : message.startsWith("Choose threadId") || message.startsWith("Invalid threadId") || message.startsWith("A reply must stay")
+                        ? 400
+                        : 500;
         return NextResponse.json({ error: message }, { status });
     }
 }

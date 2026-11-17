@@ -18,6 +18,16 @@ export const users = pgTable("users", {
     deletedAt: timestamp("deleted_at"),
 });
 
+// Separate from users so profile/account queries never return MFA credentials.
+export const userMfa = pgTable("user_mfa", {
+    userId: uuid("user_id").primaryKey().references(() => users.id, { onDelete: "cascade" }),
+    secretEncrypted: text("secret_encrypted").notNull(),
+    enabled: boolean("enabled").default(false).notNull(),
+    setupExpiresAt: timestamp("setup_expires_at").notNull(),
+    lastStep: integer("last_step").default(-1).notNull(),
+    recoveryHashes: jsonb("recovery_hashes").$type<string[]>().default([]).notNull(),
+});
+
 export const sessions = pgTable("sessions", {
     id: uuid("id").primaryKey().defaultRandom(),
     userId: uuid("user_id").notNull().references(() => users.id, { onDelete: 'cascade' }),

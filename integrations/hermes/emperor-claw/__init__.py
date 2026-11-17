@@ -1290,6 +1290,10 @@ def emperor_send_message(args: Dict[str, Any], **_: Any) -> str:
     thread_id = args.get("threadId") or args.get("thread_id")
     thread_type = args.get("threadType") or args.get("thread_type")
     acknowledge = bool(args.get("acknowledge"))
+    # An unaddressed send during a turn is a reply, never a team broadcast.
+    if turn and not thread_id and not (args.get("targetAgentId") or args.get("target_agent_id")) and not thread_type:
+        thread_id = turn_thread
+        thread_type = turn["threadType"]
     if acknowledge:
         # An ack only means something inside a bridge turn answering a real
         # message: without one it would fall through to the team channel.
@@ -1304,6 +1308,9 @@ def emperor_send_message(args: Dict[str, Any], **_: Any) -> str:
     missing = _missing_agent_ref(args.get("agentId") or args.get("agent_id"))
     if missing:
         return _json(missing)
+    # Missing/stale context must never turn a reply into a public broadcast.
+    if not thread_id and not (args.get("targetAgentId") or args.get("target_agent_id")) and not thread_type:
+        return _json({"error": "Choose threadId or targetAgentId; use threadType=team only for an intentional shared message"})
     body = {
         "text": text,
         "agentId": args.get("agentId") or args.get("agent_id") or _agent_ref(),
@@ -1797,7 +1804,7 @@ def register(ctx: Any) -> None:
         "emperor_send_message",
         TOOLSET,
         _schema(
-            "Send a message into an Emperor thread OTHER than the one you are answering. Your reply to the current message is delivered automatically by the runtime — do NOT call this tool to answer it, or the thread gets a duplicate. One exception: before long work on a human's request, set acknowledge=true (no threadId) to post ONE short acknowledgement in the current thread. To message a sibling: pass targetAgentId; Emperor posts in the work-team chat you both share and @mentions them (only they are woken). If you share several team chats you must pass threadId (or private=true). Set private=true only when the message must not be seen by the team. If you share no team, it falls back to a private two-agent thread.",
+            "Keep private conversations private: never send their answers, acknowledgements or status updates into a team/group chat unless the person explicitly asks. An unaddressed send inside a turn stays in that turn’s thread. Send a message into an Emperor thread OTHER than the one you are answering. Your reply to the current message is delivered automatically by the runtime — do NOT call this tool to answer it, or the thread gets a duplicate. One exception: before long work on a human's request, set acknowledge=true (no threadId) to post ONE short acknowledgement in the current thread. To message a sibling: pass targetAgentId; Emperor posts in the work-team chat you both share and @mentions them (only they are woken). If you share several team chats you must pass threadId (or private=true). Set private=true only when the message must not be seen by the team. If you share no team, it falls back to a private two-agent thread.",
             {
                 "text": {"type": "string"},
                 "agentId": {"type": "string", "description": "Optional sender Emperor agent id/name. Defaults to this Hermes profile's configured agent."},

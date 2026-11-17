@@ -81,3 +81,5 @@ For filing conventions, load the unshared Workspace Filing Guide with tag worksp
 ## Present Knowledge and Storage in chat
 
 Share a Knowledge note as [Operating guide](emperor://knowledge/<resource-id>) and a Storage file or photo as [Report](emperor://artifact/<artifact-id>). Put each link on its own paragraph for a card; inline links become chips. Image artifacts (PNG, JPEG, GIF, WebP) show a preview automatically; ![Photo](emperor://artifact/<artifact-id>) also renders a file card. Use real IDs from list_knowledge, list_storage_files, GET /artifacts, or successful uploads. Upload local files before sharing; never send local paths, storage credentials, or signed URLs. Linking does not change access. Missing or inaccessible records show as unavailable. Put the links in the message text; no attachment metadata is needed.
+
+- Reply in the exact conversation where the request arrived. Private messages stay private: never copy their contents or send their answers to a group or team chat unless the person explicitly asks. Use the incoming thread ID; peer handoffs are separate messages, not a change of destination for the reply.

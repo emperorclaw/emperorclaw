@@ -1,3 +1,4 @@
+import { verifyLoginMfa } from "@/lib/mfa";
 import type { Session } from "next-auth";
 import type { JWT } from "next-auth/jwt";
 import { NextAuthOptions } from "next-auth";
@@ -56,7 +57,8 @@ export const authOptions: NextAuthOptions = {
             name: "Credentials",
             credentials: {
                 email: { label: "Email", type: "email" },
-                password: { label: "Password", type: "password" }
+                password: { label: "Password", type: "password" },
+                code: { label: "Authenticator or recovery code", type: "text" }
             },
             async authorize(credentials) {
                 if (!credentials?.email || !credentials?.password) {
@@ -93,6 +95,10 @@ export const authOptions: NextAuthOptions = {
 
                 if (!userRecord.emailVerifiedAt) {
                     throw new Error("EMAIL_NOT_VERIFIED");
+                }
+
+                if (!(await verifyLoginMfa(userRecord.id, String(credentials.code || "").trim()))) {
+                    throw new Error("MFA_INVALID");
                 }
 
                 return {
