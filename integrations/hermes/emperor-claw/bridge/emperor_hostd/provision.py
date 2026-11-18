@@ -50,6 +50,7 @@ from pathlib import Path
 from typing import Any, Callable, Optional, Sequence
 
 from emperor_bridge.config import read_env_file
+from emperor_bridge.secrets_sync import _block_span
 
 from .commands import (HERMES_PROFILE_RE, LINE_BREAKING_RE, RESERVED_PROFILE_NAMES, SECRET_ENV_KEY_RE, CommandRefused, drop_marker,
                        find_provider_key, no_key_message, profile_agent_id, provider_key_problem, profile_belongs_to, validate, write_marker)
@@ -189,9 +190,21 @@ def _line_key(line: str) -> Optional[str]:
 
 def scrub_env(existing: str, also_drop: Sequence[str] = ()) -> list[str]:
     """The lines of a .env without any EMPEROR_CLAW_* key, any credential-looking key (and their
-    multi-line values), and `also_drop`; comments and other settings are kept."""
+    multi-line values), and `also_drop`; comments and other settings are kept. The bridge's
+    managed secrets block is preserved as is."""
+    lines = existing.splitlines()
+    span = _block_span(lines)
+    # The same span rule as the bridge: a marker without an end marker stops at the first blank
+    # or comment line, so a damaged file never makes the rest look managed.
+    managed = range(span[0], span[1] + 1) if span else range(0)
     kept: list[str] = []
+    index = 0
     for key, block in env_entries(existing):
+        in_managed = any(position in managed for position in range(index, index + len(block)))
+        index += len(block)
+        if in_managed:
+            kept.extend(block)
+            continue
         if key and (key.startswith("EMPEROR_CLAW_") or key in OWNED_KEYS or key in also_drop or SECRET_ENV_KEY_RE.search(key)):
             continue
         kept.extend(block)

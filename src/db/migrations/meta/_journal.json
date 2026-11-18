@@ -589,6 +589,13 @@
       "when": 1794830898844,
       "tag": "0083_user-upload-folders",
       "breakpoints": true
+    },
+    {
+      "idx": 84,
+      "version": "7",
+      "when": 1794999283233,
+      "tag": "0084_agent-secrets",
+      "breakpoints": true
     }
   ]
 }

@@ -32,6 +32,7 @@ import { AvatarPicker } from "@/components/avatar-picker";
 import { AgentScopeTab } from "./agent-scope-tab";
 import { AgentActionsTab } from "./agent-actions-tab";
 import { AgentRunsTab } from "./agent-runs-tab";
+import { AgentSecretsSection } from "./agent-secrets-section";
 import { DeleteAgentDialog } from "./delete-agent-dialog";
 import { AgentAccessSettings, LockedAgentCard } from "@/components/access/agent-access-control";
 import { getProvider, buildAgentSetupPrompt } from "@/lib/agent-providers";
@@ -98,6 +99,7 @@ type AgentDetailData = {
         deploymentMode?: string;
         llmProvider?: string | null;
         llmModel?: string | null;
+        ownerUserId?: string | null;
         lastSeenAt?: string;
         doctrineJson?: Record<string, string>;
         scopeJson?: { mode?: "all" | "restricted"; customerIds?: string[]; projectIds?: string[]; agentIds?: string[] };
@@ -786,6 +788,8 @@ export function AgentDetailPanel({ agentId, agentName, runtime = null }: {
                     {llmError && <p role="alert" className="text-destructive">{llmError}</p>}
                 </div>
             )}
+
+            <AgentSecretsSection agentId={agent.id} ownerUserId={agent.ownerUserId ?? null} />
 
             {/* Tabs */}
             <Tabs key={initialTab} defaultValue={initialTab} className="p-4 sm:p-5">

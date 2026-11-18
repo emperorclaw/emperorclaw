@@ -372,7 +372,38 @@
       }
     },
     "detail": {
-      "workLogUnread": "{count, plural, one {# unread message} other {# unread messages}}"
+      "workLogUnread": "{count, plural, one {# unread message} other {# unread messages}}",
+      "secrets": {
+        "title": "Secrets",
+        "help": "Saved secrets reach this agent's runtime as environment variables within about a minute, and the runtime can read them. A saved value cannot be viewed again.",
+        "empty": "No secrets yet.",
+        "name": "Name",
+        "value": "Value",
+        "namePlaceholder": "API_TOKEN",
+        "valuePlaceholder": "Paste the secret value",
+        "addTitle": "Add a secret",
+        "rotateTitle": "New value for {name}",
+        "add": "Add secret",
+        "save": "Save new value",
+        "invalidName": "Use 2–64 characters: a letter first, then uppercase letters, digits or underscores.",
+        "saveFailed": "Could not save the secret.",
+        "deleteFailed": "Could not delete the secret.",
+        "loadFailed": "Could not load secrets.",
+        "unavailable": "Secrets are unavailable because this server has no master key configured.",
+        "rotate": "Rotate",
+        "rotateNamed": "Rotate {name}",
+        "delete": "Delete",
+        "deleteNamed": "Delete {name}",
+        "deleteTitle": "Delete {name}?",
+        "deleteBody": "The agent's runtime stops receiving this secret after about a minute. This cannot be undone.",
+        "deleteConfirm": "Delete secret",
+        "deleted": "{name} deleted",
+        "exposedToTools": "Exposed to tools",
+        "version": "v{version}",
+        "updated": "Updated {ago}",
+        "showValue": "Show value",
+        "hideValue": "Hide value"
+      }
     }
   },
   "messagingHub": {

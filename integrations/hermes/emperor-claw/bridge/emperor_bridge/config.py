@@ -167,6 +167,7 @@ class AgentConfig:
     context_mode: str = "full"
     lean_revalidate_s: float = 600.0
     capability_refresh_s: float = 600.0
+    secrets_sync_s: float = 60.0
     loop_guard_max_turns: int = 3
     retry_base_s: int = 15
     retry_max_s: int = 300
@@ -252,6 +253,7 @@ class AgentConfig:
             context_mode=(get.get("EMPEROR_CLAW_CONTEXT_MODE") or "full").lower(),
             lean_revalidate_s=get.number("EMPEROR_CLAW_LEAN_REVALIDATE_SECONDS", 600, 0),
             capability_refresh_s=get.number("EMPEROR_CLAW_CAPABILITY_REFRESH_SECONDS", 600, 0),
+            secrets_sync_s=get.number("EMPEROR_CLAW_SECRETS_SYNC_SECONDS", 60, 0),
             loop_guard_max_turns=get.integer("EMPEROR_CLAW_LOOP_GUARD_MAX_TURNS", 3, 1),
             retry_base_s=get.integer("EMPEROR_CLAW_HERMES_RETRY_BASE_SECONDS", 15, 1),
             retry_max_s=get.integer("EMPEROR_CLAW_HERMES_RETRY_MAX_SECONDS", 300, 1),

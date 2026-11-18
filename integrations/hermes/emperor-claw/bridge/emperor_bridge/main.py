@@ -18,7 +18,7 @@ import time
 import uuid
 from typing import Any, Optional
 
-from . import intake, recovery, supervisor as supervisor_mod
+from . import intake, recovery, secrets_sync, supervisor as supervisor_mod
 from .compaction import Compactor
 from .config import AgentConfig, ConfigError, HostConfig, host_fingerprint, load_agent_configs
 from .context import ContextBuilder, compose_api_text, parse_server_capabilities
@@ -128,6 +128,9 @@ class AgentRuntime:
         for name, coro in (("sync", intake.sync_loop(self)), ("control", self._control_loop()),
                            ("housekeeping", self._housekeeping_loop()), ("health", self._health_loop())):
             self._tasks.append(asyncio.create_task(coro, name=f"{self.cfg.profile_name}-{name}"))
+        if self.cfg.secrets_sync_s > 0:
+            self._tasks.append(asyncio.create_task(
+                secrets_sync.sync_loop(self.cfg, self.log), name=f"{self.cfg.profile_name}-secrets"))
         # Recovery runs after the loops are up: a turn that never settles must not block
         # sync/control/housekeeping or the heartbeat (H2). Recovered threads are reserved so a
         # new message queues behind them instead of colliding.

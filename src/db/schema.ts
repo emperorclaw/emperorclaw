@@ -1178,6 +1178,27 @@ export const integrationSecretVersions = pgTable("integration_secret_versions", 
     revokedAt: timestamp("revoked_at"),
 });
 
+// Environment variables owned by one agent (lib/agent-secrets.ts). The value is
+// AES-256-GCM ciphertext; the runtime bridge writes the decrypted values into
+// the agent's Hermes profile `.env`. A name is live once per agent: the partial
+// unique index lets a soft-deleted name be created again.
+export const agentSecrets = pgTable("agent_secrets", {
+    id: uuid("id").primaryKey().defaultRandom(),
+    companyId: uuid("company_id").notNull().references(() => companies.id, { onDelete: 'cascade' }),
+    agentId: uuid("agent_id").notNull().references(() => agents.id, { onDelete: 'cascade' }),
+    name: text("name").notNull(),
+    valueEncrypted: text("value_encrypted").notNull(),
+    keyVersion: text("key_version").default('v1').notNull(),
+    version: integer("version").default(1).notNull(),
+    exposeToTools: boolean("expose_to_tools").default(false).notNull(),
+    createdByUserId: uuid("created_by_user_id").references(() => users.id, { onDelete: 'set null' }),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at").defaultNow().notNull(),
+    deletedAt: timestamp("deleted_at"),
+}, (table) => [
+    uniqueIndex("agent_secrets_agent_name_live_idx").on(table.agentId, table.name).where(sql`${table.deletedAt} IS NULL`),
+]);
+
 export const credentialAccessLogs = pgTable("credential_access_logs", {
     id: uuid("id").primaryKey().defaultRandom(),
     companyId: uuid("company_id").notNull().references(() => companies.id, { onDelete: 'cascade' }),

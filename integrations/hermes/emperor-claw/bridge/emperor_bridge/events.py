@@ -15,11 +15,12 @@ import contextlib
 import json
 import logging
 import re
+import threading
 import time
 from collections import deque
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
-from typing import Any, Callable, Mapping, Optional
+from typing import Any, Callable, Iterable, Mapping, Optional
 
 from .interfaces import (BridgeError, DROPPABLE_EVENT_KINDS, EmperorEvent, EmperorPort, EmperorUnavailable,
                          EventSinkConfig, GatewayEvent, RunGone, RunNotFound)
@@ -40,6 +41,35 @@ PREPARE_GRACE_S = 2.0
 IGNORED_TYPES = frozenset({"message.delta", "message.interim", "thinking.delta", "session.info", "todo.updated",
                            "gateway.ready", "sessions.changed", "platforms.changed", "session.updated",
                            "message.complete", "session.title", "notification.show", "notification.clear"})
+
+_KNOWN_SECRETS: set[str] = set()
+#: Longest first so a secret that contains another secret is replaced whole; rebuilt only on
+#: registration, never sorted on the hot path.
+_KNOWN_SECRETS_SORTED: tuple[str, ...] = ()
+_KNOWN_SECRETS_LOCK = threading.Lock()
+
+
+def register_secrets(values: Iterable[Any]) -> None:
+    """Remember literal secret values so every outgoing event scrubs them, whatever their shape."""
+    global _KNOWN_SECRETS_SORTED
+    with _KNOWN_SECRETS_LOCK:
+        for value in values:
+            text = "" if value is None else str(value)
+            # Same floor as the host daemon's redactor: a shorter value would blank out
+            # ordinary words and digits in every event.
+            if len(text) >= 6:
+                _KNOWN_SECRETS.add(text)
+        _KNOWN_SECRETS_SORTED = tuple(sorted(_KNOWN_SECRETS, key=len, reverse=True))
+
+
+def _scrub_known_secrets(text: str) -> str:
+    with _KNOWN_SECRETS_LOCK:
+        secrets = _KNOWN_SECRETS_SORTED
+    for secret in secrets:
+        if secret in text:
+            text = text.replace(secret, "[redacted]")
+    return text
+
 
 _REDACTIONS: tuple[tuple[re.Pattern[str], str], ...] = (
     (re.compile(r"(?i)\b(bearer|token|basic)\s+[A-Za-z0-9._~+/=-]{12,}"), r"\1 [redacted]"),
@@ -81,7 +111,7 @@ def redact(text: Any, limit: int) -> Optional[str]:
     """Secret-scrubbed, single-spaced, truncated text (None for empty)."""
     if text is None:
         return None
-    value = str(text)
+    value = _scrub_known_secrets(str(text))
     for pattern, replacement in _REDACTIONS:
         value = pattern.sub(replacement, value)
     value = re.sub(r"\s+", " ", value).strip()
@@ -104,8 +134,19 @@ def first_line(value: Any) -> str:
     return ""
 
 
+def _scrub_data(value: Any) -> Any:
+    """Scrub strings at any depth; dicts and lists keep their shape."""
+    if isinstance(value, str):
+        return _scrub_known_secrets(value)
+    if isinstance(value, Mapping):
+        return {key: _scrub_data(item) for key, item in value.items()}
+    if isinstance(value, list):
+        return [_scrub_data(item) for item in value]
+    return value
+
+
 def bounded_data(data: Mapping[str, Any]) -> Optional[dict[str, Any]]:
-    clean = {k: v for k, v in data.items() if v is not None}
+    clean = {k: _scrub_data(v) for k, v in data.items() if v is not None}
     if not clean:
         return None
     if len(json.dumps(clean, ensure_ascii=False).encode("utf-8")) <= DATA_MAX_BYTES:

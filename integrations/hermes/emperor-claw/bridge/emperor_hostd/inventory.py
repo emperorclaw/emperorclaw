@@ -17,6 +17,7 @@ from pathlib import Path
 from typing import Any, Callable, Optional, Sequence
 
 from emperor_bridge.config import host_fingerprint, read_env_file
+from emperor_bridge.secrets_sync import managed_values
 
 from .commands import ENABLED_COMMANDS, copilot_token_usable
 from .config import HostPaths, url_origin
@@ -239,8 +240,10 @@ def build_inventory(paths: HostPaths, emperor_origin: str, redactor: Redactor, r
     profiles: list[dict[str, Any]] = []
     for name in names[:64]:
         record = records.get(name, {})
-        env = read_env_file(paths.profile_home(name) / ".env")
+        env_path = paths.profile_home(name) / ".env"
+        env = read_env_file(env_path)
         note_env(env)
+        redactor.add(managed_values(_read_text(env_path)).values())
         agent_id = env.get("EMPEROR_CLAW_AGENT_ID", "").strip().lower()
         topology = record.get("topology") or "unknown"
         if topology == "standalone":
