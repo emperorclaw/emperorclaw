@@ -11,6 +11,12 @@ ships in the release notes.
 
 ## [Unreleased]
 
+## [0.37.0] — 2026-11-18
+
+### Added
+
+- **Agent secrets.** Give an agent its own API keys and credentials from a new Secrets section on the agent panel. Values are encrypted at rest, can be rotated or deleted but never viewed again, and reach the agent's Hermes runtime as environment variables within about a minute, with no restart. The agent's owner or a company owner or admin can manage them; names that change where the runtime sends requests (such as `*_BASE_URL` or proxy variables) are admin-only, and names that affect how programs load are refused. Requires `EMPEROR_CLAW_MASTER_KEY` on the server and bridge 0.37.0 with a per-agent token; bridges that still use a company-wide token do not receive secrets.
+
 ## [0.36.0] — 2026-11-16
 
 ### Added
