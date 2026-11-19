@@ -9,6 +9,12 @@ tagged (e.g. `## [1.2.0] — 2026-07-22`). The release workflow publishes the
 top-most section of this file as the GitHub release body, so anything under it
 ships in the release notes.
 
+## [0.39.1] — 2026-11-19
+
+### Fixed
+
+- **Team chat no longer answers 500 under concurrency.** The get-or-create of a company's team thread took no lock, so two simultaneous renders of `/messages` both inserted, the loser hit the `message_threads_one_team_per_company` unique index, and the page returned 500 (which made the chat browser test flake). The lookup now runs under a per-company advisory lock inside a transaction, the last-resort unique-violation branch recognises the error PostgreSQL actually raises (drizzle wraps the driver error, so the old check on `error.code` never matched) and re-reads the winner instead of failing.
+
 ## [0.39.0] — 2026-11-19
 
 ### Added
