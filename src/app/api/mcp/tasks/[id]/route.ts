@@ -78,6 +78,12 @@ export async function PATCH(
     try {
         const body = await req.json();
 
+        // Who is acting: the agent the token is bound to, else the `agentId` the
+        // caller names (query or body). Without one the write is unsigned, and
+        // an unsigned status change is refused below instead of being stored as
+        // `actorType: "system"` — case c87002d6 closed a task with no actor.
+        const agentRef: unknown = body.agentId ?? req.nextUrl.searchParams.get("agentId");
+
         // The lease is not a PATCH field. It used to be accepted here and
         // silently dropped: the caller got 200 "updated successfully" and
         // believed it held a mutex it never had (it also cannot be a plain
@@ -99,10 +105,10 @@ export async function PATCH(
             if (!existingTask) {
                 return NextResponse.json({ error: "Task not found" }, { status: 404 });
             }
-            const scopeDenied = await checkTaskScope(companyId, auth.companyToken!, body.agentId, existingTask.projectId, 403);
+            const scopeDenied = await checkTaskScope(companyId, auth.companyToken!, agentRef, existingTask.projectId, 403);
             if (scopeDenied) return scopeDenied;
             // Reassigning to another agent: only to agents the actor may work with.
-            const reach = await mcpRouteAccess(companyId, auth.companyToken!, body.agentId);
+            const reach = await mcpRouteAccess(companyId, auth.companyToken!, agentRef);
             if (reach.response) return reach.response;
             try {
                 await assertMcpMayAssign(companyId, reach.access, { assignee: body.assignee, assignedAgentId: body.assignedAgentId });
@@ -176,11 +182,11 @@ export async function DELETE(
             return NextResponse.json({ error: "Task not found or already deleted." }, { status: 404 });
         }
 
-        let agentId: unknown;
+        let agentId: unknown = req.nextUrl.searchParams.get("agentId");
         try {
-            agentId = (await req.json())?.agentId;
+            agentId = (await req.json())?.agentId ?? agentId;
         } catch {
-            // No body — DELETE typically has none, treat as unscoped caller.
+            // No body — DELETE typically has none; the query may still name the agent.
         }
         const scopeDenied = await checkTaskScope(companyId, auth.companyToken!, agentId, existing.projectId, 403);
         if (scopeDenied) return scopeDenied;

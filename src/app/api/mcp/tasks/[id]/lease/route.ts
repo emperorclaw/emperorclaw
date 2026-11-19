@@ -11,9 +11,11 @@ import { mcpMayUseTask, mcpRouteAccess } from "@/lib/mcp-access";
  *   DELETE /api/mcp/tasks/{id}/lease?owner=<session id>&agentId=<agent>
  *
  * The lease is taken with one conditional UPDATE, so a second session gets 409
- * with the current holder instead of a lease it does not own. `owner` is the
- * session identity (a runtime/session id): the agent id alone cannot tell two
- * sessions of the same agent apart.
+ * with the current holder instead of a lease it does not own. The lease belongs
+ * to the agent (from the token or `agentId`) and `owner` names the session
+ * inside it: the agent id alone cannot tell two sessions of the same agent
+ * apart, and a session id alone cannot say who holds the task. A renewal is
+ * only accepted from the session that holds it.
  */
 
 type LeaseOutcome = { status: number; body: Record<string, unknown> };
@@ -119,8 +121,14 @@ export async function DELETE(
 }
 
 function toResponse(
-    result: { task: LeasedTaskRow; lease?: { owner: string; until: Date | null; ttlSeconds: number } }
-        | { status: 403 | 404 | 409; error: string; leaseOwner?: string | null; leaseUntil?: Date | null },
+    result: { task: LeasedTaskRow; lease?: { owner: string; session: string | null; until: Date | null; ttlSeconds: number } }
+        | {
+            status: 403 | 404 | 409;
+            error: string;
+            leaseOwner?: string | null;
+            leaseSession?: string | null;
+            leaseUntil?: Date | null;
+        },
     message: string,
 ): LeaseOutcome {
     if ("error" in result) {
@@ -129,6 +137,7 @@ function toResponse(
             body: {
                 error: result.error,
                 ...(result.leaseOwner !== undefined ? { leaseOwner: result.leaseOwner } : {}),
+                ...(result.leaseSession !== undefined ? { leaseSession: result.leaseSession } : {}),
                 ...(result.leaseUntil !== undefined ? { leaseUntil: result.leaseUntil } : {}),
             },
         };
@@ -139,7 +148,11 @@ function toResponse(
         body: {
             message,
             task,
-            lease: result.lease ?? { owner: task.leaseOwner ?? null, until: task.leaseUntil ?? null },
+            lease: result.lease ?? {
+                owner: task.leaseOwner ?? null,
+                session: task.leaseSession ?? null,
+                until: task.leaseUntil ?? null,
+            },
         },
     };
 }
