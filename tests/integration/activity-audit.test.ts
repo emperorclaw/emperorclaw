@@ -93,7 +93,10 @@ maybe("MCP mutations record the bound agent, and a company-wide token cannot sig
     assert.equal(deniedMove.status, 403);
     assert.match(((await deniedMove.json()) as { error: string }).error, new RegExp(tokenId), "the 403 names the token");
 
-    const deniedAssign = await call(w.companyWideToken, { assignedAgentId: w.agent.id, agentId: "Scout" });
+    // A real hand-off to another agent, signed by the agentless token that names
+    // "Scout" in the body. The body no longer signs an ownership change.
+    const rival = await seedAgent(w.companyId, { name: "Rival" });
+    const deniedAssign = await call(w.companyWideToken, { assignedAgentId: rival.id, agentId: "Scout" });
     assert.equal(deniedAssign.status, 403, "agentId in the body no longer signs an ownership change");
 
     const moves = (await auditRows(w.companyId)).filter((r) => r.action === "task.state_changed" || r.action === "task.assigned");

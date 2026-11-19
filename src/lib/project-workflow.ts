@@ -332,9 +332,9 @@ export function taskAssignmentDenial(input: {
     signature: TaskUpdateSignature;
 }): string | null {
     const { project, task, nextAssignedAgentId, signature } = input;
-    // Identity first, even for a write that changes nothing: a token that cannot
-    // name its agent must not be able to sign a task write at all, and an
-    // ordering that returned 200 for a no-op would hide exactly that.
+    // Identity first, then whether anything moves. Callers only ask this for a
+    // real hand-off, but a token that cannot name its agent gets the identity
+    // answer rather than a silent null.
     const problem = signatureProblem("reassignment", signature);
     if (problem) return problem;
     if ((task.assignedAgentId ?? null) === (nextAssignedAgentId ?? null)) return null;
