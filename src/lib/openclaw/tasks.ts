@@ -341,10 +341,14 @@ export async function updateTaskForCompany(input: UpdateTaskInput) {
   // system job with no token behind it. A token that resolves to no agent is
   // refused with its tokenId instead of being stored as "system" — the shape of
   // the 15:47:06 and 15:47:10 writes on task c87002d6.
-  const rawActor = input.actorType
-    ? { type: input.actorType as string, id: input.actorId ?? null, tokenId: null as string | null }
-    : input.actor
-      ? { type: input.actor.type as string, id: input.actor.id ?? null, tokenId: input.actor.tokenId ?? null }
+  // The signed actor wins over the bare actorType/actorId pair: it is the same
+  // identity plus the token that backed it, and without that tokenId a refusal
+  // cannot name the writer. Callers that pass both (lib/mcp-server/tools/tasks.ts)
+  // are exactly the case that used to lose the token.
+  const rawActor = input.actor
+    ? { type: input.actor.type as string, id: input.actor.id ?? null, tokenId: input.actor.tokenId ?? null }
+    : input.actorType
+      ? { type: input.actorType as string, id: input.actorId ?? null, tokenId: null as string | null }
       : null;
   const signature = rawActor && (rawActor.type === "agent" || rawActor.type === "human" || rawActor.type === "system")
     ? { type: rawActor.type as "agent" | "human" | "system", id: rawActor.id, tokenId: rawActor.tokenId }
