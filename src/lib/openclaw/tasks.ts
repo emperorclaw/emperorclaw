@@ -109,7 +109,7 @@ export async function claimNextTaskForAgent(input: ClaimTaskInput) {
   const strictOwnerRole = input.strictOwnerRole !== false;
   const allowedRoles = Array.isArray(input.allowedRoles) ? input.allowedRoles : [];
   const internalAgentId = await resolveAgentId(input.companyId, input.agentId);
-  const leaseOwner = normalizeLeaseOwner(input.owner, input.agentId);
+  const leaseSession = normalizeLeaseSession(input.owner);
 
   const [agent] = await db.select({
     id: agents.id,
@@ -142,7 +142,8 @@ export async function claimNextTaskForAgent(input: ClaimTaskInput) {
       state = ${TASK_STATES.inProgress},
       assigned_agent_id = ${internalAgentId},
       assigned_member_id = NULL,
-      lease_owner = ${leaseOwner},
+      lease_owner = ${internalAgentId},
+      lease_session = ${leaseSession},
       lease_until = NOW() + make_interval(secs => ${TASK_LEASE_DEFAULT_TTL_SECONDS}::int),
       processing_started_at = NOW(),
       updated_at = NOW()
@@ -238,9 +239,14 @@ export async function assignTaskToAgent(input: AssignTaskInput) {
   const now = new Date();
   const sameAgent = existingTask.assignedAgentId === internalAgentId && !existingTask.assignedMemberId;
   const leaseOwner = mode === "claim"
-    ? normalizeLeaseOwner(input.owner, input.agentId)
+    ? internalAgentId
     : sameAgent
       ? existingTask.leaseOwner
+      : null;
+  const leaseSession = mode === "claim"
+    ? normalizeLeaseSession(input.owner)
+    : sameAgent
+      ? existingTask.leaseSession
       : null;
   const leaseUntil = mode === "claim"
     ? new Date(now.getTime() + 10 * 60 * 1000)
@@ -253,6 +259,7 @@ export async function assignTaskToAgent(input: AssignTaskInput) {
     assignedMemberId: null,
     state,
     leaseOwner,
+    leaseSession,
     leaseUntil,
     processingStartedAt: mode === "claim" ? (existingTask.processingStartedAt || now) : existingTask.processingStartedAt,
     updatedAt: now,
@@ -358,7 +365,7 @@ export async function updateTaskForCompany(input: UpdateTaskInput) {
   const assigneeChanges = assignmentWasRequested
     && (resolvedAssignedAgentId ?? null) !== (existingTask.assignedAgentId ?? null);
 
-  if (stateChanges || assigneeChanges) {
+  if (stateChanges || assignmentWasRequested) {
     const [ownerProject] = await db.select({ leadAgentId: projects.leadAgentId }).from(projects).where(
       and(eq(projects.id, existingTask.projectId), eq(projects.companyId, input.companyId)),
     ).limit(1);
@@ -371,7 +378,10 @@ export async function updateTaskForCompany(input: UpdateTaskInput) {
       }
     }
 
-    if (assigneeChanges) {
+    // The gate runs whenever the caller asked for an assignee, not only when the
+    // value differs: a write that changes nothing still needs an identity, and
+    // skipping it there returned 200 to a token that cannot name its agent.
+    if (assignmentWasRequested) {
       const denial = taskAssignmentDenial({
         project: ownerPolicy,
         task: existingTask,
@@ -437,6 +447,7 @@ export async function updateTaskForCompany(input: UpdateTaskInput) {
     assignedAgentId: resolvedAssignedAgentId,
     assignedMemberId: resolvedAssignedMemberId,
     leaseOwner: revokeLease ? null : existingTask.leaseOwner,
+    leaseSession: revokeLease ? null : existingTask.leaseSession,
     leaseUntil: revokeLease ? null : existingTask.leaseUntil,
     state: normalizedState || existingTask.state,
     inputJson: normalizedSpec.inputJson,
@@ -1014,12 +1025,13 @@ export async function spawnRecurringTaskInstance(input: {
 }
 
 /**
- * Task lease = mutex between sessions that share one agent.
+ * Task lease = mutex per (agent, task).
  *
- * `leaseOwner` names the *session* holding the work, not the agent: two Hermes
- * sessions of the same agent carry the same agentId, so an agent-scoped owner
- * cannot tell them apart. Callers pass their session/runtime id; it falls back
- * to the agent id for older callers.
+ * The lease belongs to the agent (`lease_owner`) and records the session inside
+ * it (`lease_session`): two Hermes sessions of one agent carry the same agentId,
+ * so the agent alone cannot tell them apart, and the session alone cannot say who
+ * holds the task. Callers pass their session/runtime id as `owner`; without one
+ * the lease is agent-level.
  *
  * Acquisition is one conditional UPDATE (compare-and-set), so exactly one
  * session wins and the loser learns who holds it. A plain PATCH cannot do this:
@@ -1032,12 +1044,30 @@ export const TASK_LEASE_MAX_TTL_SECONDS = 3600;
 export type TaskLeaseFailure = {
   status: 403 | 404 | 409;
   error: string;
+  /** The agent that holds the lease. */
   leaseOwner?: string | null;
+  /** The session of that agent that holds it, when the caller named one. */
+  leaseSession?: string | null;
   leaseUntil?: Date | null;
 };
 
-function normalizeLeaseOwner(owner: unknown, fallback: string): string {
-  return (typeof owner === "string" && owner.trim() ? owner.trim() : fallback).slice(0, 200);
+/** The lease belongs to an agent and names the session inside it. */
+export type TaskLease = {
+  owner: string;
+  session: string | null;
+  until: Date | null;
+  ttlSeconds: number;
+};
+
+/**
+ * The session identity inside the lease. The agent id alone cannot tell two
+ * sessions of the same agent apart, and a session id alone cannot say which
+ * agent holds the task — the lease stores both (case c87002d6).
+ */
+function normalizeLeaseSession(owner: unknown): string | null {
+  if (typeof owner !== "string") return null;
+  const value = owner.trim();
+  return value ? value.slice(0, 200) : null;
 }
 
 function normalizeLeaseTtl(seconds: unknown): number {
@@ -1050,10 +1080,12 @@ function normalizeLeaseTtl(seconds: unknown): number {
 /**
  * Take (or renew) the lease on a task this agent owns.
  *
- * Succeeds when the lease is free, expired, already ours, or when the caller
- * asked for `takeover` (the escape hatch for a session that died holding it).
- * Otherwise returns 409 with the current holder so the caller can stand down
- * instead of duplicating the work.
+ * Succeeds when the lease is free, expired, held by *this* session of this
+ * agent, or when the caller asked for `takeover` (the escape hatch for a
+ * session that died holding it). Otherwise returns 409 with the holder — the
+ * agent and the session inside it — so the caller can stand down instead of
+ * duplicating the work. Two sessions of the same agent exclude each other just
+ * like two agents do; the lease is per (agent, task), not per session.
  */
 export async function acquireTaskLease(input: {
   companyId: string;
@@ -1062,16 +1094,17 @@ export async function acquireTaskLease(input: {
   owner?: string | null;
   ttlSeconds?: number | null;
   takeover?: boolean;
-}): Promise<{ task: typeof tasks.$inferSelect; lease: { owner: string; until: Date | null; ttlSeconds: number } } | TaskLeaseFailure> {
+}): Promise<{ task: typeof tasks.$inferSelect; lease: TaskLease } | TaskLeaseFailure> {
   const internalAgentId = await resolveAgentId(input.companyId, input.agentId);
-  const owner = normalizeLeaseOwner(input.owner, internalAgentId);
+  const session = normalizeLeaseSession(input.owner);
   const ttlSeconds = normalizeLeaseTtl(input.ttlSeconds);
   const takeover = input.takeover === true;
 
   const updated = await db.execute(sql`
     UPDATE tasks
     SET
-      lease_owner = ${owner},
+      lease_owner = ${internalAgentId},
+      lease_session = ${session},
       lease_until = NOW() + make_interval(secs => ${ttlSeconds}::int),
       updated_at = NOW()
     WHERE id = ${input.taskId}
@@ -1083,7 +1116,7 @@ export async function acquireTaskLease(input: {
         OR lease_owner IS NULL
         OR lease_until IS NULL
         OR lease_until <= NOW()
-        OR lease_owner = ${owner}
+        OR (lease_owner = ${internalAgentId} AND lease_session IS NOT DISTINCT FROM ${session})
       )
     RETURNING *
   `);
@@ -1099,10 +1132,10 @@ export async function acquireTaskLease(input: {
       eventType: "task_lease_acquired",
       actorType: "agent",
       actorId: internalAgentId,
-      payloadJson: { owner, ttlSeconds, takeover },
+      payloadJson: { owner: internalAgentId, session, ttlSeconds, takeover },
     });
     await broadcastMcpEvent(input.companyId, { type: "task_updated", task: leased });
-    return { task: leased, lease: { owner, until: leased.leaseUntil ?? null, ttlSeconds } };
+    return { task: leased, lease: { owner: internalAgentId, session, until: leased.leaseUntil ?? null, ttlSeconds } };
   }
 
   return diagnoseLeaseFailure(input.companyId, input.taskId, internalAgentId);
@@ -1116,19 +1149,24 @@ export async function releaseTaskLease(input: {
   owner?: string | null;
 }): Promise<{ task: typeof tasks.$inferSelect } | TaskLeaseFailure> {
   const internalAgentId = await resolveAgentId(input.companyId, input.agentId);
-  const owner = normalizeLeaseOwner(input.owner, internalAgentId);
+  const session = normalizeLeaseSession(input.owner);
 
-  const [released] = await db.update(tasks).set({
-    leaseOwner: null,
-    leaseUntil: null,
-    updatedAt: new Date(),
-  }).where(and(
+  const conditions = [
     eq(tasks.id, input.taskId),
     eq(tasks.companyId, input.companyId),
     isNull(tasks.deletedAt),
     eq(tasks.assignedAgentId, internalAgentId),
-    eq(tasks.leaseOwner, owner),
-  )).returning();
+    eq(tasks.leaseOwner, internalAgentId),
+  ];
+  // A session only releases its own hold; without one, the agent releases whatever it holds.
+  if (session) conditions.push(eq(tasks.leaseSession, session));
+
+  const [released] = await db.update(tasks).set({
+    leaseOwner: null,
+    leaseSession: null,
+    leaseUntil: null,
+    updatedAt: new Date(),
+  }).where(and(...conditions)).returning();
 
   if (released) {
     await db.insert(taskEvents).values({
@@ -1137,7 +1175,7 @@ export async function releaseTaskLease(input: {
       eventType: "task_lease_released",
       actorType: "agent",
       actorId: internalAgentId,
-      payloadJson: { owner },
+      payloadJson: { owner: internalAgentId, session },
     });
     await broadcastMcpEvent(input.companyId, { type: "task_updated", task: released });
     return { task: released };
@@ -1154,13 +1192,21 @@ export async function releaseTaskLease(input: {
     return { status: 403, error: "Task is not assigned to this agent" };
   }
   // Same agent, another session's lease: refuse instead of stealing it.
-  if (existing.leaseOwner && existing.leaseOwner !== owner) {
-    return {
-      status: 409,
-      error: `Task lease is held by another session (${existing.leaseOwner})`,
-      leaseOwner: existing.leaseOwner,
-      leaseUntil: existing.leaseUntil,
-    };
+  if (existing.leaseOwner) {
+    const heldByUs = existing.leaseOwner === internalAgentId;
+    const sessionMatches = !session || !existing.leaseSession || existing.leaseSession === session;
+    if (!heldByUs || !sessionMatches) {
+      const until = existing.leaseUntil ? existing.leaseUntil.toISOString() : "unknown";
+      return {
+        status: 409,
+        error: heldByUs
+          ? `Task lease is held by another session (${existing.leaseSession}) until ${until}`
+          : `Task lease is held by agent ${existing.leaseOwner} until ${until}`,
+        leaseOwner: existing.leaseOwner,
+        leaseSession: existing.leaseSession ?? null,
+        leaseUntil: existing.leaseUntil,
+      };
+    }
   }
   return { task: existing };
 }
@@ -1182,10 +1228,14 @@ async function diagnoseLeaseFailure(
     return { status: 403, error: "Task is not assigned to this agent" };
   }
   const until = existing.leaseUntil ? existing.leaseUntil.toISOString() : "unknown";
+  const holder = existing.leaseOwner ?? internalAgentId;
+  const session = existing.leaseSession ?? null;
   return {
     status: 409,
-    error: `Task is leased by another session (${existing.leaseOwner ?? "unknown"}) until ${until}; retry after it releases or pass takeover: true`,
-    leaseOwner: existing.leaseOwner ?? null,
+    error: `Task is leased by ${holder === internalAgentId ? "another session of this agent" : `agent ${holder}`}`
+      + `${session ? ` (session ${session})` : ""} until ${until}; retry after it releases or pass takeover: true`,
+    leaseOwner: holder,
+    leaseSession: session,
     leaseUntil: existing.leaseUntil ?? null,
   };
 }
