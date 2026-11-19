@@ -42,6 +42,8 @@ export function useChatScroll(key: string, loading: boolean, scrollRef: RefObjec
             if (positions.size > 100) positions.delete(positions.keys().next().value!);
         };
         const release = (event: WheelEvent) => { if (event.deltaY < 0) followingRef.current = false; };
+        const pauseForSelection = () => { if (selecting()) followingRef.current = false; };
+        document.addEventListener("selectionchange", pauseForSelection);
         const resize = new ResizeObserver(() => { placeOverlay(); follow(); });
         const observe = () => { resize.disconnect(); resize.observe(node); for (const child of node.children) resize.observe(child); };
         const mutation = new MutationObserver(() => { observe(); follow(); });
@@ -53,6 +55,7 @@ export function useChatScroll(key: string, loading: boolean, scrollRef: RefObjec
         return () => {
             cancelAnimationFrame(frame);
             resize.disconnect(); mutation.disconnect();
+            document.removeEventListener("selectionchange", pauseForSelection);
             node.removeEventListener("scroll", remember); node.removeEventListener("wheel", release);
         };
     }, [key, loading, scrollRef, followingRef, forceRef, enabled]);

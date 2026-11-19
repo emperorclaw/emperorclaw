@@ -19,7 +19,7 @@ async function openChat(page: Page) {
 }
 
 test("growing composer preserves IME and retries a failed send with the same identity", async ({ page }) => {
-    const { input } = await openChat(page);
+    const { input, agent } = await openChat(page);
     const initial = (await input.boundingBox())!.height;
     await input.fill("A multiline draft\n".repeat(8));
     await expect.poll(async () => (await input.boundingBox())!.height).toBeGreaterThan(initial + 40);
@@ -33,7 +33,8 @@ test("growing composer preserves IME and retries a failed send with the same ide
     });
     await input.dispatchEvent("keydown", { key: "Enter", isComposing: true, keyCode: 229 });
     expect(attempts).toBe(0);
-    await input.fill(`Chat browser retry ${randomUUID()}`);
+    const sentText = `Chat browser retry ${randomUUID()}`;
+    await input.fill(sentText);
     await input.press("Enter");
     await expect(page.getByTestId("pending-send")).toBeVisible();
     await page.getByRole("button", { name: "Retry", exact: true }).click();
@@ -41,6 +42,21 @@ test("growing composer preserves IME and retries a failed send with the same ide
     expect(keys).toHaveLength(2);
     expect(keys[0]).toBe(keys[1]);
     await expect(input).toHaveValue("");
+    // Selecting existing content must release auto-follow before a new row lands.
+    const transcript = page.locator(".ec-chat-transcript");
+    await transcript.getByText(sentText, { exact: true }).evaluate(node => {
+        const range = document.createRange(); range.selectNodeContents(node);
+        const selection = window.getSelection(); selection?.removeAllRanges(); selection?.addRange(range);
+    });
+    await page.waitForTimeout(100);
+    const before = await transcript.evaluate(node => node.scrollTop);
+    const marker = `Selection arrival ${randomUUID()}`;
+    const arrival = await page.request.post("/api/chat", { data: { clientMessageId: randomUUID(), targetAgentId: agent.id,
+        text: `${marker}\n\n${"A long arrival while the reader has selected text.\n\n".repeat(80)}` } });
+    expect(arrival.status(), await arrival.text()).toBe(200);
+    await expect(transcript.getByText(marker, { exact: true })).toBeAttached();
+    await page.waitForTimeout(200);
+    expect(Math.abs((await transcript.evaluate(node => node.scrollTop)) - before)).toBeLessThan(30);
     await page.emulateMedia({ reducedMotion: "reduce" });
     const animation = await page.evaluate(() => {
         const probe = document.createElement("span"); probe.className = "ec-chat-shimmer"; probe.textContent = "Working";

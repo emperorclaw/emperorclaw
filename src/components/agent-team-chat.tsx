@@ -354,9 +354,17 @@ export function AgentTeamChat({
                 scrollRef.current.scrollTop += scrollRef.current.scrollHeight - previousHeight;
                 return;
             }
+            const selection = window.getSelection();
+            if (selection && !selection.isCollapsed && selection.anchorNode && scrollRef.current.contains(selection.anchorNode)) {
+                isAtBottomRef.current = false;
+                forceScrollToBottomRef.current = false;
+                setIsAtBottom(false);
+                return;
+            }
             const latestId = displayMessages[displayMessages.length - 1]?.id;
             const hasNewMessage = latestId !== lastScrolledMessageRef.current;
             lastScrolledMessageRef.current = latestId;
+            if (hasNewMessage && !isAtBottomRef.current) setIsAtBottom(false);
             if ((isAtBottomRef.current || forceScrollToBottomRef.current) && (hasNewMessage || forceScrollToBottomRef.current) && displayMessages.length > 0) {
                 rowVirtualizer.scrollToIndex(displayMessages.length - 1, { align: "end", behavior: "auto" });
                 forceScrollToBottomRef.current = false;
@@ -375,6 +383,7 @@ export function AgentTeamChat({
     };
 
     const scrollToLatest = () => {
+        window.getSelection()?.removeAllRanges();
         forceScrollToBottomRef.current = true;
         isAtBottomRef.current = true;
         setIsAtBottom(true);
