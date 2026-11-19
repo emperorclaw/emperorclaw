@@ -1100,32 +1100,30 @@ export async function acquireTaskLease(input: {
   const ttlSeconds = normalizeLeaseTtl(input.ttlSeconds);
   const takeover = input.takeover === true;
 
-  const updated = await db.execute(sql`
-    UPDATE tasks
-    SET
-      lease_owner = ${internalAgentId},
-      lease_session = ${session},
-      lease_until = NOW() + make_interval(secs => ${ttlSeconds}::int),
-      updated_at = NOW()
-    WHERE id = ${input.taskId}
-      AND company_id = ${input.companyId}
-      AND deleted_at IS NULL
-      AND assigned_agent_id = ${internalAgentId}
-      AND (
-        ${takeover}::boolean = true
-        OR lease_owner IS NULL
-        OR lease_until IS NULL
-        OR lease_until <= NOW()
-        OR (lease_owner = ${internalAgentId} AND lease_session IS NOT DISTINCT FROM ${session})
-      )
-    RETURNING *
-  `);
+  // One conditional UPDATE, and the builder rather than raw SQL: `RETURNING *`
+  // hands back snake_case keys, so the old cast to `$inferSelect` produced a row
+  // whose `leaseUntil` was `undefined` — the endpoint then answered 200 with a
+  // null expiry and a task the runtimes could not read (case a5f27f1c).
+  const [leased] = await db.update(tasks).set({
+    leaseOwner: internalAgentId,
+    leaseSession: session,
+    leaseUntil: sql`NOW() + make_interval(secs => ${ttlSeconds}::int)`,
+    updatedAt: sql`NOW()`,
+  }).where(and(
+    eq(tasks.id, input.taskId),
+    eq(tasks.companyId, input.companyId),
+    isNull(tasks.deletedAt),
+    eq(tasks.assignedAgentId, internalAgentId),
+    sql`(
+      ${takeover}::boolean = true
+      OR ${tasks.leaseOwner} IS NULL
+      OR ${tasks.leaseUntil} IS NULL
+      OR ${tasks.leaseUntil} <= NOW()
+      OR (${tasks.leaseOwner} = ${internalAgentId} AND ${tasks.leaseSession} IS NOT DISTINCT FROM ${session})
+    )`,
+  )).returning();
 
-  const row = (updated.rows?.[0] ?? null) as Record<string, unknown> | null;
-  if (row) {
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    const { search_vector: _searchVector, ...task } = row;
-    const leased = task as unknown as typeof tasks.$inferSelect;
+  if (leased) {
     await db.insert(taskEvents).values({
       companyId: input.companyId,
       taskId: input.taskId,
