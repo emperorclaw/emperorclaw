@@ -12,7 +12,7 @@ import {
 } from "@/db/schema";
 import { createApprovalRequest, getLatestPendingApproval, taskHasPendingApproval } from "@/lib/approvals";
 import { normalizeAgentRef, resolveAgentId } from "@/lib/mcp";
-import { taskStateChangeDenial, validateTaskStateTransition } from "@/lib/project-workflow";
+import { taskAssignmentDenial, taskStateChangeDenial, validateTaskStateTransition } from "@/lib/project-workflow";
 import { broadcastMcpEvent } from "@/lib/pubsub";
 import { isTerminalTaskState, normalizeTaskState, TASK_STATES, type PersistedTaskState, type TaskState } from "@/lib/task-state";
 import { normalizeTaskSpec } from "@/lib/openclaw/task-spec";
@@ -335,28 +335,48 @@ export async function updateTaskForCompany(input: UpdateTaskInput) {
     return { status: 409 as const, error: "A done or failed task cannot be reopened." };
   }
 
-  // A status change is an approval, so it has to be attributable: the assignee
-  // moving its own work, the project lead routing/deciding, or a person in the
-  // UI. An unbound token is refused here instead of being recorded as "system".
-  if (normalizedState && normalizedState !== existingTask.state) {
-    const rawActor = input.actorType
-      ? { type: input.actorType as string, id: input.actorId ?? null }
-      : input.actor
-        ? { type: input.actor.type as string, id: input.actor.id ?? null }
-        : null;
-    const signature = rawActor && (rawActor.type === "agent" || rawActor.type === "human" || rawActor.type === "system")
-      ? { type: rawActor.type as "agent" | "human" | "system", id: rawActor.id }
+  // A status change is an approval and a reassignment is a claim of
+  // accountability, so both must be attributable: the assignee moving its own
+  // work, the project lead routing/deciding, a person in the UI, or a trusted
+  // system job with no token behind it. A token that resolves to no agent is
+  // refused with its tokenId instead of being stored as "system" — the shape of
+  // the 15:47:06 and 15:47:10 writes on task c87002d6.
+  const rawActor = input.actorType
+    ? { type: input.actorType as string, id: input.actorId ?? null, tokenId: null as string | null }
+    : input.actor
+      ? { type: input.actor.type as string, id: input.actor.id ?? null, tokenId: input.actor.tokenId ?? null }
       : null;
-    const [stateProject] = await db.select({ leadAgentId: projects.leadAgentId }).from(projects).where(
+  const signature = rawActor && (rawActor.type === "agent" || rawActor.type === "human" || rawActor.type === "system")
+    ? { type: rawActor.type as "agent" | "human" | "system", id: rawActor.id, tokenId: rawActor.tokenId }
+    : null;
+
+  const stateChanges = Boolean(normalizedState && normalizedState !== existingTask.state);
+  const assigneeChanges = assignmentWasRequested
+    && (resolvedAssignedAgentId ?? null) !== (existingTask.assignedAgentId ?? null);
+
+  if (stateChanges || assigneeChanges) {
+    const [ownerProject] = await db.select({ leadAgentId: projects.leadAgentId }).from(projects).where(
       and(eq(projects.id, existingTask.projectId), eq(projects.companyId, input.companyId)),
     ).limit(1);
-    const denial = taskStateChangeDenial({
-      project: { leadAgentId: stateProject?.leadAgentId ?? null },
-      task: existingTask,
-      signature,
-    });
-    if (denial) {
-      return { status: 403 as const, error: denial };
+    const ownerPolicy = { leadAgentId: ownerProject?.leadAgentId ?? null };
+
+    if (stateChanges) {
+      const denial = taskStateChangeDenial({ project: ownerPolicy, task: existingTask, signature });
+      if (denial) {
+        return { status: 403 as const, error: denial };
+      }
+    }
+
+    if (assigneeChanges) {
+      const denial = taskAssignmentDenial({
+        project: ownerPolicy,
+        task: existingTask,
+        nextAssignedAgentId: resolvedAssignedAgentId,
+        signature,
+      });
+      if (denial) {
+        return { status: 403 as const, error: denial };
+      }
     }
   }
 

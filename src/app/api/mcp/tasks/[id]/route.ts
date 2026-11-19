@@ -123,7 +123,17 @@ export async function PATCH(
             assignedAgentId: body.assignedAgentId !== undefined ? body.assignedAgentId : undefined,
             state: body.state,
             inputJson: body.inputJson && typeof body.inputJson === "object" ? body.inputJson : undefined,
-            actor: await mcpRequestActor(companyId, auth.companyToken!, body.agentId),
+            // A status change or a reassignment is signed by the token alone.
+            // `agentId` in the body is a claim by the caller, and with a company
+            // token it would let the writer declare itself the assignee and pass
+            // the ownership gate — the gap behind case c87002d6.
+            actor: await mcpRequestActor(
+                companyId,
+                auth.companyToken!,
+                body.state !== undefined || body.assignedAgentId !== undefined || body.assignee !== undefined
+                    ? undefined
+                    : body.agentId,
+            ),
         });
 
         if ("error" in result) {

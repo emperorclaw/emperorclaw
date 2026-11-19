@@ -260,34 +260,80 @@ export function isHiddenBoardState(state: PersistedTaskState) {
   return state === TASK_STATES.failed || state === TASK_STATES.deadLetter;
 }
 
+/** A task write's identity: who the token resolved to, and which token. */
+export type TaskUpdateSignature = {
+    type: "agent" | "human" | "system";
+    id: string | null;
+    tokenId?: string | null;
+} | null;
+
+function signatureProblem(action: string, signature: TaskUpdateSignature): string | null {
+    const token = signature?.tokenId ? ` (token ${signature.tokenId})` : "";
+    if (!signature) return `A task ${action} must be signed by an agent, a person or a trusted system job${token}.`;
+    if (signature.type === "system" && signature.tokenId) {
+        // A token is behind it, so "system" would erase who acted: that is the
+        // exact shape of the c87002d6 closure (actorType "system", actorId null).
+        return `A task ${action} cannot be performed by a token that is not bound to an agent${token}.`;
+    }
+    if (signature.type === "agent" && !signature.id) {
+        return `A task ${action} must name the agent behind the token${token}.`;
+    }
+    return null;
+}
+
 /**
  * Who may change a task's status.
  *
- * A status change carries accountability: the actor that moves work to `done`
- * is approving it. So it must be the assignee (its own work), the project lead
+ * A status change carries accountability: whoever moves work to `done` is
+ * approving it. So it must be the assignee (its own work), the project lead
  * (routing and deciding), or a person acting from the UI.
  *
- * An unsigned write is refused rather than attributed to "system": on
- * 2026-11-19 a session of the implementing agent closed task c87002d6 while it
- * sat in review with the reviewer assigned, and the event came out as
- * `actorType: "system"`, so nobody could prove afterwards who had approved the
- * release. `signature` is the caller's identity as the token resolved it;
- * `null` means the token is not bound to an actor.
+ * "system" is trusted only when no token is behind it — a scheduler or an
+ * approval flow. A token that resolves to no agent is refused, with its tokenId
+ * in the message: recording it as "system" is what made the c87002d6 closure
+ * unattributable afterwards.
  */
 export function taskStateChangeDenial(input: {
     project: { leadAgentId: string | null };
     task: { assignedAgentId: string | null };
-    signature: { type: "agent" | "human" | "system"; id: string | null } | null;
+    signature: TaskUpdateSignature;
 }): string | null {
     const { project, task, signature } = input;
-    if (!signature || (signature.type === "agent" && !signature.id)) {
-        return "A task status change must be signed: the token is not bound to an agent or a person.";
-    }
-    if (signature.type === "human" || signature.type === "system") return null;
-    if (task.assignedAgentId && signature.id === task.assignedAgentId) return null;
-    if (project.leadAgentId && signature.id === project.leadAgentId) return null;
-    // Unassigned work is claimed and started by whoever takes it; the claim path
-    // records the new owner, so there is no other owner to protect here.
+    const problem = signatureProblem("status change", signature);
+    if (problem) return problem;
+    if (signature!.type !== "agent") return null;
+    if (task.assignedAgentId && signature!.id === task.assignedAgentId) return null;
+    if (project.leadAgentId && signature!.id === project.leadAgentId) return null;
+    // Unassigned work is claimed and started by whoever takes it.
     if (!task.assignedAgentId) return null;
-    return "Only the assigned agent or the project lead can change this task's status.";
+    const token = signature!.tokenId ? ` (token ${signature!.tokenId})` : "";
+    return `Only the assigned agent or the project lead can change this task's status${token}.`;
+}
+
+/**
+ * Who may move a task to another owner.
+ *
+ * A reassignment is how the board says "who is accountable now", so it takes the
+ * same identity rule as a status change. Exempt, because they are the ways work
+ * legitimately moves: the project lead routing, the current assignee handing the
+ * task back, and an agent claiming an unassigned task for itself. Case
+ * c87002d6 15:47:10: the implementing agent reassigned the closed task to itself
+ * four seconds after closing it, and nothing gated that write.
+ */
+export function taskAssignmentDenial(input: {
+    project: { leadAgentId: string | null };
+    task: { assignedAgentId: string | null };
+    nextAssignedAgentId: string | null;
+    signature: TaskUpdateSignature;
+}): string | null {
+    const { project, task, nextAssignedAgentId, signature } = input;
+    if ((task.assignedAgentId ?? null) === (nextAssignedAgentId ?? null)) return null;
+    const problem = signatureProblem("reassignment", signature);
+    if (problem) return problem;
+    if (signature!.type !== "agent") return null;
+    if (project.leadAgentId && signature!.id === project.leadAgentId) return null;
+    if (task.assignedAgentId && signature!.id === task.assignedAgentId) return null;
+    if (!task.assignedAgentId && signature!.id === nextAssignedAgentId) return null;
+    const token = signature!.tokenId ? ` (token ${signature!.tokenId})` : "";
+    return `Only the assigned agent, the project lead or a person can reassign this task${token}.`;
 }

@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { validateTaskStateTransition } from "../../src/lib/project-workflow";
+import { taskAssignmentDenial, taskStateChangeDenial, validateTaskStateTransition } from "../../src/lib/project-workflow";
 import { TASK_STATES } from "../../src/lib/task-state";
 
 function project(overrides: Partial<Parameters<typeof validateTaskStateTransition>[0]["project"]> = {}) {
@@ -213,4 +213,61 @@ test("c87002d6: the project lead can still close a task assigned to someone else
         actorAgentId: "lead",
     });
     assert.equal(error, null);
+});
+
+// --- case c87002d6: the two writes of 2026-11-19 and the identity behind them ---
+
+test("c87002d6: a company token cannot sign a status change, and the refusal names the token", () => {
+    const error = taskStateChangeDenial({
+        project: { leadAgentId: "reviewer" },
+        task: { assignedAgentId: "reviewer" },
+        signature: { type: "system", id: null, tokenId: "tok_7f3a91" },
+    });
+    assert.ok(error, "a token that resolves to no agent must not be allowed to move status");
+    assert.ok(error.includes("tok_7f3a91"), "the 403 must name the tokenId so the writer can be found");
+});
+
+test("c87002d6: a scheduler with no token behind it may still close", () => {
+    const error = taskStateChangeDenial({
+        project: { leadAgentId: "lead" },
+        task: { assignedAgentId: "worker" },
+        signature: { type: "system", id: null, tokenId: null },
+    });
+    assert.equal(error, null);
+});
+
+test("c87002d6: the 15:47:10 reassignment is refused", () => {
+    const error = taskAssignmentDenial({
+        project: { leadAgentId: "lead" },
+        task: { assignedAgentId: "reviewer" },
+        nextAssignedAgentId: "implementer",
+        signature: { type: "agent", id: "implementer" },
+    });
+    assert.ok(error, "an agent must not take over a task assigned to someone else");
+});
+
+test("a claim, the lead and the current assignee may still move ownership", () => {
+    const claim = taskAssignmentDenial({
+        project: { leadAgentId: "lead" },
+        task: { assignedAgentId: null },
+        nextAssignedAgentId: "implementer",
+        signature: { type: "agent", id: "implementer" },
+    });
+    assert.equal(claim, null, "claiming unassigned work stays open");
+
+    const routing = taskAssignmentDenial({
+        project: { leadAgentId: "lead" },
+        task: { assignedAgentId: "worker" },
+        nextAssignedAgentId: "other",
+        signature: { type: "agent", id: "lead" },
+    });
+    assert.equal(routing, null, "the project lead routes work");
+
+    const handback = taskAssignmentDenial({
+        project: { leadAgentId: "lead" },
+        task: { assignedAgentId: "worker" },
+        nextAssignedAgentId: "lead",
+        signature: { type: "agent", id: "worker" },
+    });
+    assert.equal(handback, null, "the assignee may hand its own task back");
 });
