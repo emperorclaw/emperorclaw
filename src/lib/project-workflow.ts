@@ -269,7 +269,12 @@ export type TaskUpdateSignature = {
 
 function signatureProblem(action: string, signature: TaskUpdateSignature): string | null {
     const token = signature?.tokenId ? ` (token ${signature.tokenId})` : "";
-    if (!signature) return `A task ${action} must be signed by an agent, a person or a trusted system job${token}.`;
+    // No actor at all is server code calling the library directly: the pipeline
+    // closing its own task, the hand-off helper, the run sweeper. Those write
+    // with no token and no customer behind them, and every HTTP route passes a
+    // human, an agent or a token-derived system actor, so trusting this case
+    // keeps the fleet moving without opening the door a token would.
+    if (!signature) return null;
     if (signature.type === "system" && signature.tokenId) {
         // A token is behind it, so "system" would erase who acted: that is the
         // exact shape of the c87002d6 closure (actorType "system", actorId null).
@@ -301,12 +306,12 @@ export function taskStateChangeDenial(input: {
     const { project, task, signature } = input;
     const problem = signatureProblem("status change", signature);
     if (problem) return problem;
-    if (signature!.type !== "agent") return null;
-    if (task.assignedAgentId && signature!.id === task.assignedAgentId) return null;
-    if (project.leadAgentId && signature!.id === project.leadAgentId) return null;
+    if (!signature || signature.type !== "agent") return null;
+    if (task.assignedAgentId && signature.id === task.assignedAgentId) return null;
+    if (project.leadAgentId && signature.id === project.leadAgentId) return null;
     // Unassigned work is claimed and started by whoever takes it.
     if (!task.assignedAgentId) return null;
-    const token = signature!.tokenId ? ` (token ${signature!.tokenId})` : "";
+    const token = signature.tokenId ? ` (token ${signature.tokenId})` : "";
     return `Only the assigned agent or the project lead can change this task's status${token}.`;
 }
 
@@ -330,10 +335,10 @@ export function taskAssignmentDenial(input: {
     if ((task.assignedAgentId ?? null) === (nextAssignedAgentId ?? null)) return null;
     const problem = signatureProblem("reassignment", signature);
     if (problem) return problem;
-    if (signature!.type !== "agent") return null;
-    if (project.leadAgentId && signature!.id === project.leadAgentId) return null;
-    if (task.assignedAgentId && signature!.id === task.assignedAgentId) return null;
-    if (!task.assignedAgentId && signature!.id === nextAssignedAgentId) return null;
-    const token = signature!.tokenId ? ` (token ${signature!.tokenId})` : "";
+    if (!signature || signature.type !== "agent") return null;
+    if (project.leadAgentId && signature.id === project.leadAgentId) return null;
+    if (task.assignedAgentId && signature.id === task.assignedAgentId) return null;
+    if (!task.assignedAgentId && signature.id === nextAssignedAgentId) return null;
+    const token = signature.tokenId ? ` (token ${signature.tokenId})` : "";
     return `Only the assigned agent, the project lead or a person can reassign this task${token}.`;
 }

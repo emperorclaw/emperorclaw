@@ -271,3 +271,20 @@ test("a claim, the lead and the current assignee may still move ownership", () =
     });
     assert.equal(handback, null, "the assignee may hand its own task back");
 });
+
+test("an internal call with no actor is trusted, so the fleet keeps closing its own work", () => {
+    const close = taskStateChangeDenial({
+        project: { leadAgentId: null },
+        task: { assignedAgentId: "worker" },
+        signature: null,
+    });
+    assert.equal(close, null, "the pipeline closing its own task passes no actor");
+
+    const handoff = taskAssignmentDenial({
+        project: { leadAgentId: null },
+        task: { assignedAgentId: null },
+        nextAssignedAgentId: "worker",
+        signature: null,
+    });
+    assert.equal(handoff, null, "server-side hand-off helpers pass no actor");
+});

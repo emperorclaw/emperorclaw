@@ -73,26 +73,35 @@ maybe("UI routes record the signed-in person as the actor", async () => {
     assert.deepEqual((byAction.get("agent.scope_changed")!.payloadJson as { after: Record<string, unknown> }).after.scopeProjectIds, [w.project.id]);
 });
 
-maybe("MCP mutations record the bound agent, a named agent, or system with the token id", async () => {
+maybe("MCP mutations record the bound agent, and a company-wide token cannot sign ownership", async () => {
     const w = await seedWorld();
     const mcpTask = await import("@/app/api/mcp/tasks/[id]/route");
     const call = (token: string, body: Record<string, unknown>) => mcpTask.PATCH(
         makeRequest(`${BASE}/api/mcp/tasks/${w.task.id}`, { method: "PATCH", headers: { authorization: `Bearer ${token}`, "idempotency-key": randomUUID() }, body }),
         { params: Promise.resolve({ id: w.task.id }) },
     );
+    // A token bound to an agent acts as that agent: it may start unclaimed work
+    // and claim it.
     assert.equal((await call(w.agentToken, { state: "in_progress" })).status, 200);
-    assert.equal((await call(w.companyWideToken, { state: "review" })).status, 200);
-    assert.equal((await call(w.companyWideToken, { assignedAgentId: w.agent.id, agentId: "Scout" })).status, 200);
+    assert.equal((await call(w.agentToken, { assignedAgentId: w.agent.id })).status, 200);
+
+    // A company-wide token resolves to no agent. Recording that as "system" is
+    // the 15:47:06 write of case c87002d6: refused, and the refusal names the
+    // token so the writer can be found afterwards.
+    const tokenId = await companyTokenId(w.companyId, null);
+    const deniedMove = await call(w.companyWideToken, { state: "review" });
+    assert.equal(deniedMove.status, 403);
+    assert.match(((await deniedMove.json()) as { error: string }).error, new RegExp(tokenId), "the 403 names the token");
+
+    const deniedAssign = await call(w.companyWideToken, { assignedAgentId: w.agent.id, agentId: "Scout" });
+    assert.equal(deniedAssign.status, 403, "agentId in the body no longer signs an ownership change");
 
     const moves = (await auditRows(w.companyId)).filter((r) => r.action === "task.state_changed" || r.action === "task.assigned");
-    assert.deepEqual(moves.map((r) => r.action), ["task.state_changed", "task.state_changed", "task.assigned"]);
-    assert.equal(moves[0].actorType, "agent");
-    assert.equal(moves[0].actorId, w.agent.id);
-    assert.equal(moves[1].actorType, "system");
-    assert.equal(moves[1].actorId, null);
-    assert.equal((moves[1].payloadJson as { meta: { tokenId: string } }).meta.tokenId, await companyTokenId(w.companyId, null));
-    assert.equal(moves[2].actorType, "agent", "a company-wide token naming an agent acts as that agent");
-    assert.equal(moves[2].actorId, w.agent.id);
+    assert.deepEqual(moves.map((r) => r.action), ["task.state_changed", "task.assigned"]);
+    for (const row of moves) {
+        assert.equal(row.actorType, "agent");
+        assert.equal(row.actorId, w.agent.id);
+    }
 });
 
 maybe("the MCP server tools record the token's agent too", async () => {
