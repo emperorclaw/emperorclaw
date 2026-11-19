@@ -9,7 +9,6 @@ import {
     IconPlugConnected,
     IconCopy,
     IconCircleCheck,
-    IconPlayerPlay,
     IconLoader,
     IconAlertTriangle,
     IconPencil,
@@ -78,6 +77,11 @@ const RUNTIME_OPTIONS = [
 ];
 const BASE_URL_EXAMPLE = "http://host.docker.internal:11434/v1";
 const AGENT_STATUSES = new Set(["online", "degraded", "offline"]);
+
+/** Field labels reuse the existing "Label:" copy without the trailing colon. */
+function fieldLabel(value: string): string {
+    return value.replace(/\s*[:：]\s*$/, "");
+}
 
 type AgentDetailData = {
     /** "metadata": an owner/admin who may not use this agent (lib/agent-access.ts); only name, owner, status and cost come back. */
@@ -156,6 +160,8 @@ export function AgentDetailPanel({ agentId, agentName, runtime = null }: {
 }) {
     const t = useTranslations("agents.detail");
     const tc = useTranslations("common");
+    const tCreate = useTranslations("agents.create");
+    const tModel = useTranslations("modelSelect");
     const tStatus = useTranslations("agents.status");
     const tDelete = useTranslations("agents.delete");
     const render = useCopy();
@@ -200,6 +206,7 @@ export function AgentDetailPanel({ agentId, agentName, runtime = null }: {
     const [editingProvider, setEditingProvider] = useState(false);
     const [editingDeployment, setEditingDeployment] = useState(false);
     const [editingLlm, setEditingLlm] = useState(false);
+    const [editingModel, setEditingModel] = useState(false);
     // The model endpoint decides where the agent's key is sent: owners and admins only (the server enforces it too).
     const { canAdmin } = useViewerPermissions();
     const [saving, setSaving] = useState(false);
@@ -521,106 +528,98 @@ export function AgentDetailPanel({ agentId, agentName, runtime = null }: {
                         trigger={<Button type="button" size="sm" variant="outline">{tc("remove")}</Button>} />} />
             )}
 
-            {/* Setup banner — only for offline agents that need configuration (not those Emperor sets up on a host) */}
-            {agent.status === "offline" && !data.provisioning && (
-                <>
-                <SetupBanner
-                    agentId={agent.id}
-                    agentName={agent.name}
-                    agentRole={agent.role}
-                    agentStatus={agent.status}
-                    providerId={agent.provider || "mcp"}
-                    deploymentMode={(agent.deploymentMode as "local" | "remote") || "remote"}
-                />
-                {!agent.lastSeenAt && (
-                    runtimeSetup?.status === "failed" && !agent.containerId && agent.provider === "hermes" && agent.deploymentMode === "local" ? (
-                        <div role="alert" className="border-b border-rose-500/15 bg-rose-500/[0.04] px-4 py-2 text-xs text-rose-200">
-                            {t("setupFailed", { message: runtimeSetup.message })}
-                        </div>
-                    ) : withinStartupGrace ? (
-                        <div className="border-b border-amber-500/15 bg-amber-500/[0.04] px-4 py-2 text-[10px] text-amber-200/80">
-                            {t("startingUp")}
-                        </div>
-                    ) : (
-                        <div className="border-b border-rose-500/15 bg-rose-500/[0.04] px-4 py-2 text-[10px] text-rose-300/70">
-                            {t("neverConnected")}
-                            {agent.provider === "hermes" ? ` ${t("seeGuideBelow")}` : ""}
-                        </div>
-                    )
-                )}
-                </>
-            )}
-
             {/* Runtime and model configuration stays editable before the first connection, too. */}
-            <div className={cn(
-                "border-b px-4 sm:px-5 py-2.5 flex flex-wrap items-center gap-x-6 gap-y-1.5 text-xs",
-                agent.status === "offline"
-                    ? "border-zinc-800 bg-zinc-950/40"
-                    : "border-emerald-500/10 bg-emerald-500/[0.03]",
-            )}>
-                    {/* Provider — editable */}
-                    <span className="text-zinc-500 inline-flex items-center gap-1.5">
-                        {t("providerLabel")}{" "}
+            <section aria-labelledby="agent-config-heading" className="border-b border-zinc-800/80">
+                <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1 px-4 py-3 sm:px-5">
+                    <h3 id="agent-config-heading" className="text-[11px] font-semibold uppercase tracking-[0.14em] text-zinc-400">
+                        {t("configTitle")}
+                    </h3>
+                    <p className="text-[11px] text-zinc-500">{t("configHint")}</p>
+                </div>
+
+                <div className="grid grid-cols-1 gap-x-6 gap-y-5 px-4 pb-5 sm:grid-cols-2 sm:px-5 lg:grid-cols-3">
+                    <ConfigField
+                        label={fieldLabel(t("providerLabel"))}
+                        editLabel={t("changeProvider")}
+                        onEdit={() => setEditingProvider(true)}
+                    >
                         {editingProvider ? (
-                            <Select
-                                value={agent.provider || "mcp"}
-                                disabled={saving}
-                                onChange={(e) => {
-                                    updateAgent({ provider: e.target.value });
-                                    setEditingProvider(false);
-                                }}
-                                onOpenChange={(open) => { if (!open) setEditingProvider(false); }}
-                                className="h-6 rounded border border-zinc-700 bg-zinc-900 px-1.5 text-xs text-zinc-200 outline-none focus:border-cyan-400"
-                                autoFocus
-                                defaultOpen
-                            >
-                                <option disabled={agent.deploymentMode === "local"} value="mcp">{t("genericMcp")}</option>
-                                {RUNTIME_OPTIONS.map((option) => (
-                                    <option key={option.value} disabled={option.value !== "hermes" && agent.deploymentMode === "local"} value={option.value}>{option.label}</option>
-                                ))}
-                            </Select>
+                            <div>
+                                <Select
+                                    value={agent.provider || "mcp"}
+                                    disabled={saving}
+                                    onChange={(e) => {
+                                        updateAgent({ provider: e.target.value });
+                                        setEditingProvider(false);
+                                    }}
+                                    onOpenChange={(open) => { if (!open) setEditingProvider(false); }}
+                                    className="h-8 w-full rounded-lg border border-zinc-700 bg-zinc-900 px-2 text-sm text-zinc-200 outline-none focus:border-cyan-400"
+                                    autoFocus
+                                    defaultOpen
+                                >
+                                    <option disabled={agent.deploymentMode === "local"} value="mcp">{t("genericMcp")}</option>
+                                    {RUNTIME_OPTIONS.map((option) => (
+                                        <option key={option.value} disabled={option.value !== "hermes" && agent.deploymentMode === "local"} value={option.value}>{option.label}</option>
+                                    ))}
+                                </Select>
+                                <div className="mt-2 flex items-center gap-2 text-xs">
+                                    <button type="button" onClick={() => setEditingProvider(false)} className="rounded px-1.5 py-0.5 text-zinc-500 hover:text-zinc-300">{tc("cancel")}</button>
+                                </div>
+                            </div>
                         ) : (
-                            <>
-                                <span className="text-zinc-300 font-medium">{(provider && PROVIDER_EMOJI[provider.id]) ?? "🔌"} {provider?.name || t("genericMcpName")}</span>
-                                <button type="button" onClick={() => setEditingProvider(true)} className="text-zinc-600 hover:text-zinc-400 transition-colors" title={t("changeProvider")}>
-                                    <IconPencil className="h-3 w-3" />
-                                </button>
-                            </>
+                            <span>{(provider && PROVIDER_EMOJI[provider.id]) ?? "🔌"} {provider?.name || t("genericMcpName")}</span>
                         )}
-                    </span>
-                    {/* Deployment mode — editable */}
-                    <span className="text-zinc-500 inline-flex items-center gap-1.5">
-                        {t("deploymentLabel")}{" "}
+                    </ConfigField>
+
+                    <ConfigField
+                        label={fieldLabel(t("deploymentLabel"))}
+                        editLabel={t("changeDeployment")}
+                        onEdit={() => setEditingDeployment(true)}
+                    >
                         {editingDeployment ? (
-                            <Select
-                                value={agent.deploymentMode || "remote"}
-                                disabled={saving}
-                                onChange={(e) => {
-                                    updateAgent({ deploymentMode: e.target.value });
-                                    setEditingDeployment(false);
-                                }}
-                                onOpenChange={(open) => { if (!open) setEditingDeployment(false); }}
-                                className="h-6 rounded border border-zinc-700 bg-zinc-900 px-1.5 text-xs text-zinc-200 outline-none focus:border-cyan-400"
-                                autoFocus
-                                defaultOpen
-                            >
-                                <option value="remote">{t("remote")}</option>
-                                <option disabled={agent.provider !== "hermes"} value="local">{t("localThisServer")}</option>
-                            </Select>
+                            <div>
+                                <Select
+                                    value={agent.deploymentMode || "remote"}
+                                    disabled={saving}
+                                    onChange={(e) => {
+                                        updateAgent({ deploymentMode: e.target.value });
+                                        setEditingDeployment(false);
+                                    }}
+                                    onOpenChange={(open) => { if (!open) setEditingDeployment(false); }}
+                                    className="h-8 w-full rounded-lg border border-zinc-700 bg-zinc-900 px-2 text-sm text-zinc-200 outline-none focus:border-cyan-400"
+                                    autoFocus
+                                    defaultOpen
+                                >
+                                    <option value="remote">{t("remote")}</option>
+                                    <option disabled={agent.provider !== "hermes"} value="local">{t("localThisServer")}</option>
+                                </Select>
+                                <div className="mt-2 flex items-center gap-2 text-xs">
+                                    <button type="button" onClick={() => setEditingDeployment(false)} className="rounded px-1.5 py-0.5 text-zinc-500 hover:text-zinc-300">{tc("cancel")}</button>
+                                </div>
+                            </div>
                         ) : (
-                            <>
-                                <span className="text-zinc-300 font-medium">{agent.deploymentMode === "local" ? t("local") : t("remote")}</span>
-                                <button type="button" onClick={() => setEditingDeployment(true)} className="text-zinc-600 hover:text-zinc-400 transition-colors" title={t("changeDeployment")}>
-                                    <IconPencil className="h-3 w-3" />
-                                </button>
-                            </>
+                            <span>{agent.deploymentMode === "local" ? t("local") : t("remote")}</span>
                         )}
-                    </span>
-                    {/* LLM Provider — owners/admins edit it; a new endpoint's key is asked for below the bar */}
-                    <span className="text-zinc-500 inline-flex items-center gap-1.5">
-                        {t("llmLabel")}{" "}
+                    </ConfigField>
+
+                    <ConfigField label={fieldLabel(t("lastSeen"))}>
+                        {agent.lastSeenAt
+                            ? <span>{format.dateTime(new Date(agent.lastSeenAt), { timeStyle: "medium" })}</span>
+                            : <span className="text-zinc-500">{t("none")}</span>}
+                    </ConfigField>
+
+                    <ConfigField
+                        label={fieldLabel(t("llmLabel"))}
+                        editLabel={t("configureLlm")}
+                        onEdit={canAdmin ? () => startLlmEdit() : undefined}
+                        hint={!editingLlm && agent.llmProvider ? (
+                            <a href="/docs/v1.1/troubleshooting#5-agent-setup--llm-configuration" target="_blank" className="text-cyan-400 hover:text-cyan-300 underline underline-offset-2" title={t("setupGuideTitle")}>
+                                {t("setupGuide")}
+                            </a>
+                        ) : undefined}
+                    >
                         {editingLlm && canAdmin ? (
-                            <span className="inline-flex items-center gap-1.5">
+                            <div>
                                 <Select
                                     value={llmDraft.provider}
                                     disabled={saving}
@@ -630,158 +629,204 @@ export function AgentDetailPanel({ agentId, agentName, runtime = null }: {
                                         setLlmDraft((draft) => ({ ...draft, provider: nextProvider, pendingModel: null }));
                                         setLlmError(null);
                                     }}
-                                    className="h-6 rounded border border-zinc-700 bg-zinc-900 px-1.5 text-xs text-zinc-200 outline-none focus:border-cyan-400"
+                                    className="h-8 w-full rounded-lg border border-zinc-700 bg-zinc-900 px-2 text-sm text-zinc-200 outline-none focus:border-cyan-400"
                                 >
                                     <option value="">{t("none")}</option>
                                     {Object.entries(LLM_PROVIDER_LABELS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
                                     <option value={CUSTOM_LLM_PROVIDER}>{t("customEndpoint")}</option>
                                 </Select>
-                                <button
-                                    type="button"
+                                <div className="mt-2 flex items-center gap-2 text-xs">
+                                    <button
+                                        type="button"
+                                        disabled={saving}
+                                        onClick={() => void saveLlm()}
+                                        className="rounded px-1.5 py-0.5 font-medium text-cyan-400 hover:text-cyan-300 disabled:opacity-50"
+                                    >
+                                        {tc("save")}
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={closeLlmEdit}
+                                        className="rounded px-1.5 py-0.5 text-zinc-500 hover:text-zinc-300"
+                                    >
+                                        {tc("cancel")}
+                                    </button>
+                                </div>
+                            </div>
+                        ) : (
+                            <span>{agent.llmProvider ? llmLabel(agent.llmProvider) : t("none")}</span>
+                        )}
+                    </ConfigField>
+
+                    <ConfigField
+                        label={fieldLabel(t("modelLabel"))}
+                        editLabel={t("model")}
+                        onEdit={data.agent.llmProvider === CUSTOM_LLM_PROVIDER || !canAdmin ? undefined : () => setEditingModel(true)}
+                    >
+                        {/* A custom endpoint serves its own model names; the priced catalog would call them unavailable. */}
+                        {data.agent.llmProvider === CUSTOM_LLM_PROVIDER || !canAdmin ? (
+                            <span className={cn(!data.agent.llmModel && "text-zinc-500")}>{data.agent.llmModel || tModel("notSet")}</span>
+                        ) : editingModel ? (
+                            <div>
+                                <ModelSearchSelect
+                                    options={pricingOpts}
+                                    value={data.agent.llmModel || ""}
+                                    provider={data.agent.llmProvider || ""}
                                     disabled={saving}
-                                    onClick={() => void saveLlm()}
-                                    className="text-[10px] text-cyan-400 hover:text-cyan-300 font-medium disabled:opacity-50"
-                                >
-                                    {tc("save")}
-                                </button>
-                                <button
-                                    type="button"
-                                    onClick={closeLlmEdit}
-                                    className="text-zinc-600 hover:text-zinc-400 text-[10px]"
-                                >
-                                    {tc("cancel")}
-                                </button>
+                                    saving={saving}
+                                    compact
+                                    onChange={async (selection) => {
+                                        // A model of another provider moves the agent to that provider's endpoint: ask for its key first.
+                                        if (selection.provider && selection.provider !== (agent.llmProvider || "")) {
+                                            setEditingModel(false);
+                                            startLlmEdit(selection.provider, selection.model);
+                                            return;
+                                        }
+                                        await updateAgent({
+                                            llmProvider: selection.provider,
+                                            llmModel: selection.model,
+                                        });
+                                        setEditingModel(false);
+                                    }}
+                                />
+                                <div className="mt-2 flex items-center gap-2 text-xs">
+                                    <button type="button" onClick={() => setEditingModel(false)} className="rounded px-1.5 py-0.5 text-zinc-500 hover:text-zinc-300">{tc("cancel")}</button>
+                                </div>
+                            </div>
+                        ) : (
+                            <span className={cn(!data.agent.llmModel && "text-zinc-500")}>{data.agent.llmModel || tModel("notSet")}</span>
+                        )}
+                    </ConfigField>
+
+                    <ConfigField label={fieldLabel(tCreate("monthlyBudget"))}>
+                        {(agent.monthlyBudgetCents ?? 0) > 0 ? (
+                            <span className={cn(
+                                "font-medium",
+                                agent.budgetStatus === "paused" ? "text-rose-400" :
+                                agent.budgetStatus === "warning" ? "text-amber-400" : "text-emerald-400"
+                            )}>
+                                {t("budget", { used: ((agent.monthlyTokenUsage ?? 0) / 1_000_000 * 1).toFixed(2), limit: ((agent.monthlyBudgetCents ?? 0) / 100).toFixed(0) }).replace(/^[^$]*/, "")}
+                                {agent.budgetStatus === "paused" ? " ⏸️" : agent.budgetStatus === "warning" ? " ⚠️" : ""}
                             </span>
                         ) : (
-                            <>
-                                <span className="text-zinc-300 font-medium">
-                                    {agent.llmProvider ? llmLabel(agent.llmProvider) : t("none")}
-                                </span>
-                                {canAdmin && <button type="button" onClick={() => startLlmEdit()} className="text-zinc-600 hover:text-zinc-400 transition-colors" title={t("configureLlm")}>
-                                    <IconPencil className="h-3 w-3" />
-                                </button>}
-                                {agent.llmProvider && (
-                                    <a href="/docs/v1.1/troubleshooting#5-agent-setup--llm-configuration" target="_blank" className="text-[9px] text-cyan-400 hover:text-cyan-300 underline underline-offset-2" title={t("setupGuideTitle")}>
-                                        {t("setupGuide")}
-                                    </a>
-                                )}
-                            </>
+                            <span className="text-zinc-500">{t("none")}</span>
                         )}
-                    </span>
-                    {/* Model selector — uses pricing table for cost tracking */}
-                    <span className="text-zinc-500 inline-flex items-center gap-1.5">
-                        {t("modelLabel")}{" "}
-                        {/* A custom endpoint serves its own model names; the priced catalog would call them unavailable. */}
-                        {data.agent.llmProvider === "custom" || !canAdmin ? <span className="font-medium text-zinc-300">{data.agent.llmModel || "—"}</span> : <ModelSearchSelect
-                            options={pricingOpts}
-                            value={data.agent.llmModel || ""}
-                            provider={data.agent.llmProvider || ""}
-                            disabled={saving}
-                            saving={saving}
-                            compact
-                            onChange={async (selection) => {
-                                // A model of another provider moves the agent to that provider's endpoint: ask for its key first.
-                                if (selection.provider && selection.provider !== (agent.llmProvider || "")) {
-                                    startLlmEdit(selection.provider, selection.model);
-                                    return;
-                                }
-                                await updateAgent({
-                                    llmProvider: selection.provider,
-                                    llmModel: selection.model,
-                                });
-                            }}
-                        />}
-                    </span>
-                    {agent.lastSeenAt && (
-                        <span className="text-zinc-500">
-                            {t("lastSeen")} <span className="text-zinc-300 font-medium">{format.dateTime(new Date(agent.lastSeenAt), { timeStyle: "medium" })}</span>
-                        </span>
-                    )}
-                    {(agent.monthlyBudgetCents ?? 0) > 0 && (
-                        <span className={cn(
-                            "font-medium",
-                            agent.budgetStatus === "paused" ? "text-rose-400" :
-                            agent.budgetStatus === "warning" ? "text-amber-400" : "text-emerald-400"
-                        )}>
-                            {t("budget", { used: ((agent.monthlyTokenUsage ?? 0) / 1_000_000 * 1).toFixed(2), limit: ((agent.monthlyBudgetCents ?? 0) / 100).toFixed(0) })}
-                            {agent.budgetStatus === "paused" ? " ⏸️" : agent.budgetStatus === "warning" ? " ⚠️" : ""}
-                        </span>
-                    )}
-            </div>
-
-            {editingLlm && canAdmin && (llmPlan.keyRequired || llmCustom || llmError) && (
-                <div className="border-b border-border bg-muted/40 px-4 sm:px-5 py-3 space-y-2.5 text-xs">
-                    {llmDraft.pendingModel && (
-                        <p className="text-muted-foreground">
-                            {t("pendingModel", { model: llmDraft.pendingModel, provider: llmDraftLabel })}
-                        </p>
-                    )}
-                    <div className="grid max-w-3xl gap-3 sm:grid-cols-2">
-                        {llmCustom && (
-                            <label className="space-y-1">
-                                <span className="block font-medium text-foreground">{t("baseUrl")}</span>
-                                <input
-                                    type="url"
-                                    value={llmDraft.baseUrl}
-                                    onChange={(e) => { const baseUrl = e.target.value; setLlmDraft((draft) => ({ ...draft, baseUrl })); setLlmError(null); }}
-                                    onKeyDown={saveLlmOnEnter}
-                                    disabled={saving}
-                                    placeholder={BASE_URL_EXAMPLE}
-                                    autoComplete="off"
-                                    className="block w-full rounded-lg border border-border bg-background px-2.5 py-1.5 text-xs text-foreground outline-none focus:ring-1 focus:ring-cyan-500"
-                                />
-                                <span className="block text-muted-foreground">
-                                    {llmPlan.baseUrlHint
-                                        ?? `${agent.llmProvider === CUSTOM_LLM_PROVIDER ? `${t("keepUrl")} ` : ""}${t("dockerHostHint")}`}
-                                </span>
-                            </label>
-                        )}
-                        {llmCustom && (
-                            <label className="space-y-1">
-                                <span className="block font-medium text-foreground">{t("model")}</span>
-                                <input
-                                    value={llmDraft.model}
-                                    onChange={(e) => { const model = e.target.value; setLlmDraft((draft) => ({ ...draft, model })); setLlmError(null); }}
-                                    onKeyDown={saveLlmOnEnter}
-                                    disabled={saving}
-                                    maxLength={200}
-                                    placeholder={t("customModelPlaceholder")}
-                                    autoComplete="off"
-                                    className="block w-full rounded-lg border border-border bg-background px-2.5 py-1.5 text-xs text-foreground outline-none focus:ring-1 focus:ring-cyan-500"
-                                />
-                            </label>
-                        )}
-                        {llmPlan.keyRequired && (
-                            <div className="space-y-1">
-                                <label htmlFor={`llm-key-${agent.id}`} className="block font-medium text-foreground">{t("apiKeyFor", { provider: llmDraftLabel })}</label>
-                                <input
-                                    id={`llm-key-${agent.id}`}
-                                    type="password"
-                                    value={llmDraft.apiKey}
-                                    onChange={(e) => { const apiKey = e.target.value; setLlmDraft((draft) => ({ ...draft, apiKey })); setLlmError(null); }}
-                                    onKeyDown={saveLlmOnEnter}
-                                    disabled={saving || (llmCustom && llmDraft.noKey)}
-                                    placeholder={llmCustom && llmDraft.noKey ? t("noKey") : t("pasteKey")}
-                                    autoComplete="off"
-                                    className="block w-full rounded-lg border border-border bg-background px-2.5 py-1.5 text-xs text-foreground outline-none focus:ring-1 focus:ring-cyan-500 disabled:opacity-60"
-                                />
-                                {llmCustom && (
-                                    <label className="flex items-center gap-1.5 text-muted-foreground">
-                                        <input
-                                            type="checkbox"
-                                            checked={llmDraft.noKey}
-                                            disabled={saving}
-                                            onChange={(e) => { const noKey = e.target.checked; setLlmDraft((draft) => ({ ...draft, noKey, apiKey: noKey ? "" : draft.apiKey })); setLlmError(null); }}
-                                        />
-                                        {t("needsNoKey")}
-                                    </label>
-                                )}
-                                <span className="block text-muted-foreground">{t("keyNeverShown")}</span>
-                            </div>
-                        )}
-                    </div>
-                    {llmError && <p role="alert" className="text-destructive">{llmError}</p>}
+                    </ConfigField>
                 </div>
+
+                {editingLlm && canAdmin && (llmPlan.keyRequired || llmCustom || llmError) && (
+                    <div className="px-4 pb-5 sm:px-5">
+                        <div className="mt-4 rounded-xl border border-amber-500/25 bg-amber-500/[0.06] p-3">
+                            <h4 className="text-[11px] font-semibold uppercase tracking-[0.12em] text-amber-200">
+                                {llmCustom ? t("customEndpoint") : t("llmProvider")}
+                            </h4>
+                            <div className="mt-2 space-y-2.5 text-xs">
+                                {llmDraft.pendingModel && (
+                                    <p className="text-muted-foreground">
+                                        {t("pendingModel", { model: llmDraft.pendingModel, provider: llmDraftLabel })}
+                                    </p>
+                                )}
+                                <div className="grid gap-3 sm:grid-cols-2">
+                                    {llmCustom && (
+                                        <label className="space-y-1">
+                                            <span className="block font-medium text-foreground">{t("baseUrl")}</span>
+                                            <input
+                                                type="url"
+                                                value={llmDraft.baseUrl}
+                                                onChange={(e) => { const baseUrl = e.target.value; setLlmDraft((draft) => ({ ...draft, baseUrl })); setLlmError(null); }}
+                                                onKeyDown={saveLlmOnEnter}
+                                                disabled={saving}
+                                                placeholder={BASE_URL_EXAMPLE}
+                                                autoComplete="off"
+                                                className="block w-full rounded-lg border border-border bg-background px-2.5 py-1.5 text-xs text-foreground outline-none focus:ring-1 focus:ring-cyan-500"
+                                            />
+                                            <span className="block text-muted-foreground">
+                                                {llmPlan.baseUrlHint
+                                                    ?? `${agent.llmProvider === CUSTOM_LLM_PROVIDER ? `${t("keepUrl")} ` : ""}${t("dockerHostHint")}`}
+                                            </span>
+                                        </label>
+                                    )}
+                                    {llmCustom && (
+                                        <label className="space-y-1">
+                                            <span className="block font-medium text-foreground">{t("model")}</span>
+                                            <input
+                                                value={llmDraft.model}
+                                                onChange={(e) => { const model = e.target.value; setLlmDraft((draft) => ({ ...draft, model })); setLlmError(null); }}
+                                                onKeyDown={saveLlmOnEnter}
+                                                disabled={saving}
+                                                maxLength={200}
+                                                placeholder={t("customModelPlaceholder")}
+                                                autoComplete="off"
+                                                className="block w-full rounded-lg border border-border bg-background px-2.5 py-1.5 text-xs text-foreground outline-none focus:ring-1 focus:ring-cyan-500"
+                                            />
+                                        </label>
+                                    )}
+                                    {llmPlan.keyRequired && (
+                                        <div className="space-y-1">
+                                            <label htmlFor={`llm-key-${agent.id}`} className="block font-medium text-foreground">{t("apiKeyFor", { provider: llmDraftLabel })}</label>
+                                            <input
+                                                id={`llm-key-${agent.id}`}
+                                                type="password"
+                                                value={llmDraft.apiKey}
+                                                onChange={(e) => { const apiKey = e.target.value; setLlmDraft((draft) => ({ ...draft, apiKey })); setLlmError(null); }}
+                                                onKeyDown={saveLlmOnEnter}
+                                                disabled={saving || (llmCustom && llmDraft.noKey)}
+                                                placeholder={llmCustom && llmDraft.noKey ? t("noKey") : t("pasteKey")}
+                                                autoComplete="off"
+                                                className="block w-full rounded-lg border border-border bg-background px-2.5 py-1.5 text-xs text-foreground outline-none focus:ring-1 focus:ring-cyan-500 disabled:opacity-60"
+                                            />
+                                            {llmCustom && (
+                                                <label className="flex items-center gap-1.5 text-muted-foreground">
+                                                    <input
+                                                        type="checkbox"
+                                                        checked={llmDraft.noKey}
+                                                        disabled={saving}
+                                                        onChange={(e) => { const noKey = e.target.checked; setLlmDraft((draft) => ({ ...draft, noKey, apiKey: noKey ? "" : draft.apiKey })); setLlmError(null); }}
+                                                    />
+                                                    {t("needsNoKey")}
+                                                </label>
+                                            )}
+                                            <span className="block text-muted-foreground">{t("keyNeverShown")}</span>
+                                        </div>
+                                    )}
+                                </div>
+                                {llmError && <p role="alert" className="text-destructive">{llmError}</p>}
+                            </div>
+                        </div>
+                    </div>
+                )}
+            </section>
+
+            {/* Setup banner — only for offline agents that need configuration (not those Emperor sets up on a host) */}
+            {agent.status === "offline" && !data.provisioning && (
+                <>
+                    <div className="border-b border-zinc-800/80 px-4 py-4 sm:px-5">
+                        <SetupBanner
+                            agentId={agent.id}
+                            agentName={agent.name}
+                            agentRole={agent.role}
+                            agentStatus={agent.status}
+                            providerId={agent.provider || "mcp"}
+                            deploymentMode={(agent.deploymentMode as "local" | "remote") || "remote"}
+                        />
+                    </div>
+                    {!agent.lastSeenAt && (
+                        runtimeSetup?.status === "failed" && !agent.containerId && agent.provider === "hermes" && agent.deploymentMode === "local" ? (
+                            <div role="alert" className="border-b border-rose-500/15 bg-rose-500/[0.04] px-4 py-2 text-xs text-rose-200">
+                                {t("setupFailed", { message: runtimeSetup.message })}
+                            </div>
+                        ) : withinStartupGrace ? (
+                            <div className="border-b border-amber-500/15 bg-amber-500/[0.04] px-4 py-2 text-[11px] text-amber-200/80">
+                                {t("startingUp")}
+                            </div>
+                        ) : (
+                            <div className="border-b border-rose-500/15 bg-rose-500/[0.04] px-4 py-2 text-[11px] text-rose-300/70">
+                                {t("neverConnected")}
+                                {agent.provider === "hermes" ? ` ${t("seeGuideBelow")}` : ""}
+                            </div>
+                        )
+                    )}
+                </>
             )}
 
             {/* Tabs */}
@@ -901,6 +946,31 @@ function StatusDot({ status }: { status: string }) {
     return <span className={cn("h-2 w-2 rounded-full shrink-0", color)} />;
 }
 
+function ConfigField({ label, htmlFor, children, onEdit, editLabel, hint }: {
+    label: string;
+    htmlFor?: string;
+    children: React.ReactNode;
+    onEdit?: () => void;
+    editLabel?: string;
+    hint?: React.ReactNode;
+}) {
+    return (
+        <div className="group min-w-0">
+            <div className="flex items-center justify-between gap-2">
+                <label htmlFor={htmlFor} className="text-[10px] font-semibold uppercase tracking-[0.12em] text-zinc-500">{label}</label>
+                {onEdit && (
+                    <button type="button" onClick={onEdit} aria-label={editLabel}
+                        className="shrink-0 rounded p-1 text-zinc-600 transition-colors hover:text-zinc-300 focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400/60">
+                        <IconPencil className="h-3.5 w-3.5" />
+                    </button>
+                )}
+            </div>
+            <div className="mt-1 min-h-6 text-sm font-medium text-zinc-200">{children}</div>
+            {hint ? <p className="mt-1 text-[11px] leading-snug text-zinc-500">{hint}</p> : null}
+        </div>
+    );
+}
+
 // Kept alongside the new Runs tab: agent sessions and action runs are live,
 // distinct from runtime turns. They are always rendered, so the Runs empty
 // state can never hide them.
@@ -959,8 +1029,13 @@ function EmptyState({ text }: { text: string }) {
 
 function SetupBanner({ agentId, agentName, agentRole, agentStatus, providerId, deploymentMode }: { agentId: string; agentName: string; agentRole: string; agentStatus: string; providerId: string; deploymentMode: "local" | "remote" }) {
     const t = useTranslations("agents.setup");
-    const [copied, setCopied] = useState(false);
+    const tcCommon = useTranslations("common");
+    const [copiedToken, setCopiedToken] = useState(false);
     const [copiedCmd, setCopiedCmd] = useState(false);
+    const [copiedCmdIndex, setCopiedCmdIndex] = useState<number | null>(null);
+    const [endpointCopied, setEndpointCopied] = useState(false);
+    const [copiedPrompt, setCopiedPrompt] = useState(false);
+    const [copiedEnv, setCopiedEnv] = useState(false);
     const [setupRunning, setSetupRunning] = useState(false);
     const [setupResult, setSetupResult] = useState<{ success: boolean; message: string; outputs?: { command: string; stdout: string; stderr: string; exitCode: number | null }[] } | null>(null);
     // A freshly-minted access token, injected into the connect commands so the
@@ -1014,53 +1089,86 @@ function SetupBanner({ agentId, agentName, agentRole, agentStatus, providerId, d
     const setupPrompt = template
         ? buildAgentSetupPrompt(template, provider, typeof window !== "undefined" ? window.location.origin : "http://localhost:3000")
         : `Set up a ${agentRole} agent using ${provider.name}. See the Instructions tab for doctrine files.`;
+    const commands = providerId === "hermes" ? [installerDownloadCommand(), ...provider.installCommands] : provider.installCommands;
+    const baseUrl = typeof window !== "undefined" ? window.location.origin : "http://localhost:3000";
+    const mcpEndpoint = `${baseUrl}/api/mcp`;
 
-    const handleCopy = async () => {
+    const bridgeEnv = () => {
+        return [
+            `EMPEROR_CLAW_API_URL="${baseUrl}"`,
+            `EMPEROR_CLAW_API_TOKEN="${genToken ?? "<generate in Settings > Access Tokens>"}"`,
+            `EMPEROR_CLAW_AGENT_NAME="${agentName}"`,
+            `EMPEROR_CLAW_AGENT_ID="${agentId}"`,
+            `EMPEROR_CLAW_AGENT_ROLE="${agentRole}"`,
+            `HERMES_TOOLSETS="emperor-claw,web,terminal,code_execution"`,
+            `HERMES_BIN="hermes"`,
+            `EMPEROR_CLAW_HERMES_POLL_SECONDS="5"`,
+            `DEEPSEEK_API_KEY="<your-api-key>"`,
+        ].join("\n");
+    };
+    const copyToken = async () => {
+        if (!genToken) return;
+        await navigator.clipboard.writeText(genToken);
+        setCopiedToken(true);
+        setTimeout(() => setCopiedToken(false), 2000);
+    };
+    const copyCommand = async (command: string, index: number) => {
+        await navigator.clipboard.writeText(command);
+        setCopiedCmdIndex(index);
+        setTimeout(() => setCopiedCmdIndex(null), 2000);
+    };
+    const copyEndpoint = async () => {
+        await navigator.clipboard.writeText(mcpEndpoint);
+        setEndpointCopied(true);
+        setTimeout(() => setEndpointCopied(false), 2000);
+    };
+    const copyPrompt = async () => {
         await navigator.clipboard.writeText(setupPrompt);
-        setCopied(true);
-        setTimeout(() => setCopied(false), 2000);
+        setCopiedPrompt(true);
+        setTimeout(() => setCopiedPrompt(false), 2000);
+    };
+    const copyEnv = async () => {
+        await navigator.clipboard.writeText(bridgeEnv());
+        setCopiedEnv(true);
+        setTimeout(() => setCopiedEnv(false), 2000);
     };
 
     if (providerId === "hermes" && isLocal) return (
-        <div className="border-b border-emerald-500/20 bg-emerald-500/[0.06] p-4 space-y-3">
-            <h3 className="text-sm font-semibold text-emerald-100">{t("startLocal")}</h3>
-            <p className="text-xs text-zinc-400">{t("startLocalHint")}</p>
-            <button type="button" disabled={setupRunning} onClick={async () => {
-                setSetupRunning(true); setSetupResult(null);
-                try {
-                    const response = await fetch(`/api/agents/${agentId}/recreate-runtime`, { method: "POST" });
-                    const data = await response.json();
-                    setSetupResult(response.ok ? data : { success: false, message: data.error || t("setupFailed") });
-                    if (response.ok && data.success) setTimeout(() => window.location.reload(), 2000);
-                } catch (e) { setSetupResult({ success: false, message: e instanceof Error ? e.message : t("setupFailed") }); }
-                finally { setSetupRunning(false); }
-            }} className="rounded-lg border border-emerald-500/40 bg-emerald-500/15 px-4 py-2 text-sm text-emerald-200 disabled:opacity-50">
-                {setupRunning ? t("startingHermes") : t("retryLocal")}
-            </button>
-            {setupResult && <div className="space-y-2 text-xs" role="status">
-                <p className={setupResult.success ? "text-emerald-300" : "text-rose-300"}>{setupResult.message}</p>
-                {setupResult.outputs && <SetupOutputLog outputs={setupResult.outputs} />}
-            </div>}
+        <div className="overflow-hidden rounded-2xl border border-zinc-800 border-t-emerald-500/40 bg-zinc-950/40">
+            <div className="border-b border-zinc-800 bg-zinc-900/40 px-4 py-3">
+                <h3 className="text-sm font-semibold text-zinc-100">{t("startLocal")}</h3>
+                <p className="mt-0.5 text-[11px] text-zinc-500">{t("startLocalHint")}</p>
+            </div>
+            <div className="space-y-3 p-4">
+                <button type="button" disabled={setupRunning} onClick={async () => {
+                    setSetupRunning(true); setSetupResult(null);
+                    try {
+                        const response = await fetch(`/api/agents/${agentId}/recreate-runtime`, { method: "POST" });
+                        const data = await response.json();
+                        setSetupResult(response.ok ? data : { success: false, message: data.error || t("setupFailed") });
+                        if (response.ok && data.success) setTimeout(() => window.location.reload(), 2000);
+                    } catch (e) { setSetupResult({ success: false, message: e instanceof Error ? e.message : t("setupFailed") }); }
+                    finally { setSetupRunning(false); }
+                }} className="min-h-8 rounded-lg bg-emerald-500 px-2.5 text-[11px] font-semibold text-emerald-950 transition-colors hover:bg-emerald-400 disabled:opacity-50">
+                    {setupRunning ? t("startingHermes") : t("retryLocal")}
+                </button>
+                {setupResult && <div className="space-y-2 text-xs" role="status">
+                    <p className={setupResult.success ? "text-emerald-300" : "text-rose-300"}>{setupResult.message}</p>
+                    {setupResult.outputs && <SetupOutputLog outputs={setupResult.outputs} />}
+                </div>}
+            </div>
         </div>
     );
 
     return (
         <div className={cn(
-            "border-b p-4 sm:p-5 space-y-4",
-            isLocal
-                ? "border-emerald-500/20 bg-emerald-500/[0.06]"
-                : "border-amber-500/20 bg-amber-500/[0.06]"
+            "overflow-hidden rounded-2xl border border-zinc-800 bg-zinc-950/40",
+            isLocal ? "border-t-emerald-500/40" : "border-t-amber-500/40",
         )}>
-            <div className="flex items-start gap-3">
-                <span className="text-xl mt-0.5" aria-hidden="true">{isLocal ? "🖥️" : "🚀"}</span>
-                <div className="flex-1">
-                    <h3 className={cn("text-sm font-semibold", isLocal ? "text-emerald-100" : "text-amber-100")}>
-                        {isOnline
-                            ? t("isRunning", { name: agentName })
-                            : isLocal ? t("createdConnectHere") : t("createdConnect")
-                        }
-                    </h3>
-                    <p className={cn("text-xs mt-1", isLocal ? "text-emerald-100/70" : "text-amber-100/70")}>
+            <div className="flex flex-wrap items-center justify-between gap-2 border-b border-zinc-800 bg-zinc-900/40 px-4 py-3">
+                <div className="min-w-0">
+                    <h3 className="text-sm font-semibold text-zinc-100">{t("whatToDo")}</h3>
+                    <p className="mt-0.5 text-[11px] text-zinc-500">
                         {isOnline
                             ? t("onlineProcessing", { name: agentName, provider: provider.name })
                             : isLocal
@@ -1069,239 +1177,225 @@ function SetupBanner({ agentId, agentName, agentRole, agentStatus, providerId, d
                         }
                     </p>
                 </div>
+                <span className={cn(
+                    "rounded-full border px-2 py-0.5 text-[11px] font-medium",
+                    setupResult && !setupResult.success
+                        ? "border-rose-500/30 bg-rose-500/10 text-rose-300"
+                        : setupRunning
+                            ? "border-amber-500/30 bg-amber-500/10 text-amber-200"
+                            : isLocal
+                                ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-300"
+                                : "border-amber-500/30 bg-amber-500/10 text-amber-200",
+                )}>
+                    {setupResult && !setupResult.success ? t("setupFailed") : setupRunning ? t("settingUpHermes") : t("notConnectedChip")}
+                </span>
             </div>
 
-            {/* Auto-setup button — Hermes local mode only */}
-            {providerId === "hermes" && isLocal && (
-                <div className="space-y-3">
-                    <button
-                        type="button"
-                        disabled={setupRunning}
-                        onClick={async () => {
-                            setSetupRunning(true);
-                            setSetupResult(null);
-                            try {
-                                const res = await fetch(`/api/agents/${agentId}/setup-local`, { method: "POST" });
-                                const data = await res.json();
-                                setSetupResult(data);
-                                if (data.success) {
-                                    // Reload after 2s so user sees success, then banner hides
-                                    setTimeout(() => window.location.reload(), 2000);
-                                }
-                            } catch (e) {
-                                setSetupResult({ success: false, message: e instanceof Error ? e.message : t("networkError") });
-                            } finally {
-                                setSetupRunning(false);
-                            }
-                        }}
-                        className="flex items-center gap-2 rounded-lg border border-emerald-500/40 bg-emerald-500/15 px-4 py-2.5 text-sm font-medium text-emerald-200 hover:bg-emerald-500/25 transition-colors disabled:opacity-50"
-                    >
-                        {setupRunning ? (
-                            <><IconLoader className="h-4 w-4 animate-spin" />{t("settingUpHermes")}</>
-                        ) : (
-                            <><IconPlayerPlay className="h-4 w-4" />{t("autoSetup")}</>
-                        )}
-                    </button>
-
-                    {setupResult && (
-                        <div className={`rounded-lg border p-3 text-xs space-y-2 ${setupResult.success ? "border-emerald-500/20 bg-emerald-500/[0.06]" : "border-rose-500/20 bg-rose-500/[0.06]"}`}>
-                            <div className="flex items-center gap-2">
-                                {setupResult.success ? <IconCircleCheck className="h-4 w-4 text-emerald-400" /> : <IconAlertTriangle className="h-4 w-4 text-rose-400" />}
-                                <span className={setupResult.success ? "text-emerald-200" : "text-rose-200"}>{setupResult.message}</span>
-                            </div>
-                            {setupResult.outputs && setupResult.outputs.length > 0 && (
-                                <SetupOutputLog outputs={setupResult.outputs} />
-                            )}
-                        </div>
-                    )}
-                </div>
-            )}
-
-            {/* Setup guide — Hermes-specific */}
-            {providerId === "hermes" && !isOnline && (
-                <div className="rounded-xl border border-amber-500/20 bg-amber-500/[0.04] p-4 space-y-2">
-                    <span className="text-[10px] font-bold uppercase tracking-wider text-amber-300">{t("whatToDo")}</span>
-                    <ol className="space-y-1.5 text-[11px] text-amber-100/80 list-decimal list-inside">
-                        <li className="break-words">
-                            {t("stepDownload")}
-                            <code className="mt-1 block overflow-x-auto whitespace-pre-wrap break-all rounded bg-amber-500/10 px-2 py-1 text-amber-200">{installerDownloadCommand()}</code>
-                        </li>
-                        <li className="break-words">
-                            {t.rich("stepProfile", { command: `hermes profile create ${hermesProfileName(agentName)} --clone`, file: ".env", code: (chunks) => <code className="text-amber-200 bg-amber-500/10 px-1 rounded">{chunks}</code>, file1: (chunks) => <code className="text-amber-200/80">{chunks}</code> })}
-                        </li>
-                        <li className="break-words">
-                            {t.rich("stepInstall", { command: `~/.local/bin/emperor-hermes install --profile ${hermesProfileName(agentName)}`, code: (chunks) => <code className="text-amber-200 bg-amber-500/10 px-1 rounded">{chunks}</code> })}
-                            <span className="block text-amber-100/60">{t("stepConnectHost")}</span>
-                        </li>
-                    </ol>
-                    <p className="text-[10px] text-amber-100/60 mt-2">
-                        {t.rich("migration", {
-                            guide: (chunks) => <a href={HERMES_MIGRATION_DOC_HREF} target="_blank" rel="noreferrer" className="text-cyan-400 underline underline-offset-2 hover:text-cyan-300">{chunks}</a>,
-                            full: (chunks) => <a href="/docs/v1.1/hermes-runtime" target="_blank" rel="noreferrer" className="text-cyan-400 underline underline-offset-2 hover:text-cyan-300">{chunks}</a>,
-                            online: (chunks) => <span className="text-emerald-300">{chunks}</span>,
-                        })}
-                    </p>
-                </div>
-            )}
-
-            {/* Direct install commands — for providers that have them */}
-            {provider.installCommands.length > 0 && (
-                <div className="rounded-xl border border-emerald-500/20 bg-emerald-500/[0.04] overflow-hidden">
-                    <div className="flex items-center justify-between px-4 py-2 bg-emerald-500/10 border-b border-emerald-500/20">
-                        <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-200">
-                            {t("quickConnect")}
-                        </span>
-                        <div className="flex items-center gap-1.5">
+            <ol className="divide-y divide-zinc-800/70">
+                <li className="flex gap-3 px-4 py-4">
+                    <span className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full border border-zinc-700 bg-zinc-900 text-[11px] font-semibold text-zinc-300">
+                        1
+                    </span>
+                    <div className="min-w-0 flex-1 space-y-2">
+                        <h4 className="text-xs font-semibold text-zinc-200">{t("stepCredential")}</h4>
+                        <p className="text-[11px] text-zinc-500">{t("stepCredentialHint")}</p>
+                        <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
                             {!genToken && (
                                 <button
                                     type="button"
                                     onClick={generateToken}
                                     disabled={genningToken}
-                                    className="flex items-center gap-1.5 rounded-lg border border-emerald-500/30 px-3 py-1 text-[11px] font-medium text-emerald-200 hover:bg-emerald-500/15 transition-colors disabled:opacity-50"
+                                    className="min-h-8 rounded-lg bg-emerald-500 px-2.5 text-[11px] font-semibold text-emerald-950 transition-colors hover:bg-emerald-400 disabled:opacity-50"
                                 >
                                     {genningToken ? t("generating") : t("generateToken")}
                                 </button>
                             )}
-                            <button
-                                type="button"
-                                onClick={async () => {
-                                    const cmds = provider.installCommands.map(applyVars).join("\n");
-                                    await navigator.clipboard.writeText(cmds);
-                                    setCopiedCmd(true);
-                                    setTimeout(() => setCopiedCmd(false), 2000);
-                                }}
-                                className="flex items-center gap-1.5 rounded-lg border border-emerald-500/30 px-3 py-1 text-[11px] font-medium text-emerald-200 hover:bg-emerald-500/15 transition-colors"
-                            >
-                                {copiedCmd ? <IconCircleCheck className="h-3 w-3" /> : <IconCopy className="h-3 w-3" />}
-                                {copiedCmd ? t("copied") : t("copyAll")}
-                            </button>
+                            <Link href="/settings?tab=access-tokens" className="text-[11px] text-zinc-400 underline underline-offset-2 hover:text-zinc-200">
+                                {t("openAccessTokens")}
+                            </Link>
                         </div>
-                    </div>
-                    <div className="p-3 space-y-2">
-                        {provider.installCommands.map((cmd, i) => (
-                            <div key={i} className="flex items-start gap-2">
-                                <span className="text-[10px] text-emerald-500 mt-0.5 shrink-0">{i + 1}.</span>
-                                <code className="text-[11px] text-emerald-100/80 font-mono break-all">
-                                    {applyVars(cmd)}
-                                </code>
+                        {genToken && (
+                            <div className="flex min-w-0 items-center gap-2 rounded-lg border border-zinc-800 bg-zinc-950 p-2">
+                                <code className="min-w-0 flex-1 truncate font-mono text-[11px] text-zinc-200">{genToken}</code>
+                                <button
+                                    type="button"
+                                    onClick={() => void copyToken()}
+                                    className="inline-flex min-h-8 shrink-0 items-center gap-1 rounded-lg border border-zinc-700 px-2.5 text-[11px] text-zinc-400 transition-colors hover:border-zinc-600 hover:text-zinc-200"
+                                >
+                                    {copiedToken ? <IconCircleCheck className="h-3 w-3 text-emerald-400" /> : <IconCopy className="h-3 w-3" />}
+                                    {copiedToken ? t("copied") : tcCommon("copy")}
+                                </button>
                             </div>
-                        ))}
-                        {genToken ? (
-                            <p className="text-[10px] text-emerald-200/90 mt-1 rounded-md bg-emerald-500/10 border border-emerald-500/20 px-2 py-1.5">
-                                {t("tokenInserted")}
-                            </p>
-                        ) : genTokenError ? (
-                            <p className="text-[10px] text-rose-300/90 mt-1">{t("tokenError", { error: genTokenError })}</p>
+                        )}
+                        {genTokenError && <p className="text-[11px] text-rose-300">{t("tokenError", { error: genTokenError })}</p>}
+                    </div>
+                </li>
+
+                <li className="flex gap-3 px-4 py-4">
+                    <span className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full border border-zinc-700 bg-zinc-900 text-[11px] font-semibold text-zinc-300">
+                        2
+                    </span>
+                    <div className="min-w-0 flex-1 space-y-2">
+                        <div className="flex flex-wrap items-center justify-between gap-2">
+                            <h4 className="text-xs font-semibold text-zinc-200">{t("stepConnect")}</h4>
+                            {commands.length > 0 && (
+                                <button
+                                    type="button"
+                                    onClick={async () => {
+                                        await navigator.clipboard.writeText(commands.map(applyVars).join("\n"));
+                                        setCopiedCmd(true);
+                                        setTimeout(() => setCopiedCmd(false), 2000);
+                                    }}
+                                    className="inline-flex min-h-8 items-center gap-1 rounded-lg border border-zinc-700 px-2.5 text-[11px] text-zinc-400 transition-colors hover:border-zinc-600 hover:text-zinc-200"
+                                >
+                                    {copiedCmd ? <IconCircleCheck className="h-3 w-3 text-emerald-400" /> : <IconCopy className="h-3 w-3" />}
+                                    {copiedCmd ? t("copied") : t("copyAll")}
+                                </button>
+                            )}
+                        </div>
+                        {providerId === "hermes" && <p className="text-[11px] text-zinc-500">{t("stepDownload")}</p>}
+                        {commands.length > 0 ? (
+                            <div className="space-y-2">
+                                {commands.map((cmd, i) => {
+                                    const command = applyVars(cmd);
+                                    return (
+                                        <div key={i} className="flex items-start gap-2 rounded-lg border border-zinc-800 bg-zinc-950 p-3">
+                                            <code className="min-w-0 flex-1 font-mono text-[11px] break-all text-zinc-300">{command}</code>
+                                            <button
+                                                type="button"
+                                                onClick={() => void copyCommand(command, i)}
+                                                className="inline-flex min-h-8 shrink-0 items-center gap-1 rounded-lg border border-zinc-700 px-2.5 text-[11px] text-zinc-400 transition-colors hover:border-zinc-600 hover:text-zinc-200"
+                                            >
+                                                {copiedCmdIndex === i ? <IconCircleCheck className="h-3 w-3 text-emerald-400" /> : <IconCopy className="h-3 w-3" />}
+                                                {copiedCmdIndex === i ? t("copied") : tcCommon("copy")}
+                                            </button>
+                                        </div>
+                                    );
+                                })}
+                            </div>
                         ) : (
-                            <p className="text-[10px] text-emerald-100/50 mt-1">
-                                {t.rich("tokenHint", { placeholder: "YOUR_TOKEN", strong: (chunks) => <span className="text-emerald-200">{chunks}</span>, code: (chunks) => <code className="text-emerald-200/80">{chunks}</code> })}
+                            <div className="space-y-1.5">
+                                <span className="text-[10px] font-semibold uppercase tracking-[0.12em] text-zinc-500">{t("mcpEndpoint")}</span>
+                                <div className="flex items-center gap-2 rounded-lg border border-zinc-800 bg-zinc-950 p-3">
+                                    <code className="min-w-0 flex-1 break-all font-mono text-[11px] text-zinc-300">{mcpEndpoint}</code>
+                                    <button type="button" onClick={copyEndpoint}
+                                        className="flex min-h-8 shrink-0 items-center gap-1.5 rounded-lg border border-zinc-700 px-2.5 text-[11px] font-medium text-zinc-300 hover:bg-zinc-800">
+                                        {endpointCopied ? <IconCircleCheck className="h-3.5 w-3.5" /> : <IconCopy className="h-3.5 w-3.5" />}
+                                        {endpointCopied ? t("copied") : tcCommon("copy")}
+                                    </button>
+                                </div>
+                            </div>
+                        )}
+                        {genToken ? (
+                            <p className="text-[11px] text-zinc-500">{t("tokenInserted")}</p>
+                        ) : genTokenError ? (
+                            <p className="text-[11px] text-rose-300">{t("tokenError", { error: genTokenError })}</p>
+                        ) : (
+                            <p className="text-[11px] text-zinc-500">
+                                {t.rich("tokenHint", { placeholder: "YOUR_TOKEN", strong: (chunks) => <span className="text-zinc-300">{chunks}</span>, code: (chunks) => <code className="text-zinc-300">{chunks}</code> })}
                             </p>
                         )}
-                        <p className="text-[10px] text-emerald-100/50 mt-1">
+                        <p className="text-[11px] text-zinc-500">
                             {isLocal
                                 ? t("assumesLocal", { provider: provider.name })
                                 : t("assumesRemote", { provider: provider.name })
                             }
                         </p>
-                    </div>
-                </div>
-            )}
-
-            {/* Setup prompt — always show for remote, optional for local */}
-            <div className={cn(
-                "rounded-xl border bg-zinc-950/60 overflow-hidden",
-                isLocal
-                    ? "border-emerald-500/20"
-                    : "border-amber-500/20"
-            )}>
-                <div className={cn(
-                    "flex items-center justify-between px-4 py-2 border-b",
-                    isLocal
-                        ? "bg-emerald-500/10 border-emerald-500/20"
-                        : "bg-amber-500/10 border-amber-500/20"
-                )}>
-                    <span className={cn("text-[10px] font-bold uppercase tracking-wider", isLocal ? "text-emerald-200" : "text-amber-200")}>
-                        {isLocal ? t("promptOptional") : t("prompt")}
-                    </span>
-                    <button
-                        type="button"
-                        onClick={handleCopy}
-                        className={cn(
-                            "flex items-center gap-1.5 rounded-lg border px-3 py-1 text-[11px] font-medium transition-colors",
-                            isLocal
-                                ? "border-emerald-500/30 text-emerald-200 hover:bg-emerald-500/15"
-                                : "border-amber-500/30 text-amber-200 hover:bg-amber-500/15"
+                        {providerId === "hermes" && (
+                            <div className="space-y-1.5 text-[11px] text-zinc-500">
+                                <p className="break-words">
+                                    {t.rich("stepProfile", { command: `hermes profile create ${hermesProfileName(agentName)} --clone`, file: ".env", code: (chunks) => <code className="text-zinc-300">{chunks}</code>, file1: (chunks) => <code className="text-zinc-300">{chunks}</code> })}
+                                </p>
+                                <p className="break-words">
+                                    {t.rich("stepInstall", { command: `~/.local/bin/emperor-hermes install --profile ${hermesProfileName(agentName)}`, code: (chunks) => <code className="text-zinc-300">{chunks}</code> })}
+                                </p>
+                                <p>{t("stepConnectHost")}</p>
+                                <p>
+                                    {t.rich("migration", {
+                                        guide: (chunks) => <a href={HERMES_MIGRATION_DOC_HREF} target="_blank" rel="noreferrer" className="text-cyan-400 underline underline-offset-2 hover:text-cyan-300">{chunks}</a>,
+                                        full: (chunks) => <a href="/docs/v1.1/hermes-runtime" target="_blank" rel="noreferrer" className="text-cyan-400 underline underline-offset-2 hover:text-cyan-300">{chunks}</a>,
+                                        online: (chunks) => <span className="text-emerald-300">{chunks}</span>,
+                                    })}
+                                </p>
+                            </div>
                         )}
-                    >
-                        {copied ? <IconCircleCheck className="h-3 w-3" /> : <IconCopy className="h-3 w-3" />}
-                        {copied ? t("copied") : t("copyPrompt")}
-                    </button>
-                </div>
-                <pre className={cn("p-4 text-[11px] whitespace-pre-wrap max-h-[200px] overflow-y-auto font-mono leading-relaxed select-all", isLocal ? "text-emerald-100/80" : "text-amber-100/80")}>
-                    {setupPrompt}
-                </pre>
-            </div>
-
-            {/* Bridge config generator — Hermes only */}
-            {providerId === "hermes" && (
-                <div className="rounded-xl border border-emerald-500/20 bg-emerald-500/[0.04] p-3 space-y-2">
-                    <div className="flex items-center justify-between">
-                        <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-200">
-                            {t("bridgeConfig")}
-                        </span>
-                        <button
-                            type="button"
-                            onClick={async () => {
-                                const baseUrl = typeof window !== "undefined" ? window.location.origin : "http://localhost:3000";
-                                const env = [
-                                    `EMPEROR_CLAW_API_URL="${baseUrl}"`,
-                                    `EMPEROR_CLAW_API_TOKEN="${genToken ?? "<generate in Settings > Access Tokens>"}"`,
-                                    `EMPEROR_CLAW_AGENT_NAME="${agentName}"`,
-                                    `EMPEROR_CLAW_AGENT_ID="${agentId}"`,
-                                    `EMPEROR_CLAW_AGENT_ROLE="${agentRole}"`,
-                                    `HERMES_TOOLSETS="emperor-claw,web,terminal,code_execution"`,
-                                    `HERMES_BIN="hermes"`,
-                                    `EMPEROR_CLAW_HERMES_POLL_SECONDS="5"`,
-                                    `DEEPSEEK_API_KEY="<your-api-key>"`,
-                                ].join("\n");
-                                await navigator.clipboard.writeText(env);
-                                setCopiedCmd(true);
-                                setTimeout(() => setCopiedCmd(false), 2000);
-                            }}
-                            className="flex items-center gap-1.5 rounded-lg border border-emerald-500/30 px-3 py-1 text-[11px] font-medium text-emerald-200 hover:bg-emerald-500/15 transition-colors"
-                        >
-                            {copiedCmd ? <IconCircleCheck className="h-3 w-3" /> : <IconCopy className="h-3 w-3" />}
-                            {copiedCmd ? t("copied") : t("copyEnv")}
-                        </button>
                     </div>
-                    <p className="text-[10px] text-emerald-100/60">
-                        {t.rich("saveEnv", { path: `~/.hermes/emperor-bridge/${agentName}/.env`, code: (chunks) => <code className="text-emerald-200/80 bg-emerald-500/5 px-1 rounded">{chunks}</code>, strong: (chunks) => <strong>{chunks}</strong> })}
-                    </p>
-                </div>
-            )}
+                </li>
 
-            {/* Checklist */}
-            <div className="space-y-2">
-                <span className={cn("text-[10px] font-bold uppercase tracking-wider", isLocal ? "text-emerald-300" : "text-amber-300")}>
-                    {t("checklist")}
-                </span>
-                <div className="grid gap-1.5">
-                    {provider.postInstallChecklist.map((step, i) => (
-                        <div key={i} className={cn("flex items-center gap-2 text-[11px]", isLocal ? "text-emerald-100/70" : "text-amber-100/70")}>
-                            <span className={cn("flex h-5 w-5 shrink-0 items-center justify-center rounded-full border text-[10px]", isLocal ? "border-emerald-500/30 text-emerald-300" : "border-amber-500/30 text-amber-300")}>
-                                {i + 1}
-                            </span>
-                            <span>{applyVars(step)}</span>
+                <li className="flex gap-3 px-4 py-4">
+                    <span className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full border border-zinc-700 bg-zinc-900 text-[11px] font-semibold text-zinc-300">
+                        3
+                    </span>
+                    <div className="min-w-0 flex-1 space-y-2">
+                        <h4 className="text-xs font-semibold text-zinc-200">{t("stepConfigure")}</h4>
+                        <details className="rounded-lg border border-zinc-800 bg-zinc-950/60">
+                            <summary className="cursor-pointer px-3 py-2 text-xs text-zinc-300">
+                                {isLocal ? t("promptOptional") : t("prompt")}
+                            </summary>
+                            <div className="space-y-4 border-t border-zinc-800 p-3">
+                                {providerId === "hermes" && (
+                                    <div className="space-y-2">
+                                        <div className="flex flex-wrap items-center justify-between gap-2">
+                                            <span className="text-[11px] font-semibold uppercase tracking-[0.12em] text-zinc-400">{t("bridgeConfig")}</span>
+                                            <button
+                                                type="button"
+                                                onClick={() => void copyEnv()}
+                                                className="inline-flex min-h-8 items-center gap-1 rounded-lg border border-zinc-700 px-2.5 text-[11px] text-zinc-400 transition-colors hover:border-zinc-600 hover:text-zinc-200"
+                                            >
+                                                {copiedEnv ? <IconCircleCheck className="h-3 w-3 text-emerald-400" /> : <IconCopy className="h-3 w-3" />}
+                                                {copiedEnv ? t("copied") : t("copyEnv")}
+                                            </button>
+                                        </div>
+                                        <p className="text-[11px] text-zinc-500">
+                                            {t.rich("saveEnv", { path: `~/.hermes/emperor-bridge/${agentName}/.env`, code: (chunks) => <code className="text-zinc-300">{chunks}</code>, strong: (chunks) => <strong>{chunks}</strong> })}
+                                        </p>
+                                        <pre className="max-h-[220px] overflow-y-auto whitespace-pre-wrap break-all rounded-lg border border-zinc-800 bg-zinc-950 p-3 font-mono text-[11px] text-zinc-300">
+                                            {bridgeEnv()}
+                                        </pre>
+                                    </div>
+                                )}
+                                <div className="space-y-2">
+                                    <div className="flex flex-wrap items-center justify-between gap-2">
+                                        <span className="text-[11px] font-semibold uppercase tracking-[0.12em] text-zinc-400">{isLocal ? t("promptOptional") : t("prompt")}</span>
+                                        <button
+                                            type="button"
+                                            onClick={() => void copyPrompt()}
+                                            className="inline-flex min-h-8 items-center gap-1 rounded-lg border border-zinc-700 px-2.5 text-[11px] text-zinc-400 transition-colors hover:border-zinc-600 hover:text-zinc-200"
+                                        >
+                                            {copiedPrompt ? <IconCircleCheck className="h-3 w-3 text-emerald-400" /> : <IconCopy className="h-3 w-3" />}
+                                            {copiedPrompt ? t("copied") : t("copyPrompt")}
+                                        </button>
+                                    </div>
+                                    <pre className="max-h-[220px] overflow-y-auto whitespace-pre-wrap rounded-lg border border-zinc-800 bg-zinc-950 p-3 font-mono text-[11px] text-zinc-300 select-all">
+                                        {setupPrompt}
+                                    </pre>
+                                </div>
+                            </div>
+                        </details>
+                    </div>
+                </li>
+
+                <li className="flex gap-3 px-4 py-4">
+                    <span className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full border border-zinc-700 bg-zinc-900 text-[11px] font-semibold text-zinc-300">
+                        4
+                    </span>
+                    <div className="min-w-0 flex-1 space-y-2">
+                        <h4 className="text-xs font-semibold text-zinc-200">{t("stepVerify")}</h4>
+                        <div className="space-y-1.5">
+                            {provider.postInstallChecklist.filter((step) => !/dashboard/i.test(step)).map((step, i) => (
+                                <div key={i} className="flex items-start gap-2 text-[12px] text-zinc-400">
+                                    <span className="shrink-0 text-zinc-500">{i + 1}.</span>
+                                    <span>{applyVars(step)}</span>
+                                </div>
+                            ))}
+                            <div className="flex items-start gap-2 text-[12px] text-zinc-400">
+                                <span className="shrink-0 text-emerald-400">✓</span>
+                                <span>{t.rich("checkDashboard", { name: agentName, strong: (chunks) => <strong>{chunks}</strong> })}</span>
+                            </div>
                         </div>
-                    ))}
-                    <div className={cn("flex items-center gap-2 text-[11px]", isLocal ? "text-emerald-100/70" : "text-amber-100/70")}>
-                        <span className={cn("flex h-5 w-5 shrink-0 items-center justify-center rounded-full border text-[10px]", isLocal ? "border-emerald-500/30 text-emerald-300" : "border-amber-500/30 text-amber-300")}>
-                            {"✓"}
-                        </span>
-                        <span>{t.rich("checkDashboard", { name: agentName, strong: (chunks) => <strong>{chunks}</strong> })}</span>
                     </div>
-                </div>
-            </div>
+                </li>
+            </ol>
         </div>
     );
 }

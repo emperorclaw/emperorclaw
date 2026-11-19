@@ -236,9 +236,13 @@ export function AgentsClient({ agents }: { agents: AgentDirectoryItem[] }) {
                             </button>
                             {/* Switching agents crossfades the detail instead of swapping it hard. */}
                             <Swap id={selectedAgent.id} className="space-y-4">
-                                <div className="space-y-4">
-                                    {selectedAgent.use !== "metadata" && <AgentNowCard now={activity[selectedAgent.id]} />}
-                                    <AgentDetailPanel agentId={selectedAgent.id} agentName={selectedAgent.name} runtime={activity[selectedAgent.id]?.runtime ?? null} />
+                                <div className="flex flex-col gap-4">
+                                    <div className="order-2 lg:order-1">
+                                        {selectedAgent.use !== "metadata" && <AgentNowCard now={activity[selectedAgent.id]} />}
+                                    </div>
+                                    <div className="order-1 lg:order-2">
+                                        <AgentDetailPanel agentId={selectedAgent.id} agentName={selectedAgent.name} runtime={activity[selectedAgent.id]?.runtime ?? null} />
+                                    </div>
                                 </div>
                             </Swap>
                         </div>

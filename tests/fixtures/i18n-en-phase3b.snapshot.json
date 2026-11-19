@@ -371,7 +371,19 @@
       }
     },
     "detail": {
-      "workLogUnread": "{count, plural, one {# unread message} other {# unread messages}}"
+      "workLogUnread": "{count, plural, one {# unread message} other {# unread messages}}",
+      "configTitle": "Configuration",
+      "configHint": "Runtime, model and budget for this agent."
+    },
+    "setup": {
+      "stepCredential": "Credential",
+      "stepCredentialHint": "Create a token this agent uses to reach Emperor Claw.",
+      "stepConnect": "Connect",
+      "mcpEndpoint": "MCP endpoint",
+      "stepConfigure": "Configure",
+      "stepVerify": "Verify",
+      "openAccessTokens": "Manage tokens in Settings → Access Tokens",
+      "notConnectedChip": "Not connected yet"
     }
   },
   "messagingHub": {
