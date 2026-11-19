@@ -507,3 +507,9 @@ New passwords use the same 15–128 character policy for registration, password 
 **Active sessions** shows browser/device names, sign-in time and approximate last activity (updated about every five minutes). Session revocation requires your password and MFA when enabled. Signing out also revokes the server session; a copied old session cookie no longer works. **Security history** shows the 30 latest account security actions and never stores passwords, authenticator secrets, recovery codes or session tokens. Existing sessions may show an unknown browser until you sign in again.
 
 Apply migration `0086_account-security` with `npm run db:migrate` before deploying. Enterprise SSO is a separate future integration.
+
+### Chat interaction and partial replies (0.39)
+
+The chat composer grows as you write, keeps typing independent of transcript rendering, and shows recoverable pending sends. Work indicators and action summaries follow actual runtime activity, with reduced-motion support.
+
+Real partial replies require Hermes bridge 0.39.0 and `EMPEROR_CHAT_STREAMING=1` on the server. Start with `EMPEROR_CHAT_STREAMING_COMPANIES` set to canary company UUIDs. Older runtimes keep completed replies. Apply migration `0087_chat-experience` before starting a source installation; Docker applies it at startup. See [implementation, rollout and rollback](docs/design/chat-experience-implementation.md).

@@ -778,3 +778,7 @@ Order: W1, W5 and W8 (harness rebase on the product image) start day 1. W3 start
 As rev 1, with one change: "a multiplexed gateway" is no longer a non-goal (it is the D21 opt-in). Still out of scope:
 - A multiplexed gateway **across companies** or OS users, and Docker shared mode.
 - A multi-agent bridge in Docker.
+
+### Partial replies v1 (bridge 0.39.0)
+
+The optional `partial-replies-v1` server capability enables cumulative assistant-text snapshots on `POST /api/mcp/agents/runs/{id}/responses`. Snapshots are scoped to the authenticated run/thread and use deterministic response/segment identity plus monotonic revisions. They are separate from audit run events and never replace the authoritative outbox reply. UTF-8, aggregate, cadence and retention limits, browser read authorization, fallback and rollout are specified in [chat-experience-implementation.md](chat-experience-implementation.md). Update this contract together with the Python bridge, TypeScript schema and security tests.

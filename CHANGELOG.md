@@ -9,6 +9,24 @@ tagged (e.g. `## [1.2.0] — 2026-07-22`). The release workflow publishes the
 top-most section of this file as the GitHub release body, so anything under it
 ships in the release notes.
 
+## [0.39.0] — 2026-11-19
+
+### Added
+
+- **Smoother chat composition.** Typing is isolated from transcript rendering, multiline inputs grow naturally, and direct/team drafts persist without a storage write on every keystroke. Sent messages appear immediately with recoverable failure feedback and idempotent retries.
+- **Real partial replies (opt-in).** Hermes bridge 0.39.0 can deliver bounded response snapshots while a turn runs. Formatted previews reconcile with the saved reply, keep completed Markdown blocks stable, and respect the same private-chat authorization as saved messages. Enable `EMPEROR_CHAT_STREAMING=1` for canary companies first; older bridges retain completed replies.
+- **Clearer work feedback.** One-shot message entrances, active-action shimmer, compact action summaries and expandable per-agent activity in group chats. Reduced motion removes continuous effects.
+
+### Fixed
+
+- Chat follows growing content while at the live edge, preserves older-message reading positions, and no longer overlays plain-text simulated typing on a hidden formatted response.
+- A failed send no longer overwrites newer text typed while it was in flight. Concurrent retries with one client message ID store one human message.
+
+### Upgrade
+
+- Apply additive migration `0087_chat-experience` (Docker does this at startup). Update Hermes hosts with the v0.39.0 installer for partial replies.
+- `EMPEROR_CHAT_EXPERIENCE=0` disables the new motion/resize behavior independently. Company allow-lists and streaming rollback instructions are documented in `docs/design/chat-experience-implementation.md`.
+
 ## [0.38.0] — 2026-11-19
 
 ### Added
