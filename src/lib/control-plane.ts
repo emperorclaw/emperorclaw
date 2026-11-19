@@ -121,49 +121,102 @@ export async function ensureThreadHumanParticipants(companyId: string, threadId:
     }
 }
 
-export async function ensureTeamThread(companyId: string) {
-    const [existing] = await db.select().from(messageThreads).where(
-        and(
-            eq(messageThreads.companyId, companyId),
-            eq(messageThreads.type, "team"),
-            isNull(messageThreads.archivedAt)
-        )
-    ).orderBy(messageThreads.createdAt).limit(1);
+type TeamThreadRow = typeof messageThreads.$inferSelect;
 
-    if (existing) {
-        await ensureThreadHumanParticipants(companyId, existing.id);
-        return existing;
-    }
+/**
+ * The storage the team-thread get-or-create needs. Split out from the drizzle
+ * implementation so the race policy below is testable without a database.
+ */
+export type TeamThreadStore = {
+    /** Run `work` with every other creator of this company's team thread excluded. */
+    serialized<T>(work: (tx: Executor) => Promise<T>): Promise<T>;
+    find(tx: Executor): Promise<TeamThreadRow | undefined>;
+    create(tx: Executor): Promise<TeamThreadRow>;
+};
 
-    let created: typeof messageThreads.$inferSelect;
-    try {
-        [created] = await db.insert(messageThreads).values({
-            companyId,
-            type: "team",
-            title: "Agent Team Chat",
-            createdByType: "system",
-        }).returning();
-    } catch (error) {
-        // A partial unique index enforces one team thread per company. If a
-        // concurrent caller won the race, adopt its thread instead of 500ing.
-        if (!isUniqueViolation(error)) throw error;
-        const [winner] = await db.select().from(messageThreads).where(
-            and(
-                eq(messageThreads.companyId, companyId),
-                eq(messageThreads.type, "team"),
-                isNull(messageThreads.archivedAt)
-            )
-        ).orderBy(messageThreads.createdAt).limit(1);
-        if (!winner) throw error;
-        created = winner;
-    }
-
-    await ensureThreadHumanParticipants(companyId, created.id);
-    return created;
+/**
+ * Serialize creation of a company's team thread with a transaction-scoped
+ * advisory lock, the same way the direct-thread get-or-create does. Without it
+ * two concurrent `/messages` renders both see "no team thread", both insert,
+ * and the loser hits the partial unique index: the page answers 500 and the
+ * chat e2e cannot find the composer.
+ */
+export function drizzleTeamThreadStore(companyId: string, executor: Executor = db): TeamThreadStore {
+    const oneTeamThread = and(
+        eq(messageThreads.companyId, companyId),
+        eq(messageThreads.type, "team"),
+        isNull(messageThreads.archivedAt),
+    );
+    const find = async (tx: Executor) => {
+        const [row] = await tx.select().from(messageThreads)
+            .where(oneTeamThread)
+            .orderBy(messageThreads.createdAt)
+            .limit(1);
+        return row;
+    };
+    return {
+        async serialized(work) {
+            const ensure = async (tx: Executor) => {
+                await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${`team-thread:${companyId}`}))`);
+                return work(tx);
+            };
+            return executor === db ? await db.transaction((tx) => ensure(tx)) : await ensure(executor);
+        },
+        find,
+        async create(tx) {
+            const [row] = await tx.insert(messageThreads).values({
+                companyId,
+                type: "team",
+                title: "Agent Team Chat",
+                createdByType: "system",
+            }).returning();
+            return row;
+        },
+    };
 }
 
+/**
+ * Find or create the company's team thread. The lock is the primary guarantee;
+ * the unique-violation fallback keeps a caller that somehow raced outside it
+ * (older build, lock unavailable) adopting the winner instead of answering 500.
+ */
+export async function getOrCreateTeamThread(companyId: string, store: TeamThreadStore): Promise<TeamThreadRow> {
+    return store.serialized(async (tx) => {
+        const existing = await store.find(tx);
+        if (existing) return existing;
+
+        try {
+            return await store.create(tx);
+        } catch (error) {
+            // message_threads_one_team_per_company is a partial unique index.
+            if (!isUniqueViolation(error)) throw error;
+            const winner = await store.find(tx);
+            if (!winner) throw error;
+            return winner;
+        }
+    });
+}
+
+export async function ensureTeamThread(companyId: string, executor: Executor = db) {
+    const thread = await getOrCreateTeamThread(companyId, drizzleTeamThreadStore(companyId, executor));
+    await ensureThreadHumanParticipants(companyId, thread.id, executor);
+    return thread;
+}
+
+/**
+ * True for a Postgres unique violation, however it is nested. Drizzle wraps
+ * driver errors in a DrizzleQueryError (message "Failed query: ...") and keeps
+ * the pg error on `cause`, so checking `error.code` alone silently misses every
+ * 23505 that goes through the query builder — which is exactly how the team
+ * thread get-or-create answered 500 under concurrency.
+ */
 function isUniqueViolation(error: unknown): boolean {
-    return typeof error === "object" && error !== null && (error as { code?: string }).code === "23505";
+    let current: unknown = error;
+    for (let depth = 0; depth < 5 && typeof current === "object" && current !== null; depth++) {
+        if ((current as { code?: unknown }).code === "23505") return true;
+        current = (current as { cause?: unknown }).cause;
+    }
+    return false;
 }
 
 /** The company's direct-chat mode; "shared" for a database without the column yet. */
