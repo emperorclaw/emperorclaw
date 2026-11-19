@@ -365,7 +365,7 @@ export async function updateTaskForCompany(input: UpdateTaskInput) {
   const assigneeChanges = assignmentWasRequested
     && (resolvedAssignedAgentId ?? null) !== (existingTask.assignedAgentId ?? null);
 
-  if (stateChanges || assigneeChanges) {
+  if (stateChanges || assignmentWasRequested) {
     const [ownerProject] = await db.select({ leadAgentId: projects.leadAgentId }).from(projects).where(
       and(eq(projects.id, existingTask.projectId), eq(projects.companyId, input.companyId)),
     ).limit(1);
@@ -378,7 +378,10 @@ export async function updateTaskForCompany(input: UpdateTaskInput) {
       }
     }
 
-    if (assigneeChanges) {
+    // The gate runs whenever the caller asked for an assignee, not only when the
+    // value differs: a write that changes nothing still needs an identity, and
+    // skipping it there returned 200 to a token that cannot name its agent.
+    if (assignmentWasRequested) {
       const denial = taskAssignmentDenial({
         project: ownerPolicy,
         task: existingTask,
