@@ -144,6 +144,26 @@ maybe("c87002d6: an unbound token is refused instead of being recorded as system
     assert.equal((await w.audit()).length, 0);
 });
 
+maybe("a company-wide token cannot re-send the assignee a task already holds", async () => {
+    const w = await world();
+    const route = await taskRoute();
+
+    // The value is the one already in the row, so no column would change — and a
+    // token that cannot name its agent still may not ask for it: the write used
+    // to answer 200 by skipping the gate whenever the assignee matched.
+    const res = await call(route.PATCH, `/api/mcp/tasks/${w.task.id}`, {
+        method: "PATCH",
+        headers: auth(w.companyToken),
+        params: { id: w.task.id },
+        body: { assignedAgentId: w.owner.id },
+    });
+
+    assert.equal(res.status, 403, `an unbound assignee write must be refused, got ${res.status}: ${res.text}`);
+    const row = await rowOf(w);
+    assert.equal(row.assignedAgentId, w.owner.id, "the refused write must leave the assignee alone");
+    assert.equal((await w.audit()).length, 0, "a refused write must leave no audit entry");
+});
+
 maybe("a shared token cannot sign a status change by naming an agent", async () => {
     const w = await world();
     const route = await taskRoute();
