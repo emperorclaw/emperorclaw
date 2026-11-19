@@ -50,3 +50,11 @@ test("saved replies win over their preview while optimistic acknowledgements ret
     const clientId = randomUUID(); rememberHumanMessageKey(final.id, clientId);
     assert.equal(chatRowKey(final, []), clientId);
 });
+
+import { newClientMessageId } from "../../src/lib/chat/client-message-id";
+test("request identities work when HTTP browsers do not expose randomUUID", () => {
+    assert.equal(newClientMessageId({ getRandomValues: bytes => { bytes.fill(0); return bytes; } }), "00000000-0000-4000-8000-000000000000");
+    const values = Array.from({ length: 100 }, () => newClientMessageId({}));
+    assert.equal(new Set(values).size, 100);
+    assert.ok(values.every(value => /^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/.test(value)));
+});

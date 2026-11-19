@@ -5,6 +5,7 @@ import { useChatResponses, withResponsePreviews, chatRowKey, rememberHumanMessag
 import { messageEntranceRef } from "@/lib/chat/message-motion";
 import { PendingReceipt, PreviewState, type PendingText } from "@/components/chat/pending-send";
 import { StreamingMarkdown } from "@/components/chat/streaming-markdown";
+import { newClientMessageId } from "@/lib/chat/client-message-id";
 import { ChatInput } from "@/components/chat/chat-input";
 import { useComposerStore } from "@/lib/chat/composer-store";
 
@@ -1082,7 +1083,7 @@ export function AgentDirectChat({
         const text = retry?.text ?? composer.get().trim();
         if (!canSend || (!text && pendingAttachments.length === 0) || isSending) return;
 
-        const pending: PendingText = retry ?? { clientMessageId: crypto.randomUUID(), text, attachments: pendingAttachments.map(a => a.id), mode: sendMode, status: "sending", createdAt: new Date().toISOString(), view: viewKeyRef.current };
+        const pending: PendingText = retry ?? { clientMessageId: newClientMessageId(), text, attachments: pendingAttachments.map(a => a.id), mode: sendMode, status: "sending", createdAt: new Date().toISOString(), view: viewKeyRef.current };
         setPendingSend({ ...pending, status: "sending" });
         setIsSending(true);
         setControlError(null);
