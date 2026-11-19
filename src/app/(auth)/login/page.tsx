@@ -38,6 +38,9 @@ const stagger = { emblem: 0, title: 0.15, subtitle: 0.2, email: 0.25, password: 
 export default function LoginPage() {
     const t = useTranslations("auth.login");
     const mfa = useTranslations("mfa");
+    const account = useTranslations("account");
+    const [passwordChanged, setPasswordChanged] = useState(false);
+    useEffect(() => { setPasswordChanged(new URLSearchParams(window.location.search).get("passwordChanged") === "1"); }, []);
     const [code, setCode] = useState("");
     const [needsMfa, setNeedsMfa] = useState(false);
     const router = useRouter();
@@ -80,22 +83,28 @@ export default function LoginPage() {
         setError("");
         setLoading(true);
         const normalizedEmail = email.trim().toLowerCase();
-        const res = await signIn("credentials", { redirect: false, email: normalizedEmail, password, code });
-        setLoading(false);
-        if (res?.error) {
-            if (res.error === "MFA_REQUIRED" || res.error === "MFA_INVALID") {
-                setNeedsMfa(true);
-                setError(mfa(res.error === "MFA_REQUIRED" ? "required" : "invalid"));
-                return;
+        try {
+            const res = await signIn("credentials", { redirect: false, email: normalizedEmail, password, code });
+            if (res?.error) {
+                if (res.error === "RATE_LIMITED") { setError(account("loginRateLimited")); return; }
+                if (res.error === "MFA_REQUIRED" || res.error === "MFA_INVALID") {
+                    setNeedsMfa(true);
+                    setError(mfa(res.error === "MFA_REQUIRED" ? "required" : "invalid"));
+                    return;
+                }
+                if (res.error === "EMAIL_NOT_VERIFIED") {
+                    setError(t("emailNotVerified"));
+                    return;
+                }
+                setError(t("invalidCredentials"));
+            } else if (res?.ok) {
+                router.push("/");
+                router.refresh();
             }
-            if (res.error === "EMAIL_NOT_VERIFIED") {
-                setError(t("emailNotVerified"));
-                return;
-            }
-            setError(t("invalidCredentials"));
-        } else {
-            router.push("/");
-            router.refresh();
+        } catch {
+            setError(account("errors.REQUEST_FAILED"));
+        } finally {
+            setLoading(false);
         }
     };
 
@@ -147,6 +156,7 @@ export default function LoginPage() {
                             </div>
 
                             <form onSubmit={handleSubmit} className="space-y-4">
+                                {passwordChanged && <p role="status" className="rounded-xl border border-cyan-400/30 bg-cyan-400/10 p-3 text-sm text-cyan-200">{account("passwordChanged")}</p>}
                                 {error && (
                                     <div className="p-3 bg-red-500/8 border border-red-500/15 rounded-xl text-red-400 text-sm text-center backdrop-blur-sm" style={{ animation: "fadeUp 0.3s ease-out both" }}>
                                         {error}

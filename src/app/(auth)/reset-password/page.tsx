@@ -32,7 +32,7 @@ function ResetPasswordForm() {
             return;
         }
 
-        if (password.length < 8) {
+        if (password.length < 15 || password.length > 128) {
             setError(t("tooShort"));
             return;
         }
@@ -55,7 +55,7 @@ function ResetPasswordForm() {
                 const data = await res.json();
                 setError(apiError(data.error, t("failed")));
             }
-        } catch (err) {
+        } catch {
             setError(tAuth("networkError"));
         } finally {
             setIsLoading(false);

@@ -1,3 +1,5 @@
+import { validNewPassword } from "@/lib/password-policy";
+import { recordSecurityEvent } from "@/lib/account-security";
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/db";
 import { users, passwordResets, sessions } from "@/db/schema";
@@ -34,13 +36,13 @@ export async function POST(req: NextRequest) {
             return NextResponse.json({ error: "Missing required fields" }, { status: 400 });
         }
 
-        if (newPassword.length < 8) {
-            return NextResponse.json({ error: "Password must be at least 8 characters" }, { status: 400 });
+        if (!validNewPassword(newPassword)) {
+            return NextResponse.json({ error: "Password must be between 15 and 128 characters" }, { status: 400 });
         }
 
         // 1. Find user
         const [user] = await db.select().from(users).where(eq(users.email, email)).limit(1);
-        if (!user) {
+        if (!user || user.deletedAt) {
             return NextResponse.json({ error: "Invalid reset request" }, { status: 400 });
         }
 
@@ -67,7 +69,7 @@ export async function POST(req: NextRequest) {
                     validResetId = resetRecord.id;
                     break;
                 }
-            } catch (e) {
+            } catch {
                 // Ignore hash verification failures
             }
         }
@@ -80,6 +82,10 @@ export async function POST(req: NextRequest) {
         const newPasswordHash = await hash(newPassword);
 
         await db.transaction(async (tx) => {
+            // Serialize recovery with password changes and credential sign-in.
+            await tx.select({ id: users.id }).from(users).where(eq(users.id, user.id)).for("update");
+            const [stillValid] = await tx.select({ id: passwordResets.id }).from(passwordResets).where(and(eq(passwordResets.id, validResetId!), gt(passwordResets.expiresAt, new Date())));
+            if (!stillValid) throw new Error("RESET_ALREADY_USED");
             // Update password
             await tx.update(users)
                 .set({ passwordHash: newPasswordHash })
@@ -92,11 +98,13 @@ export async function POST(req: NextRequest) {
             // Best practice: Invalidate active sessions since password changed
             await tx.delete(sessions)
                 .where(eq(sessions.userId, user.id));
+            await recordSecurityEvent(tx, user.id, "password_reset");
         });
 
         return NextResponse.json({ message: "Password updated successfully" }, { status: 200 });
 
     } catch (err) {
+        if (err instanceof Error && err.message === "RESET_ALREADY_USED") return NextResponse.json({ error: "Link expired or invalid" }, { status: 400 });
         console.error("Reset password error:", err);
         void recordOpsError({
             category: "auth",

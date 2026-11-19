@@ -1,3 +1,5 @@
+import { isSameOriginRequest } from "@/lib/account-security";
+import { z } from "zod";
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/db";
 import { companyMembers, users } from "@/db/schema";
@@ -17,7 +19,7 @@ export async function GET() {
     }
 
     const [user] = await db
-        .select({ displayName: users.displayName, roleTitle: users.roleTitle, email: users.email, id: users.id, locale: users.locale })
+        .select({ displayName: users.displayName, roleTitle: users.roleTitle, email: users.email, id: users.id, locale: users.locale, emailVerifiedAt: users.emailVerifiedAt, createdAt: users.createdAt })
         .from(users)
         .where(eq(users.id, session.user.id))
         .limit(1);
@@ -32,18 +34,21 @@ export async function GET() {
         canWrite: canWrite(access?.role),
         canAdmin: canAdmin(access?.role),
         restricted: Boolean(access?.scope),
-    });
+    }, { headers: { "Cache-Control": "no-store" } });
 }
 
 // PATCH /api/user/profile — update own display name, role title and UI language (locale: "en" | "zh-CN" | null = automatic)
 export async function PATCH(req: NextRequest) {
+    if (!isSameOriginRequest(req)) return NextResponse.json({ error: "Invalid origin" }, { status: 403 });
     const session = await getValidatedServerSession();
     if (!session?.user?.id) {
         return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const body = await req.json();
-    const updates: Record<string, any> = {};
+    const parsed = z.object({ displayName: z.string().max(120).optional(), roleTitle: z.string().max(120).optional(), locale: z.enum(["en", "zh-CN"]).nullable().optional() }).strict().safeParse(await req.json().catch(() => null));
+    if (!parsed.success) return NextResponse.json({ error: "Invalid profile fields" }, { status: 400 });
+    const body = parsed.data;
+    const updates: Partial<typeof users.$inferInsert> = {};
 
     if (typeof body.displayName === "string") {
         updates.displayName = body.displayName.trim() || null;

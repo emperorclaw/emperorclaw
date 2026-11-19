@@ -190,6 +190,7 @@ export default function SettingsClient({
     const [confirmingRevokeId, setConfirmingRevokeId] = useState<string | null>(null);
     const [profileDisplayName, setProfileDisplayName] = useState("");
     const [profileRoleTitle, setProfileRoleTitle] = useState("");
+    const [profileIdentity, setProfileIdentity] = useState<{ email: string; emailVerifiedAt: string | null; createdAt: string; role: string | null } | null>(null);
     const [profileLocale, setProfileLocale] = useState<Locale | null>(null);
     const [savingProfile, setSavingProfile] = useState(false);
     const [profileLoaded, setProfileLoaded] = useState(false);
@@ -218,6 +219,7 @@ export default function SettingsClient({
                 setProfileDisplayName(data.displayName || "");
                 setProfileRoleTitle(data.roleTitle || "");
                 setProfileLocale(data.locale ?? null);
+                setProfileIdentity({ email: data.email, emailVerifiedAt: data.emailVerifiedAt, createdAt: data.createdAt, role: data.role });
             }
         } catch { setProfileError(true); return; }
         finally { setProfileLoading(false); }
@@ -234,6 +236,7 @@ export default function SettingsClient({
                 body: JSON.stringify({ displayName: profileDisplayName, roleTitle: profileRoleTitle }),
             });
             if (!res.ok) throw new Error("Failed");
+            window.dispatchEvent(new Event("account-profile-updated"));
             toast.success(tSettings("profile.updated"));
         } catch {
             toast.error(tSettings("profile.saveFailed"));
@@ -356,6 +359,7 @@ export default function SettingsClient({
                     <p className="text-sm leading-6 text-muted-foreground">{tSettings(`items.${settingsItemKey(currentSection.id)}Description`)}</p>
             {activeTab === "profile" && (
                 <ProfileTab
+                    identity={profileIdentity}
                     displayName={profileDisplayName}
                     setDisplayName={setProfileDisplayName}
                     roleTitle={profileRoleTitle}

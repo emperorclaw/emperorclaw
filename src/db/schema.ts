@@ -33,7 +33,18 @@ export const sessions = pgTable("sessions", {
     userId: uuid("user_id").notNull().references(() => users.id, { onDelete: 'cascade' }),
     expiresAt: timestamp("expires_at").notNull(),
     createdAt: timestamp("created_at").defaultNow().notNull(),
+    lastSeenAt: timestamp("last_seen_at").defaultNow().notNull(),
+    userAgent: text("user_agent"),
 });
+
+// Account security history belongs to the person, never to agent-visible chat.
+export const userSecurityEvents = pgTable("user_security_events", {
+    id: uuid("id").primaryKey().defaultRandom(),
+    userId: uuid("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+    event: text("event").notNull(),
+    sessionCount: integer("session_count"),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (table) => [index("user_security_events_user_created_idx").on(table.userId, table.createdAt)]);
 
 export const passwordResets = pgTable("password_resets", {
     id: uuid("id").primaryKey().defaultRandom(),

@@ -59,6 +59,8 @@ export const API_ERROR_KEYS: Readonly<Record<string, ApiErrorKey>> = {
     "Enter a valid email address.": "invalidEmail",
     "Email already in use": "emailInUse",
     "Password must be between 8 and 128 characters.": "passwordLength",
+    "Password must be between 15 and 128 characters.": "passwordLength",
+    "Password must be between 15 and 128 characters": "passwordLength",
     "Password must be at least 8 characters": "passwordTooShort",
     "Company name is required": "companyNameRequired",
     "Company name is required to set up your instance.": "companyNameRequired",

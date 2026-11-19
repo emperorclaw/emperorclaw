@@ -3,7 +3,7 @@
 import { useState, useEffect, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
-import { IconAlertTriangle, IconLoader2, IconShieldX, IconMail, IconCircleCheck } from "@tabler/icons-react";
+import { IconAlertTriangle, IconLoader2, IconShieldX, IconCircleCheck } from "@tabler/icons-react";
 import { AuthBackground } from "@/components/auth-background";
 import { useTranslations } from "next-intl";
 import { CustomLogo } from "@/components/custom-logo";
@@ -120,7 +120,7 @@ function SignupForm() {
         if (!normalizedEmail) {
             return t("validation.email");
         }
-        if (password.length < 8) {
+        if (password.length < 15 || password.length > 128) {
             return t("validation.passwordLength");
         }
         if (!passwordsMatch) {
@@ -335,7 +335,7 @@ function SignupForm() {
                                 value={password}
                                 onChange={(e) => setPassword(e.target.value)}
                                 required
-                                minLength={8}
+                                minLength={15}
                                 maxLength={128}
                                 autoComplete="new-password"
                                 className="w-full bg-zinc-950/50 border border-zinc-800 rounded-lg p-3 text-sm text-zinc-200 focus:outline-none focus:ring-2 focus:ring-indigo-500/50 focus:border-indigo-500/50 transition-all"
@@ -352,7 +352,7 @@ function SignupForm() {
                                 value={confirmPassword}
                                 onChange={(e) => setConfirmPassword(e.target.value)}
                                 required
-                                minLength={8}
+                                minLength={15}
                                 maxLength={128}
                                 autoComplete="new-password"
                                 className="w-full bg-zinc-950/50 border border-zinc-800 rounded-lg p-3 text-sm text-zinc-200 focus:outline-none focus:ring-2 focus:ring-indigo-500/50 focus:border-indigo-500/50 transition-all"

@@ -472,7 +472,7 @@
         "companyName": "Enter a company name with at least 2 characters.",
         "disclaimer": "You must acknowledge the beta data disclaimer.",
         "email": "Enter your work email.",
-        "passwordLength": "Password must be at least 8 characters.",
+        "passwordLength": "Password must be between 15 and 128 characters.",
         "passwordMismatch": "Passwords do not match."
       },
       "registerFailed": "Failed to register",
@@ -494,7 +494,7 @@
       "workEmail": "Work Email",
       "emailPlaceholder": "name@acme.com",
       "password": "Password",
-      "passwordHint": "Use at least 8 characters.",
+      "passwordHint": "Use 15–128 characters.",
       "confirmPassword": "Confirm Password",
       "passwordsDiffer": "Passwords do not match yet.",
       "betaTitle": "Beta notice",
@@ -524,7 +524,7 @@
     },
     "reset": {
       "mismatch": "Passwords do not match",
-      "tooShort": "Password must be at least 8 characters",
+      "tooShort": "Password must be between 15 and 128 characters",
       "failed": "An error occurred setting the new password",
       "invalidTitle": "Invalid Reset Link",
       "invalidBody": "This password reset link is invalid or malformed. Please request a new one.",

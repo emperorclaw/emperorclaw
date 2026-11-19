@@ -21,7 +21,7 @@ describe("user locale preference", { skip: !dbAvailable }, () => {
 
     const patch = async (body: unknown) => {
         const { PATCH } = await import("@/app/api/user/profile/route");
-        return PATCH(makeRequest("http://localhost/api/user/profile", { method: "PATCH", body }));
+        return PATCH(makeRequest("http://localhost/api/user/profile", { method: "PATCH", headers: { origin: "http://localhost", host: "localhost" }, body }));
     };
     const stored = async () => {
         const db = await getDb();

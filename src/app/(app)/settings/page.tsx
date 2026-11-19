@@ -34,15 +34,16 @@ export default async function SettingsPage() {
         .where(eq(users.id, sessionUserId))
         .limit(1);
 
-    const tokens = await db.select().from(companyTokens)
+    const isAdmin = userRecord?.instanceRole === "instance_admin" || ["owner", "admin"].includes(membership.role);
+    const tokens = isAdmin ? await db.select().from(companyTokens)
         .where(and(
             eq(companyTokens.companyId, membership.companyId),
             isNull(companyTokens.revokedAt),
         ))
-        .orderBy(desc(companyTokens.createdAt));
+        .orderBy(desc(companyTokens.createdAt)) : [];
 
     // Fetch members, agents, customers for the members tab
-    const memberships = await db
+    const memberships = isAdmin ? await db
         .select({
             id: users.id,
             email: users.email,
@@ -54,7 +55,7 @@ export default async function SettingsPage() {
         })
         .from(companyMembers)
         .innerJoin(users, eq(companyMembers.userId, users.id))
-        .where(eq(companyMembers.companyId, membership.companyId));
+        .where(eq(companyMembers.companyId, membership.companyId)) : [];
     
     const membersList = memberships.map((m) => ({
         id: m.id,
@@ -66,13 +67,13 @@ export default async function SettingsPage() {
         joinedAt: m.joinedAt?.toISOString() ?? null,
     }));
 
-    const allAgents = await db.select({ id: agents.id, name: agents.name })
+    const allAgents = isAdmin ? await db.select({ id: agents.id, name: agents.name })
         .from(agents)
-        .where(and(eq(agents.companyId, membership.companyId), isNull(agents.deletedAt)));
+        .where(and(eq(agents.companyId, membership.companyId), isNull(agents.deletedAt))) : [];
     
-    const allCustomers = await db.select({ id: customers.id, name: customers.name })
+    const allCustomers = isAdmin ? await db.select({ id: customers.id, name: customers.name })
         .from(customers)
-        .where(and(eq(customers.companyId, membership.companyId), isNull(customers.deletedAt)));
+        .where(and(eq(customers.companyId, membership.companyId), isNull(customers.deletedAt))) : [];
 
     const currentUserRole = userRecord?.instanceRole === "instance_admin" ? "instance_admin" : membership.role;
 

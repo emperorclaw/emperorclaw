@@ -603,6 +603,13 @@
       "when": 1795078267181,
       "tag": "0085_user-mfa",
       "breakpoints": true
+    },
+    {
+      "idx": 86,
+      "version": "7",
+      "when": 1795078833573,
+      "tag": "0086_account-security",
+      "breakpoints": true
     }
   ]
 }

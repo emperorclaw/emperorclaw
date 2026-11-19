@@ -1,11 +1,11 @@
-import { verifyLoginMfa } from "@/lib/mfa";
+import { consumeMfaChallenge, recordSecurityEvent } from "@/lib/account-security";
 import type { Session } from "next-auth";
 import type { JWT } from "next-auth/jwt";
 import { NextAuthOptions } from "next-auth";
 import CredentialsProvider from "next-auth/providers/credentials";
 import { db } from "@/db";
 import { users, sessions, companyMembers } from "@/db/schema";
-import { and, eq, gt } from "drizzle-orm";
+import { and, eq, gt, lt } from "drizzle-orm";
 import * as argon2 from "argon2";
 import { consumeRateLimit } from "@/lib/rate-limit";
 import { isSelfHosted, getInstanceCompany } from "@/lib/instance";
@@ -15,7 +15,7 @@ type AuthToken = JWT & {
     sessionId?: string;
     instanceRole?: string;
     companyRole?: string;
-    scopeJson?: Record<string, any>;
+    scopeJson?: Record<string, unknown>;
 };
 
 export type SessionWithUserId = Session & {
@@ -23,7 +23,7 @@ export type SessionWithUserId = Session & {
         id?: string;
         instanceRole?: string;
         companyRole?: string;
-        scopeJson?: Record<string, any>;
+        scopeJson?: Record<string, unknown>;
     };
     sessionId?: string;
 };
@@ -48,6 +48,9 @@ function stripAuthToken(token: AuthToken): AuthToken {
     delete token.email;
     delete token.name;
     delete token.picture;
+    delete token.instanceRole;
+    delete token.companyRole;
+    delete token.scopeJson;
     return token;
 }
 
@@ -60,8 +63,8 @@ export const authOptions: NextAuthOptions = {
                 password: { label: "Password", type: "password" },
                 code: { label: "Authenticator or recovery code", type: "text" }
             },
-            async authorize(credentials) {
-                if (!credentials?.email || !credentials?.password) {
+            async authorize(credentials, request) {
+                if (!credentials?.email || !credentials?.password || credentials.email.length > 320 || credentials.password.length > 1024) {
                     return null;
                 }
 
@@ -78,80 +81,58 @@ export const authOptions: NextAuthOptions = {
                     throw new Error("RATE_LIMITED");
                 }
 
-                const [userRecord] = await db
-                    .select()
-                    .from(users)
-                    .where(eq(users.email, normalizedEmail))
-                    .limit(1);
-
-                if (!userRecord) {
-                    return null;
-                }
-
-                const isValid = await argon2.verify(userRecord.passwordHash, credentials.password);
-                if (!isValid) {
-                    return null;
-                }
-
-                if (!userRecord.emailVerifiedAt) {
-                    throw new Error("EMAIL_NOT_VERIFIED");
-                }
-
-                if (!(await verifyLoginMfa(userRecord.id, String(credentials.code || "").trim()))) {
-                    throw new Error("MFA_INVALID");
-                }
-
-                return {
-                    id: userRecord.id,
-                    email: userRecord.email,
-                };
+                // Password checks, MFA consumption and session creation share the
+                // account lock: an old password cannot create a session after a change.
+                return db.transaction(async (tx) => {
+                    const [userRecord] = await tx.select().from(users).where(eq(users.email, normalizedEmail)).for("update");
+                    if (!userRecord || userRecord.deletedAt || !(await argon2.verify(userRecord.passwordHash, credentials.password))) return null;
+                    if (!userRecord.emailVerifiedAt) throw new Error("EMAIL_NOT_VERIFIED");
+                    if (!(await consumeMfaChallenge(tx, userRecord.id, String(credentials.code || "").trim()))) throw new Error("MFA_INVALID");
+                    const [newSession] = await tx.insert(sessions).values({
+                        userId: userRecord.id,
+                        expiresAt: new Date(Date.now() + 30 * 24 * 60 * 60_000),
+                        userAgent: String(request?.headers?.["user-agent"] || "").slice(0, 512) || null,
+                    }).returning();
+                    await recordSecurityEvent(tx, userRecord.id, "signed_in");
+                    return { id: userRecord.id, email: userRecord.email, sessionId: newSession.id };
+                });
             }
         })
     ],
     session: {
         strategy: "jwt",
     },
+    events: {
+        async signOut({ token }) {
+            const authToken = token as AuthToken | null;
+            if (!authToken?.sessionId || !authToken.id) return;
+            await db.transaction(async (tx) => {
+                await tx.select({ id: users.id }).from(users).where(eq(users.id, authToken.id!)).for("update");
+                const removed = await tx.delete(sessions).where(and(eq(sessions.id, authToken.sessionId!), eq(sessions.userId, authToken.id!))).returning({ id: sessions.id });
+                if (removed.length) await recordSecurityEvent(tx, authToken.id!, "signed_out");
+            });
+        },
+    },
     callbacks: {
         async jwt({ token, user }) {
             const authToken = token as AuthToken;
             if (user) {
                 authToken.id = user.id;
-
-                // Fetch instance_role and company_role for JWT claims (FR-19, FR-20)
-                const [userRecord] = await db
-                    .select({ instanceRole: users.instanceRole, displayName: users.displayName })
-                    .from(users)
-                    .where(eq(users.id, user.id))
-                    .limit(1);
-                authToken.instanceRole = userRecord?.instanceRole ?? "member";
-                authToken.name = userRecord?.displayName || user.email?.split("@")[0] || "User";
-
-                const [membership] = await db
-                    .select({ role: companyMembers.role, scopeJson: companyMembers.scopeJson })
-                    .from(companyMembers)
-                    .where(eq(companyMembers.userId, user.id))
-                    .limit(1);
-                authToken.companyRole = membership?.role ?? null;
-                authToken.scopeJson = (membership?.scopeJson as Record<string, any>) ?? null;
-
-                // Create a DB-backed session record when they log in
-                const expiresAt = new Date();
-                expiresAt.setDate(expiresAt.getDate() + 30);
-
-                const [newSession] = await db.insert(sessions).values({
-                    userId: user.id,
-                    expiresAt
-                }).returning();
-
-                authToken.sessionId = newSession.id;
-                return authToken;
+                authToken.sessionId = (user as typeof user & { sessionId?: string }).sessionId;
             }
-
             const activeSession = await getActiveBrowserSession(authToken.sessionId);
-            if (!activeSession || (authToken.id && activeSession.userId !== authToken.id)) {
-                return stripAuthToken(authToken);
-            }
-
+            if (!activeSession || !authToken.id || activeSession.userId !== authToken.id) return stripAuthToken(authToken);
+            const [account] = await db.select({ displayName: users.displayName, email: users.email, instanceRole: users.instanceRole, deletedAt: users.deletedAt }).from(users).where(eq(users.id, authToken.id));
+            if (!account || account.deletedAt) return stripAuthToken(authToken);
+            const [membership] = await db.select({ role: companyMembers.role, scopeJson: companyMembers.scopeJson }).from(companyMembers).where(eq(companyMembers.userId, authToken.id)).limit(1);
+            // Read current roles and identity rather than trusting a month-old JWT.
+            authToken.name = account.displayName || account.email.split("@")[0] || "User";
+            authToken.email = account.email;
+            authToken.instanceRole = account.instanceRole;
+            authToken.companyRole = membership?.role;
+            authToken.scopeJson = membership?.scopeJson as Record<string, unknown> | undefined;
+            const cutoff = new Date(Date.now() - 5 * 60_000);
+            if (activeSession.lastSeenAt < cutoff) await db.update(sessions).set({ lastSeenAt: new Date() }).where(and(eq(sessions.id, activeSession.id), lt(sessions.lastSeenAt, cutoff)));
             return authToken;
         },
         async session({ session, token }) {
@@ -159,14 +140,14 @@ export const authOptions: NextAuthOptions = {
             const authToken = token as AuthToken;
             const activeSession = await getActiveBrowserSession(authToken.sessionId);
             if (!session.user || !authToken.id || !authToken.sessionId || !activeSession || activeSession.userId !== authToken.id) {
-                return null as any;
+                return null as unknown as Session;
             }
 
             authSession.user.id = authToken.id;
             authSession.sessionId = authToken.sessionId;
             authSession.user.instanceRole = authToken.instanceRole;
             authSession.user.companyRole = authToken.companyRole;
-            authSession.user.scopeJson = authToken.scopeJson as Record<string, any> | undefined;
+            authSession.user.scopeJson = authToken.scopeJson as Record<string, unknown> | undefined;
             authSession.user.name = authToken.name ?? null;
             return authSession;
         }

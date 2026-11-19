@@ -1,5 +1,6 @@
+import { isSameOriginRequest, recordSecurityEvent } from "@/lib/account-security";
 import { NextRequest, NextResponse } from "next/server";
-import { eq, and, ne } from "drizzle-orm";
+import { eq, and, ne, gt } from "drizzle-orm";
 import { verify } from "argon2";
 import { z } from "zod";
 import { db } from "@/db";
@@ -11,7 +12,7 @@ import { generateTotpSecret, matchingTotpStep, generateRecoveryCodes, recoveryHa
 
 const response = (body: unknown, status = 200) => NextResponse.json(body, { status, headers: { "Cache-Control": "no-store" } });
 const schema = z.object({
-    action: z.enum(["setup", "confirm", "disable"]),
+    action: z.enum(["setup", "confirm", "disable", "regenerate"]),
     password: z.string().min(1).max(1024),
     code: z.string().max(100).default(""),
 });
@@ -22,11 +23,7 @@ export async function GET() {
     return response({ enabled: row?.enabled ?? false, available: canManageSecrets() });
 }
 export async function POST(req: NextRequest) {
-    // Mutations are browser-only, authenticated and same-origin.
-    // Next may normalize nextUrl's hostname to localhost; use the actual
-    // request Host for the browser origin while retaining its resolved scheme.
-    const requestOrigin = `${req.nextUrl.protocol}//${req.headers.get("host") || req.nextUrl.host}`;
-    if (req.headers.get("origin") !== requestOrigin) return response({ error: "Invalid origin" }, 403);
+    if (!isSameOriginRequest(req)) return response({ error: "Invalid origin" }, 403);
     const session = await getValidatedServerSession();
     if (!session?.user?.id) return response({ error: "Unauthorized" }, 401);
     const userId = session.user.id;
@@ -39,7 +36,8 @@ export async function POST(req: NextRequest) {
     return db.transaction(async (tx) => {
         // Also serializes first-time enrollment when no MFA row exists yet.
         const [user] = await tx.select().from(users).where(eq(users.id, userId)).for("update");
-        if (!user || !(await verify(user.passwordHash, password))) return response({ error: "Incorrect password" }, 400);
+        const [active] = await tx.select({ id: sessions.id }).from(sessions).where(and(eq(sessions.id, session.sessionId!), eq(sessions.userId, userId), gt(sessions.expiresAt, new Date()))).for("update");
+        if (!active || !user || user.deletedAt || !(await verify(user.passwordHash, password))) return response({ error: "Incorrect password" }, 400);
         const [mfa] = await tx.select().from(userMfa).where(eq(userMfa.userId, userId)).for("update");
         if (action === "setup") {
             if (mfa?.enabled) return response({ error: "Two-factor authentication is already enabled." }, 409);
@@ -58,11 +56,20 @@ export async function POST(req: NextRequest) {
             const recoveryCodes = generateRecoveryCodes();
             await tx.update(userMfa).set({ enabled: true, lastStep: step, recoveryHashes: recoveryCodes.map(recoveryHash) }).where(eq(userMfa.userId, userId));
             await tx.delete(sessions).where(and(eq(sessions.userId, userId), ne(sessions.id, session.sessionId!)));
+            await recordSecurityEvent(tx, userId, "mfa_enabled");
             return response({ enabled: true, recoveryCodes });
         }
         if (!mfa.enabled || (step === null && !mfa.recoveryHashes.includes(recoveryHash(code)))) return response({ error: "Invalid authenticator or recovery code" }, 400);
+        if (action === "regenerate") {
+            const recoveryCodes = generateRecoveryCodes();
+            await tx.update(userMfa).set({ recoveryHashes: recoveryCodes.map(recoveryHash), lastStep: step ?? mfa.lastStep }).where(eq(userMfa.userId, userId));
+            await tx.delete(sessions).where(and(eq(sessions.userId, userId), ne(sessions.id, session.sessionId!)));
+            await recordSecurityEvent(tx, userId, "recovery_codes_regenerated");
+            return response({ enabled: true, recoveryCodes });
+        }
         await tx.delete(userMfa).where(eq(userMfa.userId, userId));
         await tx.delete(sessions).where(and(eq(sessions.userId, userId), ne(sessions.id, session.sessionId!)));
+        await recordSecurityEvent(tx, userId, "mfa_disabled");
         return response({ enabled: false });
     });
 }

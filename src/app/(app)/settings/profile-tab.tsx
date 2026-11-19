@@ -1,16 +1,18 @@
 "use client";
 
+import { AccountSecurity } from "./account-security";
 import { MfaSetting } from "./mfa-setting";
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { useTranslations } from "next-intl";
+import { useFormatter, useTranslations } from "next-intl";
 import { toast } from "sonner";
 import { IconLanguage, IconUsers } from "@tabler/icons-react";
 import type { Locale } from "@/i18n/config";
 import { Select } from "@/components/ui/select";
 
 /** Settings → Your profile: name, role and the person's language. */
-export function ProfileTab({ displayName, setDisplayName, roleTitle, setRoleTitle, onSave, saving, onLoad, loaded, error, onRetry, locale, onLocaleChange }: {
+export function ProfileTab({ identity, displayName, setDisplayName, roleTitle, setRoleTitle, onSave, saving, onLoad, loaded, error, onRetry, locale, onLocaleChange }: {
+    identity: { email: string; emailVerifiedAt: string | null; createdAt: string; role: string | null } | null;
     displayName: string;
     setDisplayName: (v: string) => void;
     roleTitle: string;
@@ -26,6 +28,8 @@ export function ProfileTab({ displayName, setDisplayName, roleTitle, setRoleTitl
     onLocaleChange: (locale: Locale | null) => void;
 }) {
     const t = useTranslations("settings.profile");
+    const a = useTranslations("account");
+    const format = useFormatter();
     useEffect(() => { if (!loaded) onLoad(); }, [loaded, onLoad]);
     return (
         <div className="space-y-5">
@@ -36,14 +40,19 @@ export function ProfileTab({ displayName, setDisplayName, roleTitle, setRoleTitl
                 <p className="text-sm text-muted-foreground mb-6">{t("intro")}</p>
                 {error && <p role="alert" className="mb-4 text-sm text-destructive">{t("loadError")} <button type="button" onClick={onRetry} className="min-h-11 underline">{t("retry")}</button></p>}
                 {!loaded && !error && <p role="status" className="mb-4 text-sm text-muted-foreground">{t("loading")}</p>}
+                {identity && <dl className="mb-6 space-y-3 rounded-xl border border-border bg-muted/30 p-4 text-sm">
+                    <div><dt className="text-muted-foreground">{a("email")}</dt><dd className="mt-1 break-all font-medium">{identity.email}</dd><dd className="mt-1 text-xs text-muted-foreground">{a(identity.emailVerifiedAt ? "verified" : "unverified")}</dd></div>
+                    <div><dt className="text-muted-foreground">{a("accessRole")}</dt><dd className="mt-1">{identity.role ? ({ owner: a("roles.owner"), admin: a("roles.admin"), member: a("roles.member"), viewer: a("roles.viewer"), instance_admin: a("roles.instance_admin") } as Record<string, string>)[identity.role] || a("roles.member") : a("noWorkspace")}</dd></div>
+                    <div><dt className="text-muted-foreground">{a("createdAt")}</dt><dd className="mt-1">{format.dateTime(new Date(identity.createdAt), { dateStyle: "medium" })}</dd></div>
+                </dl>}
                 <div className="space-y-4">
                     <label className="block">
                         <span className="text-sm font-medium text-foreground">{t("displayName")}</span>
-                        <input disabled={!loaded} value={displayName} onChange={(e) => setDisplayName(e.target.value)} placeholder={t("displayNamePlaceholder")} className="mt-1 w-full rounded-xl border border-border bg-background px-3 py-2.5 text-sm text-foreground outline-none focus:border-cyan-400" />
+                        <input maxLength={120} autoComplete="name" disabled={!loaded} value={displayName} onChange={(e) => setDisplayName(e.target.value)} placeholder={t("displayNamePlaceholder")} className="mt-1 w-full rounded-xl border border-border bg-background px-3 py-2.5 text-sm text-foreground outline-none focus:border-cyan-400" />
                     </label>
                     <label className="block">
                         <span className="text-sm font-medium text-foreground">{t("roleTitle")}</span>
-                        <input disabled={!loaded} value={roleTitle} onChange={(e) => setRoleTitle(e.target.value)} placeholder={t("roleTitlePlaceholder")} className="mt-1 w-full rounded-xl border border-border bg-background px-3 py-2.5 text-sm text-foreground outline-none focus:border-cyan-400" />
+                        <input maxLength={120} autoComplete="organization-title" disabled={!loaded} value={roleTitle} onChange={(e) => setRoleTitle(e.target.value)} placeholder={t("roleTitlePlaceholder")} className="mt-1 w-full rounded-xl border border-border bg-background px-3 py-2.5 text-sm text-foreground outline-none focus:border-cyan-400" />
                         <p className="mt-1 text-xs text-muted-foreground">{t("roleTitleHint")}</p>
                     </label>
                     <button onClick={onSave} disabled={saving || !loaded} className="min-h-11 cursor-pointer rounded-xl bg-primary px-4 py-2.5 text-sm font-semibold text-white hover:bg-cyan-400 disabled:opacity-50 disabled:cursor-not-allowed transition-colors">
@@ -51,6 +60,7 @@ export function ProfileTab({ displayName, setDisplayName, roleTitle, setRoleTitl
                     </button>
                 </div>
             </section>
+            <AccountSecurity />
             <MfaSetting />
             <LanguageSetting locale={locale} disabled={!loaded} onChange={onLocaleChange} />
         </div>

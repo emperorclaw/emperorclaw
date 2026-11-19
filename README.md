@@ -497,3 +497,13 @@ Each user can enable an authenticator app in **Settings → Your profile → Two
 Enter your current password to start setup, add the displayed setup key to an authenticator app (TOTP, six digits, 30 seconds), and confirm a code within ten minutes. Save the ten recovery codes shown after confirmation; each can be used once instead of an authenticator code. Subsequent logins require your password and a code. Enabling or disabling two-factor authentication signs out your other sessions. Disabling requires your password and a fresh authenticator or unused recovery code. Password reset does not remove two-factor authentication.
 
 Apply the database migrations with `npm run db:migrate` before running this version. Existing users keep password-only login until they choose to enable two-factor authentication.
+
+### Profile and account security
+
+Open the account menu from your name/avatar (also available in the mobile header) and choose **Profile settings**. You can update your display name, job title and language, review your verified sign-in email and workspace role, and manage your password, authenticator and recovery codes. Workspace permissions and sign-in email cannot be changed through a profile edit.
+
+New passwords use the same 15–128 character policy for registration, password reset and password changes; existing passwords continue to work. Password changes require the current password plus a fresh authenticator or unused recovery code when MFA is enabled. They invalidate all browser sessions and outstanding reset links, then send you to sign in again. Replacing recovery codes invalidates all previous codes and signs out other sessions.
+
+**Active sessions** shows browser/device names, sign-in time and approximate last activity (updated about every five minutes). Session revocation requires your password and MFA when enabled. Signing out also revokes the server session; a copied old session cookie no longer works. **Security history** shows the 30 latest account security actions and never stores passwords, authenticator secrets, recovery codes or session tokens. Existing sessions may show an unknown browser until you sign in again.
+
+Apply migration `0086_account-security` with `npm run db:migrate` before deploying. Enterprise SSO is a separate future integration.

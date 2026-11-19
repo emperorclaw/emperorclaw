@@ -24,6 +24,7 @@ import {
     DropdownMenu,
     DropdownMenuContent,
     DropdownMenuItem,
+    DropdownMenuSeparator,
     DropdownMenuTrigger
 } from "@/components/ui/dropdown-menu";
 import { Dialog, DialogContent, DialogTitle, DialogDescription, DialogTrigger, DialogClose } from "@/components/ui/dialog";
@@ -101,10 +102,16 @@ function NavBadge({ badge }: { badge: NonNullable<ReturnType<typeof badgeFor>> }
 
 export function AppSidebar({ isPlatformAdmin = false, isCompanyAdmin = false, canAct = true, appVersion, modules }: { isPlatformAdmin?: boolean; isCompanyAdmin?: boolean; canAct?: boolean; appVersion?: string; modules?: ModuleState | null }) {
     const t = useTranslations("shell.sidebar");
+    const tAccount = useTranslations("account");
     const tNav = useTranslations("nav");
     const tSections = useTranslations("navSections");
     const pathname = usePathname();
-    const { data: session } = useSession();
+    const { data: session, update: updateSession } = useSession();
+    useEffect(() => {
+        const refresh = () => { void updateSession(); };
+        window.addEventListener("account-profile-updated", refresh);
+        return () => window.removeEventListener("account-profile-updated", refresh);
+    }, [updateSession]);
     const [collapsed, setCollapsed] = useState(false);
     const [folded, setFolded] = useState<Record<string, boolean>>({});
     const [modKey, setModKey] = useState("Ctrl");
@@ -208,9 +215,17 @@ export function AppSidebar({ isPlatformAdmin = false, isCompanyAdmin = false, ca
     return (
         <>
         <header className="ec-material relative z-30 flex shrink-0 items-center justify-between gap-2 border-b border-border px-4 py-2 md:hidden" style={{ paddingTop: "max(0.5rem, env(safe-area-inset-top))" }}>
-            <Link href="/" lang="en" className="flex min-h-11 items-center gap-2 text-sm font-semibold"><CustomLogo className="h-7 w-7" /> Emperor Claw</Link>
-            <div className="flex items-center gap-2">
+            <Link href="/" lang="en" className="flex min-h-11 min-w-0 flex-1 items-center gap-2 text-sm font-semibold"><CustomLogo className="h-7 w-7 shrink-0" /><span className="truncate">Emperor Claw</span></Link>
+            <div className="flex shrink-0 items-center gap-2">
                 <button type="button" onClick={openCommandPalette} aria-label={t("searchAndJump")} className="flex min-h-11 min-w-11 items-center justify-center rounded-xl border border-border text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"><IconSearch className="h-5 w-5" /></button>
+                <DropdownMenu>
+                    <DropdownMenuTrigger asChild><button aria-label={tAccount("accountMenu")} className="grid min-h-11 min-w-11 place-items-center rounded-full border border-border bg-muted font-semibold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">{userInitial}</button></DropdownMenuTrigger>
+                    <DropdownMenuContent align="end">
+                        <DropdownMenuItem asChild className="min-h-11"><Link href="/settings?tab=profile"><IconUser aria-hidden />{tAccount("profileSettings")}</Link></DropdownMenuItem>
+                        <DropdownMenuSeparator />
+                        <DropdownMenuItem onSelect={() => void signOut({ callbackUrl: "/login" })} className="min-h-11"><IconLogout aria-hidden />{t("logout")}</DropdownMenuItem>
+                    </DropdownMenuContent>
+                </DropdownMenu>
                 <Dialog>
                     <DialogTrigger asChild>
                         <button aria-label={t("openNavigation")} className="flex min-h-11 min-w-11 items-center justify-center rounded-xl border border-border focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"><IconMenu2 className="h-5 w-5" /></button>
@@ -315,8 +330,8 @@ export function AppSidebar({ isPlatformAdmin = false, isCompanyAdmin = false, ca
                     <NotificationBell collapsed={collapsed} />
                     <DropdownMenu>
                         <DropdownMenuTrigger asChild>
-                            <button className={cn(
-                                "group relative flex w-full cursor-pointer items-center rounded-lg border border-border bg-muted/40 text-left transition-colors hover:border-border hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                            <button aria-label={tAccount("accountMenu")} className={cn(
+                                "min-h-11 group relative flex w-full cursor-pointer items-center rounded-lg border border-border bg-muted/40 text-left transition-colors hover:border-border hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
                                 collapsed ? "justify-center px-1.5 py-1.5" : "justify-center gap-2.5 px-1.5 py-1.5 md:justify-start md:px-2"
                             )}
                                 title={collapsed ? `${userName}\n${userEmail}` : undefined}
@@ -331,14 +346,21 @@ export function AppSidebar({ isPlatformAdmin = false, isCompanyAdmin = false, ca
                             </button>
                         </DropdownMenuTrigger>
                         <DropdownMenuContent align="start" className="w-56 border-border bg-popover text-foreground">
-                            <DropdownMenuItem asChild className="gap-2 text-foreground focus:bg-accent">
+                            <DropdownMenuItem asChild className="min-h-11 gap-2 text-foreground focus:bg-accent">
+                                <Link href="/settings?tab=profile">
+                                    <IconUser className="h-4 w-4 text-muted-foreground" aria-hidden />
+                                    <span>{tAccount("profileSettings")}</span>
+                                </Link>
+                            </DropdownMenuItem>
+                            <DropdownMenuItem asChild className="min-h-11 gap-2 text-foreground focus:bg-accent">
                                 <Link href="/settings">
                                     <IconUser className="h-4 w-4 text-muted-foreground" />
                                     <span>{t("workspaceSettings")}</span>
                                 </Link>
                             </DropdownMenuItem>
+                            <DropdownMenuSeparator />
                             <DropdownMenuItem
-                                className="gap-2 text-foreground focus:bg-accent"
+                                className="min-h-11 gap-2 text-foreground focus:bg-accent"
                                 onClick={() => signOut({ callbackUrl: "/login" })}
                             >
                                 <IconLogout className="h-4 w-4 text-muted-foreground" />
