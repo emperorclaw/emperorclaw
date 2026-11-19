@@ -49,11 +49,13 @@ maybe("human and agent assignment coexist without cross-claiming or stale leases
     companyId,
     taskId: humanTask.id,
     state: "in_progress",
+    actorType: "human",
   });
   const handedToAgent = await updateTaskForCompany({
     companyId,
     taskId: humanTask.id,
     assignee: { type: "agent", id: agentA.id },
+    actorType: "human",
   });
   assert.equal("error" in handedToAgent, false);
   if ("error" in handedToAgent) return;
@@ -78,6 +80,7 @@ maybe("human and agent assignment coexist without cross-claiming or stale leases
     companyId,
     taskId: humanTask.id,
     assignee: { type: "human", id: member.id },
+    actorType: "human",
   });
   assert.equal("error" in handedBack, false);
   if ("error" in handedBack) return;

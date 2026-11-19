@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { validateTaskStateTransition } from "../../src/lib/project-workflow";
+import { taskAssignmentDenial, taskStateChangeDenial, validateTaskStateTransition } from "../../src/lib/project-workflow";
 import { TASK_STATES } from "../../src/lib/task-state";
 
 function project(overrides: Partial<Parameters<typeof validateTaskStateTransition>[0]["project"]> = {}) {
@@ -176,4 +176,115 @@ test("requesting the state the task is already in is a no-op success", () => {
         actorAgentId: "worker",
     });
     assert.equal(sameDone, null);
+});
+
+// Regression: task c87002d6 (Stayolo collection page). At 15:47:06Z a session of
+// the implementing agent PATCHed {"state":"done"} onto a task sitting in review
+// whose assignedAgentId was the reviewer, and the only project policy guard was
+// off. The actor was neither the assignee nor the project lead, and the write
+// was accepted: the implementer approved its own release. State changes must be
+// refused for an agent that is neither the current assignee nor the lead.
+test("c87002d6: a non-assignee non-lead agent cannot close someone else's task", () => {
+    const error = validateTaskStateTransition({
+        project: project({ leadAgentId: "reviewer", requireApprovalForDone: false, requireReviewBeforeDone: false, onlyLeadCanChangeStatus: false }),
+        task: task({ assignedAgentId: "reviewer", state: TASK_STATES.review }),
+        requestedState: TASK_STATES.done,
+        actorAgentId: "implementer",
+    });
+    assert.ok(error, "a non-assignee must not be able to close a task assigned to the reviewer");
+});
+
+test("c87002d6: a non-assignee non-lead agent cannot start someone else's task", () => {
+    const error = validateTaskStateTransition({
+        project: project({ leadAgentId: "reviewer" }),
+        task: task({ assignedAgentId: "reviewer", state: TASK_STATES.inbox }),
+        requestedState: TASK_STATES.inProgress,
+        actorAgentId: "implementer",
+    });
+    assert.ok(error, "a non-assignee must not be able to start a task assigned to another agent");
+});
+
+// The lead still routes: assignment, unblocking and status moves are its job.
+test("c87002d6: the project lead can still close a task assigned to someone else", () => {
+    const error = validateTaskStateTransition({
+        project: project({ leadAgentId: "lead" }),
+        task: task({ assignedAgentId: "worker", state: TASK_STATES.review }),
+        requestedState: TASK_STATES.done,
+        actorAgentId: "lead",
+    });
+    assert.equal(error, null);
+});
+
+// --- case c87002d6: the two writes of 2026-11-19 and the identity behind them ---
+
+test("c87002d6: a company token cannot sign a status change, and the refusal names the token", () => {
+    const error = taskStateChangeDenial({
+        project: { leadAgentId: "reviewer" },
+        task: { assignedAgentId: "reviewer" },
+        signature: { type: "system", id: null, tokenId: "tok_7f3a91" },
+    });
+    assert.ok(error, "a token that resolves to no agent must not be allowed to move status");
+    assert.ok(error.includes("tok_7f3a91"), "the 403 must name the tokenId so the writer can be found");
+});
+
+test("c87002d6: a scheduler with no token behind it may still close", () => {
+    const error = taskStateChangeDenial({
+        project: { leadAgentId: "lead" },
+        task: { assignedAgentId: "worker" },
+        signature: { type: "system", id: null, tokenId: null },
+    });
+    assert.equal(error, null);
+});
+
+test("c87002d6: the 15:47:10 reassignment is refused", () => {
+    const error = taskAssignmentDenial({
+        project: { leadAgentId: "lead" },
+        task: { assignedAgentId: "reviewer" },
+        nextAssignedAgentId: "implementer",
+        signature: { type: "agent", id: "implementer" },
+    });
+    assert.ok(error, "an agent must not take over a task assigned to someone else");
+});
+
+test("a claim, the lead and the current assignee may still move ownership", () => {
+    const claim = taskAssignmentDenial({
+        project: { leadAgentId: "lead" },
+        task: { assignedAgentId: null },
+        nextAssignedAgentId: "implementer",
+        signature: { type: "agent", id: "implementer" },
+    });
+    assert.equal(claim, null, "claiming unassigned work stays open");
+
+    const routing = taskAssignmentDenial({
+        project: { leadAgentId: "lead" },
+        task: { assignedAgentId: "worker" },
+        nextAssignedAgentId: "other",
+        signature: { type: "agent", id: "lead" },
+    });
+    assert.equal(routing, null, "the project lead routes work");
+
+    const handback = taskAssignmentDenial({
+        project: { leadAgentId: "lead" },
+        task: { assignedAgentId: "worker" },
+        nextAssignedAgentId: "lead",
+        signature: { type: "agent", id: "worker" },
+    });
+    assert.equal(handback, null, "the assignee may hand its own task back");
+});
+
+test("an internal call with no actor is trusted, so the fleet keeps closing its own work", () => {
+    const close = taskStateChangeDenial({
+        project: { leadAgentId: null },
+        task: { assignedAgentId: "worker" },
+        signature: null,
+    });
+    assert.equal(close, null, "the pipeline closing its own task passes no actor");
+
+    const handoff = taskAssignmentDenial({
+        project: { leadAgentId: null },
+        task: { assignedAgentId: null },
+        nextAssignedAgentId: "worker",
+        signature: null,
+    });
+    assert.equal(handoff, null, "server-side hand-off helpers pass no actor");
 });
