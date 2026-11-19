@@ -194,8 +194,11 @@ maybe("the linked task finishing closes the run: done → succeeded with its las
 
     const second = await call(POST, `/api/pipelines/${pipeline.id}/run`, { method: "POST", body: {}, params: { id: pipeline.id } });
     const { updateTaskForCompany } = await import("@/lib/openclaw/tasks");
-    const failed = await updateTaskForCompany({ companyId, taskId: second.json.taskId as string, state: "failed" });
-    assert.equal(failed.status, 200);
+    // An unsigned close has nobody to attribute it to; the run watchdog signs as system.
+    const unsigned = await updateTaskForCompany({ companyId, taskId: second.json.taskId as string, state: "failed" });
+    assert.equal(unsigned.status, 403);
+    const failed = await updateTaskForCompany({ companyId, taskId: second.json.taskId as string, state: "failed", actorType: "system" });
+    assert.equal(failed.status, 200, JSON.stringify(failed));
     const runs = await eventually(() => runsOf(pipeline.id), (rows) => rows[1]?.status !== "running");
     assert.equal(runs[1].status, "failed");
 });

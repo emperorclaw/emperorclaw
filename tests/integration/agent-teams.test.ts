@@ -516,8 +516,11 @@ maybe("blocked tasks keep their reason, are not nudged, and unblocking restarts 
         assignedAgentId: dev.id, inputJson: { title: "Held work" }, updatedAt: old,
     }).returning();
 
+    // An unsigned status change is refused before anything else is validated.
+    const unsigned = await updateTaskForCompany({ companyId, taskId: task.id, state: "blocked" });
+    assert.equal(unsigned.status, 403);
     // Blocking without a reason is rejected.
-    const missing = await updateTaskForCompany({ companyId, taskId: task.id, state: "blocked" });
+    const missing = await updateTaskForCompany({ companyId, taskId: task.id, state: "blocked", actorType: "human" });
     assert.equal(missing.status, 400);
 
     const blocked = await updateTaskForCompany({
