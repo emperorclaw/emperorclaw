@@ -6156,5 +6156,20 @@
     },
     "createdAt": "账户创建时间",
     "loginRateLimited": "登录尝试次数过多，请稍后重试。"
+  },
+  "chatExperience": {
+    "sending": "正在发送…",
+    "sendFailed": "无法确认消息是否已发送。",
+    "retry": "重试",
+    "responding": "正在回复",
+    "finishing": "正在保存回复…",
+    "interrupted": "回复已中断",
+    "reconnecting": "正在重新连接实时更新",
+    "attachments": "{count} 个附件",
+    "workSummary": "工作 · {count} 项操作",
+    "activeAgents": "{count} 个智能体正在工作",
+    "stepComplete": "步骤已完成",
+    "jumpToLatest": "跳至最新消息",
+    "previewCapped": "预览已达上限 · 正在等待保存的回复"
   }
 }

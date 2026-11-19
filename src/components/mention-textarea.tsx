@@ -18,6 +18,9 @@ export type MentionAgent = {
 export const EVERYONE_MENTION: MentionAgent = { id: "__everyone__", name: "all", hint: "Everyone in this group" };
 
 type MentionTextareaProps = {
+    "aria-label"?: string;
+    "aria-describedby"?: string;
+    onBlur?: React.FocusEventHandler<HTMLTextAreaElement>;
     value: string;
     onValueChange: (value: string) => void;
     agents: MentionAgent[];
@@ -37,7 +40,7 @@ type MentionTextareaProps = {
  * text is always the agent's full name, matching that convention exactly.
  */
 export const MentionTextarea = forwardRef<HTMLTextAreaElement, MentionTextareaProps>(function MentionTextarea(
-    { value, onValueChange, agents, onSubmit, placeholder, className, rows = 1, style, disabled, onPaste },
+    { value, onValueChange, agents, onSubmit, placeholder, className, rows = 1, style, disabled, onPaste, onBlur, "aria-label": ariaLabel, "aria-describedby": ariaDescription },
     forwardedRef
 ) {
     const t = useTranslations("mentions");
@@ -104,6 +107,7 @@ export const MentionTextarea = forwardRef<HTMLTextAreaElement, MentionTextareaPr
     }
 
     function handleKeyDown(event: KeyboardEvent<HTMLTextAreaElement>) {
+        if (event.nativeEvent.isComposing || event.nativeEvent.keyCode === 229) return;
         if (mentionOpen) {
             if (event.key === "ArrowDown") {
                 event.preventDefault();
@@ -185,6 +189,9 @@ export const MentionTextarea = forwardRef<HTMLTextAreaElement, MentionTextareaPr
                 onChange={handleChange}
                 onKeyDown={handleKeyDown}
                 onPaste={onPaste}
+                onBlur={onBlur}
+                aria-label={ariaLabel ?? placeholder}
+                aria-describedby={ariaDescription}
                 placeholder={placeholder}
                 rows={rows}
                 disabled={disabled}

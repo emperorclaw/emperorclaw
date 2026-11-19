@@ -1495,3 +1495,19 @@ details > summary svg {
 :is([class*="tracking-"], .uppercase):lang(zh-CN) {
   letter-spacing: normal;
 }
+
+/* Chat editing stays native; unsupported engines use the visible-node fallback. */
+.ec-chat-input { field-sizing: content; max-height: 10rem; }
+.ec-chat-transcript .ec-message-in { animation: none; }
+.ec-chat-shimmer {
+  background: linear-gradient(100deg, var(--muted-foreground) 30%, var(--foreground) 48%, var(--muted-foreground) 66%);
+  background-size: 220% 100%;
+  background-clip: text;
+  -webkit-background-clip: text;
+  color: transparent;
+  animation: ec-chat-shimmer 2.2s linear infinite;
+}
+@keyframes ec-chat-shimmer { from { background-position: 100% 0; } to { background-position: -100% 0; } }
+@media (prefers-reduced-motion: reduce), (forced-colors: active) {
+  .ec-chat-shimmer { animation: none; background: none; color: inherit; }
+}

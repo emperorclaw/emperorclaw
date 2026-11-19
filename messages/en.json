@@ -6156,5 +6156,20 @@
     },
     "createdAt": "Account created",
     "loginRateLimited": "Too many sign-in attempts. Try again later."
+  },
+  "chatExperience": {
+    "sending": "Sending…",
+    "sendFailed": "Message could not be confirmed.",
+    "retry": "Retry",
+    "responding": "Responding",
+    "finishing": "Saving reply…",
+    "interrupted": "Response interrupted",
+    "reconnecting": "Live updates reconnecting",
+    "attachments": "{count} attachments",
+    "workSummary": "Work · {count} actions",
+    "activeAgents": "{count} agents working",
+    "stepComplete": "Step complete",
+    "jumpToLatest": "Jump to latest",
+    "previewCapped": "Preview limit reached · waiting for the saved reply"
   }
 }

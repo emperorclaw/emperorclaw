@@ -1,5 +1,14 @@
 "use client";
 
+import { useChatScroll } from "@/lib/chat/use-chat-scroll";
+import { useChatResponses, withResponsePreviews, chatRowKey, rememberHumanMessageKey } from "@/lib/chat/use-chat-responses";
+import { messageEntranceRef } from "@/lib/chat/message-motion";
+import { PendingReceipt, PreviewState, type PendingText } from "@/components/chat/pending-send";
+import { readThreadDraft, scheduleThreadDraft, flushThreadDraft } from "@/lib/chat-selection";
+import { StreamingMarkdown } from "@/components/chat/streaming-markdown";
+import { ChatInput } from "@/components/chat/chat-input";
+import { useComposerStore } from "@/lib/chat/composer-store";
+
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { useSession } from "next-auth/react";
@@ -9,13 +18,11 @@ import { IconPaperclip, IconUser, IconSend, IconAt } from "@tabler/icons-react";
 import { MarkdownRenderer } from "@/components/markdown-renderer";
 import { RichMessageActionsContext } from "@/components/rich/rich-message-actions";
 import { hasChoicesBlock, hasRichBlocks } from "@/lib/rich-blocks";
-import { EVERYONE_MENTION, MentionTextarea } from "@/components/mention-textarea";
+import { EVERYONE_MENTION } from "@/components/mention-textarea";
 import { AttachmentChip, isAttachmentRef, type AttachmentRef } from "@/components/chat-attachments";
 import { MessageReasoningDisclosure } from "@/components/message-reasoning-disclosure";
 import { DeliveryInspector } from "@/components/delivery-inspector";
 import { ApprovalCard } from "@/components/approval-card";
-import { TypingReveal } from "@/components/typing-reveal";
-import { markLiveReveal } from "@/lib/typing-reveal";
 import { useLiveArrivals } from "@/lib/use-live-arrivals";
 import { approvalCardIdOf } from "@/lib/approval-card-copy";
 import { isPersistedUuid } from "@/lib/run-ledger-copy";
@@ -157,6 +164,7 @@ export function AgentTeamChat({
     placeholder?: string;
 }) {
     const t = useTranslations("teamChat");
+    const tChat = useTranslations("chatExperience");
     const render = useCopy();
     const format = useFormatter();
     const dateSeparatorLabel = useDateSeparatorLabel();
@@ -183,8 +191,20 @@ export function AgentTeamChat({
     const [liveRuns, setLiveRuns] = useState<ClientLiveRun[]>([]);
     const liveRunsRef = useRef<ClientLiveRun[]>([]);
     const [replyRuns, setReplyRuns] = useState<Record<string, ReplyRun>>({});
-    const [draft, setDraft] = useState("");
+    const composer = useComposerStore();
+    const teamDraftKey = `team:${currentUserId}:${readThreadId ?? "main"}`;
+    useEffect(() => {
+        if (!currentUserId) return;
+        const saved = readThreadDraft(teamDraftKey);
+        composer.set(saved);
+        const flush = () => flushThreadDraft(teamDraftKey);
+        window.addEventListener("pagehide", flush);
+        return () => { flush(); window.removeEventListener("pagehide", flush); };
+    }, [composer, teamDraftKey, currentUserId]);
+    const draft = composer.get();
+    const setDraft = composer.set;
     const [isSending, setIsSending] = useState(false);
+    const [pendingSend, setPendingSend] = useState<PendingText | null>(null);
     const [hasOlderMessages, setHasOlderMessages] = useState(initialHasMore);
     const [isLoadingOlder, setIsLoadingOlder] = useState(false);
     const [pendingAttachments, setPendingAttachments] = useState<AttachmentRef[]>([]);
@@ -201,12 +221,25 @@ export function AgentTeamChat({
     const isAtBottomRef = useRef(true);
     const lastScrolledMessageRef = useRef<string | undefined>(undefined);
 
+    const { previews, experience } = useChatResponses(withThread(new URLSearchParams()), readThreadId);
+    const jumpOffset = useChatScroll(readThreadId ?? "team", false, scrollRef, isAtBottomRef, forceScrollToBottomRef, experience);
+    const pendingInView = pendingSend?.view === (readThreadId ?? "team") ? pendingSend : null;
+    const optimisticMessages = pendingInView ? [...messages, {
+        id: pendingInView.clientMessageId, clientMessageId: pendingInView.clientMessageId, senderType: "human",
+        senderId: currentUserId, fromUserId: currentUserId, text: pendingInView.text, createdAt: pendingInView.createdAt,
+        metadataJson: { pending: true }, deliveryState: "queued",
+    } as TeamMessage] : messages;
+    const displayMessages = withResponsePreviews(optimisticMessages, previews, preview => ({
+        id: preview.responseId, senderType: "agent", text: preview.text, createdAt: preview.updatedAt,
+        senderId: preview.agentId, fromUserId: preview.agentId, metadataJson: { preview: true, previewRunStatus: preview.state === "capped" && preview.runStatus === "running" ? "capped" : preview.state === "sealed" ? "sealed" : preview.runStatus, senderName: preview.agentName }, deliveryState: "resolved",
+    } as TeamMessage));
+
     const rowVirtualizer = useVirtualizer({
-        count: messages.length,
+        count: displayMessages.length,
         getScrollElement: () => scrollRef.current,
         estimateSize: () => 72,
         overscan: 8,
-        getItemKey: (index) => messages[index].id,
+        getItemKey: (index) => chatRowKey(displayMessages[index], previews),
     });
     // Let the virtualizer compensate for rows resizing ABOVE the reading point.
     // Disable the browser's second anchoring mechanism on the scroll container.
@@ -286,7 +319,7 @@ export function AgentTeamChat({
                     const newMessages = nextMessages.filter((m) => !existingIds.has(m.id));
                     if (newMessages.length === 0) return prev;
                     // Agent replies arriving after the first load type themselves in (never history).
-                    if (seen) markLiveReveal(newMessages);
+                    if (seen)
                     if (!isAtBottomRef.current) {
                         setUnreadCount((count) => count + newMessages.length);
                     }
@@ -321,16 +354,16 @@ export function AgentTeamChat({
                 scrollRef.current.scrollTop += scrollRef.current.scrollHeight - previousHeight;
                 return;
             }
-            const latestId = messages[messages.length - 1]?.id;
+            const latestId = displayMessages[displayMessages.length - 1]?.id;
             const hasNewMessage = latestId !== lastScrolledMessageRef.current;
             lastScrolledMessageRef.current = latestId;
-            if ((isAtBottomRef.current || forceScrollToBottomRef.current) && (hasNewMessage || forceScrollToBottomRef.current) && messages.length > 0) {
-                rowVirtualizer.scrollToIndex(messages.length - 1, { align: "end", behavior: "auto" });
+            if ((isAtBottomRef.current || forceScrollToBottomRef.current) && (hasNewMessage || forceScrollToBottomRef.current) && displayMessages.length > 0) {
+                rowVirtualizer.scrollToIndex(displayMessages.length - 1, { align: "end", behavior: "auto" });
                 forceScrollToBottomRef.current = false;
                 setUnreadCount(0);
             }
         }
-    }, [messages, isAtBottom, rowVirtualizer]);
+    }, [displayMessages, isAtBottom, rowVirtualizer]);
 
     const handleScroll = () => {
         if (!scrollRef.current) return;
@@ -346,8 +379,8 @@ export function AgentTeamChat({
         isAtBottomRef.current = true;
         setIsAtBottom(true);
         setUnreadCount(0);
-        if (messages.length > 0) {
-            rowVirtualizer.scrollToIndex(messages.length - 1, { align: "end", behavior: "smooth" });
+        if (displayMessages.length > 0) {
+            rowVirtualizer.scrollToIndex(displayMessages.length - 1, { align: "end", behavior: "smooth" });
         }
     };
 
@@ -403,11 +436,13 @@ export function AgentTeamChat({
         setPendingAttachments((prev) => prev.filter((a) => a.id !== id));
     };
 
-    const sendMessage = async () => {
-        const text = draft.trim();
+    const sendMessage = async (retry?: PendingText) => {
+        const text = retry?.text ?? composer.get().trim();
         if ((!text && pendingAttachments.length === 0) || isSending) return;
+        const pending: PendingText = retry ?? { clientMessageId: crypto.randomUUID(), text, attachments: pendingAttachments.map(a => a.id), mode: "queue", status: "sending", createdAt: new Date().toISOString(), view: readThreadId ?? "team" };
+        setPendingSend({ ...pending, status: "sending" });
         setIsSending(true);
-        setDraft("");
+        if (!retry) { setDraft(""); scheduleThreadDraft(teamDraftKey, ""); }
         forceScrollToBottomRef.current = true;
         isAtBottomRef.current = true;
         setIsAtBottom(true);
@@ -415,19 +450,23 @@ export function AgentTeamChat({
             const res = await fetch("/api/chat", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ text, attachments: pendingAttachments.map((a) => a.id), ...(groupId ? { threadId: groupId } : {}) }),
+                body: JSON.stringify({ clientMessageId: pending.clientMessageId, text, attachments: pending.attachments, ...(groupId ? { threadId: groupId } : {}) }),
             });
             if (!res.ok) throw new Error("Failed to send");
             const data = await res.json() as ChatResponse;
+            setPendingSend(null);
+            if (retry && composer.get() === text) setDraft("");
+            if (data.message) rememberHumanMessageKey(data.message.id, pending.clientMessageId);
             const sentMessage = data.message;
             if (sentMessage) {
                 setMessages((prev) => prev.some((m) => m.id === sentMessage.id) ? prev : [...prev, sentMessage]);
                 setLastSeenAt(messageCursor(sentMessage.createdAt));
-                setPendingAttachments([]);
+                setPendingAttachments(current => current.filter(attachment => !pending.attachments.includes(attachment.id)));
             }
         } catch (err) {
             console.error("Failed to send team message", err);
-            setDraft(text);
+            setPendingSend({ ...pending, status: "failed" });
+            if (!composer.get()) setDraft(text);
         } finally {
             setIsSending(false);
         }
@@ -554,18 +593,18 @@ export function AgentTeamChat({
                 </div>
             </div>
 
-            <Presence show={unreadCount > 0 && !isAtBottom} snappy scale y={8} className="absolute bottom-20 left-1/2 z-10 -translate-x-1/2">
+            <Presence style={{ bottom: jumpOffset }} show={!isAtBottom} snappy scale y={8} className="absolute bottom-20 left-1/2 z-10 -translate-x-1/2">
                 <button
                     type="button"
                     onClick={scrollToLatest}
                     className="rounded-full border border-cyan-500/30 bg-zinc-900/95 px-3 py-1.5 text-xs font-medium text-cyan-300 shadow-lg transition-colors hover:bg-zinc-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400/70"
                 >
-                    {t("jumpToLatest", { count: unreadCount })}
+                    {unreadCount > 0 ? t("jumpToLatest", { count: unreadCount }) : tChat("jumpToLatest")}
                 </button>
             </Presence>
 
-            <div ref={scrollRef} onScroll={handleScroll} style={{ overflowAnchor: "none" }} className="fade-y flex-1 overflow-y-auto px-3 py-3 sm:px-4">
-                {messages.length === 0 ? (
+            <div ref={scrollRef} onScroll={handleScroll} style={{ overflowAnchor: "none" }} className={cn(experience && "ec-chat-transcript", "fade-y flex-1 overflow-y-auto px-3 py-3 sm:px-4")}>
+                {displayMessages.length === 0 ? (
                     <div className="flex h-full items-center justify-center px-6 text-center text-sm italic text-zinc-600">{groupId ? t("emptyGroup") : t("emptyTeam")}</div>
                 ) : (
                     <div>
@@ -584,10 +623,11 @@ export function AgentTeamChat({
                         <div style={{ height: rowVirtualizer.getTotalSize(), position: "relative", width: "100%" }}>
                         {rowVirtualizer.getVirtualItems().map((virtualRow) => {
                             const i = virtualRow.index;
-                            const msg = messages[i];
-                            const prev = messages[i - 1] ?? null;
-                            const next = messages[i + 1] ?? null;
+                            const msg = displayMessages[i];
+                            const prev = displayMessages[i - 1] ?? null;
+                            const next = displayMessages[i + 1] ?? null;
                             const isHuman = msg.senderType === "human";
+                            const isPending = Boolean((msg.metadataJson as Record<string, unknown> | null)?.pending);
 
                             const showDaySep = !prev || !isSameDay(prev.createdAt, msg.createdAt);
                             const isContinuation = !!prev && isGroupContinuation(msg, prev);
@@ -611,7 +651,7 @@ export function AgentTeamChat({
 
                             return (
                                 <div
-                                    key={msg.id}
+                                    key={chatRowKey(msg, previews)}
                                     ref={rowVirtualizer.measureElement}
                                     data-index={i}
                                     style={{ position: "absolute", top: 0, left: 0, width: "100%", transform: `translateY(${virtualRow.start}px)` }}
@@ -656,7 +696,7 @@ export function AgentTeamChat({
                                                 </span>
                                             )}
 
-                                            <div className={cn(
+                                            <div ref={messageEntranceRef(chatRowKey(msg, previews), experience && isLiveArrival(msg.id))} className={cn(
                                                 // Same surfaces and tail convention as the direct chat.
                                                 "min-w-0 max-w-full rounded-2xl border px-4 py-2.5 text-sm",
                                                 isLiveArrival(msg.id) && "ec-message-in",
@@ -675,15 +715,11 @@ export function AgentTeamChat({
                                                         send={sendTeamWidgetPrompt}
                                                         laterReplies={hasChoicesBlock(msg.text) ? laterTeamReplies(messages, i, getAgentName(senderId)) : undefined}
                                                     >
-                                                        {msg.senderType === "agent" && !isRich ? (
-                                                            <TypingReveal messageId={msg.id} text={msg.text}>
-                                                                <ParsedMessage text={msg.text} />
-                                                            </TypingReveal>
-                                                        ) : (
-                                                            <ParsedMessage text={msg.text} />
-                                                        )}
+                                                        <ParsedMessage text={msg.text} preview={Boolean((msg.metadataJson as Record<string, unknown> | null)?.preview)} />
+                                                        {Boolean((msg.metadataJson as Record<string, unknown> | null)?.preview) && <PreviewState state={String((msg.metadataJson as Record<string, unknown>).previewRunStatus)} />}
                                                     </AgentMessageActions>
                                                 )}
+                                                {isPending && pendingInView && <PendingReceipt message={pendingInView} onRetry={() => void sendMessage(pendingInView)} />}
                                                 {isPauseNotice && (
                                                     <button
                                                         type="button"
@@ -714,7 +750,7 @@ export function AgentTeamChat({
                                                 {/* One footer line: the delivery inspector, read receipts (last message
                                                     of a group) or the waiting note (no reads after 30 s), then the time. */}
                                                 <div className="mt-1.5 flex items-center justify-end gap-1.5 text-[10px] text-muted-foreground">
-                                                    {isPersistedUuid(msg.id) && (msg.senderType === "human" || msg.senderType === "agent") && (
+                                                    {isPersistedUuid(msg.id) && !isPending && !Boolean((msg.metadataJson as Record<string, unknown> | null)?.preview) && (msg.senderType === "human" || msg.senderType === "agent") && (
                                                         <span className="mr-auto shrink-0">
                                                             <DeliveryInspector messageId={msg.id} />
                                                         </span>
@@ -759,6 +795,16 @@ export function AgentTeamChat({
                     </div>
                 )}
             </div>
+
+            {typingAgents.length > 1 && <details className="border-t border-border px-4 py-2">
+                <summary className="cursor-pointer text-xs text-muted-foreground">{tChat("activeAgents", { count: typingAgents.length })}</summary>
+                <div className="mt-2 max-h-40 space-y-3 overflow-y-auto">
+                    {liveRuns.filter(run => run.status === "running").map(run => <div key={run.runId} className="space-y-1">
+                        <p className="truncate text-xs text-muted-foreground"><strong>{getAgentName(run.agentId)}</strong>: {run.current.summary}</p>
+                        <LiveRunSteps steps={run.steps} usage={run.usage} />
+                    </div>)}
+                </div>
+            </details>}
 
             {/* Always mounted so its live region is ready before work starts. */}
             <LiveStatusRow
@@ -829,13 +875,15 @@ export function AgentTeamChat({
                             <IconAt className="h-4 w-4" />
                         </button>
 
-                        <MentionTextarea
+                        <ChatInput
                             ref={teamTextareaRef}
-                            value={draft}
-                            onValueChange={setDraft}
+                            store={composer}
+                        enhanced={experience}
+                            onValueChange={text => scheduleThreadDraft(teamDraftKey, text)}
+                            onBlur={() => flushThreadDraft(teamDraftKey)}
                             onPaste={handleComposerPaste}
                             agents={mentionAgents ?? agents}
-                            onSubmit={sendMessage}
+                            onSubmitMessage={() => void sendMessage()}
                             placeholder={placeholder}
                             rows={1}
                             className="min-h-11 w-full resize-none overflow-y-auto rounded-xl border border-zinc-700 bg-zinc-800 px-3 py-2.5 text-sm leading-5 text-zinc-200 placeholder:overflow-hidden placeholder:text-ellipsis placeholder:whitespace-nowrap placeholder:text-zinc-600 focus:outline-none focus:ring-2 focus:ring-ring sm:px-4"
@@ -889,7 +937,7 @@ function AgentMessageActions({
     return <RichMessageActionsContext.Provider value={value}>{children}</RichMessageActionsContext.Provider>;
 }
 
-function ParsedMessage({ text }: { text: string }) {
+function ParsedMessage({ text, preview = false }: { text: string; preview?: boolean }) {
     const t = useTranslations("teamChat.sections");
     if (!text) return null;
 
@@ -898,6 +946,7 @@ function ParsedMessage({ text }: { text: string }) {
     // code dump that happens to contain the word "Next:" mid-content (e.g. a
     // "### Next:" markdown heading being added to a file) gets misparsed,
     // silently discarding everything before the false match.
+    if (preview) return <StreamingMarkdown text={text} />;
     const looksStructured = /^(update|evidence|next):/i.test(text.trimStart());
 
     const sections = looksStructured ? {

@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useMemo } from 'react';
+import React, { memo, useMemo } from 'react';
 import { useTranslations } from 'next-intl';
 import ReactMarkdown, { defaultUrlTransform, type Components } from 'react-markdown';
 import remarkGfm from 'remark-gfm';
@@ -240,7 +240,7 @@ function entityOnlyParagraph(node: HastNode | undefined): { entityRef: EntityRef
   return items.length > 0 ? items : null;
 }
 
-export function MarkdownRenderer({ content, className = "", depth = 0, density = 'default', allowWidgets = true, allowImages = true, isLinkAllowed }: MarkdownRendererProps) {
+function MarkdownRendererImpl({ content, className = "", depth = 0, density = 'default', allowWidgets = true, allowImages = true, isLinkAllowed }: MarkdownRendererProps) {
   const normalizedContent = ensureBlankBeforeFences(repairMarkdownTables(wrapUnifiedDiffHunks(content)));
   const compact = density === 'compact';
   const t = useTranslations('markdown');
@@ -369,3 +369,6 @@ export function MarkdownRenderer({ content, className = "", depth = 0, density =
     </div>
   );
 }
+
+/** Stable history does not reparse while the composer or live tail updates. */
+export const MarkdownRenderer = memo(MarkdownRendererImpl);

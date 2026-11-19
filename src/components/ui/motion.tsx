@@ -90,6 +90,7 @@ export function Presence({
     y,
     scale,
     initial = false,
+    style,
 }: {
     show: boolean;
     children: ReactNode;
@@ -99,11 +100,12 @@ export function Presence({
     scale?: boolean;
     /** Animate on first mount too (default false). */
     initial?: boolean;
+    style?: React.CSSProperties;
 }) {
     return (
         <AnimatePresence initial={initial}>
             {show && (
-                <FadeRise key="presence" className={className} snappy={snappy} y={y} scale={scale}>
+                <FadeRise key="presence" style={style} className={className} snappy={snappy} y={y} scale={scale}>
                     {children}
                 </FadeRise>
             )}

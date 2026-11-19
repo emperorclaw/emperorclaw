@@ -74,6 +74,8 @@ export function threadDraftKey(key: string): string {
 }
 
 export function readThreadDraft(key: string): string {
+    const pending = pendingDrafts.get(key);
+    if (pending) return pending.text;
     try {
         return window.sessionStorage.getItem(threadDraftKey(key)) ?? "";
     } catch {
@@ -82,6 +84,9 @@ export function readThreadDraft(key: string): string {
 }
 
 export function writeThreadDraft(key: string, text: string) {
+    const pending = pendingDrafts.get(key);
+    if (pending) clearTimeout(pending.timer);
+    pendingDrafts.delete(key);
     try {
         if (text) window.sessionStorage.setItem(threadDraftKey(key), text);
         else window.sessionStorage.removeItem(threadDraftKey(key));
@@ -110,4 +115,16 @@ export function writePendingNewChatKey(agentId: string, clientKey: string | null
     } catch {
         // Storage blocked: the key lives as long as the composer.
     }
+}
+
+// Latest draft stays readable synchronously, while storage work leaves the keypress.
+const pendingDrafts = new Map<string, { text: string; timer: ReturnType<typeof setTimeout> }>();
+export function scheduleThreadDraft(key: string, text: string) {
+    const previous = pendingDrafts.get(key);
+    if (previous) clearTimeout(previous.timer);
+    pendingDrafts.set(key, { text, timer: setTimeout(() => writeThreadDraft(key, text), 250) });
+}
+export function flushThreadDraft(key: string) {
+    const pending = pendingDrafts.get(key);
+    if (pending) writeThreadDraft(key, pending.text);
 }

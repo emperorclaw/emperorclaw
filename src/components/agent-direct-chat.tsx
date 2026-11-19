@@ -1,5 +1,13 @@
 "use client";
 
+import { useChatScroll } from "@/lib/chat/use-chat-scroll";
+import { useChatResponses, withResponsePreviews, chatRowKey, rememberHumanMessageKey } from "@/lib/chat/use-chat-responses";
+import { messageEntranceRef } from "@/lib/chat/message-motion";
+import { PendingReceipt, PreviewState, type PendingText } from "@/components/chat/pending-send";
+import { StreamingMarkdown } from "@/components/chat/streaming-markdown";
+import { ChatInput } from "@/components/chat/chat-input";
+import { useComposerStore } from "@/lib/chat/composer-store";
+
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import Link from "next/link";
 import { useVirtualizer } from "@tanstack/react-virtual";
@@ -9,8 +17,6 @@ import { useCopy } from "@/lib/i18n/use-copy";
 import { IconArchive, IconArrowUp, IconPaperclip, IconPlayerStop, IconRestore, IconRobot, IconMicrophone, IconSend, IconSquare, IconTrash, IconUser } from "@tabler/icons-react";
 import { DeliveryInspector } from "@/components/delivery-inspector";
 import { ApprovalCard } from "@/components/approval-card";
-import { TypingReveal } from "@/components/typing-reveal";
-import { markLiveReveal } from "@/lib/typing-reveal";
 import { useLiveArrivals } from "@/lib/use-live-arrivals";
 import { useChatEnter } from "@/lib/chat-enter";
 import { approvalCardIdOf } from "@/lib/approval-card-copy";
@@ -38,7 +44,7 @@ import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { refreshNavBadges } from "@/components/use-nav-badges";
 import { ChatLimitDialog, DirectChatBar, patchChat, useAgentChats, useArchiveReasonLabel, useChatErrorMessage, useChatLabel } from "@/components/direct-chat-switcher";
 import { newChatClientKey, queuedBusyState } from "@/lib/multi-chat";
-import { readPendingNewChatKey, readThreadDraft, writePendingNewChatKey, writeThreadDraft } from "@/lib/chat-selection";
+import { scheduleThreadDraft, flushThreadDraft, readPendingNewChatKey, readThreadDraft, writePendingNewChatKey, writeThreadDraft } from "@/lib/chat-selection";
 
 const composerIconButton = "flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-zinc-400 transition-colors hover:bg-zinc-800 hover:text-zinc-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50";
 
@@ -155,6 +161,8 @@ function useDateSeparatorLabel() {
     };
 }
 
+const transcriptCache = new Map<string, { messages: DirectMessage[]; hasOlder: boolean }>();
+
 export function AgentDirectChat({
     agentId,
     agentName,
@@ -185,6 +193,7 @@ export function AgentDirectChat({
     showStopAll?: boolean;
 }) {
     const t = useTranslations("directChat");
+    const tExperience = useTranslations("chatExperience");
     const render = useCopy();
     const tTeam = useTranslations("teamChat");
     const format = useFormatter();
@@ -205,6 +214,8 @@ export function AgentDirectChat({
     const currentUserId = (session?.user as { id?: string } | undefined)?.id;
     const [thread, setThread] = useState<DirectThread | null>(null);
     const [messages, setMessages] = useState<DirectMessage[]>([]);
+    const loadedCacheKeyRef = useRef<string | null>(null);
+
     useEffect(() => {
         if (!onAgentReply) return;
         for (const message of messages) {
@@ -251,7 +262,9 @@ export function AgentDirectChat({
     const [limitReached, setLimitReached] = useState<{ limit: number; open: number } | null>(null);
     const [confirmStop, setConfirmStop] = useState<"chat" | "all" | null>(null);
     const [restoring, setRestoring] = useState(false);
-    const [draft, setDraft] = useState("");
+    const composer = useComposerStore();
+    const draft = composer.get();
+    const setDraft = composer.set;
     // A draft another page handed over (e.g. "Ask about this panel"): prefilled in the main chat, never sent.
     // It wins over a draft stored for the main chat once that chat's id is known (see the draftKey effect).
     const handedDraftRef = useRef<string | null>(null);
@@ -262,13 +275,14 @@ export function AgentDirectChat({
             handedDraftRef.current = handed;
             setDraft(handed);
         }
-    }, [agentId, directThreadId]);
+    }, [agentId, directThreadId, setDraft]);
     const onThreadChangeRef = useRef(onThreadChange);
     // After the open chat is marked read: refresh the chat list's unread dots and the nav badge.
     const onReadRef = useRef<(() => void) | null>(null);
     useEffect(() => { onThreadChangeRef.current = onThreadChange; });
     const [isLoading, setIsLoading] = useState(true);
     const [isSending, setIsSending] = useState(false);
+    const [pendingSend, setPendingSend] = useState<PendingText | null>(null);
     const [sendMode, setSendMode] = useState<"queue" | "replace">("queue");
     const [controlError, setControlError] = useState<string | null>(null);
     const [showCancelledHistory, setShowCancelledHistory] = useState(false);
@@ -302,13 +316,34 @@ export function AgentDirectChat({
     const preserveScrollHeightRef = useRef<number | null>(null);
     const forceScrollToBottomRef = useRef(true);
     const isAtBottomRef = useRef(true);
+    useEffect(() => {
+        const key = loadedCacheKeyRef.current;
+        if (!key || messages.length === 0 || !currentUserId) return;
+        if (messages.reduce((bytes, message) => bytes + message.text.length * 2, 0) > 1_000_000) return;
+        transcriptCache.set(key, { messages: messages.slice(-200), hasOlder: hasOlderMessages });
+        if (transcriptCache.size > 10) transcriptCache.delete(transcriptCache.keys().next().value!);
+    }, [messages, hasOlderMessages, currentUserId]);
+
+
+    const { previews, experience } = useChatResponses(`/api/chat?targetAgentId=${agentId}${activeThreadId ? `&directThreadId=${activeThreadId}` : ""}`, newChatKey ? null : thread?.id);
+    const jumpOffset = useChatScroll(`${currentUserId}:${agentId}:${activeThreadId ?? newChatKey ?? "main"}`, isLoading, scrollRef, isAtBottomRef, forceScrollToBottomRef, experience);
+    const pendingInView = pendingSend?.view === viewKeyRef.current ? pendingSend : null;
+    const optimisticMessages = pendingInView ? [...messages, {
+        id: pendingInView.clientMessageId, clientMessageId: pendingInView.clientMessageId, senderType: "human",
+        senderId: currentUserId, fromUserId: currentUserId, text: pendingInView.text, createdAt: pendingInView.createdAt,
+        metadataJson: { pending: true }, deliveryState: "queued",
+    } as DirectMessage] : messages;
+    const displayMessages = withResponsePreviews(optimisticMessages, previews, preview => ({
+        id: preview.responseId, senderType: "agent", text: preview.text, createdAt: preview.updatedAt,
+        senderId: preview.agentId, metadataJson: { preview: true, previewRunStatus: preview.state === "capped" && preview.runStatus === "running" ? "capped" : preview.state === "sealed" ? "sealed" : preview.runStatus }, deliveryState: "resolved",
+    } as DirectMessage));
 
     const rowVirtualizer = useVirtualizer({
-        count: messages.length,
+        count: displayMessages.length,
         getScrollElement: () => scrollRef.current,
         estimateSize: () => 88,
         overscan: 8,
-        getItemKey: (index) => messages[index].id,
+        getItemKey: (index) => chatRowKey(displayMessages[index], previews),
     });
     // Let the virtualizer compensate for rows resizing ABOVE the reading point.
     // Disable the browser's second anchoring mechanism on the scroll container.
@@ -337,6 +372,7 @@ export function AgentDirectChat({
         const res = await fetch(`/api/chat?${params.toString()}`);
         if (generation !== viewGenerationRef.current || viewKeyRef.current !== view) return;
         if (!res.ok) {
+            if (res.status === 401 || res.status === 403 || res.status === 404) { setMessages([]); transcriptCache.delete(`${currentUserId}:${agentId}:${view}`); }
             // One of the person's own chats that is gone (a stale link or remembered id): open the main
             // chat. Only where the page treats this as their own chats (onThreadChange); the agent's
             // Operations thread and other secondary threads keep showing the error.
@@ -359,6 +395,7 @@ export function AgentDirectChat({
             runtime?: ChatRuntime;
         };
         if (generation !== viewGenerationRef.current || viewKeyRef.current !== view) return;
+        loadedCacheKeyRef.current = `${currentUserId}:${agentId}:${view}`;
         if (data.runtime) setRuntime(data.runtime);
 
         if (!before) {
@@ -399,7 +436,7 @@ export function AgentDirectChat({
                 });
                 const appended = nextMessages.filter((message) => !existingIds.has(message.id));
                 // Agent replies arriving after the first load type themselves in (never history).
-                if (prev.length > 0) markLiveReveal(appended);
+                if (prev.length > 0)
                 if (appended.length > 0 && !isAtBottomRef.current && since) {
                     setUnreadCount((count) => count + appended.length);
                 }
@@ -427,7 +464,7 @@ export function AgentDirectChat({
         if (!since) {
             setHasOlderMessages(Boolean(data.hasMore));
         }
-    }, [agentId, activeThreadId]);
+    }, [agentId, activeThreadId, currentUserId]);
 
     const loadOlderMessages = useCallback(async () => {
         if (isLoadingOlder || !hasOlderMessages || messages.length === 0) return;
@@ -445,7 +482,7 @@ export function AgentDirectChat({
 
     const handleTyping = (text: string) => {
         setDraft(text);
-        if (draftKey) writeThreadDraft(draftKey, text);
+        if (draftKey) scheduleThreadDraft(draftKey, text);
 
         if (!isTyping && text.trim().length > 0) {
             setIsTyping(true);
@@ -498,6 +535,7 @@ export function AgentDirectChat({
                 await loadMessages();
             } catch (error) {
                 if (run.active) {
+                    setMessages([]);
                     console.error("Failed to initialize direct chat", error);
                 }
             } finally {
@@ -546,13 +584,16 @@ export function AgentDirectChat({
     function resetChatView() {
         viewGenerationRef.current += 1;
         clearScheduledPolls();
-        setMessages([]);
+        const cacheKey = `${currentUserId}:${agentId}:${viewKeyRef.current}`;
+        const cached = transcriptCache.get(cacheKey);
+        loadedCacheKeyRef.current = cacheKey;
+        setMessages(cached?.messages ?? []);
         setThread(null);
         setParticipants([]);
         liveRunsRef.current = [];
         setLiveRuns([]);
         setReplyRuns({});
-        setHasOlderMessages(false);
+        setHasOlderMessages(cached?.hasOlder ?? false);
         setShowCancelledHistory(false);
         setControlError(null);
         lastSeenAtRef.current = null;
@@ -624,7 +665,15 @@ export function AgentDirectChat({
     // Drafts are kept per chat (sessionStorage): `new:<agent>` for a New chat composer,
     // else the chat's id once known. The main chat's id arrives with its first load,
     // so a draft typed (or handed over) before that moves along to it.
-    const draftKey = newChatKey ? `new:${agentId}` : activeThreadId ?? thread?.id ?? null;
+    const draftThreadKey = newChatKey ? `new:${agentId}` : activeThreadId ?? thread?.id ?? null;
+    const draftKey = currentUserId && draftThreadKey ? `${currentUserId}:${draftThreadKey}` : null;
+    useEffect(() => {
+        if (!draftKey) return;
+        const flush = () => flushThreadDraft(draftKey);
+        window.addEventListener("pagehide", flush);
+        document.addEventListener("visibilitychange", flush);
+        return () => { flush(); window.removeEventListener("pagehide", flush); document.removeEventListener("visibilitychange", flush); };
+    }, [draftKey]);
     const previousDraftKeyRef = useRef<string | null>(null);
     useEffect(() => {
         const previous = previousDraftKeyRef.current;
@@ -778,16 +827,16 @@ export function AgentDirectChat({
                 scrollRef.current.scrollTop += scrollRef.current.scrollHeight - previousHeight;
                 return;
             }
-            const latestId = messages[messages.length - 1]?.id;
+            const latestId = displayMessages[displayMessages.length - 1]?.id;
             const hasNewMessage = latestId !== lastScrolledMessageRef.current;
             lastScrolledMessageRef.current = latestId;
-            if ((isAtBottomRef.current || forceScrollToBottomRef.current) && (hasNewMessage || forceScrollToBottomRef.current) && messages.length > 0) {
-                rowVirtualizer.scrollToIndex(messages.length - 1, { align: "end", behavior: "auto" });
+            if ((isAtBottomRef.current || forceScrollToBottomRef.current) && (hasNewMessage || forceScrollToBottomRef.current) && displayMessages.length > 0) {
+                rowVirtualizer.scrollToIndex(displayMessages.length - 1, { align: "end", behavior: "auto" });
                 forceScrollToBottomRef.current = false;
                 setUnreadCount(0);
             }
         }
-    }, [isAtBottom, messages, rowVirtualizer]);
+    }, [isAtBottom, displayMessages, rowVirtualizer]);
 
     const handleScroll = () => {
         const element = scrollRef.current;
@@ -803,8 +852,8 @@ export function AgentDirectChat({
         isAtBottomRef.current = true;
         setIsAtBottom(true);
         setUnreadCount(0);
-        if (messages.length > 0) {
-            rowVirtualizer.scrollToIndex(messages.length - 1, { align: "end", behavior: "smooth" });
+        if (displayMessages.length > 0) {
+            rowVirtualizer.scrollToIndex(displayMessages.length - 1, { align: "end", behavior: "smooth" });
         }
     };
 
@@ -1019,14 +1068,16 @@ export function AgentDirectChat({
         }
     };
 
-    const handleSend = async (event: React.FormEvent) => {
+    const handleSend = async (event: React.FormEvent, retry?: PendingText) => {
         event.preventDefault();
-        const text = draft.trim();
+        const text = retry?.text ?? composer.get().trim();
         if (!canSend || (!text && pendingAttachments.length === 0) || isSending) return;
 
+        const pending: PendingText = retry ?? { clientMessageId: crypto.randomUUID(), text, attachments: pendingAttachments.map(a => a.id), mode: sendMode, status: "sending", createdAt: new Date().toISOString(), view: viewKeyRef.current };
+        setPendingSend({ ...pending, status: "sending" });
         setIsSending(true);
         setControlError(null);
-        setDraft("");
+        if (!retry) setDraft("");
         // The chat this text was typed in: a failure puts it back there, even after a switch.
         const sentDraftKey = draftKey;
         const sent = { clientKey: newChatKey, view: viewKeyRef.current };
@@ -1036,20 +1087,25 @@ export function AgentDirectChat({
         setIsAtBottom(true);
 
         try {
-            const replacing = sendMode === "replace" && !newChatKey && !text.trim().startsWith("/");
+            const replacing = pending.mode === "replace" && !newChatKey && !text.trim().startsWith("/");
             if (replacing && pendingAttachments.length) throw new Error(t("attachmentsQueued"));
             const res = await fetch(replacing ? `/api/agents/${agentId}/control` : "/api/chat", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify(replacing ? { action: "replace", prompt: text, directThreadId: activeThreadId ?? thread?.id ?? null } : { text, targetAgentId: agentId, ...chatTarget(), attachments: pendingAttachments.map((a) => a.id) }),
+                body: JSON.stringify(replacing ? { action: "replace", prompt: text, directThreadId: activeThreadId ?? thread?.id ?? null } : { clientMessageId: pending.clientMessageId, text, targetAgentId: agentId, ...chatTarget(), attachments: pending.attachments }),
             });
 
             if (!res.ok) await throwSendError(res, t("sendDirectFailed"));
 
             const data = await res.json() as { thread?: DirectThread; message?: DirectMessage; deduplicated?: boolean; created?: boolean };
+            if (data.message) rememberHumanMessageKey(data.message.id, pending.clientMessageId);
             const stillHere = viewKeyRef.current === sent.view;
+            if (stillHere) {
+                setPendingSend(null);
+                if (retry && composer.get() === text) setDraft("");
+            }
             if (afterNewChat(data, text, sent)) {
-                if (stillHere) setPendingAttachments([]);
+                if (stillHere) setPendingAttachments(current => current.filter(attachment => !pending.attachments.includes(attachment.id)));
                 return;
             }
             // Sent from a chat that is no longer on screen: it is stored there; nothing to show here.
@@ -1060,7 +1116,7 @@ export function AgentDirectChat({
             if (data.message) {
                 setMessages((prev) => prev.some((message) => message.id === data.message!.id) ? prev : [...prev, data.message!]);
                 lastSeenAtRef.current = data.message.createdAt;
-                setPendingAttachments([]);
+                setPendingAttachments(current => current.filter(attachment => !pending.attachments.includes(attachment.id)));
                 setSendMode("queue");
                 void loadMessages().catch(() => {});
                 // Aggressive polling after send: catch agent response fast (dropped on a chat switch).
@@ -1074,10 +1130,11 @@ export function AgentDirectChat({
                 setControlError(t("duplicate"));
             }
         } catch (error) {
-            if (sentDraftKey) writeThreadDraft(sentDraftKey, text);
+            if (sentDraftKey && !readThreadDraft(sentDraftKey)) writeThreadDraft(sentDraftKey, text);
             // Switched to another chat meanwhile: the text waits in its own chat's draft.
             if (viewKeyRef.current !== sent.view) return;
-            setDraft(text);
+            setPendingSend({ ...pending, status: "failed" });
+            if (!composer.get()) setDraft(text);
             if (handleChatRefusal(error)) return;
             console.error(t("sendDirectFailed"), error);
             setControlError(error instanceof Error ? error.message : t("sendFailed"));
@@ -1228,12 +1285,12 @@ export function AgentDirectChat({
                 />
             )}
 
-            <div ref={scrollRef} onScroll={handleScroll} style={{ overflowAnchor: "none" }} className="fade-y relative flex-1 overflow-y-auto p-3 sm:p-5">
+            <div ref={scrollRef} onScroll={handleScroll} style={{ overflowAnchor: "none" }} className={cn(experience && "ec-chat-transcript", "fade-y relative flex-1 overflow-y-auto p-3 sm:p-5")}>
                 {isLoading ? (
                     <div className="h-full flex items-center justify-center text-sm text-zinc-500 animate-pulse">
                         {t("loading")}
                     </div>
-                ) : messages.length === 0 ? (
+                ) : displayMessages.length === 0 ? (
                     // A chat that just opened (New chat, or an empty earlier one) rises in instead of
                     // landing settled: opacity and 6 px, no height, so the panel keeps its final frame.
                     <FadeRise key={chatViewKey(activeThreadId, newChatKey)} className="h-full">
@@ -1263,16 +1320,18 @@ export function AgentDirectChat({
                         <div style={{ height: rowVirtualizer.getTotalSize(), position: "relative", width: "100%" }}>
                         {rowVirtualizer.getVirtualItems().map((virtualRow) => {
                             const i = virtualRow.index;
-                            const message = messages[i];
+                            const message = displayMessages[i];
                             const isHuman = message.senderType === "human";
+                            const isPending = Boolean((message.metadataJson as Record<string, unknown> | null)?.pending);
+                            const isPreview = Boolean((message.metadataJson as Record<string, unknown> | null)?.preview);
                             const isControl = message.senderType === "system" && Boolean((message.metadataJson as Record<string, unknown> | null)?.runtimeControl);
                             const approvalCardId = approvalCardIdOf(message);
                             // System messages say who they are from: a request names its
                             // source platform; anything else comes from Emperor itself.
                             const senderLabel = message.senderType === "system" ? (requestSourceLabel(message.metadataJson) ? render(requestSourceCopy(message.metadataJson), requestSourceLabel(message.metadataJson)!) : "Emperor") : agentName;
                             const isRead = isHuman && agentLastReadAt && new Date(agentLastReadAt).getTime() >= new Date(message.createdAt).getTime();
-                            const prev = messages[i - 1] ?? null;
-                            const next = messages[i + 1] ?? null;
+                            const prev = displayMessages[i - 1] ?? null;
+                            const next = displayMessages[i + 1] ?? null;
 
                             const showDaySep = !prev || !isSameDay(prev.createdAt, message.createdAt);
                             const isContinuation = !!prev && isGroupContinuation(message, prev);
@@ -1285,7 +1344,7 @@ export function AgentDirectChat({
 
                             return (
                                 <div
-                                    key={message.id}
+                                    key={chatRowKey(message, previews)}
                                     ref={rowVirtualizer.measureElement}
                                     data-index={i}
                                     style={{ position: "absolute", top: 0, left: 0, width: "100%", transform: `translateY(${virtualRow.start}px)` }}
@@ -1311,7 +1370,7 @@ export function AgentDirectChat({
                                                 </span>
                                             )}
 
-                                            <div className={cn(
+                                            <div ref={messageEntranceRef(chatRowKey(message, previews), experience && (enterStep !== undefined || isLiveArrival(message.id)))} className={cn(
                                                 // Both chats: your bubble is a neutral raised surface, the agent's a quieter
                                                 // outlined one; the tail corner sits on the speaker's side of the last bubble.
                                                 "min-w-0 max-w-full rounded-2xl border px-4 py-3",
@@ -1324,16 +1383,15 @@ export function AgentDirectChat({
                                                 isLastInGroup && !isHuman && "rounded-bl-md"
                                             )}
                                             style={enterStep !== undefined ? ({ "--ec-stagger": enterStep } as CSSProperties) : undefined}>
-                                                {!isHuman && hasChoicesBlock(message.text) ? (
+                                                {!isHuman && !isPreview && hasChoicesBlock(message.text) ? (
                                                     <RichMessageActionsContext.Provider value={{ sendPrompt: sendWidgetPrompt, laterReplies: laterHumanTexts(messages, i) }}>
-                                                        <MessageContent text={message.text} isHuman={isHuman} />
+                                                        <MessageContent text={message.text} isHuman={isHuman} preview={isPreview} />
                                                     </RichMessageActionsContext.Provider>
                                                 ) : message.senderType === "agent" && !isRich ? (
-                                                    <TypingReveal messageId={message.id} text={message.text}>
-                                                        <MessageContent text={message.text} isHuman={isHuman} />
-                                                    </TypingReveal>
+                                                    <MessageContent text={message.text} isHuman={isHuman} preview={isPreview} />
+
                                                 ) : (
-                                                    <MessageContent text={message.text} isHuman={isHuman} />
+                                                    <MessageContent text={message.text} isHuman={isHuman} preview={isPreview} />
                                                 )}
                                                 {isControl && <p className="mt-2 text-xs text-zinc-400">
                                                     {message.deliveryState === "resolved" ? t("runtimeConfirmed") : t("waitingHermes")}
@@ -1360,6 +1418,8 @@ export function AgentDirectChat({
                                                         ))}
                                                     </div>
                                                 )}
+                                                {isPending && pendingInView && <PendingReceipt message={pendingInView} onRetry={() => void handleSend({ preventDefault() {} } as React.FormEvent, pendingInView)} />}
+                                                {isPreview && <PreviewState state={String((message.metadataJson as Record<string, unknown>).previewRunStatus)} />}
                                                 {!isHuman && hasStoredReasoning(message) && (
                                                     <MessageReasoningDisclosure messageId={message.id} />
                                                 )}
@@ -1371,7 +1431,7 @@ export function AgentDirectChat({
                                                     own real state, then the group-level Read/Sent receipt once resolved)
                                                     and the time. */}
                                                 <div className="mt-1.5 flex items-center justify-end gap-1.5 text-[10px] text-muted-foreground">
-                                                    {isPersistedUuid(message.id) && (message.senderType === "human" || message.senderType === "agent") && (
+                                                    {isPersistedUuid(message.id) && !isPending && !isPreview && (message.senderType === "human" || message.senderType === "agent") && (
                                                         <span className="mr-auto shrink-0">
                                                             <DeliveryInspector messageId={message.id} />
                                                         </span>
@@ -1432,13 +1492,13 @@ export function AgentDirectChat({
                 )}
             </div>
 
-            <Presence show={unreadCount > 0 && !isAtBottom} snappy scale y={8} className="absolute bottom-24 left-1/2 z-10 -translate-x-1/2">
+            <Presence style={{ bottom: jumpOffset }} show={!isAtBottom} snappy scale y={8} className="absolute bottom-24 left-1/2 z-10 -translate-x-1/2">
                 <button
                     type="button"
                     onClick={scrollToLatest}
                     className="rounded-full border border-border bg-popover px-3 py-1.5 text-xs font-medium text-foreground shadow-(--shadow-pop) transition-colors hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                 >
-                    {tTeam("jumpToLatest", { count: unreadCount })}
+                    {unreadCount > 0 ? tTeam("jumpToLatest", { count: unreadCount }) : tExperience("jumpToLatest")}
                 </button>
             </Presence>
 
@@ -1624,12 +1684,15 @@ export function AgentDirectChat({
                         onChange={handleAttachFiles}
                         aria-label={t("attachFiles")}
                     />
-                    <textarea
+                    <ChatInput
                         ref={composerRef}
-                        value={draft}
-                        onChange={(event) => handleTyping(event.target.value)}
+                        store={composer}
+                        enhanced={experience}
+                        onValueChange={handleTyping}
+                        onBlur={() => { if (draftKey) flushThreadDraft(draftKey); }}
                         onPaste={handleComposerPaste}
                         onKeyDown={(event) => {
+                            if (event.nativeEvent.isComposing || event.nativeEvent.keyCode === 229) return;
                             if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) {
                                 event.preventDefault();
                                 event.currentTarget.form?.requestSubmit();
@@ -1787,7 +1850,8 @@ function QueueItem({
     );
 }
 
-function MessageContent({ text: rawText, isHuman }: { text: string; isHuman: boolean }) {
+function MessageContent({ text: rawText, isHuman, preview = false }: { text: string; isHuman: boolean; preview?: boolean }) {
+    if (preview) return <StreamingMarkdown text={rawText} />;
     // Older voice notes were sent as "🎤 Voice message (…)"; show them like new ones (no emoji).
     const text = isHuman ? rawText.replace(/^\u{1F3A4}\s*/u, "") : rawText;
     // Legacy format from before voice messages became real attachments —
@@ -1797,7 +1861,7 @@ function MessageContent({ text: rawText, isHuman }: { text: string; isHuman: boo
     const audioMatch = text.match(/\[audio:(https?:\/\/[^\]]+|\/[^\]]+)\]/);
     if (!audioMatch) {
         return (
-            <MarkdownRenderer
+            <MarkdownRenderer allowWidgets={!preview} allowImages={!preview}
                 content={text}
                 className="break-words [&_.prose]:max-w-prose [&_.prose]:text-sm [&_.prose]:leading-relaxed [&_.prose_p:first-child]:mt-0 [&_.prose_p:last-child]:mb-0 [&_.prose_p]:mb-3 [&_.prose_ul]:mb-3 [&_.prose_ol]:mb-3 [&_.prose_pre]:mb-3 [&_.prose_pre]:bg-zinc-950/70 [&_.prose_pre]:border-zinc-800/80 [&_.prose_code]:text-emerald-200 [&_.prose_a]:text-emerald-300"
             />

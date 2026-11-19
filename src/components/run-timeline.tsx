@@ -241,6 +241,8 @@ export const ReplyRunFooter = memo(function ReplyRunFooter({ run, tone = "dark" 
  */
 export const LiveRunSteps = memo(function LiveRunSteps({ steps, usage }: { steps: readonly TimelineStep[]; usage?: RunLiveUsage | null }) {
     const t = useTranslations("runTimeline");
+    const tChat = useTranslations("chatExperience");
+    const actionCount = timelineRows(steps).filter(row => row.kind === "tool" || row.kind === "subagent" || row.kind === "compaction").length;
     const [open, setOpen] = useState(false);
     const usageLine = liveUsageLine(usage);
     if (steps.length === 0 && !usageLine) return null;
@@ -252,7 +254,7 @@ export const LiveRunSteps = memo(function LiveRunSteps({ steps, usage }: { steps
                 aria-expanded={open}
                 className="inline-flex items-center gap-1 rounded text-[10px] text-zinc-500 transition-colors hover:text-zinc-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400/60"
             >
-                {open ? t("hideSteps") : steps.length > 0 ? t("stepsCount", { count: steps.length }) : t("stepsToggle")}
+                {open ? t("hideSteps") : actionCount > 0 ? tChat("workSummary", { count: actionCount }) : t("stepsToggle")}
                 <IconChevronDown className={cn("h-3 w-3 transition-transform", open && "rotate-180")} aria-hidden="true" />
             </button>
             <Collapse open={open} snappy>

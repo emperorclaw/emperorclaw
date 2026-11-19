@@ -1,5 +1,8 @@
 "use client";
 
+import { useTranslations } from "next-intl";
+import { useRealtimeStatus } from "@/lib/use-realtime";
+import { TextSwap } from "@/components/ui/motion";
 import { memo, useEffect, useState } from "react";
 import { cn } from "@/lib/utils";
 import { useLiveActivity } from "@/components/use-live-activity";
@@ -56,17 +59,14 @@ const StepTimer = memo(function StepTimer({ startedAt }: { startedAt: number }) 
  * Props are primitives only, so memo skips re-renders from the parent.
  */
 export const LiveStatusRow = memo(function LiveStatusRow({ active, activityKey, activity, label, idleVerb, fallbackText, variant, step = null, stepStartedAt = null, detail = null }: LiveStatusRowProps) {
+    const tChat = useTranslations("chatExperience");
+    const { status: connection } = useRealtimeStatus();
     const live = useLiveActivity({ active, key: activityKey, activity: step ?? activity });
     const dot = variant === "direct" ? "bg-emerald-500" : "bg-cyan-500";
     const evented = active && step !== null;
 
-    const dots = active && (
-        <div className="flex shrink-0 gap-1" aria-hidden="true">
-            <div className={cn("h-1.5 w-1.5 rounded-full motion-safe:animate-bounce [animation-delay:-0.3s]", dot)} />
-            <div className={cn("h-1.5 w-1.5 rounded-full motion-safe:animate-bounce [animation-delay:-0.15s]", dot)} />
-            <div className={cn("h-1.5 w-1.5 rounded-full motion-safe:animate-bounce", dot)} />
-        </div>
-    );
+    const connected = connection === "open";
+    const dots = active && <span className={cn("h-1.5 w-1.5 shrink-0 rounded-full", dot)} aria-hidden />;
 
     // The live region only carries the name and the step headline ("Thinking",
     // "Running write_file"), so it speaks once per step rather than on every
@@ -79,10 +79,10 @@ export const LiveStatusRow = memo(function LiveStatusRow({ active, activityKey, 
             {active && (label ? (
                 <>
                     <span className="font-bold text-zinc-500">{label}{live.activity ? ":" : ""}</span>{" "}
-                    {live.activity ?? idleVerb}
+                    <TextSwap id={headline ?? "working"}><span className={connected ? "ec-chat-shimmer" : undefined}>{live.activity ?? idleVerb}</span></TextSwap>
                 </>
             ) : (
-                live.activity ?? fallbackText
+                <TextSwap id={headline ?? "working"}><span className={connected ? "ec-chat-shimmer" : undefined}>{live.activity ?? fallbackText}</span></TextSwap>
             ))}
         </span>
     );
@@ -115,6 +115,7 @@ export const LiveStatusRow = memo(function LiveStatusRow({ active, activityKey, 
                 {status}
                 {stepTimer}
             </div>
+            {active && !connected && <span className="text-[10px] text-muted-foreground">{tChat("reconnecting")}</span>}
             {timer}
         </div>
     );
