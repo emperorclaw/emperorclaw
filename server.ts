@@ -103,7 +103,7 @@ function enqueueHumanInvalidation(sock: HumanSocket, topics: readonly string[]) 
     }
     for (const topic of topics) pending.topics.add(topic);
     if (!pending.timer) {
-        pending.timer = setTimeout(() => flushHumanInvalidation(sock), HUMAN_INVALIDATE_COALESCE_MS);
+        pending.timer = setTimeout(() => flushHumanInvalidation(sock), topics.every(topic => topic.startsWith("response:")) ? 33 : HUMAN_INVALIDATE_COALESCE_MS);
         pending.timer.unref?.();
     }
 }
@@ -384,6 +384,11 @@ app.prepare().then(() => {
   // keepAlive: the LISTEN connection is idle for long stretches; TCP keepalive
   // lets a silently dropped connection surface as an error instead of hanging.
   const pool = new Pool({ connectionString: process.env.POSTGRES_CONNECTION_STRING, options: UTC_SESSION_OPTIONS, keepAlive: true });
+  // Preview retention is bounded even when no new agent snapshots arrive.
+  const previewCleanup = setInterval(() => {
+    void pool.query("DELETE FROM chat_response_previews WHERE response_id IN (SELECT response_id FROM chat_response_previews WHERE expires_at < now() ORDER BY expires_at LIMIT 1000)").catch(() => {});
+  }, 5 * 60_000);
+  previewCleanup.unref();
   let listenerClient: PoolClient | null = null;
   let reconnectTimer: NodeJS.Timeout | null = null;
   /** After the first attach, every re-attach means NOTIFYs may have been lost. */

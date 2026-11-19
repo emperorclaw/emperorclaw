@@ -610,6 +610,13 @@
       "when": 1795078833573,
       "tag": "0086_account-security",
       "breakpoints": true
+    },
+    {
+      "idx": 87,
+      "version": "7",
+      "when": 1795089934099,
+      "tag": "0087_chat-experience",
+      "breakpoints": true
     }
   ]
 }

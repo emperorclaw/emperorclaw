@@ -28,6 +28,11 @@ export function eventTopicsFor(payload: unknown, subject: RealtimeSubject | null
     const topics = new Set<string>();
     const type = typeof p.type === "string" ? p.type : "";
 
+    // Previews only refresh their isolated live tail, never the transcript/dashboard.
+    if (type === "chat_response_updated") {
+        addId(topics, "response", p.threadId);
+        return [...topics];
+    }
     // Named records → their id topics.
     for (const id of eventThreadIds(payload)) topics.add(`thread:${id}`);
     addId(topics, "run", p.runId);

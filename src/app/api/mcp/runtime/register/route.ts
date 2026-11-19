@@ -1,3 +1,4 @@
+import { chatStreamingEnabled } from "@/lib/chat/responses";
 import { NextRequest, NextResponse } from "next/server";
 import { resolveBoundAgentId, verifyMcpToken } from "@/lib/mcp";
 import { GATEWAY_TOPOLOGIES, findDuplicateRuntime, registerRuntimeNode, sharedHostOk } from "@/lib/control-plane";
@@ -70,7 +71,7 @@ export async function POST(req: NextRequest) {
         // so their agents keep writing plain Markdown.
         return NextResponse.json({
             runtimeNode,
-            serverCapabilities: SERVER_CAPABILITIES,
+            serverCapabilities: [...SERVER_CAPABILITIES, ...(chatStreamingEnabled(companyId) ? ["partial-replies-v1"] : [])],
             replyFormatGuide: RICH_REPLY_GUIDE,
             bridge: { ...hermesBridgeInfo(), updateState: bridgeUpdateState(runtimeNode) },
             duplicateRuntime,

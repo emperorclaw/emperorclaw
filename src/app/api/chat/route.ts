@@ -1,3 +1,4 @@
+import { chatExperienceEnabled, chatStreamingEnabled, readResponsePreviews } from "@/lib/chat/responses";
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/db";
 import { artifacts, threadMessages, threadParticipants } from "@/db/schema";
@@ -138,6 +139,10 @@ export async function GET(req: NextRequest) {
             }
         }
 
+        if (searchParams.get("previews") === "1") {
+            return NextResponse.json({ previews: await readResponsePreviews(companyId, thread.id), streaming: chatStreamingEnabled(companyId), experience: chatExperienceEnabled(companyId) }, { headers: { "Cache-Control": "no-store" } });
+        }
+
         const messages = await getThreadMessages(
             companyId,
             thread.id,
@@ -173,6 +178,7 @@ export async function GET(req: NextRequest) {
 
         return NextResponse.json({ thread, messages: pagedMessages.map(serializeMessage), participants, hasMore, liveRuns, replyRuns, ...(runtime ? { runtime } : {}) });
     } catch (error: unknown) {
+        if (error instanceof Error && error.message === "Client message id conflict") return NextResponse.json({ error: error.message }, { status: 409 });
         if (error instanceof AuthError) return NextResponse.json({error:error.message},{status:error.statusCode});
         const chatError = chatErrorResponse(error);
         if (chatError) return chatError;
@@ -191,7 +197,8 @@ export async function POST(req: NextRequest) {
     const userId = access.ctx.userId;
 
     try {
-        const { text, targetAgentId, attachments, threadId: groupId, directThreadId, newChat } = await req.json();
+        const { text, targetAgentId, attachments, threadId: groupId, directThreadId, newChat, clientMessageId } = await req.json();
+        if (clientMessageId !== undefined && (typeof clientMessageId !== "string" || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(clientMessageId))) return NextResponse.json({ error: "Invalid clientMessageId" }, { status: 400 });
         if (text !== undefined && typeof text !== "string") return NextResponse.json({ error: "Text must be a string" }, { status: 400 });
         if (groupId !== undefined && typeof groupId !== "string") return NextResponse.json({ error: "threadId must be a string" }, { status: 400 });
         if (newChat !== undefined && (typeof targetAgentId !== "string" || !targetAgentId || groupId || directThreadId)) {
@@ -309,7 +316,7 @@ export async function POST(req: NextRequest) {
         // A double-click, a network retry, or two browser tabs must not turn one
         // request into two expensive agent turns.  Attachments are intentionally
         // excluded: two files with the same caption can be distinct requests.
-        if (resolvedTargetAgentId && resolvedAttachments.length === 0 && text) {
+        if (!clientMessageId && resolvedTargetAgentId && resolvedAttachments.length === 0 && text) {
             const prompt = normalizedPrompt(text);
             const outstanding = await db.select().from(threadMessages).where(and(
                 eq(threadMessages.companyId, companyId),
@@ -325,6 +332,7 @@ export async function POST(req: NextRequest) {
             }
         }
         const message = await appendThreadMessage({
+            clientMessageId,
             companyId,
             threadId: thread.id,
             senderType: "human",
@@ -346,6 +354,7 @@ export async function POST(req: NextRequest) {
 
         return NextResponse.json({ thread, message: serializeMessage(message) });
     } catch (error: unknown) {
+        if (error instanceof Error && error.message === "Client message id conflict") return NextResponse.json({ error: error.message }, { status: 409 });
         if (error instanceof AuthError) return NextResponse.json({error:error.message},{status:error.statusCode});
         const chatError = chatErrorResponse(error);
         if (chatError) return chatError;

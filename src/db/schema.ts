@@ -1051,6 +1051,7 @@ export const threadParticipants = pgTable("thread_participants", {
 });
 
 export const threadMessages = pgTable("thread_messages", {
+    clientMessageId: uuid("client_message_id"),
     id: uuid("id").primaryKey().defaultRandom(),
     threadId: uuid("thread_id").notNull().references(() => messageThreads.id, { onDelete: 'cascade' }),
     companyId: uuid("company_id").notNull().references(() => companies.id, { onDelete: 'cascade' }),
@@ -1063,6 +1064,7 @@ export const threadMessages = pgTable("thread_messages", {
     platformMessageId: text("platform_message_id"),
     createdAt: timestamp("created_at").defaultNow().notNull(),
 }, (table) => ({
+    clientMessageIdx: uniqueIndex("thread_messages_client_message_idx").on(table.companyId, table.senderId, table.clientMessageId),
     // The MCP message-sync long-poll filters by company + created_at and by
     // company + sender_type + created_at; without these it falls back to scans.
     companyCreatedIdx: index("thread_messages_company_created_idx").on(table.companyId, table.createdAt),
@@ -1749,4 +1751,23 @@ export const runtimeHostJobEvents = pgTable("runtime_host_job_events", {
     line: text("line"),
 }, (table) => ({
     jobSeqUnique: uniqueIndex("runtime_host_job_events_job_seq_unique").on(table.jobId, table.seq),
+}));
+
+// Bounded latest partial response, not an append-only token log.
+export const chatResponsePreviews = pgTable("chat_response_previews", {
+    responseId: uuid("response_id").primaryKey(),
+    runId: uuid("run_id").notNull().references(() => agentRuns.id, { onDelete: 'cascade' }),
+    companyId: uuid("company_id").notNull().references(() => companies.id, { onDelete: 'cascade' }),
+    threadId: uuid("thread_id").notNull().references(() => messageThreads.id, { onDelete: 'cascade' }),
+    agentId: uuid("agent_id").notNull().references(() => agents.id, { onDelete: 'cascade' }),
+    segmentIndex: integer("segment_index").notNull(),
+    revision: integer("revision").notNull(),
+    text: text("text").notNull(),
+    state: text("state").notNull(),
+    updatedAt: timestamp("updated_at").defaultNow().notNull(),
+    expiresAt: timestamp("expires_at").notNull(),
+}, table => ({
+    runSegmentIdx: uniqueIndex("chat_response_previews_run_segment_idx").on(table.runId, table.segmentIndex),
+    threadIdx: index("chat_response_previews_thread_idx").on(table.companyId, table.threadId, table.updatedAt),
+    expiryIdx: index("chat_response_previews_expiry_idx").on(table.expiresAt),
 }));

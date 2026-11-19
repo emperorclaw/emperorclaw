@@ -25,6 +25,7 @@ from .context import ContextBuilder, compose_api_text, parse_server_capabilities
 from .controls import ControlPlane
 from .emperor_api import (EmperorClient, Transport, bound_retries, clear_retry, is_environment_failure, parse_iso,
                           resolve_agent_id, sender_type_of, split_control_commands, thread_type_of)
+from .partial_replies import PartialReplies
 from .events import EventSink
 from .gateway.client import GatewayLink
 from .gateway.discovery import GatewayDiscovery
@@ -88,8 +89,10 @@ class AgentRuntime:
         self.sink = EventSink(self.client, EventSinkConfig(flush_ms=cfg.event_flush_ms), logger=self.log)
         self.sessions = SessionManager(self.link, self.state, agent_id=agent_id, profile_home=cfg.profile_home,
                                        logger=agent_logger(cfg.profile_name, "sessions"))
+        self.previews = PartialReplies(self.client.request, agent_id,
+                                      lambda: "partial-replies-v1" in self.context.capabilities)
         self.runner = TurnRunner(
-            self.link, self.sessions, self.state, self.sink, agent=self.identity,
+            self.link, self.sessions, self.state, self.sink, agent=self.identity, previews=self.previews,
             config=TurnConfig(idle_timeout_s=cfg.turn_idle_timeout_s), logger=agent_logger(cfg.profile_name, "turns"))
         self.scheduler = Scheduler(self._dispatch, SchedulerConfig(cfg.max_parallel_turns, cfg.followup_mode),
                                    logger=self.log)
@@ -472,6 +475,7 @@ class AgentRuntime:
         return await self.scheduler.drain(timeout)
 
     async def close(self) -> None:
+        await self.previews.close()
         for task in list(self._tasks):
             task.cancel()
         await asyncio.gather(*self._tasks, return_exceptions=True)

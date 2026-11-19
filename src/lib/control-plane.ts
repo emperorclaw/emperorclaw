@@ -853,6 +853,7 @@ export async function unreachableMentionedAgents(companyId: string, senderAgentI
 }
 
 export type AppendThreadMessageInput = {
+    clientMessageId?: string;
     companyId: string;
     threadId: string;
     senderType: SenderType;
@@ -874,7 +875,7 @@ export type AppendThreadMessageInput = {
     requireLiveThread?: boolean;
 };
 
-type MessageExecutor = Pick<typeof db, "insert" | "execute">;
+type MessageExecutor = Pick<typeof db, "insert" | "execute" | "select">;
 
 /** A prepared message: every read (sender, scope, marker) done, nothing written yet. */
 export type PreparedThreadMessage = {
@@ -953,6 +954,7 @@ export async function prepareThreadMessage(input: AppendThreadMessageInput, exec
     return {
         input: { ...input, text, createdAt },
         values: {
+            clientMessageId: input.clientMessageId ?? null,
             threadId: input.threadId,
             companyId: input.companyId,
             senderType: input.senderType,
@@ -985,7 +987,16 @@ export async function insertPreparedThreadMessage(executor: MessageExecutor, pre
         const row = (locked.rows ?? [])[0] as { archived_at: unknown } | undefined;
         if (row?.archived_at) throw new ChatArchivedError();
     }
-    const [threadMessage] = await executor.insert(threadMessages).values({ ...prepared.values, threadId }).returning();
+    const [threadMessage] = await executor.insert(threadMessages).values({ ...prepared.values, threadId }).onConflictDoNothing().returning();
+    if (!threadMessage) {
+        if (!input.clientMessageId) throw new Error("Message conflict");
+        const [existing] = await executor.select().from(threadMessages).where(and(
+            eq(threadMessages.companyId, input.companyId), eq(threadMessages.senderId, input.senderId!),
+            eq(threadMessages.clientMessageId, input.clientMessageId),
+        )).limit(1);
+        if (!existing || existing.threadId !== threadId || existing.text !== prepared.values.text || JSON.stringify((existing.metadataJson as Record<string, unknown>)?.attachments ?? []) !== JSON.stringify((prepared.values.metadataJson as Record<string, unknown>).attachments ?? [])) throw new Error("Client message id conflict");
+        return existing;
+    }
     if (input.mirrorToLegacyChat) {
         await executor.insert(chatMessages).values({
             companyId: input.companyId,

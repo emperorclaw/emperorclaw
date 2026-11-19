@@ -77,7 +77,8 @@ class _Tracker:
 class TurnRunner:
     def __init__(self, link: GatewayLinkPort, sessions: SessionManager, store: TurnStore, sink: EventSinkPort, *,
                  agent: AgentIdentity, config: TurnConfig = TurnConfig(), logger: Optional[logging.Logger] = None,
-                 clock: Callable[[], float] = time.monotonic) -> None:
+                 clock: Callable[[], float] = time.monotonic, previews: Any = None) -> None:
+        self._previews = previews
         self._link = link
         self._sessions = sessions
         self._store = store
@@ -308,6 +309,8 @@ class TurnRunner:
             ("interrupted" if outcome in (TurnOutcome.CANCELLED, TurnOutcome.TIMEOUT) else "error"),
             duration_ms=tr.duration_ms, summary=error_code,
             data={"exitReason": exit_reason, "failureReason": failure, "steps": mapper.steps}))
+        if self._previews:
+            self._previews.finish(tracker.turn.run_id, tr.final_text, "completed" if tr.outcome == TurnOutcome.COMPLETED else "failed" if tr.outcome == TurnOutcome.FAILED else "interrupted")
         self._untrack(tracker)
         turn_context.clear(self._agent.profile.profile_home, turn.thread_id, turn.submission_id)
         tracker.record.update(status="settled", nextEventSeq=self._sink.next_seq(turn.run_id),
@@ -360,6 +363,8 @@ class TurnRunner:
         if event.type == "message.start":
             tracker.record.update(status="running", executionGeneration=event.execution_generation)
             self._store.put_turn(tracker.turn.submission_id, tracker.record)
+        if self._previews:
+            self._previews.event(tracker.turn.run_id, event)
         had_tool = tracker.mapper.saw_tool
         for mapped in tracker.mapper.map(event):
             self._emit(tracker, mapped)
