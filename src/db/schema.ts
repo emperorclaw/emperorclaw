@@ -589,6 +589,9 @@ export const tasks = pgTable("tasks", {
     assignedAgentId: uuid("assigned_agent_id").references(() => agents.id),
     assignedMemberId: uuid("assigned_member_id").references(() => companyMembers.id, { onDelete: 'set null' }),
     leaseOwner: text("lease_owner"),
+    // Which session of that agent holds the lease. lease_owner stores the agent,
+    // so a second session cannot pass itself off as the holder (case c87002d6).
+    leaseSession: text("lease_session"),
     leaseUntil: timestamp("lease_until"),
     retries: integer("retries").default(0).notNull(),
     maxRetries: integer("max_retries").default(3).notNull(),
