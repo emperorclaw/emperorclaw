@@ -71,6 +71,8 @@ DOCKERFILE
     if [ "$rc" != 0 ]; then
         echo "== installer log (tail)"
         docker exec "$name" tail -n 60 /home/jose/.local/share/emperor-hermes/emperor-hermes.log 2>/dev/null || true
+        echo "== host daemon log (tail)"
+        docker exec "$name" tail -n 60 /home/jose/.local/share/emperor-hermes/hostd.log 2>/dev/null || true
     fi
     exit "$rc"
 }
@@ -306,15 +308,9 @@ PY
     # Bridge 0.9 stand-in: writes health.json per profile, then idles until SIGTERM.
     mkdir -p "$F/plugin-src"
     cp -R /repo/integrations/hermes/emperor-claw/. "$F/plugin-src/"
-    rm -rf "$F/plugin-src/bridge/emperor_bridge"
-    mkdir -p "$F/plugin-src/bridge/emperor_bridge"
-    : >"$F/plugin-src/bridge/emperor_bridge/__init__.py"
-    mkdir -p "$F/plugin-src/bridge/emperor_bridge/gateway"
-    cp /repo/integrations/hermes/emperor-claw/bridge/emperor_bridge/config.py \
-        /repo/integrations/hermes/emperor-claw/bridge/emperor_bridge/interfaces.py "$F/plugin-src/bridge/emperor_bridge/"
-    cp /repo/integrations/hermes/emperor-claw/bridge/emperor_bridge/gateway/__init__.py \
-        /repo/integrations/hermes/emperor-claw/bridge/emperor_bridge/gateway/discovery.py "$F/plugin-src/bridge/emperor_bridge/gateway/"
-    echo 'BRIDGE_VERSION = "0.9.0"' >"$F/plugin-src/bridge/emperor_bridge/version.py"
+    # Keep the real support modules: hostd imports them too (including secrets_sync).
+    # Only the bridge process is mocked; retain version exports such as USER_AGENT.
+    sed -i 's/^BRIDGE_VERSION = .*/BRIDGE_VERSION = "0.9.0"/' "$F/plugin-src/bridge/emperor_bridge/version.py"
     cat >"$F/plugin-src/bridge/emperor_bridge/__main__.py" <<'PY'
 import json, os, signal, sys, time
 from emperor_bridge.version import BRIDGE_VERSION
@@ -430,6 +426,8 @@ inside_main() {
     EH=$HOME/.local/bin/emperor-hermes
 
     section "package"
+    check "fake bridge supports host daemon imports" env PYTHONPATH="$F/plugin-src/bridge" \
+        python3 -c 'import emperor_hostd.connection, emperor_hostd.provision'
     bundle=$(bash /repo/scripts/package-hermes-bridge.sh --plugin-dir "$F/plugin-src" --out "$F/dist")
     eq "bundle path" "$bundle" "$F/dist/emperor-hermes-bridge-0.9.0.tar.gz"
     check "bundle checksum" bash -c "cd $F/dist && sha256sum -c emperor-hermes-bridge-0.9.0.tar.gz.sha256"
