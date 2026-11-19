@@ -177,3 +177,40 @@ test("requesting the state the task is already in is a no-op success", () => {
     });
     assert.equal(sameDone, null);
 });
+
+// Regression: task c87002d6 (Stayolo collection page). At 15:47:06Z a session of
+// the implementing agent PATCHed {"state":"done"} onto a task sitting in review
+// whose assignedAgentId was the reviewer, and the only project policy guard was
+// off. The actor was neither the assignee nor the project lead, and the write
+// was accepted: the implementer approved its own release. State changes must be
+// refused for an agent that is neither the current assignee nor the lead.
+test("c87002d6: a non-assignee non-lead agent cannot close someone else's task", () => {
+    const error = validateTaskStateTransition({
+        project: project({ leadAgentId: "reviewer", requireApprovalForDone: false, requireReviewBeforeDone: false, onlyLeadCanChangeStatus: false }),
+        task: task({ assignedAgentId: "reviewer", state: TASK_STATES.review }),
+        requestedState: TASK_STATES.done,
+        actorAgentId: "implementer",
+    });
+    assert.ok(error, "a non-assignee must not be able to close a task assigned to the reviewer");
+});
+
+test("c87002d6: a non-assignee non-lead agent cannot start someone else's task", () => {
+    const error = validateTaskStateTransition({
+        project: project({ leadAgentId: "reviewer" }),
+        task: task({ assignedAgentId: "reviewer", state: TASK_STATES.inbox }),
+        requestedState: TASK_STATES.inProgress,
+        actorAgentId: "implementer",
+    });
+    assert.ok(error, "a non-assignee must not be able to start a task assigned to another agent");
+});
+
+// The lead still routes: assignment, unblocking and status moves are its job.
+test("c87002d6: the project lead can still close a task assigned to someone else", () => {
+    const error = validateTaskStateTransition({
+        project: project({ leadAgentId: "lead" }),
+        task: task({ assignedAgentId: "worker", state: TASK_STATES.review }),
+        requestedState: TASK_STATES.done,
+        actorAgentId: "lead",
+    });
+    assert.equal(error, null);
+});

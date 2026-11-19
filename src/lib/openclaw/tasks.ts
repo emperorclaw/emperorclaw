@@ -12,7 +12,7 @@ import {
 } from "@/db/schema";
 import { createApprovalRequest, getLatestPendingApproval, taskHasPendingApproval } from "@/lib/approvals";
 import { normalizeAgentRef, resolveAgentId } from "@/lib/mcp";
-import { validateTaskStateTransition } from "@/lib/project-workflow";
+import { taskStateChangeDenial, validateTaskStateTransition } from "@/lib/project-workflow";
 import { broadcastMcpEvent } from "@/lib/pubsub";
 import { isTerminalTaskState, normalizeTaskState, TASK_STATES, type PersistedTaskState, type TaskState } from "@/lib/task-state";
 import { normalizeTaskSpec } from "@/lib/openclaw/task-spec";
@@ -333,6 +333,31 @@ export async function updateTaskForCompany(input: UpdateTaskInput) {
   // dedicated finalize/approval flows may close work, never a reopen edit.
   if (normalizedState && normalizedState !== existingTask.state && isTerminalTaskState(existingTask.state as PersistedTaskState)) {
     return { status: 409 as const, error: "A done or failed task cannot be reopened." };
+  }
+
+  // A status change is an approval, so it has to be attributable: the assignee
+  // moving its own work, the project lead routing/deciding, or a person in the
+  // UI. An unbound token is refused here instead of being recorded as "system".
+  if (normalizedState && normalizedState !== existingTask.state) {
+    const rawActor = input.actorType
+      ? { type: input.actorType as string, id: input.actorId ?? null }
+      : input.actor
+        ? { type: input.actor.type as string, id: input.actor.id ?? null }
+        : null;
+    const signature = rawActor && (rawActor.type === "agent" || rawActor.type === "human" || rawActor.type === "system")
+      ? { type: rawActor.type as "agent" | "human" | "system", id: rawActor.id }
+      : null;
+    const [stateProject] = await db.select({ leadAgentId: projects.leadAgentId }).from(projects).where(
+      and(eq(projects.id, existingTask.projectId), eq(projects.companyId, input.companyId)),
+    ).limit(1);
+    const denial = taskStateChangeDenial({
+      project: { leadAgentId: stateProject?.leadAgentId ?? null },
+      task: existingTask,
+      signature,
+    });
+    if (denial) {
+      return { status: 403 as const, error: denial };
+    }
   }
 
   const currentInput = (existingTask.inputJson && typeof existingTask.inputJson === "object") ? existingTask.inputJson as Record<string, unknown> : {};

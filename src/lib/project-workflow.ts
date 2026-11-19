@@ -103,6 +103,21 @@ export function validateTaskStateTransition(input: {
     return "A done or failed task cannot be reopened.";
   }
 
+  // Accountability: moving a task is an approval. Only the assignee (its own
+  // work), the project lead (routing and deciding), or a person may do it; a
+  // different agent's write is refused. Case c87002d6: a session of the
+  // implementing agent closed the reviewer's task and the event recorded
+  // "system". A null actor is an internal caller, handled by the signed PATCH
+  // path in updateTaskForCompany instead.
+  if (actorAgentId) {
+    const ownerDenial = taskStateChangeDenial({
+      project: { leadAgentId: project.leadAgentId ?? null },
+      task: { assignedAgentId: task.assignedAgentId ?? null },
+      signature: { type: "agent", id: actorAgentId },
+    });
+    if (ownerDenial) return ownerDenial;
+  }
+
   // Self-start: the assignee starts only from a queued/assigned state and hands
   // to review only from in_progress. The lead is exempt (it routes and decides).
   // Unblocking a task is explicitly allowed to restart it from `blocked`.
@@ -243,4 +258,36 @@ export function normalizeRequestedTaskState(input: unknown) {
 
 export function isHiddenBoardState(state: PersistedTaskState) {
   return state === TASK_STATES.failed || state === TASK_STATES.deadLetter;
+}
+
+/**
+ * Who may change a task's status.
+ *
+ * A status change carries accountability: the actor that moves work to `done`
+ * is approving it. So it must be the assignee (its own work), the project lead
+ * (routing and deciding), or a person acting from the UI.
+ *
+ * An unsigned write is refused rather than attributed to "system": on
+ * 2026-11-19 a session of the implementing agent closed task c87002d6 while it
+ * sat in review with the reviewer assigned, and the event came out as
+ * `actorType: "system"`, so nobody could prove afterwards who had approved the
+ * release. `signature` is the caller's identity as the token resolved it;
+ * `null` means the token is not bound to an actor.
+ */
+export function taskStateChangeDenial(input: {
+    project: { leadAgentId: string | null };
+    task: { assignedAgentId: string | null };
+    signature: { type: "agent" | "human" | "system"; id: string | null } | null;
+}): string | null {
+    const { project, task, signature } = input;
+    if (!signature || (signature.type === "agent" && !signature.id)) {
+        return "A task status change must be signed: the token is not bound to an agent or a person.";
+    }
+    if (signature.type === "human" || signature.type === "system") return null;
+    if (task.assignedAgentId && signature.id === task.assignedAgentId) return null;
+    if (project.leadAgentId && signature.id === project.leadAgentId) return null;
+    // Unassigned work is claimed and started by whoever takes it; the claim path
+    // records the new owner, so there is no other owner to protect here.
+    if (!task.assignedAgentId) return null;
+    return "Only the assigned agent or the project lead can change this task's status.";
 }
