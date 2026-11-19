@@ -9,7 +9,25 @@ tagged (e.g. `## [1.2.0] — 2026-07-22`). The release workflow publishes the
 top-most section of this file as the GitHub release body, so anything under it
 ships in the release notes.
 
-## [Unreleased]
+## [0.38.0] — 2026-11-19
+
+### Added
+
+- **Profile settings.** Open your user menu on desktop or mobile to manage your name, job title and language, and view your sign-in email and workspace role.
+- **Optional authenticator MFA.** Protect sign-in with an authenticator app and one-time recovery codes. Enable, disable or replace recovery codes from Profile settings with password and MFA verification.
+- **Account security controls.** Change your password, review active browser sessions, revoke other sessions and view recent security activity. Password changes require your current password and MFA when enabled, invalidate existing sessions and reset links, and require a fresh sign-in. New passwords use a 15–128 character passphrase policy.
+
+### Fixed
+
+- **Private agent replies stay in their chat.** Replies retain the originating private conversation instead of falling back to a group chat, with clearer thread context for agents.
+- Account settings no longer send admin management data to ordinary members or viewers. Session identity and role claims refresh from the database, and sign-out removes the backing session.
+- The Hermes installer test retains the bridge support modules required by the host daemon and reports daemon logs on failure.
+
+### Upgrade
+
+- Run `npm run db:migrate` before restarting a source installation. This release adds migrations `0085_user-mfa` and `0086_account-security`; Docker installations run migrations at startup.
+- Configure and preserve a stable `EMPEROR_CLAW_MASTER_KEY` before enabling MFA. Back it up securely: authenticator secrets are encrypted with this key.
+- SSO is deferred to a later release.
 
 ## [0.37.0] — 2026-11-18
 
