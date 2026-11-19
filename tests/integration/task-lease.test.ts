@@ -11,6 +11,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
+import { Client } from "pg";
 import { eq, sql } from "drizzle-orm";
 import { dbAvailable, getDb, getSchema, resetDb, seedAgent, seedCompanyWithToken } from "./_helper";
 import { bearer, call, seedMcpToken } from "./_access-helper";
@@ -143,6 +144,44 @@ maybe("the granted lease answers with the real expiry and a camelCase task", asy
     assert.ok(task.leaseUntil, "task.leaseUntil is present, not undefined");
     assert.equal("lease_owner" in task, false, "no snake_case key leaks into the response");
     assert.equal("assigned_agent_id" in task, false, "not even when the task has an assignee");
+});
+
+maybe("the broadcast carries the same camelCase task the endpoint answered", async () => {
+    const w = await world();
+    const route = await leaseRoute();
+
+    // Subscribe before the write: the lease is announced to every runtime that
+    // follows task_updated, and the bridges rebuild their view from this payload.
+    const listener = new Client({ connectionString: process.env.POSTGRES_CONNECTION_STRING });
+    await listener.connect();
+    await listener.query("LISTEN mcp_events");
+    const events: any[] = [];
+    listener.on("notification", (n) => {
+        try { events.push(JSON.parse(n.payload ?? "")); } catch { /* not ours */ }
+    });
+
+    try {
+        const res = await call(route.POST, `/api/mcp/tasks/${w.task.id}/lease`, {
+            method: "POST", headers: auth(w.soloToken), params: { id: w.task.id },
+            body: { owner: "session-event", ttlSeconds: 120 },
+        });
+        assert.equal(res.status, 200, res.text);
+
+        const mine = () => events.find((e) => e?.payload?.type === "task_updated" && e?.payload?.task?.id === w.task.id);
+        const deadline = Date.now() + 3000;
+        while (Date.now() < deadline && !mine()) await new Promise((r) => setTimeout(r, 25));
+
+        const event = mine();
+        assert.ok(event, "taking the lease is broadcast as task_updated");
+        assert.notEqual(event.payload.task.truncated, true, "the payload was not truncated, so it can be read");
+        assert.equal(event.payload.task.leaseOwner, w.agent.id, "the event names the owner in camelCase");
+        assert.equal(event.payload.task.leaseSession, "session-event");
+        assert.ok(event.payload.task.leaseUntil, "and carries the expiry the endpoint reported");
+        assert.equal("lease_owner" in event.payload.task, false, "no snake_case reaches the client");
+        assert.equal("lease_session" in event.payload.task, false);
+    } finally {
+        await listener.end();
+    }
 });
 
 maybe("releasing the lease lets the other session take it", async () => {
