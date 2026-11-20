@@ -2021,15 +2021,6 @@
       "pasteKey": "Paste the new key",
       "needsNoKey": "This endpoint needs no key",
       "keyNeverShown": "The saved key is never shown, and never sent to a different endpoint.",
-      "tabs": {
-        "memory": "Memory",
-        "instructions": "Instructions",
-        "scope": "Scope",
-        "actions": "Actions",
-        "chat": "Direct Chat",
-        "threads": "Threads",
-        "runs": "Runs"
-      },
       "threads": "Message Threads",
       "noThreads": "No threads recorded for this agent yet.",
       "untitledThread": "Untitled thread",

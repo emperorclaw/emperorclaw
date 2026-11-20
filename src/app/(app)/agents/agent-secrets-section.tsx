@@ -3,13 +3,16 @@
 import { useEffect, useId, useRef, useState } from "react";
 import { useSession } from "next-auth/react";
 import { useTranslations } from "next-intl";
-import { IconEye, IconEyeOff } from "@tabler/icons-react";
+import { IconDots, IconEye, IconEyeOff, IconKey, IconRotate, IconSearch, IconTrash } from "@tabler/icons-react";
 import { toast } from "sonner";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
+import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { MotionItem, MotionList, Presence } from "@/components/ui/motion";
+import { Presence } from "@/components/ui/motion";
 import { useTimeAgo } from "@/lib/i18n/format";
 import { useViewerPermissions } from "@/lib/use-viewer-permissions";
 
@@ -48,6 +51,8 @@ export function AgentSecretsSection({ agentId, ownerUserId }: {
     const [value, setValue] = useState("");
     const [rotateName, setRotateName] = useState<string | null>(null);
     const [showValue, setShowValue] = useState(false);
+    const [dialogOpen, setDialogOpen] = useState(false);
+    const [query, setQuery] = useState("");
     const [saving, setSaving] = useState(false);
     const [deleting, setDeleting] = useState(false);
     const [error, setError] = useState<string | null>(null);
@@ -65,6 +70,8 @@ export function AgentSecretsSection({ agentId, ownerUserId }: {
         setValue("");
         setRotateName(null);
         setShowValue(false);
+        setDialogOpen(false);
+        setQuery("");
         setError(null);
         setListError(null);
         setUnavailable(false);
@@ -105,10 +112,29 @@ export function AgentSecretsSection({ agentId, ownerUserId }: {
     }, [agentId, mayManage, permissionKnown, t]);
 
     useEffect(() => {
-        if (rotateName) valueRef.current?.focus();
-    }, [rotateName]);
+        if (dialogOpen) valueRef.current?.focus();
+    }, [dialogOpen, rotateName]);
 
     if (!permissionKnown || !mayManage || view !== "ready") return null;
+
+    if (unavailable) {
+        return (
+            <section className="space-y-4">
+                <div role="alert" className="rounded-xl border border-amber-500/20 bg-amber-500/[0.04] px-4 py-3 text-xs text-amber-800 dark:text-amber-200">
+                    {t("unavailable")}
+                </div>
+            </section>
+        );
+    }
+
+    const openAdd = () => {
+        setRotateName(null);
+        setName("");
+        setValue("");
+        setShowValue(false);
+        setError(null);
+        setDialogOpen(true);
+    };
 
     const startRotate = (secret: AgentSecret) => {
         setRotateName(secret.name);
@@ -116,6 +142,7 @@ export function AgentSecretsSection({ agentId, ownerUserId }: {
         setValue("");
         setShowValue(false);
         setError(null);
+        setDialogOpen(true);
     };
 
     const cancelRotate = () => {
@@ -124,6 +151,7 @@ export function AgentSecretsSection({ agentId, ownerUserId }: {
         setValue("");
         setShowValue(false);
         setError(null);
+        setDialogOpen(false);
     };
 
     const saveSecret = async () => {
@@ -149,6 +177,7 @@ export function AgentSecretsSection({ agentId, ownerUserId }: {
                     return;
                 }
                 if (response.status === 503) {
+                    setDialogOpen(false);
                     setUnavailable(true);
                     return;
                 }
@@ -159,6 +188,7 @@ export function AgentSecretsSection({ agentId, ownerUserId }: {
             setShowValue(false);
             setName("");
             setRotateName(null);
+            setDialogOpen(false);
             setListError(null);
             if (data?.secret) setSecrets((previous) => mergeSecret(previous, data.secret as AgentSecret));
         } catch (cause) {
@@ -205,38 +235,85 @@ export function AgentSecretsSection({ agentId, ownerUserId }: {
 
     const formDisabled = saving || unavailable;
     const inputDescribedBy = error ? errorId : undefined;
+    const trimmedQuery = query.trim();
+    const filteredSecrets = trimmedQuery
+        ? secrets.filter((secret) => secret.name.toLowerCase().includes(trimmedQuery.toLowerCase()))
+        : secrets;
 
     return (
-        <section className="border-b border-border px-4 py-4 sm:px-5">
-            <div className="mx-auto max-w-3xl space-y-3">
-                <div className="space-y-1">
-                    <h3 className="text-sm font-medium text-foreground">{t("title")}</h3>
-                    <p className="text-xs text-muted-foreground">{t("help")}</p>
+        <section className="space-y-4">
+            <div className="flex flex-wrap items-start justify-between gap-3">
+                <div className="min-w-0 space-y-1">
+                    <div className="flex flex-wrap items-center gap-2">
+                        <IconKey className="h-4 w-4 text-cyan-400" aria-hidden="true" />
+                        <h3 className="text-sm font-semibold text-zinc-100">{t("title")}</h3>
+                        <Badge variant="secondary" className="text-[10px]">{secrets.length}</Badge>
+                    </div>
+                    <p className="text-xs text-zinc-500">{t("help")}</p>
                 </div>
-
-                {unavailable && (
-                    <div role="alert" className="rounded-lg border border-amber-500/20 bg-amber-500/[0.04] px-3 py-2 text-xs text-amber-800 dark:text-amber-200">
-                        {t("unavailable")}
+                <div className="flex w-full flex-wrap items-center gap-2 sm:w-auto">
+                    <Button type="button" size="sm" onClick={openAdd} disabled={formDisabled}>
+                        {t("add")}
+                    </Button>
+                    <div className="relative min-w-0 flex-1 sm:flex-none">
+                        <IconSearch className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-zinc-500" aria-hidden="true" />
+                        <Input
+                            value={query}
+                            onChange={(event) => setQuery(event.target.value)}
+                            placeholder={t("searchPlaceholder")}
+                            className="h-9 pl-8 sm:w-56"
+                        />
                     </div>
-                )}
+                </div>
+            </div>
 
-                <Presence show={Boolean(listError)}>
-                    <p role="alert" className="text-xs text-destructive">{listError}</p>
-                </Presence>
+            <Presence show={Boolean(listError)}>
+                <p role="alert" className="text-xs text-destructive">{listError}</p>
+            </Presence>
 
-                <div className="space-y-3 rounded-xl border border-border bg-muted/30 p-3 sm:p-4">
-                    <div className="flex flex-wrap items-center justify-between gap-2">
-                        <h4 className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
-                            {rotateName ? t("rotateTitle", { name: rotateName }) : t("addTitle")}
-                        </h4>
-                        {rotateName && (
-                            <Button type="button" variant="ghost" size="xs" onClick={cancelRotate} disabled={saving}>
-                                {tc("cancel")}
-                            </Button>
-                        )}
+            <div className="rounded-xl border border-zinc-800 bg-zinc-900/50 divide-y divide-zinc-800">
+                {secrets.length === 0 ? (
+                    <p className="p-6 text-center text-xs text-zinc-500">{t("empty")}</p>
+                ) : filteredSecrets.length === 0 ? (
+                    <p className="p-6 text-center text-xs text-zinc-500">{t("noMatches", { query: trimmedQuery })}</p>
+                ) : filteredSecrets.map((secret) => (
+                    <div key={secret.id} className="grid grid-cols-[1fr_auto] items-center gap-3 px-4 py-3">
+                        <div className="min-w-0 space-y-0.5">
+                            <div className="flex flex-wrap items-center gap-2">
+                                <span className="break-all font-mono text-sm text-zinc-100">{secret.name}</span>
+                                <Badge variant="secondary" className="text-[10px]">{t("version", { version: secret.version })}</Badge>
+                            </div>
+                            <div className="flex flex-wrap items-center gap-2 text-[11px] text-zinc-500">
+                                <span>{t("updated", { ago: timeAgo(secret.updatedAt, new Date()) })}</span>
+                                {secret.exposeToTools && <span>{t("exposedToTools")}</span>}
+                            </div>
+                        </div>
+                        <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                                <Button type="button" variant="ghost" size="icon-sm" aria-label={tc("moreActions")} title={tc("moreActions")} disabled={formDisabled || deleting}>
+                                    <IconDots className="h-4 w-4" />
+                                </Button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end">
+                                <DropdownMenuItem onSelect={() => startRotate(secret)} disabled={formDisabled}>
+                                    <IconRotate /> {t("rotate")}
+                                </DropdownMenuItem>
+                                <DropdownMenuItem variant="destructive" onSelect={() => setConfirming(secret)} disabled={deleting}>
+                                    <IconTrash /> {t("delete")}
+                                </DropdownMenuItem>
+                            </DropdownMenuContent>
+                        </DropdownMenu>
                     </div>
+                ))}
+            </div>
 
-                    <div className="grid gap-3 sm:grid-cols-2">
+            <Dialog open={dialogOpen} onOpenChange={(next) => { if (!next) cancelRotate(); }}>
+                <DialogContent className="sm:max-w-md">
+                    <DialogHeader>
+                        <DialogTitle>{rotateName ? t("rotateTitle", { name: rotateName }) : t("addTitle")}</DialogTitle>
+                    </DialogHeader>
+
+                    <div className="space-y-3">
                         <div className="space-y-1.5">
                             <Label htmlFor={nameId} className="text-xs">{t("name")}</Label>
                             <Input
@@ -248,11 +325,9 @@ export function AgentSecretsSection({ agentId, ownerUserId }: {
                                 autoCapitalize="characters"
                                 spellCheck={false}
                                 maxLength={64}
-                                readOnly={Boolean(rotateName)}
-                                aria-readonly={rotateName ? true : undefined}
+                                disabled={formDisabled || Boolean(rotateName)}
                                 aria-invalid={Boolean(error)}
                                 aria-describedby={inputDescribedBy}
-                                disabled={formDisabled}
                                 className="h-9 font-mono"
                             />
                         </div>
@@ -285,70 +360,21 @@ export function AgentSecretsSection({ agentId, ownerUserId }: {
                                 </Button>
                             </div>
                         </div>
+                        <Presence show={Boolean(error)}>
+                            <p id={errorId} role="alert" className="text-xs text-destructive">{error}</p>
+                        </Presence>
                     </div>
 
-                    <Presence show={Boolean(error)}>
-                        <p id={errorId} role="alert" className="text-xs text-destructive">{error}</p>
-                    </Presence>
-
-                    <div className="flex justify-end">
-                        <Button type="button" size="sm" onClick={() => void saveSecret()} disabled={formDisabled}>
+                    <DialogFooter>
+                        <Button type="button" variant="outline" onClick={cancelRotate} disabled={saving}>
+                            {t("cancel")}
+                        </Button>
+                        <Button type="button" onClick={() => void saveSecret()} disabled={formDisabled}>
                             {saving ? tc("saving") : rotateName ? t("save") : t("add")}
                         </Button>
-                    </div>
-                </div>
-
-                {secrets.length === 0 ? (
-                    <p className="text-xs text-muted-foreground">{t("empty")}</p>
-                ) : (
-                    <MotionList>
-                        {secrets.map((secret) => (
-                            <MotionItem key={secret.id} className="rounded-xl border border-border bg-muted/30 px-3 py-2">
-                                <div className="flex flex-wrap items-start justify-between gap-2">
-                                    <div className="min-w-0 space-y-1">
-                                        <div className="flex flex-wrap items-center gap-2">
-                                            <span className="break-all font-mono text-sm text-foreground">{secret.name}</span>
-                                            <span className="text-[10px] font-medium text-muted-foreground">{t("version", { version: secret.version })}</span>
-                                            {secret.exposeToTools && (
-                                                <span className="rounded-full border border-border px-1.5 py-0.5 text-[10px] text-muted-foreground">
-                                                    {t("exposedToTools")}
-                                                </span>
-                                            )}
-                                        </div>
-                                        <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-                                            <span aria-hidden="true" className="font-mono tracking-wider">{"••••••••"}</span>
-                                            <span>{t("updated", { ago: timeAgo(secret.updatedAt, new Date()) })}</span>
-                                        </div>
-                                    </div>
-                                    <div className="flex items-center gap-1">
-                                        <Button
-                                            type="button"
-                                            variant="ghost"
-                                            size="xs"
-                                            onClick={() => startRotate(secret)}
-                                            disabled={formDisabled}
-                                            aria-label={t("rotateNamed", { name: secret.name })}
-                                        >
-                                            {t("rotate")}
-                                        </Button>
-                                        <Button
-                                            type="button"
-                                            variant="ghost"
-                                            size="xs"
-                                            className="text-destructive hover:text-destructive"
-                                            onClick={() => setConfirming(secret)}
-                                            disabled={deleting}
-                                            aria-label={t("deleteNamed", { name: secret.name })}
-                                        >
-                                            {t("delete")}
-                                        </Button>
-                                    </div>
-                                </div>
-                            </MotionItem>
-                        ))}
-                    </MotionList>
-                )}
-            </div>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
 
             <ConfirmDialog
                 open={Boolean(confirming)}

@@ -373,10 +373,27 @@
     },
     "detail": {
       "workLogUnread": "{count, plural, one {# unread message} other {# unread messages}}",
+      "configTitle": "Configuration",
+      "configHelp": "Provider, deployment and model this agent runs on.",
+      "budgetLabel": "Budget",
+      "budgetUsage": "${used} / ${limit}",
+      "tabs": {
+        "overview": "Overview",
+        "config": "Configuration",
+        "secrets": "Secrets",
+        "prompt": "Instructions & memory",
+        "access": "Access & actions",
+        "chat": "Chat",
+        "runs": "Runs"
+      },
       "secrets": {
         "title": "Secrets",
         "help": "Saved secrets reach this agent's runtime as environment variables within about a minute, and the runtime can read them. A saved value cannot be viewed again.",
         "empty": "No secrets yet.",
+        "searchPlaceholder": "Search secrets…",
+        "noMatches": "No secret matches {query}.",
+        "cancel": "Cancel",
+        "close": "Close",
         "name": "Name",
         "value": "Value",
         "namePlaceholder": "API_TOKEN",
