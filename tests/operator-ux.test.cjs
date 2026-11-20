@@ -153,7 +153,10 @@ test("Operator polish pass keeps advanced pages consistent and removes dead-feel
   assertNotContains(agents, "What belongs here", "agent cards should not repeat generic instructional copy");
   assertNotContains(agents, "Open detail", "the agent panel is the profile; there is no duplicate detail page");
   assertContains(agents, 'searchParams.get("agent")', "?agent=<id> deep links open that agent in the directory");
-  assertContains(read("src/app/(app)/agents/[id]/page.tsx"), "redirect(`/agents?agent=", "old /agents/<id> links redirect to the directory");
+  const legacyAgentLink = read("src/app/(app)/agents/[id]/page.tsx");
+  assertContains(legacyAgentLink, "redirect(`/agents?${", "old /agents/<id> links redirect to the directory");
+  assertContains(legacyAgentLink, "new URLSearchParams({ agent: id })", "the redirect carries the agent id into the directory");
+  assertContains(legacyAgentLink, 'target.set("tab", requested)', "the redirect forwards the requested tab instead of dropping it");
   assert.match(agents, /<AgentDetailPanel\s/, "agent directory should render the selected agent’s detail panel");
   const agentDetail = read("src/app/(app)/agents/agent-detail-panel.tsx");
   assert.match(agentDetail, /<DeleteAgentDialog\s+agentId=\{agent\.id\}\s+agentName=\{agent\.name\}/,
