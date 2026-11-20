@@ -9,6 +9,14 @@ tagged (e.g. `## [1.2.0] — 2026-07-22`). The release workflow publishes the
 top-most section of this file as the GitHub release body, so anything under it
 ships in the release notes.
 
+## [0.40.0] — 2026-11-20
+
+### Changed
+
+- **The agent profile is seven ordered tabs instead of a scroll.** Overview (sessions, actions, runs), Configuration, Secrets, Instructions and memory, Access and actions, Chat, Runs. A deep link works for every one of them (`/agents?agent=<id>&tab=<tab>`), and the legacy `/agents/<id>?tab=scope` route now forwards the tab it was asked for instead of dropping it and landing on the first section.
+- **Credentials moved into their own tab.** The secrets block no longer renders inline between the configuration strip and the chat; it is a tab with its search, list and add/edit dialog, so the operator stops scrolling past secret names to reach the conversation. The connection banner stays with Configuration, where it explains the fields next to it.
+- **Threads live with the chat that opens them.** The duplicate recent-threads card on the overview is gone; the full thread list sits under Chat.
+
 ## [0.39.1] — 2026-11-19
 
 ### Fixed
