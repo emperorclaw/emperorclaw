@@ -592,7 +592,10 @@ export const tasks = pgTable("tasks", {
     // Which session of that agent holds the lease. lease_owner stores the agent,
     // so a second session cannot pass itself off as the holder (case c87002d6).
     leaseSession: text("lease_session"),
-    leaseUntil: timestamp("lease_until"),
+    // An instant, not a wall clock: the other timestamp columns hold UTC written
+    // by a session pinned to UTC, and a lease read on a host in another zone made a
+    // live lease look expired for an hour (migration 0089).
+    leaseUntil: timestamp("lease_until", { withTimezone: true }),
     retries: integer("retries").default(0).notNull(),
     maxRetries: integer("max_retries").default(3).notNull(),
     slaDueAt: timestamp("sla_due_at"),
