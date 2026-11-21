@@ -194,3 +194,16 @@ test('one live indicator, always after the newest reply', async ({ page }) => {
     await expect(page.locator('.typing-dots')).toHaveCount(0);
     await expect(page.locator('.thinking-glyph')).toHaveCount(1);
 });
+test('history appears still; new rows rise in; finished work collapses instead of vanishing', async ({ page }) => {
+    const history = [message('10', 'Older'), message('20', 'Newer')];
+    await update(page, payload({ messages: history }));
+    await expect(page.locator('.chat-message.row-enter')).toHaveCount(0);
+    await update(page, payload({ messages: [...history, message('30', 'Arrived later')] }));
+    await expect(page.locator('.chat-message.row-enter')).toHaveCount(1);
+    const run = { runId: uuid, agentId: uuid, status: 'running', startedAt: new Date().toISOString(), current: { kind: 'reasoning', summary: 'Thinking it through', sinceMs: 1000 }, steps: [] };
+    await update(page, payload({ messages: history, liveRuns: [run] }));
+    await expect(page.locator('.live-area.is-open .activity')).toHaveCount(1);
+    await update(page, payload({ messages: history, liveRuns: [{ ...run, status: 'completed' }] }));
+    await expect(page.locator('.live-area.is-closing')).toHaveText(/Thinking it through/);
+    await expect(page.locator('.live-area')).toHaveCount(0);
+});

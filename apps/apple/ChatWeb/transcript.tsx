@@ -42,7 +42,9 @@ function Transcript() {
     const [following, setFollowing] = useState(true);
     const [runs, setRuns] = useState<ClientLiveRun[]>([]);
     const scroll = useRef<HTMLDivElement>(null), content = useRef<HTMLDivElement>(null);
-    const follow = useRef(true), placed = useRef(false), lastForce = useRef(0), painted = useRef(false);
+    const follow = useRef(true), placed = useRef(false), lastForce = useRef(0), painted = useRef(false), loadedOnce = useRef(false);
+    // Rows that arrive after the first loaded transcript animate in; history does not.
+    const [settled, setSettled] = useState(false);
     const anchor = useRef<{ id: string; offset: number } | null>(null);
     const spanish = data.locale.startsWith('es');
     useEffect(() => {
@@ -58,6 +60,8 @@ function Transcript() {
                 document.documentElement.classList.toggle('embedded', payload.embedded === true);
                 document.documentElement.classList.toggle('reduced-motion', payload.reducedMotion === true);
                 document.documentElement.style.fontSize = `${16 * Math.max(0.8, Math.min(3.2, payload.textScale ?? 1))}px`;
+                if (loadedOnce.current) setSettled(true);
+                if (payload.loaded) loadedOnce.current = true;
                 setRuns(previous => mergeLiveRuns(previous, payload.liveRuns, Date.now()));
                 setData(payload);
             },
@@ -112,10 +116,10 @@ function Transcript() {
                 {rows.map((message, index) => {
                     const human = message.senderType === 'human', preview = message.preview;
                     const key = chatRowKey(message, data.previews);
-                    return <article key={key} data-message-id={key} className={`chat-message ${human ? 'human' : 'agent'}`}>
+                    return <Row key={key} id={key} animate={settled} className={`chat-message ${human ? 'human' : 'agent'}`}>
                         <header>{human ? (spanish ? 'Tú' : 'You') : message.senderName || data.agentNames[message.senderId ?? ""] || data.title}</header>
                         <RichMessageActionsContext.Provider value={{ sendPrompt: data.mayWrite && !preview ? async prompt => { try { return await request('sendPrompt', { prompt }) === true; } catch { return false; } } : undefined, laterReplies: rows.slice(index + 1).filter(row => row.senderType === 'human').map(row => row.text) }}>
-                            <div className={`body ${preview && !message.text.trim() ? 'is-typing' : ''}`}>{preview ? (message.text.trim() ? <><StreamingMarkdown text={message.text} />{preview.state === 'streaming' && <span className="stream-caret" aria-hidden="true" />}</> : <TypingDots />) : <MarkdownRenderer content={message.text} density="compact" />}
+                            <div className={`body ${preview && !message.text.trim() ? 'is-typing' : ''}`}><SmoothHeight>{preview ? (message.text.trim() ? <><StreamingMarkdown text={message.text} />{preview.state === 'streaming' && <span className="stream-caret" aria-hidden="true" />}</> : <TypingDots />) : <MarkdownRenderer content={message.text} density="compact" />}
                                 {message.metadataJson?.attachments?.map(file => <button className="attachment" key={file.id} type="button" onClick={() => post({ type: 'attachment', file })}>{file.name || (spanish ? 'Abrir archivo' : 'Open attachment')}</button>)}
                                 {preview && (preview.state === 'streaming' || !['capped', 'failed', 'interrupted'].includes(preview.state)
                                     ? <p className="sr-only" role="status">{preview.state === 'streaming' ? (spanish ? 'Respondiendo…' : 'Responding…') : (spanish ? 'Guardando respuesta…' : 'Saving reply…')}</p>
@@ -123,18 +127,18 @@ function Transcript() {
                                 {!human && !preview && message.metadataJson?.hasReasoning && <MessageReasoningDisclosure messageId={message.id} />}
                                 {!human && !preview && data.replyRuns[message.id] && <ReplyRunFooter run={data.replyRuns[message.id]} />}
                                 {human && <p className="text-xs text-zinc-500">{spanish ? 'Recibido por el servidor' : 'Received by server'}</p>}
-                            </div>
+                            </SmoothHeight></div>
                         </RichMessageActionsContext.Provider>
-                    </article>;
+                    </Row>;
                 })}
-                <Activity runs={runs} data={data} spanish={spanish} empty={data.loaded && rows.length === 0} />
+                <Activity runs={runs} data={data} spanish={spanish} empty={data.loaded && rows.length === 0} animate={settled} />
             </div>
         </div>
         {!following && <button id="latest" onClick={() => { follow.current = true; setFollowing(true); if (scroll.current) scroll.current.scrollTop = scroll.current.scrollHeight; }}>{spanish ? 'Último mensaje ↓' : 'Latest message ↓'}</button>}
         </>}
     </NextIntlClientProvider>;
 }
-function Activity({ runs, data, spanish, empty }: { runs: ClientLiveRun[]; data: Payload; spanish: boolean; empty: boolean }) {
+function Activity({ runs, data, spanish, empty, animate }: { runs: ClientLiveRun[]; data: Payload; spanish: boolean; empty: boolean; animate: boolean }) {
     const [now, setNow] = useState(() => Date.now());
     useEffect(() => { const timer = setInterval(() => setNow(Date.now()), 1000); return () => clearInterval(timer); }, []);
     const active = runs.filter(run => run.status === 'running');
@@ -145,22 +149,62 @@ function Activity({ runs, data, spanish, empty }: { runs: ClientLiveRun[]; data:
     const pending = active.length === 0 && typing.length === 0
         ? data.previews.filter(preview => preview.state === 'streaming' && !preview.text.trim() && !preview.finalMessageId).slice(-1)
         : [];
-    return <>
-        {pending.map(preview => <article key={`pending-${preview.responseId}`} className="chat-message agent">
+    const live = [
+        ...pending.map(preview => <Row key={`pending-${preview.responseId}`} animate={animate} className="chat-message agent">
             <header>{preview.agentName || data.agentNames[preview.agentId ?? ''] || data.title}</header>
             <div className="body is-typing"><TypingDots /><span className="sr-only" role="status">{spanish ? 'Respondiendo…' : 'Responding…'}</span></div>
-        </article>)}
-        {empty && active.length === 0 && typing.length === 0 && pending.length === 0 && <div className="chat-empty">
+        </Row>),
+        ...active.map(run => <Row as="section" className="activity" key={run.runId} animate={animate} label={spanish ? 'Actividad del agente' : 'Agent activity'}>
+            <p role="status" className="activity-line"><ThinkingGlyph /><span className="activity-name">{data.agentNames[run.agentId ?? ''] || data.title}</span> <span className="shimmer" key={run.current.summary}>{run.current.summary || (spanish ? 'Pensando…' : 'Thinking…')}</span></p>
+            {lastReasoningLine(run) && <p className="mt-1 text-zinc-400">{lastReasoningLine(run)}</p>}
+            <LiveRunSteps steps={run.steps} usage={run.usage} />
+        </Row>),
+        ...typing.map(participant => <Row as="section" className="activity" key={participant.participantId} animate={animate}><p role="status" className="activity-line"><ThinkingGlyph /><span className="activity-name">{data.agentNames[participant.participantId] || data.title}</span> <span className="shimmer" key={participant.currentActivity}>{participant.currentActivity || (spanish ? 'Pensando…' : 'Thinking…')}</span></p></Row>),
+    ];
+    return <>
+        <LiveArea open={live.length > 0}>{live}</LiveArea>
+        {empty && live.length === 0 && <div className="chat-empty">
             <p className="chat-empty-title">{spanish ? `Empieza una conversación con ${data.title}` : `Start a conversation with ${data.title}`}</p>
             <p>{spanish ? 'Tus mensajes y el trabajo del agente aparecerán aquí.' : 'Your messages and the agent’s work will appear here.'}</p>
         </div>}
-        {active.map(run => <section className="activity" key={run.runId} aria-label={spanish ? 'Actividad del agente' : 'Agent activity'}>
-            <p role="status" className="activity-line"><ThinkingGlyph /><span className="activity-name">{data.agentNames[run.agentId ?? ''] || data.title}</span> <span className="shimmer">{run.current.summary || (spanish ? 'Pensando…' : 'Thinking…')}</span></p>
-            {lastReasoningLine(run) && <p className="mt-1 text-zinc-400">{lastReasoningLine(run)}</p>}
-            <LiveRunSteps steps={run.steps} usage={run.usage} />
-        </section>)}
-        {typing.map(participant => <section className="activity" key={participant.participantId}><p role="status" className="activity-line"><ThinkingGlyph /><span className="activity-name">{data.agentNames[participant.participantId] || data.title}</span> <span className="shimmer">{participant.currentActivity || (spanish ? 'Pensando…' : 'Thinking…')}</span></p></section>)}
     </>;
+}
+
+/** A transcript row; rows that arrive after the transcript is placed rise in once. */
+function Row({ id, animate, className, as = 'article', label, children }: { id?: string; animate: boolean; className: string; as?: 'article' | 'section'; label?: string; children: React.ReactNode }) {
+    const [enter] = useState(animate); // decided at mount, so existing rows never re-animate
+    const Tag = as;
+    return <Tag data-message-id={id} aria-label={label} className={`${className}${enter ? ' row-enter' : ''}`}>{children}</Tag>;
+}
+
+/** Animates its own height to follow its content (streaming text, swaps). */
+function SmoothHeight({ children }: { children: React.ReactNode }) {
+    const inner = useRef<HTMLDivElement>(null);
+    const [height, setHeight] = useState<number>();
+    useLayoutEffect(() => {
+        const node = inner.current; if (!node) return;
+        const measure = () => setHeight(node.offsetHeight);
+        const observer = new ResizeObserver(measure); observer.observe(node);
+        return () => observer.disconnect();
+    }, []);
+    return <div className="smooth-height" style={{ height }}><div ref={inner} className="smooth-height-inner">{children}</div></div>;
+}
+
+/** Live work area: expands open, and on finish fades and collapses instead of vanishing. */
+function LiveArea({ open, children }: { open: boolean; children: React.ReactNode }) {
+    // The last live content is kept only so it can fade out while collapsing.
+    const last = useRef<React.ReactNode>(null);
+    const [mounted, setMounted] = useState(open);
+    // eslint-disable-next-line react-hooks/refs -- exit-animation snapshot, never drives what is current
+    if (open) last.current = children;
+    useEffect(() => {
+        if (open) { setMounted(true); return; }
+        const timer = setTimeout(() => { setMounted(false); last.current = null; }, 560);
+        return () => clearTimeout(timer);
+    }, [open]);
+    if (!open && !mounted) return null;
+    return <div className={`live-area ${open ? 'is-open' : 'is-closing'}`}><div className="live-area-inner">{/* eslint-disable-next-line react-hooks/refs -- exit-animation snapshot */}
+        <SmoothHeight>{open ? children : last.current}</SmoothHeight></div></div>;
 }
 /** Three dots that bounce in sequence: the reply is on its way. */
 function TypingDots() { return <span className="typing-dots" aria-hidden="true"><i /><i /><i /></span>; }
