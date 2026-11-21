@@ -163,7 +163,7 @@ private struct ViewsDirectory: View {
             HStack {
                 Text(collectionLabel).font(.caption2.weight(.semibold)).tracking(2).foregroundStyle(.secondary)
                 Spacer()
-                if !loading { Text("\(views.count) views").font(.caption).foregroundStyle(.secondary).monospacedDigit() }
+                if !loading && error == nil { Text("\(views.count) views").font(.caption).foregroundStyle(.secondary).monospacedDigit() }
             }
             Text("A clearer perspective.").font(.largeTitle.weight(.semibold)).fontDesign(.serif).tracking(-0.8).fixedSize(horizontal: false, vertical: true)
             ScrollView(.horizontal) { HStack(spacing: 8) {
@@ -189,6 +189,12 @@ private struct ViewsDirectory: View {
             NavigationLink { PhoneViewDetail(workspace: workspace, id: view.id) } label: { ViewCollectionCard(view: view, featured: featured) }.buttonStyle(QuietCardPress())
         }
     }
+    private func viewsError(_ error: Error) -> String {
+        if let failure = error as? MobileFailure, case .server(404, let message) = failure, message == "Unsupported mobile operation" {
+            return "Update this instance to show its Views on iPhone."
+        }
+        return error.localizedDescription
+    }
     private func load() async {
         #if DEBUG
         if ViewDesignPreview.enabled { views = ViewDesignPreview.views; loading = false; return }
@@ -199,7 +205,7 @@ private struct ViewsDirectory: View {
             try Task.checkCancellation(); guard requestID == request else { return }
             views = result["views"].items.map(WorkItem.init); error = nil
         } catch is CancellationError { return }
-        catch { guard requestID == request else { return }; self.error = error.localizedDescription; if (error as? MobileFailure)?.invalidatesContent == true { views = [] } }
+        catch { guard requestID == request else { return }; self.error = viewsError(error); if (error as? MobileFailure)?.invalidatesContent == true { views = [] } }
         loading = false
     }
 }

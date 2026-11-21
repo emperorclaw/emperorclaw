@@ -12,10 +12,11 @@ struct EmperorPhoneApp: App {
                 .preferredColorScheme(preferredAppearance)
                 .tint(colorScheme == .dark ? EmperorTheme.brightAccent : EmperorTheme.accent)
                 .task {
-                    push.model = model; model.start(); await push.restore()
+                    push.model = model; model.start()
                     #if DEBUG
-                    if ViewDesignPreview.enabled { model.tab = 4 }
+                    if ViewDesignPreview.enabled || ProcessInfo.processInfo.arguments.contains("--open-views") { model.tab = 4 }
                     #endif
+                    await model.refresh(); await push.restore()
                 }
                 .onOpenURL { url in Task { await model.open(url) } }
                 .sheet(item: $model.destination) { link in ResourceSheet(link: link).environmentObject(model) }
