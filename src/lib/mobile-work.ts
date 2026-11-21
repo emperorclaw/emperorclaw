@@ -21,6 +21,8 @@ async function handler(method: string, path: string[]): Promise<Handler | null> 
     switch (key) {
         case "GET chat": return (await import("@/app/api/chat/route")).GET;
         case "POST chat": return (await import("@/app/api/chat/route")).POST;
+        case "GET chat/reasoning": return (await import("@/app/api/chat/reasoning/route")).GET;
+        case "GET entities": return (await import("@/app/api/ui/entities/route")).GET;
         case "GET conversations": return (await import("@/app/api/chat/threads/route")).GET;
         case "GET groups": return (await import("@/app/api/groups/route")).GET;
         case "GET projects": return (await import("@/app/api/projects/route")).GET;
@@ -37,6 +39,7 @@ async function handler(method: string, path: string[]): Promise<Handler | null> 
         if (path[0] === "tasks" && method === "PATCH") return async (r) => (await import("@/app/api/tasks/[id]/route")).PATCH(r, { params: Promise.resolve({ id: path[1] }) });
     }
     if (path.length === 3 && /^[0-9a-f-]{36}$/i.test(path[1])) {
+        if (path[0] === "runs" && path[2] === "events" && method === "GET") return async (r) => (await import("@/app/api/runs/[runId]/events/route")).GET(r, { params: Promise.resolve({ runId: path[1] }) });
         if (path[0] === "tasks" && path[2] === "notes" && method === "POST") return async (r) => (await import("@/app/api/tasks/[id]/notes/route")).POST(r, { params: Promise.resolve({ id: path[1] }) });
         if (path[0] === "agents" && path[2] === "control" && method === "POST") return async (r) => (await import("@/app/api/agents/[id]/control/route")).POST(r, { params: Promise.resolve({ id: path[1] }) });
         if (path[0] === "agents" && path[2] === "pause" && method === "PATCH") return async (r) => {

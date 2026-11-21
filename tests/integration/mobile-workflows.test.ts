@@ -56,3 +56,37 @@ maybe('approval details use current decision permissions and first decision wins
     assert.equal(rejected.status, 200, JSON.stringify(await rejected.clone().json()));
     assert.equal((await call(c, `approvals/${approval.id}`, 'PATCH', { status: 'approved' })).status, 409);
 });
+maybe('mobile rich chat reads preserve company isolation and private reasoning access', async () => {
+    await resetDb(); actAs(null);
+    const c = await connection(), other = await connection();
+    const agent = await seedAgent(c.companyId), outsider = await seedAgent(other.companyId);
+    const { db } = await import('@/db');
+    const { messageThreads, threadMessages, threadMessageReasoning, agentRuns } = await import('@/db/schema');
+    const [thread] = await db.insert(messageThreads).values({ companyId: c.companyId, type: 'direct', directAgentId: agent.id, ownerUserId: c.human.userId, isPrivate: true }).returning();
+    const [message] = await db.insert(threadMessages).values({ companyId: c.companyId, threadId: thread.id, senderType: 'agent', senderId: agent.id, text: 'Visible reply' }).returning();
+    await db.insert(threadMessageReasoning).values({ companyId: c.companyId, messageId: message.id, reasoning: 'Authorized reasoning' });
+    const [run] = await db.insert(agentRuns).values({ id: randomUUID(), companyId: c.companyId, agentId: agent.id, threadId: thread.id, status: 'succeeded', replyMessageId: message.id }).returning();
+    const { mobileWork } = await import('@/lib/mobile-work');
+    const read = (identity: typeof c, path: string[], query = '') => mobileWork(makeRequest(`https://example.com/native?${query}`, { headers: { authorization: `Bearer ${identity.token}` } }), identity.companyId, path);
+    const reasoning = await read(c, ['chat', 'reasoning'], `messageId=${message.id}`);
+    assert.equal(reasoning.status, 200); assert.equal((await reasoning.json()).reasoning, 'Authorized reasoning');
+    assert.equal((await (await read(other, ['chat', 'reasoning'], `messageId=${message.id}`)).json()).reasoning, null);
+    const refs = `refs=agent:${agent.id},agent:${outsider.id}`;
+    const entities = await read(c, ['entities'], refs);
+    assert.equal(entities.status, 200);
+    const summaries = (await entities.json()).entities;
+    assert.equal(summaries[`agent:${agent.id}`].title, agent.name);
+    assert.equal(summaries[`agent:${outsider.id}`], null);
+    assert.equal((await read(c, ['runs', run.id, 'events'])).status, 200);
+    assert.equal((await read(other, ['runs', run.id, 'events'])).status, 404);
+    // Even an administrator of the same company does not gain the owner's DM.
+    const peer = await seedHuman(c.companyId, 'admin');
+    const auth = await import('@/lib/mobile-auth');
+    const verifier = 'p'.repeat(43);
+    const code = await auth.issueMobileCode(peer.sessionId, peer.userId, createHash('sha256').update(verifier).digest('base64url'), 'Peer phone');
+    const tokens = await auth.exchangeMobileCode(code, verifier);
+    const peerIdentity = { ...c, human: peer, token: tokens.accessToken };
+    assert.equal((await (await read(peerIdentity, ['chat', 'reasoning'], `messageId=${message.id}`)).json()).reasoning, null);
+    const redacted = await read(peerIdentity, ['runs', run.id, 'events']);
+    assert.equal(redacted.status, 200); assert.equal((await redacted.json()).redacted, true);
+});

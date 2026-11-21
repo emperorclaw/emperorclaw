@@ -1,6 +1,6 @@
 {
   "name": "emperor-claw",
-  "version": "0.42.0",
+  "version": "0.42.1",
   "private": true,
   "engines": {
     "node": ">=20"
@@ -33,7 +33,9 @@
     "db:migrate": "npx tsx src/db/migrate.ts",
     "storage:reconcile": "npx tsx scripts/reconcile-artifact-storage.ts",
     "firmware:build": "npx tsx scripts/build-display-firmware.ts",
-    "test:e2e": "playwright test -c tests/e2e/playwright.config.ts"
+    "test:e2e": "playwright test -c tests/e2e/playwright.config.ts",
+    "build:apple-chat": "node apps/apple/scripts/build-chat-web.mjs",
+    "test:apple-chat": "npm run build:apple-chat && playwright test -c apps/apple/ChatWeb/playwright.config.ts"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",

@@ -29,6 +29,11 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Verify bundled Apple chat matches the web renderer
+        run: |
+          npm run build:apple-chat
+          git diff --exit-code -- apps/apple/iPhone/ChatWeb
+
       # Advisory until the ~22 pre-existing lint errors are burned down; then
       # drop continue-on-error to make it a hard gate.
       - name: Lint (advisory)
@@ -369,3 +374,21 @@ jobs:
       - name: Windows installer smoke test (mocked Docker and downloads)
         shell: powershell
         run: .\tests\windows-installer-smoke.ps1
+
+  apple-chat-web:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - run: npm ci
+      - run: npx playwright install --with-deps webkit
+      - run: npm run test:apple-chat
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: apple-chat-webkit-traces
+          path: /tmp/emperor-chat-playwright
+          retention-days: 7

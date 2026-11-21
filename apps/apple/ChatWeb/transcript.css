@@ -1,0 +1,23 @@
+@source './*.tsx';
+@source '../../../src/components/ui';
+@source '../../../src/components/message-reasoning-disclosure.tsx';
+@source '../../../src/components/markdown-renderer.tsx';
+@source '../../../src/components/rich';
+@source '../../../src/components/chat/streaming-markdown.tsx';
+@source '../../../src/components/run-timeline.tsx';
+html, body, #root { height: 100%; margin: 0; overflow: hidden; }
+body { font: -apple-system-body; background: transparent; color: var(--foreground); -webkit-text-size-adjust: 100%; }
+#transcript { height: 100%; overflow: auto; overscroll-behavior: contain; overflow-anchor: none; padding: 14px; box-sizing: border-box; }
+.chat-message { margin: 0 0 14px; min-width: 0; overflow-wrap: anywhere; }
+.chat-message > header { font-size: 12px; color: var(--muted-foreground); margin-bottom: 5px; }
+.chat-message .body { border-radius: 14px; padding: 12px; background: color-mix(in srgb, var(--foreground) 6%, transparent); }
+.chat-message.human .body { background: color-mix(in srgb, cyan 10%, transparent); }
+.chat-message button, #transcript > button, .attachment { min-height: 44px; }
+#latest { position: fixed; bottom: 10px; right: 16px; min-height: 44px; padding: 6px 14px; border-radius: 24px; background: var(--background); border: 1px solid var(--border); box-shadow: 0 2px 8px #0003; }
+.attachment { display: flex; align-items: center; color: var(--color-cyan-400); }
+.activity { font-size: 12px; padding: 12px; border-left: 2px solid var(--color-cyan-400); margin-bottom: 12px; }
+.markdown-content pre, .markdown-content table { max-width: 100%; }
+.markdown-content pre { overflow-x: auto; }
+
+/* Preserve readable cells on a narrow phone; the shared wrapper scrolls. */
+.markdown-content table { min-width: 28rem; }

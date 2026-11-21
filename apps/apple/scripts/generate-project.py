@@ -40,9 +40,12 @@ for path in shared + sorted((ROOT / 'iPhone').glob('*.swift')) + sorted((ROOT / 
 privacy = obj('PrivacyInfo.xcprivacy', 'PBXFileReference', lastKnownFileType='text.xml', path='PrivacyInfo.xcprivacy', sourceTree='<group>')
 file_refs['PrivacyInfo.xcprivacy'] = privacy
 
+chat_web = obj('ChatWeb', 'PBXFileReference', lastKnownFileType='folder', path='iPhone/ChatWeb', sourceTree='<group>')
+file_refs['ChatWeb'] = chat_web
+
 def privacy_resources(name):
     entry = obj(name + 'PrivacyFile', 'PBXBuildFile', fileRef=privacy)
-    return obj(name + 'Resources', 'PBXResourcesBuildPhase', buildActionMask='2147483647', files=[entry], runOnlyForDeploymentPostprocessing='0')
+    return obj(name + 'Resources', 'PBXResourcesBuildPhase', buildActionMask='2147483647', files=[entry] + ([obj('ChatWebBuild', 'PBXBuildFile', fileRef=chat_web)] if name == 'EmperorPhone' else []), runOnlyForDeploymentPostprocessing='0')
 
 package = obj('package', 'XCLocalSwiftPackageReference', relativePath='.')
 

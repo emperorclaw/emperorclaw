@@ -9,6 +9,19 @@ tagged (e.g. `## [1.2.0] — 2026-07-22`). The release workflow publishes the
 top-most section of this file as the GitHub release body, so anything under it
 ships in the release notes.
 
+## [0.42.1] — 2026-11-21
+
+### Fixed
+
+- **iPhone chat history and live replies.** Conversations open at the latest message even when older pages exist. Reading older messages preserves the visible position; partial replies follow the live edge and reconcile with their saved reply without duplication. New conversations and delayed requests remain isolated.
+- **Web rendering in the iPhone chat.** An offline transcript reuses the web's Markdown, tables, code, charts, statistics, tabs, choices and sandboxed widgets, while retaining the native composer, Keychain session and attachment viewer.
+- **Agent activity and chat details.** Mobile chat displays the server's live run/tool steps, available reasoning, participant activity and reply summaries. Explicit read endpoints expose authorized entity cards, saved reasoning and run timelines through the existing company/private-chat guards.
+
+### Upgrade
+
+- No new database migration. Actual partial replies retain the existing opt-in requirement: `EMPEROR_CHAT_STREAMING=1` and a compatible Hermes bridge. This patch does not enable that server rollout flag automatically.
+- Updated Apple app sources must be rebuilt and installed; a server update alone does not replace the iPhone or Watch app. App Store distribution remains pending.
+
 ## [0.42.0] — 2026-11-21
 
 ### Added

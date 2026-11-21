@@ -1,6 +1,6 @@
 # EmperorClaw for iPhone and Apple Watch
 
-Native SwiftUI apps for existing, independently hosted EmperorClaw installations. Minimum iOS 17/watchOS 10. SwiftUI keeps phone and watch on one Apple stack; Android is outside this scope.
+SwiftUI apps for existing, independently hosted EmperorClaw installations. Minimum iOS 17/watchOS 10. SwiftUI keeps phone and watch on one Apple stack; Android is outside this scope.
 
 ## Implemented experience
 
@@ -30,9 +30,10 @@ Work routes reuse existing role, company, agent and private-chat checks. Mutatio
 
 ## Source and verification
 
-`Sources/EmperorCore` contains transport/models/security; `Shared` contains workflows, connection state, push and Watch Connectivity; `iPhone`, `Watch`, `Widgets` contain platform entry points. Regenerate the dependency-free project after adding sources:
+`Sources/EmperorCore` contains transport/models/security; `Shared` contains workflows, connection state, push and Watch Connectivity; `iPhone`, `Watch`, `Widgets` contain platform entry points. The iPhone chat reuses the web renderer in an offline WKWebView; see [the chat implementation](ChatWeb/README.md). Regenerate the dependency-free project after adding sources:
 
 ```sh
+npm run build:apple-chat
 python3 apps/apple/scripts/generate-project.py
 swift test --package-path apps/apple
 bash apps/apple/scripts/typecheck.sh
@@ -47,4 +48,4 @@ Validation on 2026-11-21: 10 shared Swift tests, both app and widget SDK typeche
 Xcode system components were repaired with `xcodebuild -runFirstLaunch`. Full Debug simulator and unsigned Release/device builds now pass for iPhone, embedded Watch and both widget extensions. The apps install and launch on iOS 27.2 and watchOS 27.2 simulators; their initial screens were reviewed. Simulator installation caught a missing widget `CFBundleName`, now fixed; the Watch connections button contrast and universal orientations were also corrected. See [the validation record](QA/README.md).
 
 Interactive testing uses Xcode 27 Device Hub (`Xcode.app/Contents/Applications/DeviceHub.app`), which now hosts the simulators. Use the signed simulator build commands above: disabling signing removes Keychain entitlements and causes error -34018 after an otherwise successful login. Authenticated simulator checks now cover browser consent, secure credential persistence across relaunch, live fleet loading and chat read/send acknowledgement; see QA for remaining acceptance work.
-Before release: test authentication, three or more VPS connections, offline/retry/revocation, phone/watch handoff and real APNs on devices; validate small screens, Dynamic Type, VoiceOver, reduced motion and battery/network use; finish app icons, localization, App Store metadata/privacy disclosures and signing. The included privacy manifest declares UserDefaults usage for the app and App Group; publisher privacy disclosures still require review. No app, relay or server changes have been deployed or published.
+Before release: test authentication, three or more VPS connections, offline/retry/revocation, phone/watch handoff and real APNs on devices; validate small screens, Dynamic Type, VoiceOver, reduced motion and battery/network use; finish app icons, localization, App Store metadata/privacy disclosures and signing. The included privacy manifest declares UserDefaults usage for the app and App Group; publisher privacy disclosures still require review. The mobile connectivity server release v0.42.0 has been published; Apple distribution remains pending.

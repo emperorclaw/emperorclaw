@@ -124,8 +124,12 @@ struct ChatScreen: View {
     var agentID: String? = nil
     var groupID: String? = nil
     var context: String? = nil
-    @State private var messages: [WorkItem] = []
-    @State private var previews: [WorkItem] = []
+    @State private var transcript = ChatTranscript()
+    @State private var loadingOlder = false
+    @State private var regularRequest = UUID()
+    @State private var forceBottom = 0
+    @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.openURL) private var openURL
     @State private var draft = ""
     @State private var sendID = UUID()
     @State private var sending = false
@@ -136,12 +140,12 @@ struct ChatScreen: View {
     @State private var chatOptions: [WorkItem] = []
     @State private var showChats = false
     @State private var newChat = false
-    @State private var hasMore = false
+    @State private var newChatKey = UUID()
     @State private var previewURL: URL?
     @State private var createTask = false
     @State private var attemptedText: String?
     @Environment(\.scenePhase) private var scene
-    var key: String { "draft:\(workspace.id):\(workspace.companyID ?? ""):\(agentID ?? groupID ?? "team"):\(directID ?? "main")" }
+    var key: String { "draft:\(workspace.id):\(workspace.companyID ?? ""):\(agentID ?? groupID ?? "team"):\(newChat ? "new-" + newChatKey.uuidString : directID ?? "main")" }
     var query: [String: String] {
         var q: [String: String] = ["limit": "50"]
         if let agentID { q["targetAgentId"] = agentID }
@@ -152,26 +156,21 @@ struct ChatScreen: View {
     var body: some View {
         VStack(spacing: 0) {
             if let context { Text(context).font(.caption).padding(10).frame(maxWidth: .infinity, alignment: .leading).background(.thinMaterial) }
-            ScrollViewReader { proxy in
-                ScrollView {
-                    LazyVStack(alignment: .leading, spacing: 14) {
-                        if hasMore { Button("Load earlier messages") { Task { await load(older: true) } } }
-                        ForEach(messages) { message in
-                            VStack(alignment: .leading, spacing: 5) {
-                                Text(message["senderType"].text == "human" ? "You" : title).font(.caption.bold()).foregroundStyle(.secondary)
-                                Text(.init(message["text"].text))
-                                let files = message["metadataJson"]["attachments"].items
-                                ForEach(Array(files.enumerated()), id: \.offset) { _, file in
-                                    Button(file["name"].text.isEmpty ? "Open attachment" : file["name"].text) { Task { await openAttachment(file) } }
-                                }
-                                if message["senderType"].text == "human" { Text(message["deliveryState"].text == "failed" ? "Delivery failed" : "Received by server").font(.caption2).foregroundStyle(.secondary) }
-                            }.padding(12).frame(maxWidth: .infinity, alignment: .leading).background(message["senderType"].text == "human" ? Color.cyan.opacity(0.10) : Color.secondary.opacity(0.08), in: RoundedRectangle(cornerRadius: 14)).id(message.id)
-                        }
-                        ForEach(previews) { preview in Text(.init(preview["text"].text)).padding(12).background(.thinMaterial, in: RoundedRectangle(cornerRadius: 14)) }
-                        Color.clear.frame(height: 1).id("bottom")
-                    }.padding()
-                }.onChange(of: messages.count) { _, _ in if !hasMore { proxy.scrollTo("bottom", anchor: .bottom) } }
-            }
+            #if os(iOS)
+            ChatWebView(payload: webPayload, workspace: workspace, client: model.client,
+                loadOlder: { Task { await load(older: true) } },
+                sendPrompt: { prompt in
+                    guard !sending, model.mayWrite else { return false }
+                    guard draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty, attachments.isEmpty else { error = "Send or clear your draft before choosing a reply."; return false }
+                    draft = prompt
+                    return await send()
+                },
+                openAttachment: { file in Task { await openAttachment(file) } },
+                openLink: { url in openURL(url) })
+                .id(key)
+            #else
+            watchTranscript
+            #endif
             if let error { Text(error).font(.caption).foregroundStyle(.orange).padding(8) }
             if error != nil { Button("Start a new message") { draft = ""; attachments = []; sendID = UUID(); error = nil } .font(.caption) }
             if !attachments.isEmpty { Text("\(attachments.count) attachment(s) ready").font(.caption).padding(5) }
@@ -186,22 +185,25 @@ struct ChatScreen: View {
         .navigationTitle(title)
         .onAppear { draft = UserDefaults.standard.string(forKey: key) ?? ""; if let saved = UserDefaults.standard.string(forKey: key + ":command"), let id = UUID(uuidString: saved) { sendID = id }; if draft.isEmpty, let context { draft = "\(context)\n\n" } }
         .onChange(of: draft) { _, value in UserDefaults.standard.set(value, forKey: key); if let attemptedText, attemptedText != value, !sending { sendID = UUID(); self.attemptedText = nil; UserDefaults.standard.removeObject(forKey: key + ":command") } }
-        .task(id: "\(scene):\(directID ?? "")") {
+        .task(id: "\(scene):\(key)") {
             guard scene == .active else { return }; await load()
-            while !Task.isCancelled { do { try await Task.sleep(for: .seconds(4)) } catch { break }; await load() }
+            while !Task.isCancelled {
+                do { try await Task.sleep(for: .milliseconds(transcript.liveRuns.contains { $0["status"].text == "running" } || !transcript.previews.isEmpty ? 1500 : 3000)) } catch { break }
+                await load()
+            }
         }
         .toolbar {
-            if agentID != nil { ToolbarItem(placement: .topBarTrailing) { Button("Chats") { Task { await listChats() } } } }
+            if agentID != nil { ToolbarItem(placement: .topBarTrailing) { Button("Chats") { Task { await listChats() } }.disabled(sending) } }
             #if os(iOS)
             ToolbarItem(placement: .topBarTrailing) { Button { createTask = true } label: { Image(systemName: "checklist") }.accessibilityLabel("Create task from conversation") }
             #endif
         }
-        .sheet(isPresented: $createTask) { NavigationStack { NewTaskScreen(workspace: workspace, initialText: messages.suffix(6).map { $0["text"].text }.joined(separator: "\n\n")) } }
+        .sheet(isPresented: $createTask) { NavigationStack { NewTaskScreen(workspace: workspace, initialText: transcript.messages.suffix(6).map { $0["text"].text }.joined(separator: "\n\n")) } }
         .sheet(isPresented: $showChats) {
             NavigationStack { List {
-                Button("Main conversation") { directID = nil; messages = []; showChats = false }
-                ForEach(chatOptions) { chat in Button(chat["title"].text.isEmpty ? "Conversation" : chat["title"].text) { directID = chat.id; messages = []; draft = UserDefaults.standard.string(forKey: key) ?? ""; showChats = false } }
-                Button("New conversation") { newChat = true; directID = nil; messages = []; draft = ""; showChats = false }
+                Button("Main conversation") { switchConversation(nil); showChats = false }
+                ForEach(chatOptions) { chat in Button(chat["title"].text.isEmpty ? "Conversation" : chat["title"].text) { switchConversation(chat.id); showChats = false } }
+                Button("New conversation") { switchConversation(nil); newChatKey = UUID(); newChat = true; draft = ""; sendID = UUID(); showChats = false }
             }.navigationTitle("Conversations") }
         }
         #if os(iOS)
@@ -211,22 +213,85 @@ struct ChatScreen: View {
         .quickLookPreview($previewURL)
         #endif
     }
+    private var webPayload: JSONValue {
+        guard case .object(var data) = transcript.payload else { return .null }
+        data["agentNames"] = .object(Dictionary((model.snapshots[workspace.id]?.agents ?? []).map { ($0.id, JSONValue.string($0.name)) }, uniquingKeysWith: { _, b in b }))
+        data["title"] = .string(title); data["locale"] = .string(Locale.current.identifier)
+        data["mayWrite"] = .bool(model.mayWrite && !sending)
+        data["forceBottom"] = .number(Double(forceBottom))
+        data["dark"] = .bool(colorScheme == .dark); data["loadingOlder"] = .bool(loadingOlder)
+        return .object(data)
+    }
+    private func switchConversation(_ id: String?) {
+        directID = id; newChat = false; transcript = ChatTranscript(); attachments = []; error = nil
+        regularRequest = UUID(); loadingOlder = false; attemptedText = nil
+        draft = UserDefaults.standard.string(forKey: key) ?? ""
+        sendID = UserDefaults.standard.string(forKey: key + ":command").flatMap(UUID.init(uuidString:)) ?? UUID()
+    }
+    #if os(watchOS)
+    private var watchTranscript: some View {
+        ScrollViewReader { proxy in
+            ScrollView {
+                LazyVStack(alignment: .leading, spacing: 12) {
+                    if transcript.hasMore { Button("Load earlier messages") { Task { await load(older: true) } }.disabled(loadingOlder) }
+                    ForEach(transcript.messages) { message in
+                        VStack(alignment: .leading, spacing: 5) {
+                            Text(message["senderType"].text == "human" ? "You" : title).font(.caption.bold()).foregroundStyle(.secondary)
+                            Text(.init(message["text"].text))
+                        }.id(message.id)
+                    }
+                    ForEach(visibleWatchPreviews) { preview in
+                        VStack(alignment: .leading) {
+                            Text(.init(preview["text"].text))
+                            Text(preview["state"].text == "streaming" ? "Responding…" : "Response pending or interrupted").font(.caption2)
+                        }
+                    }
+                    ForEach(transcript.liveRuns.filter { $0["status"].text == "running" }.map { WorkItem(.object(["id": $0["runId"], "current": $0["current"]])) }) { run in
+                        Label(run["current"]["summary"].text.isEmpty ? "Working…" : run["current"]["summary"].text, systemImage: "gearshape.2").font(.caption)
+                    }
+                    Color.clear.frame(height: 1).id("bottom")
+                }.padding(8)
+            }
+            .defaultScrollAnchor(.bottom)
+            .onChange(of: forceBottom) { _, _ in proxy.scrollTo("bottom", anchor: .bottom) }
+        }
+    }
+    private var visibleWatchPreviews: [WorkItem] {
+        let ids = Set(transcript.messages.map(\.id))
+        return transcript.previews.filter { !ids.contains($0["finalMessageId"].text) }.map { value in
+            guard case .object(var map) = value else { return WorkItem(value) }
+            map["id"] = value["responseId"]; return WorkItem(.object(map))
+        }
+    }
+    #endif
     private func load(older: Bool = false) async {
+        if newChat { transcript.receive(.object(["messages": .array([]), "hasMore": .bool(false)])); return }
+        let requestKey = key, requestID = UUID()
+        if older { guard !loadingOlder else { return }; loadingOlder = true }
+        else { regularRequest = requestID }
+        defer { if older && requestKey == key { loadingOlder = false } }
         do {
             var q = query
-            if older { q["before"] = messages.first?["createdAt"].text }
+            if older { q["before"] = transcript.messages.first?["createdAt"].text }
             let response = try await model.client.work(workspace, path: "chat", query: q)
-            let incoming = response["messages"].items.map(WorkItem.init)
-            if older { let ids = Set(messages.map(\.id)); messages = incoming.filter { !ids.contains($0.id) } + messages }
-            else { let ids = Set(incoming.map(\.id)); messages = messages.filter { !ids.contains($0.id) } + incoming; messages.sort { $0["createdAt"].text < $1["createdAt"].text } }
-            hasMore = response["hasMore"].flag
-            var previewQuery = query; previewQuery["previews"] = "1"
-            let live = try await model.client.work(workspace, path: "chat", query: previewQuery)
-            previews = live["previews"].items.filter { $0["state"].text == "streaming" || $0["state"].text == "open" }.map { value in var map = ["id": JSONValue.string(value["responseId"].text)]; map["text"] = value["text"]; return WorkItem(.object(map)) }
+            guard !Task.isCancelled, key == requestKey, older || regularRequest == requestID else { return }
+            transcript.receive(response, older: older)
             error = nil
-        } catch { self.error = error.localizedDescription; if (error as? MobileFailure)?.invalidatesContent == true { messages = []; previews = [] } }
+            if !older {
+                var previewQuery = query; previewQuery["previews"] = "1"
+                let live = try await model.client.work(workspace, path: "chat", query: previewQuery)
+                guard !Task.isCancelled, key == requestKey, regularRequest == requestID else { return }
+                transcript.receivePreviews(live)
+            }
+        } catch {
+            guard !Task.isCancelled, key == requestKey, older || regularRequest == requestID else { return }
+            self.error = error.localizedDescription
+            if (error as? MobileFailure)?.invalidatesContent == true { transcript = ChatTranscript() }
+        }
     }
-    private func send() async {
+    private func send() async -> Bool {
+        guard !sending, model.mayWrite else { return false }
+        let requestKey = key
         sending = true; defer { sending = false }
         do {
             let savedDraftKey = key
@@ -237,11 +302,13 @@ struct ChatScreen: View {
             if let agentID { body["targetAgentId"] = .string(agentID) }; if let groupID { body["threadId"] = .string(groupID) }; if let directID { body["directThreadId"] = .string(directID) }
             if newChat { body["newChat"] = .object(["clientKey": .string(sendID.uuidString)]) }
             let result = try await model.client.work(workspace, path: "chat", method: "POST", body: .object(body), commandID: sendID)
+            guard key == requestKey else { return false }
             if newChat { directID = result["thread"]["id"].text; newChat = false }
-            draft = ""; attachments = []; sendID = UUID(); error = nil; await load()
+            draft = ""; attachments = []; sendID = UUID(); error = nil; forceBottom += 1; await load()
             UserDefaults.standard.removeObject(forKey: savedDraftKey)
             UserDefaults.standard.removeObject(forKey: savedDraftKey + ":command"); attemptedText = nil
-        } catch { self.error = error.localizedDescription }
+            return true
+        } catch { if key == requestKey { self.error = error.localizedDescription }; return false }
     }
     private func listChats() async { guard let agentID else { return }; do { chatOptions = try await model.client.work(workspace, path: "conversations", query: ["agentId": agentID])["chats"].items.map(WorkItem.init); showChats = true } catch { self.error = error.localizedDescription } }
     private func openAttachment(_ file: JSONValue) async {

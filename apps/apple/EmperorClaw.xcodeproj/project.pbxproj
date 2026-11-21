@@ -35,6 +35,12 @@
 			"path" = "Shared/WorkViews.swift";
 			"sourceTree" = "<group>";
 		};
+		"CEF7A20287C825CAC988F4CD" = {
+			"isa" = "PBXFileReference";
+			"lastKnownFileType" = "sourcecode.swift";
+			"path" = "iPhone/ChatWebView.swift";
+			"sourceTree" = "<group>";
+		};
 		"AE5C370FCD3791D869306FB3" = {
 			"isa" = "PBXFileReference";
 			"lastKnownFileType" = "sourcecode.swift";
@@ -63,6 +69,12 @@
 			"isa" = "PBXFileReference";
 			"lastKnownFileType" = "text.xml";
 			"path" = "PrivacyInfo.xcprivacy";
+			"sourceTree" = "<group>";
+		};
+		"AC5EA28A09717838C9BBE6CA" = {
+			"isa" = "PBXFileReference";
+			"lastKnownFileType" = "folder";
+			"path" = "iPhone/ChatWeb";
 			"sourceTree" = "<group>";
 		};
 		"BC4A71180870F7945155FBB0" = {
@@ -523,6 +535,10 @@
 			"isa" = "PBXBuildFile";
 			"fileRef" = "10E521E5BB6699EBC54C0834";
 		};
+		"12DB38A45B618A08DA9C0C04" = {
+			"isa" = "PBXBuildFile";
+			"fileRef" = "CEF7A20287C825CAC988F4CD";
+		};
 		"E6E7515FDDBEF144E00D4288" = {
 			"isa" = "PBXBuildFile";
 			"fileRef" = "AE5C370FCD3791D869306FB3";
@@ -544,6 +560,7 @@
 				"994561A04FA8A8C45AC96094",
 				"AAFB82D793ED10299D8CB3D3",
 				"82AEC999A2D1017E1605B151",
+				"12DB38A45B618A08DA9C0C04",
 				"E6E7515FDDBEF144E00D4288",
 				"773BD53107C50DFC3094822B",
 				"B5F6B423C031F192A6244CA0",
@@ -562,11 +579,16 @@
 			"isa" = "PBXBuildFile";
 			"fileRef" = "6D123AE8AB04EEE632CC6C18";
 		};
+		"754E40C477CA5781AFD80948" = {
+			"isa" = "PBXBuildFile";
+			"fileRef" = "AC5EA28A09717838C9BBE6CA";
+		};
 		"E1B39D9F230B1044D94F723C" = {
 			"isa" = "PBXResourcesBuildPhase";
 			"buildActionMask" = "2147483647";
 			"files" = (
 				"5BB0FE5E64A15936F13DAAF2",
+				"754E40C477CA5781AFD80948",
 			);
 			"runOnlyForDeploymentPostprocessing" = "0";
 		};
@@ -732,11 +754,13 @@
 				"932C61C46ADB90AAEDA3979F",
 				"2E2FABAB3D34E765D099FBB7",
 				"10E521E5BB6699EBC54C0834",
+				"CEF7A20287C825CAC988F4CD",
 				"AE5C370FCD3791D869306FB3",
 				"78492DAD9EAB974DA5EBE1E9",
 				"30D25A41EEDC2E24B272873F",
 				"DF616F1C59212219EFE04B10",
 				"6D123AE8AB04EEE632CC6C18",
+				"AC5EA28A09717838C9BBE6CA",
 				"949BC4BD2DD255B20433C109",
 				"4EDC8BFAFC6BD936B849F38C",
 			);

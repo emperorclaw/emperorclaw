@@ -22,3 +22,25 @@ Reproduce builds with the commands in the parent README. Existing artifacts for 
 The initial startup record was followed by an ad hoc signed simulator build and authenticated testing against the user’s HTTPS instance. OAuth consent completed, a real agent conversation loaded, and the user’s test message was acknowledged by the server. After terminating and relaunching the app, the saved connection loaded the authorized company and live fleet again without another login, verifying Keychain persistence. The unsigned build’s Keychain -34018 failure was resolved by enabling simulator signing. Physical-device testing and real APNs delivery remain pending. Xcode 27 hosts simulator interaction in `Contents/Applications/DeviceHub.app` (Device Hub), which is accessible through the visual controller. Use ad hoc signing for simulator testing: `CODE_SIGNING_ALLOWED=YES CODE_SIGN_IDENTITY=-`. An unsigned build reached the OAuth callback but failed to save credentials with Keychain error -34018; rebuilding with signing creates the required application-identifier entitlements.
 
 Before distribution, broaden validation of refresh/revocation against a development HTTPS server; at least three installations and two companies; scoped/private chat, tasks, attachments and approval races; phone/watch credential handoff and independent selection; offline retries and deep links; APNs enrollment/delivery/token rotation; configurable widgets; accessibility, localization, screen sizes and battery/network behavior. Configure signing/App Groups/APNs, final app icons, App Store metadata and privacy disclosures. No production database, VPS or Apple distribution account was changed.
+
+## Chat corrections
+
+The iPhone transcript now bundles the web's actual Markdown/rich renderer. A
+signed simulator installation connected to `brain.malecu.eu` opened Builder's
+existing conversation at its newest reply; its Markdown table, inline code,
+formatted paragraphs and worked/tools/token/model footer rendered correctly.
+No test prompt was sent and no agent work was started during this check.
+
+Automated validation: 14 Swift core tests; 13 mobile integration tests against a
+fresh disposable PostgreSQL database (including cross-company entity isolation,
+private reasoning and redacted private run timelines); 40 focused chat/rich/mobile
+unit tests; six mobile WebKit regressions for long-history initial position,
+reader/pagination anchoring, partial-to-final replacement, real rich components,
+choice/widget actions, live activity and lazy native resource loading. TypeScript,
+focused ESLint and a signed full iPhone/embedded Watch/widget build pass.
+
+See `ChatWeb/README.md` for the restricted native bridge, bundle regeneration and
+server streaming prerequisites. The authenticated Brain preview response reported `streaming=false`; live partial
+token delivery therefore remains disabled on this deployment. Test fixtures
+prove client rendering; enabling the existing server rollout flag and checking
+a compatible runtime are still required to verify real partial delivery.
