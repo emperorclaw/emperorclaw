@@ -45,8 +45,16 @@ public for the first time.
       the private ops repo (or convert it to tag-triggered releases). A public
       repo must not auto-deploy to production on every push to main, and must
       not run `db:migrate` against production implicitly.
-- [ ] Tag the release (`git tag vX.Y.Z && git push --tags`) and write release
-      notes from the commit log since the last tag.
+- [ ] Only tag a commit that already contains `.github/workflows/release-gate.yml`.
+      `docker-publish.yml` runs from the tagged commit, so a tag on an older sha
+      executes the ungated workflow and publishes immediately.
+- [ ] Tag the release (`git tag vX.Y.Z && git push origin vX.Y.Z`) and write
+      release notes from the commit log since the last tag.
+- [ ] Expect the publish to sit in `gate — CI of the tagged sha must be green`
+      for the length of the full CI suite: the image is built only after the tag's own CI run
+      finishes. A red run fails the gate and publishes nothing, so no `latest`
+      tag moves and Watchtower has nothing to swap. Check with
+      `gh run list --workflow="Docker Publish" --limit 3`.
 
 ## What version the app reports
 

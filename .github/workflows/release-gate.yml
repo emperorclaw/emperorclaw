@@ -1,0 +1,142 @@
+name: Release gate
+
+on:
+  workflow_call:
+    inputs:
+      sha:
+        description: Commit the tag points at.
+        required: true
+        type: string
+      ref_name:
+        description: Ref whose CI run must be green (the tag name).
+        required: true
+        type: string
+      grace_minutes:
+        description: How long to wait for the CI run to appear.
+        required: false
+        default: 15
+        type: number
+      timeout_minutes:
+        description: Hard cap for the CI run to finish.
+        required: false
+        default: 90
+        type: number
+
+jobs:
+  ci-green:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    permissions:
+      contents: read
+      actions: read
+
+    steps:
+      - name: Wait for CI of the tagged sha to finish green
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SHA: ${{ inputs.sha }}
+          REF: ${{ inputs.ref_name }}
+          GRACE_MINUTES: ${{ inputs.grace_minutes }}
+          TIMEOUT_MINUTES: ${{ inputs.timeout_minutes }}
+        run: |
+          set -euo pipefail
+
+          start=$SECONDS
+          grace=$((GRACE_MINUTES * 60))
+          timeout=$((TIMEOUT_MINUTES * 60))
+          run_id=""
+          announced=""
+
+          # gh api with three retries. A 5xx or a dropped connection during a 30-minute wait is
+          # transient and retrying hides it from nobody; a 401/403/404 will not fix itself, and
+          # treating it as transient turns a credential problem into a 90-minute timeout with a
+          # misleading message. Adds --paginate for callers that walk lists.
+          gh_api() {
+            local attempt=1 out
+            while :; do
+              if out=$(gh api "$@" 2>&1); then
+                printf '%s' "$out"
+                return 0
+              fi
+              case "$out" in
+                # A 403 is usually credentials, but GitHub also uses it for the primary rate limit;
+                # that one is transient and must not be reported as a permission problem.
+                *"rate limit"*|*"HTTP 429"*) : ;;
+                *"HTTP 401"*|*"HTTP 403"*|*"HTTP 404"*|*"Bad credentials"*)
+                  echo "::error::gh api refused a non-retryable error: $out" >&2
+                  return 1 ;;
+              esac
+              if [ "$attempt" -ge 4 ]; then
+                echo "::error::gh api failed after $attempt attempts: $out" >&2
+                return 1
+              fi
+              echo "::warning::gh api attempt $attempt failed, retrying: $out" >&2
+              sleep $((attempt * 5))
+              attempt=$((attempt + 1))
+            done
+          }
+
+          while true; do
+            elapsed=$((SECONDS - start))
+
+            # Newest push run of ci.yml for this exact sha and ref. Addressed by file path, not by the
+            # workflow's display name: renaming "CI" must not leave the gate waiting on nothing.
+            run_id=$(gh_api \
+              "repos/$GITHUB_REPOSITORY/actions/workflows/ci.yml/runs?head_sha=$SHA&per_page=100" \
+              --jq '[.workflow_runs[] | select(.head_branch == "'"$REF"'")] | sort_by(.created_at) | reverse | .[0].id // empty')
+
+            if [ -z "$run_id" ]; then
+              if [ "$elapsed" -ge "$grace" ]; then
+                echo "::error::no CI run was created for $SHA on $REF within ${GRACE_MINUTES} minutes"
+                exit 1
+              fi
+              echo "No CI run yet for $SHA on $REF (${elapsed}s); retrying in 15s."
+              sleep 15
+              continue
+            fi
+
+            if [ "$announced" != "$run_id" ]; then
+              echo "::notice::Found CI run $run_id for $SHA on $REF"
+              announced="$run_id"
+            fi
+
+            details=$(gh_api "repos/$GITHUB_REPOSITORY/actions/runs/$run_id" \
+              --jq '[.status, (.conclusion // ""), .html_url] | join("|")')
+            # `|`, not a tab: bash treats tab as IFS whitespace and collapses the empty conclusion of a
+            # run still in flight, which shifted the url into the conclusion field.
+            IFS='|' read -r status conclusion url <<< "$details"
+
+            if [ "$status" != "completed" ]; then
+              # Fail fast: a job that has already concluded red will not turn green, and waiting for the
+              # rest of the suite only delays the release. ~25 minutes of suite ahead of us otherwise.
+              # --paginate: a large matrix can push the red job onto page 2, where the shortcut misses it.
+              failing=$(gh_api --paginate "repos/$GITHUB_REPOSITORY/actions/runs/$run_id/jobs?per_page=100" \
+                --jq '.jobs[] | select(.conclusion == "failure" or .conclusion == "cancelled" or .conclusion == "timed_out") | "\(.name): \(.conclusion)"')
+              if [ -n "$failing" ]; then
+                echo "::error::CI run $url already has failing jobs for $SHA on $REF"
+                echo "Failing jobs:"
+                echo "$failing"
+                exit 1
+              fi
+
+              if [ "$elapsed" -ge "$timeout" ]; then
+                echo "::error::CI run $url did not finish within ${TIMEOUT_MINUTES} minutes (status: $status)"
+                exit 1
+              fi
+              echo "::notice::CI run still $status after $((elapsed / 60))m: $url"
+              sleep 30
+              continue
+            fi
+
+            if [ "$conclusion" = "success" ]; then
+              echo "CI is green for $SHA on $REF: $url"
+              exit 0
+            fi
+
+            echo "::error::CI finished '$conclusion' for $SHA on $REF: $url"
+            echo "Failing jobs:"
+            gh_api --paginate "repos/$GITHUB_REPOSITORY/actions/runs/$run_id/jobs?per_page=100" \
+              --jq '.jobs[] | select(.conclusion == "failure" or .conclusion == "cancelled" or .conclusion == "timed_out") | "\(.name): \(.conclusion)"' \
+              || echo "(could not list the failing jobs)"
+            exit 1
+          done

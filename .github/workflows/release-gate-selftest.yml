@@ -1,0 +1,36 @@
+name: Release gate selftest
+
+on:
+  workflow_dispatch:
+    inputs:
+      sha:
+        description: Commit to gate on.
+        required: true
+        type: string
+      ref_name:
+        description: Ref whose CI run must be green.
+        required: true
+        type: string
+      timeout_minutes:
+        description: Hard cap for the CI run to finish.
+        required: false
+        default: 90
+        type: number
+
+jobs:
+  gate:
+    uses: ./.github/workflows/release-gate.yml
+    permissions:
+      contents: read
+      actions: read
+    with:
+      sha: ${{ inputs.sha }}
+      ref_name: ${{ inputs.ref_name }}
+      timeout_minutes: ${{ inputs.timeout_minutes }}
+
+  report:
+    needs: gate
+    runs-on: ubuntu-latest
+    steps:
+      - name: Report gate result
+        run: echo "GATE PASSED for ${{ inputs.sha }} on ${{ inputs.ref_name }} — publish steps skipped (dry run)"

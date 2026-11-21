@@ -10,8 +10,19 @@ env:
   IMAGE_NAME: ${{ github.repository }}-hermes
 
 jobs:
+  gate:
+    uses: ./.github/workflows/release-gate.yml
+    permissions:
+      contents: read
+      actions: read
+    with:
+      sha: ${{ github.sha }}
+      ref_name: ${{ github.ref_name }}
+
   # Release gate (design 0.9 §11.2 gate 4): nothing is pushed unless the contract suites pass on
   # exactly the image this tag builds. Same invocation as ci.yml's hermes-image-contract job.
+  # Independent of the gate: it reads no output from it, so both start on the same push and the
+  # critical path is max(CI, contract) + push instead of CI + contract + push.
   contract:
     runs-on: ubuntu-latest
     timeout-minutes: 45
@@ -39,7 +50,7 @@ jobs:
           retention-days: 30
 
   build-and-push:
-    needs: contract
+    needs: [gate, contract]
     runs-on: ubuntu-latest
     permissions:
       contents: read

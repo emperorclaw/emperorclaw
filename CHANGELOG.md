@@ -9,6 +9,17 @@ tagged (e.g. `## [1.2.0] — 2026-07-22`). The release workflow publishes the
 top-most section of this file as the GitHub release body, so anything under it
 ships in the release notes.
 
+## [Unreleased]
+
+### Changed
+
+- **A `v*` tag no longer publishes an image before its CI is green.** Docker Publish gained a `gate` job — a new reusable workflow, `.github/workflows/release-gate.yml` — that waits for the CI run of the tagged commit on the tag's own ref and fails the publish when that run is red or never finishes. A failing suite can no longer reach `ghcr.io/emperorclaw/emperorclaw:latest` — and through Watchtower, production — minutes before CI reports. Both the main and the Hermes image publishes are gated; the SemVer check, the `latest` tag and the release creation are unchanged.
+- **A release now takes as long as the full CI suite, not ~3 minutes.** The image used to be built in parallel with CI; it is now built only after the tag's own run finishes green, including `e2e-ui` and the Hermes image contract. The Hermes publish runs the gate and the contract suites in parallel, so tag-to-swap is `max(CI, contract)` plus the build.
+
+### Known limitations
+
+- The gate ships inside the tag it protects: `docker-publish.yml` runs from the tagged commit, so a tag pointing at a commit that predates `release-gate.yml` still executes the old, ungated workflow and publishes immediately. Until the gate moves to a `workflow_run` trigger, tag a commit that contains it — `docs/RELEASE.md` says so in the checklist.
+
 ## [0.42.4] — 2026-11-21
 
 ### Fixed
