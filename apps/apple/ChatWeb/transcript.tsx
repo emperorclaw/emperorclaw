@@ -1,6 +1,7 @@
 import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { NextIntlClientProvider } from 'next-intl';
+import { OtherSurface, type SurfaceData } from './surfaces';
 import en from '../../../messages/en.json';
 import { MarkdownRenderer } from '@/components/markdown-renderer';
 import { StreamingMarkdown } from '@/components/chat/streaming-markdown';
@@ -15,7 +16,7 @@ import type { RunLive } from '@/lib/run-events';
 type File = { id: string; name: string };
 type Message = { id: string; text: string; senderType: string; senderName?: string; senderId?: string; createdAt: string; clientMessageId?: string; metadataJson?: { attachments?: File[]; hasReasoning?: boolean }; preview?: ChatPreview };
 type Participant = { participantType: string; participantId: string; typingUntil?: string; currentActivity?: string };
-type Payload = { participants: Participant[]; agentNames: Record<string, string>; messages: Message[]; previews: ChatPreview[]; liveRuns: RunLive[]; replyRuns: Record<string, ReplyRun>; hasMore: boolean; loaded: boolean; streaming: boolean; title: string; locale: string; mayWrite: boolean; forceBottom: number; dark: boolean; loadingOlder: boolean };
+type Payload = SurfaceData & { participants: Participant[]; agentNames: Record<string, string>; messages: Message[]; previews: ChatPreview[]; liveRuns: RunLive[]; replyRuns: Record<string, ReplyRun>; hasMore: boolean; loaded: boolean; streaming: boolean; title: string; locale: string; mayWrite: boolean; forceBottom: number; dark: boolean; loadingOlder: boolean };
 type NativeRequest = { type: string; [key: string]: unknown };
 declare global { interface Window { webkit?: { messageHandlers: { chat: { postMessage: (message: NativeRequest) => void } } }; emperor: { update: (payload: Payload) => void; resolve: (id: string, value: unknown, error?: string) => void } } }
 const pending = new Map<string, { resolve: (value: unknown) => void; reject: (error: Error) => void; timer: ReturnType<typeof setTimeout> }>();
@@ -54,6 +55,9 @@ function Transcript() {
                 }
                 if (!placed.current || payload.forceBottom !== lastForce.current) { follow.current = true; setFollowing(true); }
                 document.documentElement.classList.toggle('dark', payload.dark);
+                document.documentElement.classList.toggle('embedded', payload.embedded === true);
+                document.documentElement.classList.toggle('reduced-motion', payload.reducedMotion === true);
+                document.documentElement.style.fontSize = `${16 * Math.max(0.8, Math.min(3.2, payload.textScale ?? 1))}px`;
                 setRuns(previous => mergeLiveRuns(previous, payload.liveRuns, Date.now()));
                 setData(payload);
             },
@@ -93,7 +97,7 @@ function Transcript() {
     }, []);
     const rows = withResponsePreviews(data.messages, data.previews, preview => ({ id: preview.responseId, text: preview.text, senderType: 'agent', senderName: preview.agentName, createdAt: preview.updatedAt, preview }));
     return <NextIntlClientProvider locale="en" messages={en} timeZone="UTC">
-        <div id="transcript" ref={scroll} role="log" aria-label={spanish ? 'Conversación' : 'Conversation'} aria-live="off"
+        {data.mode && data.mode !== 'chat' ? <OtherSurface data={data} post={post} /> : <><div id="transcript" ref={scroll} role="log" aria-label={spanish ? 'Conversación' : 'Conversation'} aria-live="off"
             onTouchMove={() => { follow.current = false; setFollowing(false); }}
             onWheel={event => { if (event.deltaY < 0) { follow.current = false; setFollowing(false); } }}
             onScroll={() => { const node = scroll.current!; const near = node.scrollHeight - node.scrollTop - node.clientHeight < 60; follow.current = near; setFollowing(near); }}>
@@ -120,6 +124,7 @@ function Transcript() {
             </div>
         </div>
         {!following && <button id="latest" onClick={() => { follow.current = true; setFollowing(true); if (scroll.current) scroll.current.scrollTop = scroll.current.scrollHeight; }}>{spanish ? 'Último mensaje ↓' : 'Latest message ↓'}</button>}
+        </>}
     </NextIntlClientProvider>;
 }
 function Activity({ runs, data, spanish }: { runs: ClientLiveRun[]; data: Payload; spanish: boolean }) {

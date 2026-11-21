@@ -81,3 +81,56 @@ test('lazily reads reasoning and entity cards through scoped native capabilities
     await expect(page.getByText('Persisted reasoning from the authorized message')).toBeVisible();
     await expect(page.evaluate(async () => { try { await fetch('/api/settings/tokens'); return false; } catch { return true; } })).resolves.toBe(true);
 });
+
+test('fleet uses web characters, real work and native agent navigation; stale and reduced motion stop animation', async ({ page }) => {
+    const agents = [{ id: uuid, name: 'Builder', role: 'Engineering', state: 'working', activity: 'Checking the iPhone layout' }];
+    await update(page, payload({ mode: 'fleet', agents, fresh: true }));
+    await expect(page.getByRole('heading', { name: 'Builder' })).toBeVisible();
+    await expect(page.locator('.desk-figure svg, .desk-figure path').first()).toBeAttached();
+    await expect(page.locator('.desk-figure')).toHaveCSS('animation-name', 'desk-breathe');
+    await page.getByRole('button', { name: /Builder, Working/ }).click();
+    expect(await page.evaluate(() => (window as unknown as { nativeMessages: unknown[] }).nativeMessages)).toContainEqual({ type: 'agent', agentId: uuid });
+    await update(page, payload({ mode: 'fleet', agents, fresh: false }));
+    await expect(page.locator('.desk-figure')).toHaveCSS('animation-name', 'none');
+    await expect(page.getByText('Last known status')).toBeVisible();
+    await update(page, payload({ mode: 'fleet', agents, fresh: true, reducedMotion: true }));
+    await expect(page.locator('.desk-figure')).toHaveCSS('animation-name', 'none');
+    await page.setViewportSize({ width: 390, height: 620 });
+    await update(page, payload({ mode: 'fleet', agents: Array.from({ length: 8 }, (_, i) => ({ ...agents[0], id: String(i), name: `Agent ${i}`, role: 'Long role description that belongs only in agent details' })), fresh: true }));
+    await expect(page.getByText('Long role description', { exact: false })).toHaveCount(0);
+    await expect(page.getByRole('button', { name: /Agent 7,/ })).toBeInViewport({ ratio: 1 });
+    await page.screenshot({ path: '/tmp/emperor-fleet-compact.png' });
+});
+
+test('rich documents report their full height and render Markdown tables', async ({ page }) => {
+    await update(page, payload({ mode: 'document', embedded: true, text: '# Project brief\n\n| Item | Result |\n| --- | --- |\n| Native | Ready |\n\n```ts\nconst ready = true;\n```' }));
+    await expect(page.getByRole('heading', { name: 'Project brief' })).toBeVisible();
+    await expect(page.locator('table')).toContainText('Ready');
+    await expect.poll(() => page.evaluate(() => (window as unknown as { nativeMessages: { type: string; height?: number }[] }).nativeMessages.some(m => m.type === 'height' && (m.height ?? 0) > 100))).toBe(true);
+});
+
+test('all seven View panels adapt between narrow and wide layouts in both appearances; metadata remains private', async ({ page }) => {
+    const chart = { series: [{ name: 'Agents', points: [{ x: 'Mon', y: 2 }, { x: 'Tue', y: 5 }] }] };
+    const panels = [
+        { type: 'metric', data: { value: 8, unit: 'agents' } },
+        { type: 'line', data: chart }, { type: 'bar', data: chart },
+        { type: 'table', data: { columns: [{ key: 'name', label: 'Name' }], rows: [{ name: 'Builder' }] } },
+        { type: 'list', data: { items: [{ title: 'Review native build', value: 'Ready' }] } },
+        { type: 'markdown', data: { text: '**Release** is ready' } },
+        { type: 'progress', data: { value: 3, max: 5 } },
+    ].map((p, i) => ({ ...p, id: `panel-${i}`, title: `Panel ${p.type}`, w: 6, h: 2, updatedAt: new Date().toISOString(), updatedBy: null }));
+    const view = { title: 'Team pulse', access: 'full', panels, createdAt: new Date().toISOString() };
+    for (const width of [320, 430, 850]) {
+        await page.setViewportSize({ width, height: 900 });
+        for (const dark of [true, false]) {
+            await update(page, payload({ mode: 'view', view, dark }));
+            await expect(page.getByRole('heading', { name: 'Team pulse' })).toBeVisible();
+            for (const panel of panels) await expect(page.getByText(panel.title, { exact: true })).toHaveCount(1);
+            await expect(page.locator('.surface-scroll')).toHaveJSProperty('scrollWidth', width);
+        }
+    }
+    await page.screenshot({ path: '/tmp/emperor-views-wide.png', fullPage: true });
+    await update(page, payload({ mode: 'view', view: { ...view, access: 'metadata' } }));
+    await expect(page.getByRole('heading', { name: 'This view is private' })).toBeVisible();
+    await expect(page.getByText('Panel metric', { exact: true })).toHaveCount(0);
+});

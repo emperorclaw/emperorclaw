@@ -21,3 +21,37 @@ body { font: -apple-system-body; background: transparent; color: var(--foregroun
 
 /* Preserve readable cells on a narrow phone; the shared wrapper scrolls. */
 .markdown-content table { min-width: 28rem; }
+@source '../../../src/components/views/view-panels.tsx';
+.surface-scroll { height:100%; overflow:auto; overscroll-behavior:contain; }
+.surface-body { padding:20px; max-width:1200px; margin:auto; overflow-wrap:anywhere; }
+.surface-document { padding:0; }
+.embedded, .embedded body, .embedded #root { height:auto; overflow:visible; }
+.surface-embedded { height:auto; overflow:visible; }
+.surface-eyebrow { font-size:.6875rem; font-weight:700; letter-spacing:.14em; color:var(--muted-foreground); }
+.view-intro { margin-bottom:24px; max-width:680px; }
+.view-intro h1 { font-size:clamp(24px,4vw,36px); font-weight:750; letter-spacing:-.035em; margin:8px 0 12px; }
+.surface-private { padding:48px 16px; text-align:center; color:var(--muted-foreground); }
+.surface-private h2 { color:var(--foreground); font-size:1.375rem; margin:16px 0; }
+.fleet-floor { display:grid; grid-template-columns:repeat(auto-fit,minmax(min(100%,8.5rem),1fr)); gap:10px; }
+/* Overview density: role descriptions and agent details belong in the directory. */
+.surface-fleet { padding:12px 20px 20px; }
+.fleet-desk { --desk-top:#e7dbcb; --desk-front:#d1c0aa; text-align:left; padding:12px; border-radius:20px; border:1px solid var(--border); background:linear-gradient(150deg,color-mix(in srgb,hsl(var(--agent-hue) 65% 70%) 11%,var(--background)),var(--background)); box-shadow:0 3px 12px #00000004; cursor:pointer; color:var(--foreground); min-width:0; transition:transform .18s ease; }
+.dark .fleet-desk { --desk-top:#3e4854; --desk-front:#29313c; }
+.fleet-desk:active { transform:scale(.985); }
+.fleet-desk:focus-visible { outline:3px solid var(--foreground); outline-offset:3px; }
+.desk-status { display:flex; align-items:center; gap:5px; font-size:.6875rem; color:var(--muted-foreground); }
+.desk-status i { width:7px; height:7px; border-radius:50%; background:#84929e; flex-shrink:0; }
+.desk-status i[data-status=working] { background:#168e71; }
+.desk-status i[data-status=blocked], .desk-status i[data-status=waiting] { background:#b77715; }
+.desk-dots { margin-left:auto; letter-spacing:2px; }
+.desk-stage { height:48px; display:flex; justify-content:center; padding-top:4px; }
+.desk-stage svg { height:100%; width:100px; overflow:visible; }
+.desk-copy h2 { font-weight:750; font-size:1rem; letter-spacing:-.025em; margin:7px 0 4px; white-space:nowrap; text-overflow:ellipsis; overflow:hidden; }
+.desk-work { font-size:.75rem; line-height:1.35; margin:0; min-height:1.35em; display:-webkit-box; -webkit-box-orient:vertical; -webkit-line-clamp:1; overflow:hidden; }
+.is-working .desk-figure { animation:desk-breathe 3s ease-in-out infinite; transform-origin:0 0; }
+.is-working .desk-terminal, .is-working .desk-dots { animation:desk-pulse 2s ease-in-out infinite; }
+@keyframes desk-breathe { 50% { transform:translateY(-1.5px) rotate(.7deg); } }
+@keyframes desk-pulse { 50% { opacity:.35; } }
+.fleet-still *, .reduced-motion * { animation:none !important; transition:none !important; }
+@media(prefers-reduced-motion:reduce) { .fleet-desk, .fleet-desk * { animation:none !important; transition:none !important; } }
+@media(min-width:600px) { .surface-body { padding:28px; } .surface-document { padding:0; } .surface-fleet { padding:16px 28px 28px; } .fleet-floor { grid-template-columns:repeat(auto-fit,minmax(160px,1fr)); gap:14px; } .fleet-desk { padding:14px; } .desk-stage { height:76px; } }

@@ -81,6 +81,7 @@ react/cjs/react-jsx-runtime.production.js:
 @tabler/icons-react/dist/esm/icons/IconInfoCircle.mjs:
 @tabler/icons-react/dist/esm/icons/IconLayoutGrid.mjs:
 @tabler/icons-react/dist/esm/icons/IconLoader2.mjs:
+@tabler/icons-react/dist/esm/icons/IconMessageQuestion.mjs:
 @tabler/icons-react/dist/esm/icons/IconMessageReport.mjs:
 @tabler/icons-react/dist/esm/icons/IconPlayerStop.mjs:
 @tabler/icons-react/dist/esm/icons/IconRobot.mjs:

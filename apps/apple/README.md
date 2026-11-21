@@ -4,11 +4,13 @@ SwiftUI apps for existing, independently hosted EmperorClaw installations. Minim
 
 ## Implemented experience
 
-- Five iPhone tabs: Home, Inbox, Messages, Projects and Agents. Dashboard activity, monthly spending, task creation/assignment/status/notes/results, private/team/group conversations, attachments and contextual agent questions.
+- Five iPhone tabs: Home, Inbox, Messages, Projects and Views. Compact animated fleet overview, task creation/assignment/status/notes/results, private/team/group conversations, attachments and contextual agent questions.
 - Approvals reuse the server's permissions and decision rules. Watch decisions are restricted to short, eligible task-completion approvals; other cases hand off to iPhone.
 - Both devices save and switch among multiple installations and companies independently. Rename/favorite connections, select appearance, pause/resume new agent work, disconnect individual devices.
 - QR onboarding from web Settings → Profile → Connect iPhone and Apple Watch. QR contains only the server origin; system-browser authentication still requires consent.
 - Optional APNs notification enrollment with proof of delivery. Widgets, lock-screen accessories and watch complications pin one workspace and show cached counts with timestamps.
+
+The current visual direction and responsive behavior are documented in [Native companion design](Design/native-redesign.md).
 
 ## Run locally
 

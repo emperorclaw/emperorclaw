@@ -9,10 +9,12 @@ struct ChatWebView: UIViewRepresentable {
     let payload: JSONValue
     let workspace: Installation
     let client: MobileClient
-    var loadOlder: () -> Void
-    var sendPrompt: (String) async -> Bool
-    var openAttachment: (JSONValue) -> Void
-    var openLink: (URL) -> Void
+    var loadOlder: () -> Void = {}
+    var sendPrompt: (String) async -> Bool = { _ in false }
+    var openAttachment: (JSONValue) -> Void = { _ in }
+    var openLink: (URL) -> Void = { _ in }
+    var selectAgent: (String) -> Void = { _ in }
+    var contentHeight: (Double) -> Void = { _ in }
 
     func makeCoordinator() -> Coordinator { Coordinator(self) }
     func makeUIView(context: Context) -> WKWebView {
@@ -76,6 +78,13 @@ struct ChatWebView: UIViewRepresentable {
             switch type {
             case "ready": ready = true; update()
             case "older": parent.loadOlder()
+            case "height":
+                guard let height = body["height"] as? Double, height.isFinite, height >= 1, height <= 100_000 else { return }
+                parent.contentHeight(height)
+            case "agent":
+                guard parent.payload["mode"].text == "fleet", let id = body["agentId"] as? String,
+                      parent.payload["agents"].items.contains(where: { $0["id"].text == id }) else { return }
+                parent.selectAgent(id)
             case "attachment":
                 guard let file = body["file"] as? [String: Any], let id = file["id"] as? String,
                       let match = parent.payload["messages"].items.flatMap({ $0["metadataJson"]["attachments"].items }).first(where: { $0["id"].text == id }) else { return }

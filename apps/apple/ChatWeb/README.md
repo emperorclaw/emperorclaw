@@ -44,3 +44,12 @@ Rich read endpoints require the server patch containing `chat/reasoning`,
 replies also require the server's existing `EMPEROR_CHAT_STREAMING=1` rollout
 configuration and a compatible Hermes bridge (0.39.0+). The app does not simulate
 partial output or change the server's streaming rollout policy.
+
+
+The same local bundle also hosts compact fleet characters, embedded rich documents
+and the production ViewGrid. `mode` selects the surface. Fleet taps are validated
+against the supplied roster before opening native chat; embedded documents can
+only report a bounded finite height. View data is fetched by native transport,
+with metadata-only access explicitly suppressing panels. Reduce Motion and native
+Dynamic Type preferences accompany surface payloads. No credentials or arbitrary
+URL fetch capability are added by these surfaces.

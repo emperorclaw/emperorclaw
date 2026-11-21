@@ -66,6 +66,11 @@ struct WorkList: View {
             if !loading && rows.isEmpty && error == nil { Label(isTasks ? "No tasks yet" : "Nothing needs your attention", systemImage: "checkmark.circle").foregroundStyle(.secondary) }
             if isTasks, nextBefore != nil { Button("Load older tasks") { Task { await load(older: true) } } }
         }
+        #if os(iOS)
+        .listStyle(.insetGrouped)
+        .scrollContentBackground(.hidden)
+        .background(Color(.systemGroupedBackground))
+        #endif
         .refreshable { await load() }
         .task(id: scene) {
             guard scene == .active else { return }
@@ -88,7 +93,18 @@ struct WorkList: View {
 
 struct WorkRow: View {
     let title: String; let subtitle: String; let icon: String
-    var body: some View { VStack(alignment: .leading, spacing: 6) { Label(title, systemImage: icon).font(.headline); if !subtitle.isEmpty { Text(subtitle).font(.caption).foregroundStyle(.secondary).lineLimit(3) } }.padding(.vertical, 5) }
+    var body: some View {
+        HStack(alignment: .top, spacing: 14) {
+            #if os(iOS)
+            Image(systemName: icon).font(.title3.weight(.medium)).foregroundStyle(.tint)
+                .frame(width: 44, height: 44).background(Color.accentColor.opacity(0.08), in: RoundedRectangle(cornerRadius: 14))
+            #endif
+            VStack(alignment: .leading, spacing: 8) {
+                Text(title).font(.headline).fontDesign(.rounded).fixedSize(horizontal: false, vertical: true)
+                if !subtitle.isEmpty { Text(subtitle.replacingOccurrences(of: "_", with: " ")).font(.subheadline).foregroundStyle(.secondary).lineLimit(3) }
+            }
+        }.padding(.vertical, 12)
+    }
 }
 struct ErrorRow: View {
     let error: String; let retry: () -> Void
@@ -100,18 +116,46 @@ struct ChatDirectory: View {
     let workspace: Installation
     @State private var groups: [WorkItem] = []
     @State private var error: String?
+    @State private var query = ""
     var body: some View {
-        List {
-            if let error { ErrorRow(error: error) { Task { await load() } } }
-            Section("Company") { NavigationLink("Team conversation") { ChatScreen(workspace: workspace, title: "Team") } }
-            Section("Agents") {
-                ForEach(model.snapshots[workspace.id]?.agents ?? []) { agent in
-                    NavigationLink { ChatScreen(workspace: workspace, title: agent.name, agentID: agent.id) } label: { AgentRow(agent: agent) }
-                }
+        Group {
+            #if os(iOS)
+            ScrollView {
+                LazyVStack(alignment: .leading, spacing: 16) {
+                    Text(model.companyName.uppercased()).font(.caption.weight(.semibold)).tracking(2).foregroundStyle(.secondary)
+                    if let error { ErrorRow(error: error) { Task { await load() } } }
+                    NavigationLink { ChatScreen(workspace: workspace, title: "Team") } label: {
+                        HStack(spacing: 16) {
+                            Image(systemName: "bubble.left.and.bubble.right.fill").font(.title2).foregroundStyle(.tint)
+                            VStack(alignment: .leading, spacing: 5) { Text("Team conversation").font(.headline).fontDesign(.rounded); Text("Bring everyone into the conversation.").font(.subheadline).foregroundStyle(.secondary) }
+                            Spacer(minLength: 0); Image(systemName: "arrow.up.right").foregroundStyle(.secondary)
+                        }.padding(20).background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 24))
+                    }.buttonStyle(.plain)
+                    Text("Your agents").font(.title2.bold()).fontDesign(.rounded).padding(.top, 12)
+                    ForEach((model.snapshots[workspace.id]?.agents ?? []).filter { query.isEmpty || $0.name.localizedCaseInsensitiveContains(query) }) { agent in
+                        NavigationLink { ChatScreen(workspace: workspace, title: agent.name, agentID: agent.id) } label: {
+                            AgentRow(agent: agent).padding(16).frame(maxWidth: .infinity, alignment: .leading)
+                                .background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 22))
+                        }.buttonStyle(.plain)
+                    }
+                    if !groups.isEmpty {
+                        Text("Groups").font(.title2.bold()).fontDesign(.rounded).padding(.top, 12)
+                        ForEach(groups.filter { query.isEmpty || $0["title"].text.localizedCaseInsensitiveContains(query) }) { group in
+                            NavigationLink { ChatScreen(workspace: workspace, title: group["title"].text, groupID: group.id) } label: {
+                                WorkRow(title: group["title"].text.isEmpty ? "Group conversation" : group["title"].text, subtitle: "", icon: "person.2").padding(.horizontal, 16).frame(maxWidth: .infinity, alignment: .leading).background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 22))
+                            }.buttonStyle(.plain)
+                        }
+                    }
+                }.padding(24).frame(maxWidth: 760).frame(maxWidth: .infinity)
+            }.background(Color(.systemGroupedBackground)).searchable(text: $query, prompt: "Find a conversation")
+            #else
+            List {
+                if let error { ErrorRow(error: error) { Task { await load() } } }
+                NavigationLink("Team conversation") { ChatScreen(workspace: workspace, title: "Team") }
+                ForEach(model.snapshots[workspace.id]?.agents ?? []) { agent in NavigationLink { ChatScreen(workspace: workspace, title: agent.name, agentID: agent.id) } label: { AgentRow(agent: agent) } }
+                ForEach(groups) { group in NavigationLink(group["title"].text.isEmpty ? "Group conversation" : group["title"].text) { ChatScreen(workspace: workspace, title: group["title"].text, groupID: group.id) } }
             }
-            if !groups.isEmpty {
-                Section("Groups") { ForEach(groups) { group in NavigationLink(group["title"].text.isEmpty ? "Group conversation" : group["title"].text) { ChatScreen(workspace: workspace, title: group["title"].text, groupID: group.id) } } }
-            }
+            #endif
         }.task { await model.refresh(); await load() }.refreshable { await model.refresh(); await load() }
     }
     private func load() async { do { groups = try await model.client.work(workspace, path: "groups")["groups"].items.map(WorkItem.init); error = nil } catch { self.error = error.localizedDescription } }
@@ -340,7 +384,7 @@ struct TaskScreen: View {
             Section {
                 Text(task["title"].text).font(.headline)
                 Text(task["state"].text).font(.caption).foregroundStyle(.secondary)
-                if !task["description"].text.isEmpty { Text(.init(task["description"].text)) }
+                if !task["description"].text.isEmpty { RichTextBlock(text: task["description"].text, workspace: workspace) }
                 if !task["blockedReason"].text.isEmpty { Label(task["blockedReason"].text, systemImage: "exclamationmark.triangle").foregroundStyle(.orange) }
                 Text(task["projectName"].text).font(.caption)
             }
@@ -386,7 +430,7 @@ private struct TaskTimelineRow: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
             Text(entry["title"].text.isEmpty ? entry["kind"].text.capitalized : entry["title"].text).font(.headline)
-            ForEach(["text", "note", "body", "summary", "status"], id: \.self) { field in if !entry[field].text.isEmpty { Text(.init(entry[field].text)) } }
+            ForEach(["text", "note", "body", "summary", "status"], id: \.self) { field in if !entry[field].text.isEmpty { RichTextBlock(text: entry[field].text, workspace: workspace) } }
             if entry["kind"].text == "artifact" {
                 Button("Open result") {
                     #if os(iOS)
@@ -469,7 +513,7 @@ struct ApprovalScreen: View {
                 Text(workspace.name).font(.caption).foregroundStyle(.secondary)
                 Text(approval["actionType"].text).font(.headline)
                 Text(approval["status"].text).font(.caption)
-                Text(.init(approval["rationale"].text))
+                RichTextBlock(text: approval["rationale"].text, workspace: workspace)
                 // The full visible arguments must be reviewed before deciding.
                 if approval["actionArgsJson"] != .null { Text(readable(approval["actionArgsJson"])).font(.body.monospaced()) }
                 if approval["metadataJson"]["actionArgs"] != .null { Text(readable(approval["metadataJson"]["actionArgs"])).font(.body.monospaced()) }
@@ -506,7 +550,7 @@ struct AttentionDetail: View {
     let workspace: Installation
     let item: WorkItem
     var body: some View { List {
-        Text(item["title"].text).font(.headline); Text(item["reason"].text)
+        Text(item["title"].text).font(.headline); RichTextBlock(text: item["reason"].text, workspace: workspace)
         if let agent = model.snapshots[workspace.id]?.agents.first(where: { $0.id == item["agentId"].text }) { NavigationLink("Ask \(agent.name)") { ChatScreen(workspace: workspace, title: agent.name, agentID: agent.id, context: item["title"].text) } }
         Button("Mark read") { Task { do { _ = try await model.client.work(workspace, path: "inbox/state", method: "POST", body: .object(["items": .array([.object(["key": .string(item.id), "fingerprint": item["fingerprint"]])]), "action": .string("read")])) } catch { model.notice = error.localizedDescription } } }
     }.navigationTitle("Needs you") }

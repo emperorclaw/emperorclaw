@@ -103,6 +103,18 @@ private struct Metric: View {
 struct AgentRow: View {
     let agent: Agent
     var body: some View {
+        #if os(iOS)
+        HStack(alignment: .top, spacing: 14) {
+            Text(String(agent.name.prefix(1))).font(.title2.bold()).fontDesign(.rounded)
+                .foregroundStyle(agent.statusLabel == "Working" ? Color.teal : Color.secondary)
+                .frame(width: 48, height: 48).background(Color(.tertiarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 16))
+            VStack(alignment: .leading, spacing: 6) {
+                HStack { Text(agent.name).font(.headline).fontDesign(.rounded); Spacer(); Circle().fill(agent.statusLabel == "Working" ? Color.teal : Color.secondary).frame(width: 7, height: 7).accessibilityHidden(true) }
+                Text(agent.paused == true ? "Paused" : agent.statusLabel).font(.caption.weight(.medium)).foregroundStyle(.secondary)
+                if let line = agent.activity ?? agent.taskTitle { Text(line).font(.subheadline).foregroundStyle(.secondary).lineLimit(2) }
+            }
+        }.padding(.vertical, 4)
+        #else
         VStack(alignment: .leading, spacing: 5) {
             Text(agent.name).font(.headline)
             Label(agent.statusLabel, systemImage: agent.statusLabel == "Working" ? "bolt.fill" : "circle")
@@ -111,6 +123,7 @@ struct AgentRow: View {
             if let task = agent.taskTitle { Text(task).font(.subheadline).lineLimit(2) }
             else if let activity = agent.activity { Text(activity).font(.subheadline).foregroundStyle(.secondary).lineLimit(2) }
         }.padding(.vertical, 4)
+        #endif
     }
 }
 

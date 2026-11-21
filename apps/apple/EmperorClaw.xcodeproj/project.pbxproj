@@ -23,6 +23,12 @@
 			"path" = "Shared/PushDelegate.swift";
 			"sourceTree" = "<group>";
 		};
+		"7945ADA334933A7949283808" = {
+			"isa" = "PBXFileReference";
+			"lastKnownFileType" = "sourcecode.swift";
+			"path" = "Shared/RichTextBlock.swift";
+			"sourceTree" = "<group>";
+		};
 		"2E2FABAB3D34E765D099FBB7" = {
 			"isa" = "PBXFileReference";
 			"lastKnownFileType" = "sourcecode.swift";
@@ -51,6 +57,12 @@
 			"isa" = "PBXFileReference";
 			"lastKnownFileType" = "sourcecode.swift";
 			"path" = "iPhone/EmperorPhoneApp.swift";
+			"sourceTree" = "<group>";
+		};
+		"8B37B34B242FB344FFE0A71F" = {
+			"isa" = "PBXFileReference";
+			"lastKnownFileType" = "sourcecode.swift";
+			"path" = "iPhone/PhoneSurfaces.swift";
 			"sourceTree" = "<group>";
 		};
 		"30D25A41EEDC2E24B272873F" = {
@@ -346,6 +358,10 @@
 			"isa" = "PBXBuildFile";
 			"fileRef" = "932C61C46ADB90AAEDA3979F";
 		};
+		"3EF216BBBC21F20C70BD9814" = {
+			"isa" = "PBXBuildFile";
+			"fileRef" = "7945ADA334933A7949283808";
+		};
 		"0D8894448C7CD2C7845C5E78" = {
 			"isa" = "PBXBuildFile";
 			"fileRef" = "2E2FABAB3D34E765D099FBB7";
@@ -365,6 +381,7 @@
 				"1F5A9428EB5C00D7E5F61FAA",
 				"067D165E128A7BD6B553C622",
 				"44B86B9172E802FD95DB8D1D",
+				"3EF216BBBC21F20C70BD9814",
 				"0D8894448C7CD2C7845C5E78",
 				"F0D94164CA9B004F135F63DB",
 				"AAA483AA0242E8D053B124D6",
@@ -527,6 +544,10 @@
 			"isa" = "PBXBuildFile";
 			"fileRef" = "932C61C46ADB90AAEDA3979F";
 		};
+		"C5BE08DB64EEE13042A583B6" = {
+			"isa" = "PBXBuildFile";
+			"fileRef" = "7945ADA334933A7949283808";
+		};
 		"AAFB82D793ED10299D8CB3D3" = {
 			"isa" = "PBXBuildFile";
 			"fileRef" = "2E2FABAB3D34E765D099FBB7";
@@ -547,6 +568,10 @@
 			"isa" = "PBXBuildFile";
 			"fileRef" = "78492DAD9EAB974DA5EBE1E9";
 		};
+		"AEA6E3B81E4BB0ACEB7BBFD8" = {
+			"isa" = "PBXBuildFile";
+			"fileRef" = "8B37B34B242FB344FFE0A71F";
+		};
 		"B5F6B423C031F192A6244CA0" = {
 			"isa" = "PBXBuildFile";
 			"fileRef" = "30D25A41EEDC2E24B272873F";
@@ -558,11 +583,13 @@
 				"C6BEBE6C9B45BCAA010CA10F",
 				"32D0C0FD6111DEC490C4FF78",
 				"994561A04FA8A8C45AC96094",
+				"C5BE08DB64EEE13042A583B6",
 				"AAFB82D793ED10299D8CB3D3",
 				"82AEC999A2D1017E1605B151",
 				"12DB38A45B618A08DA9C0C04",
 				"E6E7515FDDBEF144E00D4288",
 				"773BD53107C50DFC3094822B",
+				"AEA6E3B81E4BB0ACEB7BBFD8",
 				"B5F6B423C031F192A6244CA0",
 			);
 			"runOnlyForDeploymentPostprocessing" = "0";
@@ -752,11 +779,13 @@
 				"6EDB262E57F01CC124A8563B",
 				"3A0111CC958C23DAD3B24C9F",
 				"932C61C46ADB90AAEDA3979F",
+				"7945ADA334933A7949283808",
 				"2E2FABAB3D34E765D099FBB7",
 				"10E521E5BB6699EBC54C0834",
 				"CEF7A20287C825CAC988F4CD",
 				"AE5C370FCD3791D869306FB3",
 				"78492DAD9EAB974DA5EBE1E9",
+				"8B37B34B242FB344FFE0A71F",
 				"30D25A41EEDC2E24B272873F",
 				"DF616F1C59212219EFE04B10",
 				"6D123AE8AB04EEE632CC6C18",
