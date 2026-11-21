@@ -40,9 +40,18 @@ public struct ChatTranscript: Sendable, Equatable {
         // while present, including sealed/failed/interrupted segments.
         previews = response["previews"].items.filter { !$0["responseId"].text.isEmpty }.map { next in
             guard let previous = old[next["responseId"].text] else { return next }
-            if next["revision"].count <= previous["revision"].count { return previous }
-            if previous["state"].text != "streaming" && previous["state"].text != next["state"].text { return previous }
-            return next
+            let keepSnapshot = next["revision"].count <= previous["revision"].count || (previous["state"].text != "streaming" && previous["state"].text != next["state"].text)
+            guard case .object(var map) = keepSnapshot ? previous : next else { return previous }
+            // Final-message linkage and run status are joined by the server,
+            // independently of snapshot revisions. A sealed segment can acquire
+            // its durable message ID without another token/revision.
+            if !next["finalMessageId"].text.isEmpty { map["finalMessageId"] = next["finalMessageId"] }
+            else if !previous["finalMessageId"].text.isEmpty { map["finalMessageId"] = previous["finalMessageId"] }
+            let previousStatus = previous["runStatus"].text
+            let restartsFinishedRun = !previousStatus.isEmpty && previousStatus != "running" && next["runStatus"].text == "running"
+            if next["runStatus"] != .null && !restartsFinishedRun { map["runStatus"] = next["runStatus"] }
+            if next["agentName"] != .null { map["agentName"] = next["agentName"] }
+            return .object(map)
         }
     }
 

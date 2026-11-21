@@ -36,6 +36,21 @@ final class ChatTranscriptTests: XCTestCase {
         state.receivePreviews(.object(["previews": .array([]), "streaming": .bool(false)]))
         XCTAssertTrue(state.previews.isEmpty); XCTAssertFalse(state.streaming)
     }
+    func testFinalMessageCanLinkWithoutAnotherSnapshotRevision() {
+        var state = ChatTranscript()
+        let preview: [String: JSONValue] = ["responseId": .string("one"), "revision": .number(3), "state": .string("sealed"), "text": .string("Final segment"), "runStatus": .string("running")]
+        state.receivePreviews(.object(["previews": .array([.object(preview)])]))
+        var linked = preview
+        linked["finalMessageId"] = .string("saved-message")
+        linked["runStatus"] = .string("succeeded")
+        state.receivePreviews(.object(["previews": .array([.object(linked)])]))
+        XCTAssertEqual(state.previews.first?["finalMessageId"].text, "saved-message")
+        XCTAssertEqual(state.previews.first?["runStatus"].text, "succeeded")
+        XCTAssertEqual(state.previews.first?["revision"].count, 3)
+        state.receivePreviews(.object(["previews": .array([.object(preview)])]))
+        XCTAssertEqual(state.previews.first?["runStatus"].text, "succeeded")
+        XCTAssertEqual(state.previews.first?["finalMessageId"].text, "saved-message")
+    }
     func testRendererBridgeAcceptsOnlyScopedReadCapabilities() {
         let id = UUID().uuidString
         XCTAssertEqual(ChatResource("/api/ui/entities?refs=task:\(id),agent:\(id)")?.path, "entities")

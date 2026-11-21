@@ -31,7 +31,7 @@ existing conversation at its newest reply; its Markdown table, inline code,
 formatted paragraphs and worked/tools/token/model footer rendered correctly.
 No test prompt was sent and no agent work was started during this check.
 
-Automated validation: 14 Swift core tests; 13 mobile integration tests against a
+Automated validation: 15 Swift core tests; 13 mobile integration tests against a
 fresh disposable PostgreSQL database (including cross-company entity isolation,
 private reasoning and redacted private run timelines); 40 focused chat/rich/mobile
 unit tests; six mobile WebKit regressions for long-history initial position,
