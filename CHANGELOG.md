@@ -9,6 +9,12 @@ tagged (e.g. `## [1.2.0] — 2026-07-22`). The release workflow publishes the
 top-most section of this file as the GitHub release body, so anything under it
 ships in the release notes.
 
+## [0.41.0] — 2026-11-21
+
+### Fixed
+
+- **`tasks.lease_until` is `timestamptz` instead of `timestamp without time zone`.** Migration 0089 converts the column with `USING "lease_until" AT TIME ZONE 'UTC'`, pinning the stored value to the zone it was written in. `acquireTaskLease` compares the column against `now()`: with a naive column the comparison followed the *reader's* session zone, so the same instant counted as a live lease under one zone and as expired under another. Regression test `tests/integration/lease-until-tz.test.ts` asserts the type and the zone-independent read.
+
 ## [0.40.0] — 2026-11-20
 
 ### Changed
