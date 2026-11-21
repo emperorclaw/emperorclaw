@@ -4255,6 +4255,7 @@
     "cancelled": "已取消",
     "beingHandled": "正在处理中",
     "queued": "已排队",
+    "seen": "已查看",
     "read": "已读",
     "sent": "已发送",
     "isWorking": "正在工作",

@@ -726,7 +726,7 @@ export function AgentTeamChat({
                                                         laterReplies={hasChoicesBlock(msg.text) ? laterTeamReplies(messages, i, getAgentName(senderId)) : undefined}
                                                     >
                                                         <ParsedMessage text={msg.text} preview={Boolean((msg.metadataJson as Record<string, unknown> | null)?.preview)} />
-                                                        {Boolean((msg.metadataJson as Record<string, unknown> | null)?.preview) && <PreviewState state={String((msg.metadataJson as Record<string, unknown>).previewRunStatus)} />}
+                                                        {Boolean((msg.metadataJson as Record<string, unknown> | null)?.preview) && <PreviewState state={String((msg.metadataJson as Record<string, unknown>).previewRunStatus)} thinkingRowVisible={liveActive} />}
                                                     </AgentMessageActions>
                                                 )}
                                                 {isPending && pendingInView && <PendingReceipt message={pendingInView} onRetry={() => void sendMessage(pendingInView)} />}
