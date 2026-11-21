@@ -4,6 +4,7 @@ import { useChatScroll } from "@/lib/chat/use-chat-scroll";
 import { useChatResponses, withResponsePreviews, chatRowKey, rememberHumanMessageKey } from "@/lib/chat/use-chat-responses";
 import { messageEntranceRef } from "@/lib/chat/message-motion";
 import { PendingReceipt, PreviewState, type PendingText } from "@/components/chat/pending-send";
+import { deliveryLabelKey } from "@/lib/chat/delivery-state";
 import { StreamingMarkdown } from "@/components/chat/streaming-markdown";
 import { newClientMessageId } from "@/lib/chat/client-message-id";
 import { ChatInput } from "@/components/chat/chat-input";
@@ -1334,6 +1335,8 @@ export function AgentDirectChat({
                             const isHuman = message.senderType === "human";
                             const isPending = Boolean((message.metadataJson as Record<string, unknown> | null)?.pending);
                             const isPreview = Boolean((message.metadataJson as Record<string, unknown> | null)?.preview);
+                            // seen (bridge took the prompt) must not read as Queued; acting keeps its own pill.
+                            const deliveryLabel = deliveryLabelKey(message.deliveryState);
                             const isControl = message.senderType === "system" && Boolean((message.metadataJson as Record<string, unknown> | null)?.runtimeControl);
                             const approvalCardId = approvalCardIdOf(message);
                             // System messages say who they are from: a request names its
@@ -1429,7 +1432,7 @@ export function AgentDirectChat({
                                                     </div>
                                                 )}
                                                 {isPending && pendingInView && <PendingReceipt message={pendingInView} onRetry={() => void handleSend({ preventDefault() {} } as React.FormEvent, pendingInView)} />}
-                                                {isPreview && <PreviewState state={String((message.metadataJson as Record<string, unknown>).previewRunStatus)} />}
+                                                {isPreview && <PreviewState state={String((message.metadataJson as Record<string, unknown>).previewRunStatus)} thinkingRowVisible={liveActive} />}
                                                 {!isHuman && hasStoredReasoning(message) && (
                                                     <MessageReasoningDisclosure messageId={message.id} />
                                                 )}
@@ -1456,7 +1459,7 @@ export function AgentDirectChat({
                                                                 "truncate font-medium",
                                                                 message.deliveryState === "acting" ? "text-emerald-600 dark:text-emerald-400" : runtimeFailureOf(message) ? "text-rose-500 dark:text-rose-400" : ""
                                                             )} title={runtimeFailureOf(message)?.reason ?? undefined}>
-                                                                <TextSwap id={message.deliveryState}>{message.deliveryState === "cancelled" ? (failureLabel(message) ?? t("cancelled")) : message.deliveryState === "acting" ? t("beingHandled") : t("queued")}</TextSwap>
+                                                                <TextSwap id={message.deliveryState}>{deliveryLabel === "cancelled" ? (failureLabel(message) ?? t("cancelled")) : t(deliveryLabel)}</TextSwap>
                                                             </span>
                                                             <span aria-hidden>·</span>
                                                         </span>
