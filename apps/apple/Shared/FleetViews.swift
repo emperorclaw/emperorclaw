@@ -79,7 +79,15 @@ struct FleetView: View {
             }
             .navigationTitle(agentsOnly ? "Agents" : "EmperorClaw")
             .toolbar {
-                ToolbarItem(placement: .topBarTrailing) { Button { showConnections = true } label: { Image(systemName: "server.rack") }.accessibilityLabel("Connections") }
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button { showConnections = true } label: {
+                        #if os(watchOS)
+                        Image(systemName: "ellipsis").foregroundStyle(.black)
+                        #else
+                        Image(systemName: "server.rack")
+                        #endif
+                    }.accessibilityLabel("Connections")
+                }
             }
             .sheet(isPresented: $showConnections) { ConnectionsView() }
             .onChange(of: scenePhase) { _, phase in if phase == .active { Task { await model.refresh() } } }

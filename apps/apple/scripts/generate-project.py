@@ -66,7 +66,7 @@ for target_name, sdk, deployment, family, bundle in [
     config_list = obj(target_name + 'ConfigList', 'XCConfigurationList', buildConfigurations=configs, defaultConfigurationIsVisible='0', defaultConfigurationName='Release')
     target = obj(target_name, 'PBXNativeTarget', buildConfigurationList=config_list, buildPhases=phases, buildRules=[], dependencies=[], name=target_name, packageProductDependencies=[dep], productName=target_name, productReference=product, productType='com.apple.product-type.app-extension')
     targets.append(target); widget_targets[target_name] = (target, product)
-(ROOT / 'Widgets' / 'Info.plist').write_bytes(plistlib.dumps({'CFBundleDisplayName': 'EmperorClaw', 'CFBundleExecutable': '$(EXECUTABLE_NAME)', 'CFBundleIdentifier': '$(PRODUCT_BUNDLE_IDENTIFIER)', 'CFBundlePackageType': 'XPC!', 'CFBundleShortVersionString': '$(MARKETING_VERSION)', 'CFBundleVersion': '$(CURRENT_PROJECT_VERSION)', 'NSExtension': {'NSExtensionPointIdentifier': 'com.apple.widgetkit-extension'}}))
+(ROOT / 'Widgets' / 'Info.plist').write_bytes(plistlib.dumps({'CFBundleDisplayName': 'EmperorClaw', 'CFBundleName': '$(PRODUCT_NAME)', 'CFBundleExecutable': '$(EXECUTABLE_NAME)', 'CFBundleIdentifier': '$(PRODUCT_BUNDLE_IDENTIFIER)', 'CFBundlePackageType': 'XPC!', 'CFBundleShortVersionString': '$(MARKETING_VERSION)', 'CFBundleVersion': '$(CURRENT_PROJECT_VERSION)', 'NSExtension': {'NSExtensionPointIdentifier': 'com.apple.widgetkit-extension'}}))
 (ROOT / 'Widgets' / 'Widgets.entitlements').write_bytes(plistlib.dumps({'com.apple.security.application-groups': ['group.com.emperorclaw.app']}))
 for name, folder, sdk, deployment, family, bundle in [
     ('EmperorWatch', 'Watch', 'watchos', '10.0', '4', 'com.emperorclaw.app.watchkitapp'),
@@ -114,7 +114,7 @@ for name, folder, sdk, deployment, family, bundle in [
     if folder == 'Watch':
         info.update({'WKApplication': True, 'WKCompanionAppBundleIdentifier': 'com.emperorclaw.app', 'WKWatchOnly': False})
     else:
-        info.update({'LSRequiresIPhoneOS': True, 'UILaunchScreen': {}, 'UISupportedInterfaceOrientations': ['UIInterfaceOrientationPortrait', 'UIInterfaceOrientationLandscapeLeft', 'UIInterfaceOrientationLandscapeRight'],
+        info.update({'LSRequiresIPhoneOS': True, 'UILaunchScreen': {}, 'UISupportedInterfaceOrientations': ['UIInterfaceOrientationPortrait', 'UIInterfaceOrientationPortraitUpsideDown', 'UIInterfaceOrientationLandscapeLeft', 'UIInterfaceOrientationLandscapeRight'],
                      'CFBundleURLTypes': [{'CFBundleURLName': 'EmperorClaw sign-in', 'CFBundleURLSchemes': ['com.emperorclaw.app']}]})
     if folder == 'iPhone':
         info.update({'NSCameraUsageDescription': 'Scan the connection QR code from your own EmperorClaw server.', 'UIBackgroundModes': ['remote-notification']})

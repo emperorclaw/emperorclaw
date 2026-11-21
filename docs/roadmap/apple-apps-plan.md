@@ -28,7 +28,9 @@ The user considered Expo and asked for whichever approach simplifies development
 
 Verification: 10 shared Swift tests, iPhone/watch app and widget SDK typechecks, 12 integration tests against temporary PostgreSQL, focused server/relay unit tests, TypeScript and lint checks. Existing account roles, company scopes and private-thread rules are reused; mutation retries have device-scoped idempotency records.
 
-Release gates: repair the local Xcode system components (first-launch installation requires administrator authorization), install compatible simulator runtimes, perform linked builds and interactive device/UI/accessibility/network/battery validation, configure the Apple team, bundle IDs, App Groups, signing and APNs credentials, and prepare final icons, localization and App Store privacy disclosures. No customer database was migrated and no production services were changed. See `apps/apple/README.md` for setup and the distinction between implemented code and release validation.
+Xcode components and iOS/watchOS runtimes are now installed. Full simulator and unsigned Release/device builds pass, and both apps install/launch with initial screens visually reviewed. The simulators are paired. See `apps/apple/QA/README.md` for evidence and the limits of this startup check.
+
+Release gates: perform authenticated end-to-end and interactive device/UI/accessibility/network/battery validation, configure the Apple team, bundle IDs, App Groups, signing and APNs credentials, and prepare final icons, localization and App Store privacy disclosures. No customer database was migrated and no production services were changed. See `apps/apple/README.md` for setup and the distinction between implemented code and release validation.
 
 ## 2. Existing foundations and implementation gaps
 
