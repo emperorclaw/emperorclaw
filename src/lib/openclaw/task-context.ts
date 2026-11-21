@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, isNull, or } from "drizzle-orm";
+import { and, asc, desc, eq, isNull, or, sql } from "drizzle-orm";
 import { mcpMayUseResource, type McpAgentAccess } from "@/lib/mcp-access";
 import { db } from "@/db";
 import {
@@ -15,6 +15,52 @@ import {
 } from "@/db/schema";
 import { getPendingApprovalSummaryForTaskIds } from "@/lib/project-workflow";
 import { toPublicResource } from "@/lib/resources";
+import { classifyTaskRef } from "@/lib/task-id";
+
+/**
+ * Resolve what a caller sent as a task id into the real task id.
+ *
+ * A UUID (or its dash-less form) is returned as-is: existence is the detail
+ * query's business, and answering 404 from here would change what a valid but
+ * missing id looks like. A short code is looked up as a prefix inside the
+ * company, because that is how it is derived — `id.slice(0, 8).toUpperCase()`
+ * in the detail payload, not a stored column.
+ *
+ * The prefix comparison casts the id to text, so it cannot use the primary key
+ * index. That is deliberate: this path only runs for the legacy short-code
+ * shape (a few log lines a day), never for a normal UUID lookup, and keeping it
+ * a plain LIKE avoids a second column that could drift from the id.
+ */
+export async function resolveTaskIdForCompany(
+  companyId: string,
+  raw: string | null | undefined,
+): Promise<{ ok: true; id: string } | { ok: false; status: 400 | 404 | 409; error: string }> {
+  const ref = classifyTaskRef(raw);
+  if (ref.kind === "invalid") return { ok: false, status: 400, error: ref.error };
+  if (ref.kind === "id") return { ok: true, id: ref.id };
+
+  const rows = await db.select({ id: tasks.id }).from(tasks)
+    .where(and(
+      eq(tasks.companyId, companyId),
+      isNull(tasks.deletedAt),
+      // Dashes stripped: a short code is the head of the id, and a caller who
+      // truncated a dash-less id must still match the same task.
+      sql`replace(${tasks.id}::text, '-', '') like ${`${ref.prefix}%`}`,
+    ))
+    .limit(2);
+
+  if (rows.length === 0) {
+    return { ok: false, status: 404, error: `Task not found for id "${ref.prefix}" (no task in this company starts with that code).` };
+  }
+  if (rows.length > 1) {
+    return {
+      ok: false,
+      status: 409,
+      error: `Task id "${ref.prefix}" is ambiguous: ${rows.length} tasks start with that code. Send the full UUID.`,
+    };
+  }
+  return { ok: true, id: rows[0].id };
+}
 
 export async function getTaskDetailForCompany(companyId: string, taskId: string) {
   const rows = await db.select({
