@@ -134,6 +134,8 @@ const eslintConfig = defineConfig([
     ".claude/**",
     ".data/**",
     "public/**",
+    // Offline Apple renderer is generated from linted web/application sources.
+    "apps/apple/iPhone/ChatWeb/**",
     "clawhub/**",
     "integrations/**",
     "scripts/**",
