@@ -139,7 +139,7 @@ for name, folder, sdk, deployment, family, bundle in [
             'CFBundleIdentifier': '$(PRODUCT_BUNDLE_IDENTIFIER)', 'CFBundleInfoDictionaryVersion': '6.0', 'CFBundleName': '$(PRODUCT_NAME)',
             'CFBundlePackageType': 'APPL', 'CFBundleShortVersionString': '$(MARKETING_VERSION)', 'CFBundleVersion': '$(CURRENT_PROJECT_VERSION)'}
     if folder == 'Watch':
-        info.update({'WKApplication': True, 'WKCompanionAppBundleIdentifier': 'com.emperorclaw.app', 'WKWatchOnly': False})
+        info.update({'WKApplication': True, 'WKCompanionAppBundleIdentifier': 'com.emperorclaw.app', 'WKWatchOnly': False, 'NSMicrophoneUsageDescription': 'Send voice messages to your agents from your wrist.'})
     else:
         info.update({'LSRequiresIPhoneOS': True, 'UILaunchScreen': {'UIColorName': 'LaunchBackground', 'UIImageName': 'LaunchEmblem', 'UIImageRespectsSafeAreaInsets': True}, 'UISupportedInterfaceOrientations': ['UIInterfaceOrientationPortrait', 'UIInterfaceOrientationPortraitUpsideDown', 'UIInterfaceOrientationLandscapeLeft', 'UIInterfaceOrientationLandscapeRight'],
                      'CFBundleURLTypes': [{'CFBundleURLName': 'EmperorClaw sign-in', 'CFBundleURLSchemes': ['com.emperorclaw.app']}]})

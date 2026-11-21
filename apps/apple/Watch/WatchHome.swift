@@ -10,12 +10,39 @@ struct WatchHome: View {
     @State private var inboxLoaded = false
     @State private var spending: JSONValue = .null
 
+    enum ChatTarget: Hashable { case agent(String), team }
+    @State private var page = 0
+    @State private var chat: ChatTarget?
+
     var body: some View {
         NavigationStack {
             Group {
-                if Self.qa("--qa-agent"), let workspace = model.selected, let agent = model.snapshots[workspace.id]?.agents.first(where: \.isWorking) { WatchAgentDetail(agent: agent) }
-                else if let workspace = model.selected { home(workspace) }
-                else { welcome }
+                if let workspace = model.selected {
+                    let agents = model.snapshots[workspace.id]?.agents ?? []
+                    TabView(selection: $page) {
+                        WatchOffice(agents: agents, company: model.companyName, needsYou: counts["needsYou"].count) { chat = .agent($0.id) }
+                            .tag(0)
+                        WatchAgentList(agents: agents, open: { chat = .agent($0.id) }, openTeam: { chat = .team })
+                            .tag(1)
+                        home(workspace).tag(2)
+                    }
+                    .tabViewStyle(.page)
+                    .navigationDestination(item: $chat) { target in
+                        switch target {
+                        case .team: WatchAgentChat(workspace: workspace, agent: nil)
+                        case .agent(let id): WatchAgentChat(workspace: workspace, agent: agents.first { $0.id == id })
+                        }
+                    }
+                    .task(id: "\(workspace.id):\(workspace.companyID ?? ""):\(scenePhase)") {
+                        guard scenePhase == .active else { return }
+                        await reload(workspace)
+                        while !Task.isCancelled { do { try await Task.sleep(for: .seconds(15)) } catch { break }; await reload(workspace) }
+                    }
+                    .onAppear { if Self.qa("--qa-team") { page = 1 } }
+                    .onChange(of: agents.count) { _, _ in
+                        if Self.qa("--qa-agent"), chat == nil, let first = agents.first(where: \.isWorking) { chat = .agent(first.id) }
+                    }
+                } else { welcome }
             }
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
@@ -30,11 +57,11 @@ struct WatchHome: View {
         let snapshot = model.snapshots[workspace.id]
         let agents = (snapshot?.agents ?? []).sorted { $0.isWorking != $1.isWorking ? $0.isWorking : $0.name.localizedStandardCompare($1.name) == .orderedAscending }
         return List {
-            if !Self.qa("--qa-team") { hero(snapshot).listRowBackground(Color.clear).listRowInsets(EdgeInsets(top: 0, leading: 4, bottom: 6, trailing: 4)) }
+            hero(snapshot).listRowBackground(Color.clear).listRowInsets(EdgeInsets(top: 0, leading: 4, bottom: 6, trailing: 4))
             if let error = model.errors[workspace.id] {
                 Label { Text(error).font(.footnote).lineLimit(3) } icon: { Image(systemName: "wifi.exclamationmark").foregroundStyle(.orange) }
             }
-            if !Self.qa("--qa-team") { needsYou(workspace) }
+            needsYou(workspace)
             if !agents.isEmpty {
                 Section {
                     ForEach(agents) { agent in
@@ -68,11 +95,6 @@ struct WatchHome: View {
         }
         .listStyle(.carousel)
         .refreshable { await reload(workspace) }
-        .task(id: "\(workspace.id):\(workspace.companyID ?? ""):\(scenePhase)") {
-            guard scenePhase == .active else { return }
-            await reload(workspace)
-            while !Task.isCancelled { do { try await Task.sleep(for: .seconds(15)) } catch { break }; await reload(workspace) }
-        }
     }
 
     /// DEBUG-only QA entry points, so screens below the fold can be captured in the simulator.
