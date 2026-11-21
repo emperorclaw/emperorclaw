@@ -10,7 +10,17 @@ env:
   IMAGE_NAME: ${{ github.repository }}
 
 jobs:
+  gate:
+    uses: ./.github/workflows/release-gate.yml
+    permissions:
+      contents: read
+      actions: read
+    with:
+      sha: ${{ github.sha }}
+      ref_name: ${{ github.ref_name }}
+
   build-and-push:
+    needs: gate
     runs-on: ubuntu-latest
     permissions:
       contents: write

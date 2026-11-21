@@ -1,0 +1,110 @@
+name: Release gate
+
+on:
+  workflow_call:
+    inputs:
+      sha:
+        description: Commit the tag points at.
+        required: true
+        type: string
+      ref_name:
+        description: Ref whose CI run must be green (the tag name).
+        required: true
+        type: string
+      grace_minutes:
+        description: How long to wait for the CI run to appear.
+        required: false
+        default: 15
+        type: number
+      timeout_minutes:
+        description: Hard cap for the CI run to finish.
+        required: false
+        default: 90
+        type: number
+
+jobs:
+  ci-green:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    permissions:
+      contents: read
+      actions: read
+
+    steps:
+      - name: Wait for CI of the tagged sha to finish green
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SHA: ${{ inputs.sha }}
+          REF: ${{ inputs.ref_name }}
+          GRACE_MINUTES: ${{ inputs.grace_minutes }}
+          TIMEOUT_MINUTES: ${{ inputs.timeout_minutes }}
+        run: |
+          set -euo pipefail
+
+          start=$SECONDS
+          grace=$((GRACE_MINUTES * 60))
+          timeout=$((TIMEOUT_MINUTES * 60))
+          run_id=""
+          announced=""
+
+          while true; do
+            elapsed=$((SECONDS - start))
+
+            # Newest CI push run for this exact sha and ref.
+            run_id=$(gh api \
+              "repos/$GITHUB_REPOSITORY/actions/runs?head_sha=$SHA&event=push&per_page=100" \
+              --jq '[.workflow_runs[] | select(.name == "CI" and .head_branch == "'"$REF"'")] | sort_by(.created_at) | reverse | .[0].id // empty')
+
+            if [ -z "$run_id" ]; then
+              if [ "$elapsed" -ge "$grace" ]; then
+                echo "::error::no CI run was created for $SHA on $REF within ${GRACE_MINUTES} minutes"
+                exit 1
+              fi
+              echo "No CI run yet for $SHA on $REF (${elapsed}s); retrying in 15s."
+              sleep 15
+              continue
+            fi
+
+            if [ "$announced" != "$run_id" ]; then
+              echo "::notice::Found CI run $run_id for $SHA on $REF"
+              announced="$run_id"
+            fi
+
+            details=$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$run_id" \
+              --jq '[.status, (.conclusion // "-"), .html_url] | join("|")')
+            # '|' and not a tab: IFS whitespace collapses runs of tabs, which would swallow the empty
+            # conclusion of a running CI run and shift the URL into the wrong variable.
+            IFS='|' read -r status conclusion url <<< "$details"
+
+            if [ "$status" != "completed" ]; then
+              # Fail fast: a job that has already concluded red will not turn green, and waiting for the
+              # rest of the suite only delays the release. ~25 minutes of suite ahead of us otherwise.
+              failing=$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$run_id/jobs" \
+                --jq '.jobs[] | select(.conclusion == "failure" or .conclusion == "cancelled" or .conclusion == "timed_out") | "\(.name): \(.conclusion)"' || true)
+              if [ -n "$failing" ]; then
+                echo "::error::CI run $url already has failing jobs for $SHA on $REF"
+                echo "Failing jobs:"
+                echo "$failing"
+                exit 1
+              fi
+
+              if [ "$elapsed" -ge "$timeout" ]; then
+                echo "::error::CI run $url did not finish within ${TIMEOUT_MINUTES} minutes (status: $status)"
+                exit 1
+              fi
+              echo "::notice::CI run still $status after $((elapsed / 60))m: $url"
+              sleep 30
+              continue
+            fi
+
+            if [ "$conclusion" = "success" ]; then
+              echo "CI is green for $SHA on $REF: $url"
+              exit 0
+            fi
+
+            echo "::error::CI finished '$conclusion' for $SHA on $REF: $url"
+            echo "Failing jobs:"
+            gh api "repos/$GITHUB_REPOSITORY/actions/runs/$run_id/jobs" \
+              --jq '.jobs[] | select(.conclusion != "success") | "\(.name): \(.conclusion)"'
+            exit 1
+          done

@@ -10,9 +10,19 @@ env:
   IMAGE_NAME: ${{ github.repository }}-hermes
 
 jobs:
+  gate:
+    uses: ./.github/workflows/release-gate.yml
+    permissions:
+      contents: read
+      actions: read
+    with:
+      sha: ${{ github.sha }}
+      ref_name: ${{ github.ref_name }}
+
   # Release gate (design 0.9 §11.2 gate 4): nothing is pushed unless the contract suites pass on
   # exactly the image this tag builds. Same invocation as ci.yml's hermes-image-contract job.
   contract:
+    needs: gate
     runs-on: ubuntu-latest
     timeout-minutes: 45
     permissions:
