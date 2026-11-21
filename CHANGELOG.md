@@ -9,6 +9,17 @@ tagged (e.g. `## [1.2.0] — 2026-07-22`). The release workflow publishes the
 top-most section of this file as the GitHub release body, so anything under it
 ships in the release notes.
 
+## [0.42.2] — 2026-11-21
+
+### Fixed
+
+- **Real Views in the iPhone app.** The mobile API now exposes the existing View list and detail reads, with the same company, module, scope and private-content permissions as the web. View editing remains on the web.
+- **Fleet character identity.** Mobile snapshots include existing avatar appearances so the app can show the same characters as the web dashboard.
+
+### Upgrade
+
+- No new database migration or sign-in permission. Existing mobile sessions continue to work. The updated native app is installed separately; a server update does not replace the app.
+
 ## [0.42.1] — 2026-11-21
 
 ### Fixed
