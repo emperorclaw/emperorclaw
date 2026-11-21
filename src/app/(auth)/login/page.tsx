@@ -9,6 +9,7 @@ import { AuthBackground } from "@/components/auth-background";
 import { useTranslations } from "next-intl";
 import { CustomLogo } from "@/components/custom-logo";
 import pkg from "@/../package.json" assert { type: "json" };
+import { loginDestination } from "@/lib/login-destination";
 
 function FadeUp({ children, delay = 0, className = "" }: { children: React.ReactNode; delay?: number; className?: string }) {
     return (
@@ -83,8 +84,9 @@ export default function LoginPage() {
         setError("");
         setLoading(true);
         const normalizedEmail = email.trim().toLowerCase();
+        const callbackUrl = loginDestination(new URLSearchParams(window.location.search).get("callbackUrl"), window.location.origin);
         try {
-            const res = await signIn("credentials", { redirect: false, email: normalizedEmail, password, code });
+            const res = await signIn("credentials", { redirect: false, email: normalizedEmail, password, code, callbackUrl });
             if (res?.error) {
                 if (res.error === "RATE_LIMITED") { setError(account("loginRateLimited")); return; }
                 if (res.error === "MFA_REQUIRED" || res.error === "MFA_INVALID") {
@@ -98,7 +100,7 @@ export default function LoginPage() {
                 }
                 setError(t("invalidCredentials"));
             } else if (res?.ok) {
-                router.push("/");
+                router.push(callbackUrl);
                 router.refresh();
             }
         } catch {

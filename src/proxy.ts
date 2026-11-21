@@ -27,6 +27,7 @@ export const config = {
     // Excluded (public, unauthenticated):
     //   /                    — landing page
     //   /api/auth/*          — signup, login, validate-invite, password reset
+    //   /api/mobile/v1/*    — native device-token auth (every private route checks it)
     //   /api/mcp/*           — MCP Bearer-token auth
     //   /mcp                 — real MCP protocol server, MCP Bearer-token auth (see src/app/mcp/route.ts)
     //   /api/oauth/register  — RFC 7591 dynamic client registration (no session yet)
@@ -49,5 +50,5 @@ export const config = {
     //   /api/runtime-hosts/pair — a runtime host trades a one-time pairing code for its
     //                          host token (code auth, rate limited; see the route)
     //   /_next/*, favicon    — Next.js internals
-    matcher: ["/((?!$|api/auth|api/mcp|api/oauth/register|api/oauth/token|\\.well-known|api/webhook|api/skills|api/docs|api/updates|api/health|api/version|api/avatars/|api/runtime-hosts/pair$|docs|_next/static|_next/image|favicon.ico|login|signup|setup|install\\.sh|install\\.ps1|downloads|firmware/|emperor-claw-os|crown\\.png|mcp$).*)"],
+    matcher: ["/((?!$|api/auth|api/mobile/v1/|api/mcp|api/oauth/register|api/oauth/token|\\.well-known|api/webhook|api/skills|api/docs|api/updates|api/health|api/version|api/avatars/|api/runtime-hosts/pair$|docs|_next/static|_next/image|favicon.ico|login|signup|setup|install\\.sh|install\\.ps1|downloads|firmware/|emperor-claw-os|crown\\.png|mcp$).*)"],
 };

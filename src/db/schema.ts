@@ -37,6 +37,29 @@ export const sessions = pgTable("sessions", {
     userAgent: text("user_agent"),
 });
 
+// Native user sessions are not company-wide MCP tokens. Deleting a normal
+// account session (password reset / revoke sessions) also revokes these tokens.
+export const mobileSessions = pgTable("mobile_sessions", {
+    id: uuid("id").primaryKey().defaultRandom(),
+    sessionId: uuid("session_id").notNull().unique().references(() => sessions.id, { onDelete: "cascade" }),
+    deviceName: text("device_name").notNull(),
+    deviceKind: text("device_kind").notNull(),
+    accessHash: text("access_hash").notNull().unique(),
+    refreshHash: text("refresh_hash").notNull().unique(),
+    accessExpiresAt: timestamp("access_expires_at").notNull(),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export const mobileAuthorizationCodes = pgTable("mobile_authorization_codes", {
+    id: uuid("id").primaryKey().defaultRandom(),
+    codeHash: text("code_hash").notNull().unique(),
+    browserSessionId: uuid("browser_session_id").notNull().references(() => sessions.id, { onDelete: "cascade" }),
+    challenge: text("challenge").notNull(),
+    deviceName: text("device_name").notNull(),
+    expiresAt: timestamp("expires_at").notNull(),
+    consumedAt: timestamp("consumed_at"),
+});
+
 // Account security history belongs to the person, never to agent-visible chat.
 export const userSecurityEvents = pgTable("user_security_events", {
     id: uuid("id").primaryKey().defaultRandom(),
