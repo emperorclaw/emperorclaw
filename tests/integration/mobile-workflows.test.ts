@@ -90,3 +90,21 @@ maybe('mobile rich chat reads preserve company isolation and private reasoning a
     const redacted = await read(peerIdentity, ['runs', run.id, 'events']);
     assert.equal(redacted.status, 200); assert.equal((await redacted.json()).redacted, true);
 });
+
+maybe('mobile Views reads reuse web access rules and cannot create or mutate views', async () => {
+    await resetDb(); actAs(null);
+    const c = await connection(), other = await connection();
+    const { mcpClientFor } = await import('./_access-helper');
+    const builder = await seedAgent(c.companyId);
+    const client = await mcpClientFor(c.companyId, builder.id);
+    const created = await client.tool('create_view', { title: 'Mobile report', panels: [{ id: 'count', type: 'metric', title: 'Agents', data: { value: 8 } }] });
+    assert.equal(created.isError, false, created.text);
+    const { view } = JSON.parse(created.text);
+    const list = await call(c, 'views'); assert.equal(list.status, 200);
+    assert.ok((await list.json()).views.some((item: { id: string }) => item.id === view.id));
+    const detail = await call(c, `views/${view.id}`); assert.equal(detail.status, 200);
+    assert.equal((await detail.json()).view.panels[0].data.value, 8);
+    assert.equal((await call(other, `views/${view.id}`)).status, 404);
+    assert.equal((await call(c, 'views', 'POST', {})).status, 404);
+    assert.equal((await call(c, `views/${view.id}`, 'PATCH', {})).status, 404);
+});
