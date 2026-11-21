@@ -45,10 +45,12 @@ struct PhoneHome: View {
                     ScrollView {
                         VStack(alignment: .leading, spacing: 22) {
                             HomeHeader(snapshot: model.snapshots[workspace.id]) { connections = true }
+                                .frame(maxWidth: 760, alignment: .leading)
                             if let error = model.errors[workspace.id] {
                                 ErrorRow(error: error) { Task { await model.refresh() } }
                             }
                             NeedsYouCard(workspace: workspace, refreshKey: refreshTick)
+                                .frame(maxWidth: 760, alignment: .leading)
                             if let snapshot = model.snapshots[workspace.id] {
                                 VStack(alignment: .leading, spacing: 6) {
                                     SectionLabel(text: "Your team", systemImage: "person.3.fill")

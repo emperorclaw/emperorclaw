@@ -48,7 +48,8 @@ struct EmperorPhoneApp: App {
                 Tab("Messages", systemImage: "bubble.left.and.text.bubble.right", value: 2) { WorkRoot(kind: "Messages") }
                 Tab("Projects", systemImage: "checklist", value: 3) { WorkRoot(kind: "Projects") }
                 Tab("Views", systemImage: "chart.bar.doc.horizontal", value: 4) { ViewsRoot() }
-            }.tabViewStyle(.sidebarAdaptable)
+            }
+            .modifier(AdaptiveTabStyle())
         } else {
             TabView(selection: $model.tab) {
                 PhoneHome().id(model.workspaceKey).tabItem { Label("Home", systemImage: "crown") }.tag(0)
@@ -60,4 +61,19 @@ struct EmperorPhoneApp: App {
         }
     }
 
+}
+
+/// Sidebar navigation only where there is real room for it (large iPad). On a
+/// phone, landscape, an iPad mini or the unfolded iPhone Duo, iOS's compact top
+/// tab bar would push tabs behind an overflow chevron, so keep the tab bar.
+@available(iOS 18.0, *)
+private struct AdaptiveTabStyle: ViewModifier {
+    @State private var width: CGFloat = 0
+    func body(content: Content) -> some View {
+        Group {
+            if width >= 1000 { content.tabViewStyle(.sidebarAdaptable) }
+            else { content.tabViewStyle(.tabBarOnly) }
+        }
+        .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { width = $0 }
+    }
 }
