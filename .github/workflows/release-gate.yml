@@ -47,13 +47,40 @@ jobs:
           run_id=""
           announced=""
 
+          # gh api with three retries. A 5xx or a dropped connection during a 30-minute wait is
+          # transient and retrying hides it from nobody; a 401/403/404 will not fix itself, and
+          # treating it as transient turns a credential problem into a 90-minute timeout with a
+          # misleading message. Adds --paginate for callers that walk lists.
+          gh_api() {
+            local attempt=1 out
+            while :; do
+              if out=$(gh api "$@" 2>&1); then
+                printf '%s' "$out"
+                return 0
+              fi
+              case "$out" in
+                *"HTTP 401"*|*"HTTP 403"*|*"HTTP 404"*|*"Bad credentials"*)
+                  echo "::error::gh api refused a non-retryable error: $out" >&2
+                  return 1 ;;
+              esac
+              if [ "$attempt" -ge 4 ]; then
+                echo "::error::gh api failed after $attempt attempts: $out" >&2
+                return 1
+              fi
+              echo "::warning::gh api attempt $attempt failed, retrying: $out" >&2
+              sleep $((attempt * 5))
+              attempt=$((attempt + 1))
+            done
+          }
+
           while true; do
             elapsed=$((SECONDS - start))
 
-            # Newest CI push run for this exact sha and ref.
-            run_id=$(gh api \
-              "repos/$GITHUB_REPOSITORY/actions/runs?head_sha=$SHA&event=push&per_page=100" \
-              --jq '[.workflow_runs[] | select(.name == "CI" and .head_branch == "'"$REF"'")] | sort_by(.created_at) | reverse | .[0].id // empty')
+            # Newest push run of ci.yml for this exact sha and ref. Addressed by file path, not by the
+            # workflow's display name: renaming "CI" must not leave the gate waiting on nothing.
+            run_id=$(gh_api \
+              "repos/$GITHUB_REPOSITORY/actions/workflows/ci.yml/runs?head_sha=$SHA&per_page=100" \
+              --jq '[.workflow_runs[] | select(.head_branch == "'"$REF"'")] | sort_by(.created_at) | reverse | .[0].id // empty')
 
             if [ -z "$run_id" ]; then
               if [ "$elapsed" -ge "$grace" ]; then
@@ -70,17 +97,18 @@ jobs:
               announced="$run_id"
             fi
 
-            details=$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$run_id" \
-              --jq '[.status, (.conclusion // "-"), .html_url] | join("|")')
-            # '|' and not a tab: IFS whitespace collapses runs of tabs, which would swallow the empty
-            # conclusion of a running CI run and shift the URL into the wrong variable.
+            details=$(gh_api "repos/$GITHUB_REPOSITORY/actions/runs/$run_id" \
+              --jq '[.status, (.conclusion // ""), .html_url] | join("|")')
+            # `|`, not a tab: bash treats tab as IFS whitespace and collapses the empty conclusion of a
+            # run still in flight, which shifted the url into the conclusion field.
             IFS='|' read -r status conclusion url <<< "$details"
 
             if [ "$status" != "completed" ]; then
               # Fail fast: a job that has already concluded red will not turn green, and waiting for the
               # rest of the suite only delays the release. ~25 minutes of suite ahead of us otherwise.
-              failing=$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$run_id/jobs" \
-                --jq '.jobs[] | select(.conclusion == "failure" or .conclusion == "cancelled" or .conclusion == "timed_out") | "\(.name): \(.conclusion)"' || true)
+              # --paginate: a large matrix can push the red job onto page 2, where the shortcut misses it.
+              failing=$(gh_api --paginate "repos/$GITHUB_REPOSITORY/actions/runs/$run_id/jobs?per_page=100" \
+                --jq '.jobs[] | select(.conclusion == "failure" or .conclusion == "cancelled" or .conclusion == "timed_out") | "\(.name): \(.conclusion)"')
               if [ -n "$failing" ]; then
                 echo "::error::CI run $url already has failing jobs for $SHA on $REF"
                 echo "Failing jobs:"
@@ -104,7 +132,8 @@ jobs:
 
             echo "::error::CI finished '$conclusion' for $SHA on $REF: $url"
             echo "Failing jobs:"
-            gh api "repos/$GITHUB_REPOSITORY/actions/runs/$run_id/jobs" \
-              --jq '.jobs[] | select(.conclusion != "success") | "\(.name): \(.conclusion)"'
+            gh_api --paginate "repos/$GITHUB_REPOSITORY/actions/runs/$run_id/jobs?per_page=100" \
+              --jq '.jobs[] | select(.conclusion == "failure" or .conclusion == "cancelled" or .conclusion == "timed_out") | "\(.name): \(.conclusion)"' \
+              || echo "(could not list the failing jobs)"
             exit 1
           done
