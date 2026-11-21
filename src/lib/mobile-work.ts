@@ -90,7 +90,7 @@ export async function mobileWork(request: NextRequest, companyId: string, path: 
             if (request.method === "GET" && path.join("/") === "spending") {
                 if (!canAdmin(ctx.role)) return mobileJson({ error: "Forbidden" }, 403);
                 const rows = await db.select({ cost: agents.monthlyCostCents, budget: agents.monthlyBudgetCents }).from(agents).where(and(eq(agents.companyId, companyId), isNull(agents.deletedAt)));
-                return mobileJson({ costCents: rows.reduce((n, row) => n + row.cost, 0), budgetCents: rows.reduce((n, row) => n + row.budget, 0), currency: "USD", period: "month", estimated: true });
+                return mobileJson({ costCents: rows.reduce((n, row) => n + row.cost, 0), budgetCents: rows.reduce((n, row) => n + (row.budget ?? 0), 0), currency: "USD", period: "month", estimated: true });
             }
             const route = await handler(request.method, path);
             if (!route) return mobileJson({ error: "Unsupported mobile operation" }, 404);
