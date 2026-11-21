@@ -70,4 +70,17 @@ final class WatchLink: NSObject, WCSessionDelegate {
         guard data.count < 60_000, let bundle = try? JSONDecoder().decode(WatchBundle.self, from: data) else { return }
         Task { @MainActor [weak self] in await self?.model?.acceptWatchProfiles(bundle) }
     }
+    func handoff(workspace: Installation, kind: String, id: String) {
+        guard let company = workspace.companyID else { return }
+        let url = WorkspaceLink.url(installationID: workspace.id, companyID: company, kind: kind, id: id).absoluteString
+        if WCSession.default.isReachable { WCSession.default.sendMessage(["open": url], replyHandler: nil) }
+        else { WCSession.default.transferUserInfo(["open": url]) }
+        model?.notice = "Open EmperorClaw on iPhone to continue."
+    }
+    nonisolated func session(_ session: WCSession, didReceiveMessage message: [String: Any]) { receiveLink(message) }
+    nonisolated func session(_ session: WCSession, didReceiveUserInfo userInfo: [String: Any]) { receiveLink(userInfo) }
+    nonisolated private func receiveLink(_ info: [String: Any]) {
+        guard let value = info["open"] as? String, let url = URL(string: value) else { return }
+        Task { @MainActor [weak self] in await self?.model?.open(url) }
+    }
 }

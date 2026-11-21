@@ -1,6 +1,7 @@
 import SwiftUI
 import AuthenticationServices
 import EmperorCore
+import VisionKit
 
 struct ConnectView: View {
     @EnvironmentObject var model: AppModel
@@ -10,12 +11,14 @@ struct ConnectView: View {
     @State private var name = ""
     @State private var busy = false
     @State private var error: String?
+    @State private var scanning = false
     var body: some View {
         NavigationStack {
             Form {
                 Section("Your EmperorClaw server") {
                     TextField("https://emperor.example.com", text: $address).keyboardType(.URL).textInputAutocapitalization(.never).autocorrectionDisabled().accessibilityLabel("Server address")
                     TextField("Instance name (optional)", text: $name)
+                    if DataScannerViewController.isSupported && DataScannerViewController.isAvailable { Button("Scan connection QR", systemImage: "qrcode.viewfinder") { scanning = true } }
                 }
                 Section { Text("Sign in on your own server. Each instance keeps its own connection and permissions.").foregroundStyle(.secondary) }
                 if let error { Section { Label(error, systemImage: "exclamationmark.triangle").foregroundStyle(.red) } }
@@ -23,6 +26,7 @@ struct ConnectView: View {
             }.navigationTitle("Add instance")
                 .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() }.disabled(busy) } }
         }
+        .sheet(isPresented: $scanning) { QRScanner { address = $0; scanning = false } }
     }
     @MainActor private func connect() async {
         busy = true; error = nil; defer { busy = false }

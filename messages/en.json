@@ -815,6 +815,7 @@
       "approvalsDescription": "Who decides what agents ask for, and when an undecided request moves up."
     },
     "profile": {
+      "mobileApps": "Connect iPhone and Apple Watch",
       "title": "Your Profile",
       "intro": "Agents can see this info to know who to contact for what.",
       "loadError": "Could not load your profile.",

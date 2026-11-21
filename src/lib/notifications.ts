@@ -121,6 +121,7 @@ export async function notify(companyId: string, userIds: string[], input: Notifi
         await Promise.allSettled([
             deliverEmails(companyId, rows),
             deliverWebhook(companyId, input),
+            import("@/lib/mobile-push").then(({ deliverMobilePush }) => deliverMobilePush(companyId, rows)),
         ]);
         return rows.length;
     } catch (error) {

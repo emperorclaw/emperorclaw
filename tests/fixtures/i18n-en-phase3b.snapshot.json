@@ -776,6 +776,9 @@
         "offNote": "Turning this off keeps existing chats usable: nobody loses a chat, and chats can still be archived. Only new chats and restores are blocked.",
         "sharedNote": "Applies in private mode only. In shared mode each agent has one chat."
       }
+    },
+    "profile": {
+      "mobileApps": "Connect iPhone and Apple Watch"
     }
   },
   "updatePanel": {

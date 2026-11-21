@@ -24,7 +24,7 @@ export default async function MobileAuthorizePage({ searchParams }: { searchPara
         <section className="w-full max-w-md space-y-6 rounded-2xl border bg-card p-6">
             <h1 className="text-2xl font-semibold">Connect EmperorClaw for iPhone</h1>
             {valid ? <>
-                <p>Allow {input.deviceName} to read your accessible companies and agent activity on this server. Your existing permissions still apply.</p>
+                <p>Allow {input.deviceName} to access your companies, chat with agents, manage tasks and review approvals on this server. Your existing permissions and resource scopes still apply to every action.</p>
                 <p className="text-sm text-muted-foreground">You can revoke this device in Settings → Account → Sessions. This connection does not create an administrator or MCP token.</p>
                 <form action={decide} className="space-y-3">
                     <button name="decision" value="approve" className="min-h-12 w-full rounded-xl bg-primary px-4 text-primary-foreground">Connect iPhone</button>

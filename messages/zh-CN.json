@@ -815,6 +815,7 @@
       "approvalsDescription": "谁来决定智能体的请求，以及未决请求何时上报。"
     },
     "profile": {
+      "mobileApps": "连接 iPhone 和 Apple Watch",
       "title": "个人资料",
       "intro": "智能体可以看到这些信息，以便知道各类事务该联系谁。",
       "loadError": "无法加载你的个人资料。",

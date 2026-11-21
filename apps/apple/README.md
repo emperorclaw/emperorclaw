@@ -1,79 +1,49 @@
-# EmperorClaw Apple apps
+# EmperorClaw for iPhone and Apple Watch
 
-Initial development milestone: native iPhone/watchOS projects, independently saved server connections, browser sign-in with PKCE, Keychain credentials, company selection and a read-only agent snapshot. This is a development foundation, not the complete mobile release.
+Native SwiftUI apps for existing, independently hosted EmperorClaw installations. Minimum iOS 17/watchOS 10. SwiftUI keeps phone and watch on one Apple stack; Android is outside this scope.
 
-SwiftUI is used for both apps to share one Apple technology stack. Expo was considered; the user preferred whatever simplifies the implementation. Android is outside the current scope.
+## Implemented experience
+
+- Five iPhone tabs: Home, Inbox, Messages, Projects and Agents. Dashboard activity, monthly spending, task creation/assignment/status/notes/results, private/team/group conversations, attachments and contextual agent questions.
+- Approvals reuse the server's permissions and decision rules. Watch decisions are restricted to short, eligible task-completion approvals; other cases hand off to iPhone.
+- Both devices save and switch among multiple installations and companies independently. Rename/favorite connections, select appearance, pause/resume new agent work, disconnect individual devices.
+- QR onboarding from web Settings → Profile → Connect iPhone and Apple Watch. QR contains only the server origin; system-browser authentication still requires consent.
+- Optional APNs notification enrollment with proof of delivery. Widgets, lock-screen accessories and watch complications pin one workspace and show cached counts with timestamps.
 
 ## Run locally
 
-Requirements: a compatible Xcode installation with iOS/watchOS SDKs, Node 20+, PostgreSQL for server integration tests, and an HTTPS-accessible EmperorClaw development server. This milestone intentionally rejects plain HTTP and invalid certificates. A physical watch must independently reach the server; the phone's VPN is not a watch network proxy.
+1. Use Node 20+ (22+ for the optional relay), PostgreSQL and an HTTPS EmperorClaw server. Apply migrations using `npm run db:migrate` against the intended development database. Native support requires migrations `0088` and `0089`.
+2. Open `EmperorClaw.xcodeproj` in compatible Xcode. Choose EmperorPhone or EmperorWatch. Set your Apple development team and provision the bundle IDs, App Group `group.com.emperorclaw.app` and push capability. The defaults are `com.emperorclaw.app`, its `.watchkitapp` companion and their `.widgets` extensions. If changing identifiers, update generator, callback, entitlements and relay topic consistently.
+3. On iPhone, Connections → Add instance. Enter its public HTTPS origin or scan its QR; approve access in the browser. Repeat for additional servers.
+4. On a paired watch install the companion. In iPhone Connections choose Send to Apple Watch. Watch receives its own credentials and keeps an independent active selection. Reconnect Apple Watch replaces that instance's remembered watch session.
+5. For notifications, configure [the optional relay](../../services/apple-push-relay/README.md), then enable notifications per instance in Connections. Tap the delivered enrollment notification to confirm. Re-enable after APNs token changes if delivery stops.
 
-1. Apply the server migration using the existing `npm run db:migrate` workflow **on your chosen development database**. Migration `0088_mobile-sessions` adds the native-session tables; existing account-session revocation cascades to mobile credentials. Do not run destructive integration fixtures on a working installation.
-2. Start the EmperorClaw server with its normal browser login configured. Configure a correct public HTTPS origin through the normal server/reverse-proxy setup. Preserve server-action origin validation behind the proxy.
-3. Open `EmperorClaw.xcodeproj`. Select `EmperorPhone` or `EmperorWatch` and a compatible simulator/device. For physical devices, set your development team and signing configuration. The initial bundle IDs are `com.emperorclaw.app` and `com.emperorclaw.app.watchkitapp`.
-4. On iPhone, use Connections → Add instance, enter an HTTPS origin and optional name, and approve access in the system browser. Repeat for three or more instances. Home and Agents display the active company's authorized snapshot.
-5. Install the companion watch app on a paired watch. On iPhone choose Connections → Send to Apple Watch. Open the watch app to finish receiving credentials. Both devices select their active server/company independently. Sending connections again preserves refresh tokens already rotated on the watch.
+The watch needs its own route to each server. A phone's VPN does not proxy the watch's requests. HTTP and invalid certificates are rejected. Unavailable servers do not block selection of another saved connection.
 
-The watch enrollment payload contains only separately issued watch credentials and profile metadata. The phone never sends its own access/refresh token to the watch. Profile metadata is saved locally; secrets are stored in the app's Keychain sandbox with device-only protection. Do not log token responses or enrollment payloads.
+## Security and API
 
-Disconnecting the phone revokes its own session only; the watch has an independent account session. Existing web Settings → profile/account sessions lists both devices and can revoke them individually or together. Use Reconnect Apple Watch on an instance to replace a revoked/expired enrollment or move to another paired watch; this replaces the remembered watch session for that instance. Revoke a lost watch immediately in the web account sessions list.
+Native secrets use device-only Keychain storage. Profile metadata and drafts stay local; widget App Group storage contains workspace names/counts/timestamps, never conversations or tokens. The phone transfers separately issued watch credentials, never its own refresh token. Disconnecting either device revokes that session; web account sessions can revoke both.
 
-## Project structure
+`/api/mobile/v1/discovery` is public capability metadata. `/mobile/authorize` uses browser consent and a fixed callback with PKCE. `/token` exchanges single-use five-minute codes or rotates refresh tokens; access tokens last 15 minutes, account sessions at most 30 days. Authenticated routes provide `/companies`, `/companies/{id}/snapshot`, allow-listed `/companies/{id}/work/*`, `/watch`, `/push` and `/session`. Browser cookies and MCP tokens are not mobile credentials.
 
-- `Sources/EmperorCore`: shared transport, models, URL validation, PKCE and Keychain storage.
-- `Shared`: fleet UI, connection selector, app state and Watch Connectivity enrollment.
-- `iPhone` and `Watch`: platform app entry points and iPhone sign-in.
-- `Tests/EmperorCoreTests`: connection validation, callback binding, instance isolation and refresh concurrency.
-- `scripts/generate-project.py`: deterministic Xcode project/plist/scheme generation, with no third-party generator dependency. Run after adding application source files. Signing customization should be kept in local Xcode settings or added deliberately to the generator.
+Work routes reuse existing role, company, agent and private-chat checks. Mutations require an Idempotency-Key claimed before execution. An ambiguous outcome is acknowledged rather than blindly repeated. Switching workspaces cannot redirect an in-flight request or display its result in another workspace. Transport refuses redirects/cookies. Attachments are limited to 25 MB. Foreground polling pauses with inactive views; widgets depend on system refresh and cached data, not a permanent background connection.
 
-## Verification
+## Source and verification
+
+`Sources/EmperorCore` contains transport/models/security; `Shared` contains workflows, connection state, push and Watch Connectivity; `iPhone`, `Watch`, `Widgets` contain platform entry points. Regenerate the dependency-free project after adding sources:
 
 ```sh
-swift test --package-path apps/apple
 python3 apps/apple/scripts/generate-project.py
-xcodebuild -project apps/apple/EmperorClaw.xcodeproj -scheme EmperorPhone \
-  -destination 'generic/platform=iOS Simulator' CODE_SIGNING_ALLOWED=NO build
-xcodebuild -project apps/apple/EmperorClaw.xcodeproj -scheme EmperorWatch \
-  -destination 'generic/platform=watchOS Simulator' CODE_SIGNING_ALLOWED=NO build
+swift test --package-path apps/apple
+bash apps/apple/scripts/typecheck.sh
+xcodebuild -project apps/apple/EmperorClaw.xcodeproj -scheme EmperorPhone -destination 'generic/platform=iOS Simulator' CODE_SIGNING_ALLOWED=NO build
+xcodebuild -project apps/apple/EmperorClaw.xcodeproj -scheme EmperorWatch -destination 'generic/platform=watchOS Simulator' CODE_SIGNING_ALLOWED=NO build
 ```
 
-For a compiler-only fallback, run `bash apps/apple/scripts/typecheck.sh`. This checks both platform source sets and the shared module, but does not link/package an app, validate embedded watch installation or replace UI/device tests.
+Validation on 2026-11-21: 10 shared Swift tests, both app and widget SDK typechecks, 12 mobile integration tests against a new temporary PostgreSQL cluster with all migrations, focused server/relay tests, TypeScript and focused ESLint. The temporary database was removed; customer databases were not used.
 
-The first local Xcode build was blocked by an installed-framework mismatch: `IDESimulatorFoundation` could not load a symbol from `DVTDownloads`. The code was checked directly with both platform SDKs instead. Repair/update the local Xcode system components before simulator and physical-device validation; no system-toolchain files were modified by this work.
+## Release gates
 
-Initial validation record (2026-11-21):
+Full linked builds and interactive validation remain pending. Local Xcode fails loading IDESimulatorFoundation because its DVTDownloads system framework is incompatible; `xcodebuild -runFirstLaunch` requires administrator authorization to install components. No compatible simulator runtime is available. Direct SDK typechecking passes but does not validate packaging, embedding, provisioning or runtime behavior.
 
-| Check | Result |
-| --- | --- |
-| Shared Swift tests | 8 passed, including cross-origin credential isolation, refresh concurrency and stale-refresh identity replacement |
-| iPhone and watchOS SDK typechecks | Both passed |
-| Server integration tests | 8 passed against a new temporary PostgreSQL cluster; all migrations applied there successfully |
-| Focused TypeScript unit tests | 7 passed (mobile validation, login return destination, existing OAuth redirects) |
-| Existing static tests | 174 passed |
-| TypeScript application typecheck and focused ESLint | Passed |
-| Xcode project and Info.plist syntax | Passed |
-| Full Xcode build and interactive UI/device tests | Pending because of the local Xcode framework mismatch |
-
-Temporary PostgreSQL was stopped and removed after testing. No existing database was used for the destructive test fixtures.
-
-## Mobile API v1
-
-All `/api/mobile/v1/*` responses are uncached. Except discovery and token exchange, routes require a native `Bearer ema_…` access token. Browser cookies and MCP tokens are not accepted as mobile credentials.
-
-| Route | Behavior |
-| --- | --- |
-| `GET /api/mobile/v1/discovery` | Product/API version, persistent installation UUID, fixed callback, implemented capabilities; no company/account metadata |
-| `/mobile/authorize` | Browser-session-protected consent page; server action validates origin and fixed callback |
-| `POST /api/mobile/v1/token` | JSON `grantType: authorization_code`, `code`, `verifier`, or `grantType: refresh_token`, `refreshToken` |
-| `GET /api/mobile/v1/companies` | Current authorized company list and roles |
-| `GET /api/mobile/v1/companies/{companyId}/snapshot` | Scoped agent identity/activity using existing visibility and private-thread redaction services |
-| `POST /api/mobile/v1/watch` | Phone-only authorization of a distinct watch account session |
-| `DELETE /api/mobile/v1/session` | Revoke the presenting device's account session and credentials |
-
-Token responses contain `accessToken`, `refreshToken`, `expiresIn` (seconds) and `deviceId`. Codes expire after five minutes and are consumed atomically. Access tokens expire after 15 minutes; refresh tokens rotate with a fixed account-session maximum of 30 days. Only hashes are stored server-side. Session deletion, account deletion and membership/scope changes are checked through the existing account and permission systems. The mobile API does not widen the existing MCP callback allow-list.
-
-The native transport refuses redirects and sends no browser cookies. Every request captures its server/company context; changing selection cannot redirect an in-flight action to another VPS. An unavailable instance does not prevent selecting another. Cached snapshots are in memory and labeled stale after connection failures. Refresh on foreground/pull; continuous event updates are a later milestone.
-
-## Remaining milestones
-
-The full product plan is in `docs/roadmap/apple-apps-plan.md`. Next: validate the connection flow end to end on devices, improve connection removal synchronization, then implement contextual chat, inbox/approvals, tasks/results and permitted agent controls. Add the final five-tab navigation as these workflows become real. QR onboarding, relay/APNs, complications/Smart Stack, advanced freshness rules, client-side account switching within one server and production accessibility/visual QA remain pending. No push delivery, deployment or App Store release has been performed.
+Before release: repair Xcode/install runtimes; test authentication, three or more VPS connections, offline/retry/revocation, phone/watch handoff and real APNs on devices; validate small screens, Dynamic Type, VoiceOver, reduced motion and battery/network use; finish app icons, localization, App Store metadata/privacy disclosures and signing. The included privacy manifest declares UserDefaults usage for the app and App Group; publisher privacy disclosures still require review. No app, relay or server changes have been deployed or published.

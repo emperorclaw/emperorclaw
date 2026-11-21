@@ -23,5 +23,7 @@ for target in iphone watch; do
         "$APPLE_ROOT"/Sources/EmperorCore/*.swift
     "$SWIFTC" -Xfrontend -disable-sandbox -module-cache-path "$TASK_BUILD_DIR/cache" -sdk "$sdk_path" -target "$triple" -swift-version 5 \
         -parse-as-library -typecheck -I "$TASK_BUILD_DIR/$target" "$APPLE_ROOT"/Shared/*.swift "$APPLE_ROOT"/"$app"/*.swift
-    echo "$app Swift typecheck passed"
+    "$SWIFTC" -Xfrontend -disable-sandbox -module-cache-path "$TASK_BUILD_DIR/cache" -sdk "$sdk_path" -target "$triple" -swift-version 5 \
+        -parse-as-library -typecheck -I "$TASK_BUILD_DIR/$target" "$APPLE_ROOT"/Widgets/*.swift
+    echo "$app app and widget Swift typecheck passed"
 done

@@ -60,6 +60,26 @@ export const mobileAuthorizationCodes = pgTable("mobile_authorization_codes", {
     consumedAt: timestamp("consumed_at"),
 });
 
+export const mobileCommands = pgTable("mobile_commands", {
+    id: uuid("id").primaryKey(),
+    userId: uuid("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+    companyId: uuid("company_id").notNull().references(() => companies.id, { onDelete: "cascade" }),
+    requestHash: text("request_hash").notNull(),
+    status: integer("status"),
+    response: jsonb("response"),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export const mobilePushDevices = pgTable("mobile_push_devices", {
+    id: uuid("id").primaryKey().defaultRandom(),
+    deviceId: uuid("device_id").notNull().unique().references(() => mobileSessions.id, { onDelete: "cascade" }),
+    tokenEncrypted: text("token_encrypted").notNull(),
+    environment: text("environment").notNull(),
+    enabled: boolean("enabled").notNull().default(true),
+    kinds: jsonb("kinds").$type<string[]>().notNull().default(["approval", "agent_failed", "agent_down", "mention"]),
+    updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
 // Account security history belongs to the person, never to agent-visible chat.
 export const userSecurityEvents = pgTable("user_security_events", {
     id: uuid("id").primaryKey().defaultRandom(),

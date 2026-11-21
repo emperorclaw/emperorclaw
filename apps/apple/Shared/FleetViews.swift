@@ -24,6 +24,7 @@ struct FleetView: View {
                                 }.frame(maxWidth: .infinity, alignment: .leading)
                             }.accessibilityHint("Switch installation or company")
                         }
+                        if !agentsOnly { HomeSummary(workspace: selected) }
                         if let error = model.errors[selected.id] {
                             Section {
                                 Label("Connection unavailable", systemImage: "wifi.exclamationmark").foregroundStyle(.orange)
@@ -56,7 +57,10 @@ struct FleetView: View {
                         }
                     }
                     .refreshable { await model.refresh() }
-                    .task(id: "\(selected.id):\(selected.companyID ?? "")") { await model.refresh() }
+                    .task(id: "\(selected.id):\(selected.companyID ?? ""):\(scenePhase)") {
+                        guard scenePhase == .active else { return }; await model.refresh()
+                        while !Task.isCancelled { do { try await Task.sleep(for: .seconds(15)) } catch { break }; await model.refresh() }
+                    }
                 } else {
                     ContentUnavailableView {
                         Label("Your team, wherever you are", systemImage: "person.3.sequence.fill")
@@ -95,6 +99,7 @@ struct AgentRow: View {
             Text(agent.name).font(.headline)
             Label(agent.statusLabel, systemImage: agent.statusLabel == "Working" ? "bolt.fill" : "circle")
                 .font(.caption).foregroundStyle(agent.statusLabel == "Working" ? Color.cyan : Color.secondary)
+            if agent.paused == true { Text("New work paused").font(.caption).foregroundStyle(.orange) }
             if let task = agent.taskTitle { Text(task).font(.subheadline).lineLimit(2) }
             else if let activity = agent.activity { Text(activity).font(.subheadline).foregroundStyle(.secondary).lineLimit(2) }
         }.padding(.vertical, 4)
@@ -102,14 +107,27 @@ struct AgentRow: View {
 }
 
 struct AgentDetail: View {
+    @EnvironmentObject var model: AppModel
     let agent: Agent
+    @State private var control: Bool?
+    @State private var busy = false
     var body: some View {
         List {
+            if let workspace = model.selected {
+                NavigationLink("Chat with \(agent.name)") { ChatScreen(workspace: workspace, title: agent.name, agentID: agent.id) }
+                if model.mayWrite {
+                    Button("Pause agent") { control = true }.disabled(busy)
+                    Button("Resume agent") { control = false }.disabled(busy)
+                }
+            }
             Section { Label(agent.statusLabel, systemImage: "circle.fill"); Text(agent.role).foregroundStyle(.secondary) }
             if let title = agent.taskTitle { Section("Current task") { Text(title) } }
             if let activity = agent.activity { Section("Activity") { Text(activity) } }
             if let seen = agent.lastSeenAt, let date = ISO8601DateFormatter().date(from: seen) { Section("Last seen") { Text(date, style: .relative) } }
         }.navigationTitle(agent.name)
+        .confirmationDialog(control == true ? "Pause this agent?" : "Resume this agent?", isPresented: Binding(get: { control != nil }, set: { if !$0 { control = nil } })) {
+            if let pause = control, let workspace = model.selected { Button(pause ? "Pause" : "Resume") { Task { busy = true; defer { busy = false }; do { _ = try await model.client.work(workspace, path: "agents/\(agent.id)/pause", method: "PATCH", body: .object(["paused": .bool(pause)])); await model.refresh() } catch { model.notice = error.localizedDescription } }; control = nil } }
+        }
     }
 }
 
@@ -120,11 +138,18 @@ struct ConnectionsView: View {
     @State private var query = ""
     @State private var disconnect: Installation?
     @State private var sending = false
+    @State private var renaming: Installation?
+    @State private var newName = ""
+    @AppStorage("appearance") private var appearance = "system"
     var body: some View {
         NavigationStack {
             List {
+                #if os(iOS)
+                Picker("Appearance", selection: $appearance) { Text("System").tag("system"); Text("Light").tag("light"); Text("Dark").tag("dark") }
+                #endif
                 ForEach(model.sortedInstallations.filter { query.isEmpty || $0.name.localizedCaseInsensitiveContains(query) || $0.server.absoluteString.localizedCaseInsensitiveContains(query) }) { installation in
                     Section {
+                        NavigationLink { NotificationsView(workspace: installation) } label: { Label("Notifications", systemImage: "bell") }
                         Button { model.select(installation.id); dismiss() } label: {
                             HStack {
                                 VStack(alignment: .leading, spacing: 4) {
@@ -141,12 +166,15 @@ struct ConnectionsView: View {
                             }
                         }
                         #if os(iOS)
+                        Button("Rename instance") { newName = installation.name; renaming = installation }
                         Button(installation.favorite ? "Remove favorite" : "Favorite", systemImage: installation.favorite ? "star.fill" : "star") { model.toggleFavorite(installation.id) }
                         Button("Reconnect Apple Watch", systemImage: "applewatch") {
                             sending = true
                             Task { await model.watchLink.reconnect(installation); sending = false }
                         }.disabled(sending)
                         Button("Disconnect this iPhone", role: .destructive) { disconnect = installation }
+                        #else
+                        Button("Disconnect this watch", role: .destructive) { disconnect = installation }
                         #endif
                     }
                 }
@@ -165,9 +193,14 @@ struct ConnectionsView: View {
             .sheet(isPresented: $add) { ConnectView() }
             #endif
             .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Done") { dismiss() } } }
-            .confirmationDialog("Revoke this iPhone's connection?", isPresented: Binding(get: { disconnect != nil }, set: { if !$0 { disconnect = nil } })) {
+            .confirmationDialog("Disconnect this device?", isPresented: Binding(get: { disconnect != nil }, set: { if !$0 { disconnect = nil } })) {
                 if let installation = disconnect { Button("Disconnect", role: .destructive) { Task { await model.disconnect(installation) }; disconnect = nil } }
-            } message: { Text("Other instances and the separately authorized watch stay connected.") }
+            } message: { Text("Only this device's selected connection is revoked. Other instances and devices stay connected.") }
+            .alert("Rename instance", isPresented: Binding(get: { renaming != nil }, set: { if !$0 { renaming = nil } })) {
+                TextField("Instance name", text: $newName)
+                Button("Save") { if let installation = renaming { model.rename(installation.id, name: newName) }; renaming = nil }
+                Button("Cancel", role: .cancel) { renaming = nil }
+            }
         }
     }
 }

@@ -15,7 +15,7 @@ export async function GET() {
         await db.insert(instanceSettings).values({ key, value: randomUUID() }).onConflictDoNothing();
         const [row] = await db.select({ value: instanceSettings.value }).from(instanceSettings).where(eq(instanceSettings.key, key));
         return mobileJson({ product: "EmperorClaw", apiVersion: MOBILE_API_VERSION, installationId: row.value, callback: MOBILE_CALLBACK,
-            capabilities: ["user_sessions", "companies", "agent_snapshot", "watch_pairing"],
+            capabilities: ["user_sessions", "companies", "agent_snapshot", "watch_pairing", "workflows", "chat", "tasks", "approvals", "attachments", "push_enrollment"],
             authorizationPath: "/mobile/authorize", tokenPath: "/api/mobile/v1/token" });
     } catch (error) { return mobileError(error); }
 }

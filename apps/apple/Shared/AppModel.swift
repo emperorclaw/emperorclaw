@@ -1,5 +1,6 @@
 import SwiftUI
 import EmperorCore
+import WidgetKit
 
 @MainActor
 final class AppModel: ObservableObject {
@@ -10,6 +11,8 @@ final class AppModel: ObservableObject {
     @Published private(set) var errors: [String: String] = [:]
     @Published private(set) var loading: Set<String> = []
     @Published var notice: String?
+    @Published var destination: WorkspaceLink?
+    @Published var tab = 0
     private var pendingRefresh: Set<String> = []
     private var generations: [String: UUID] = [:]
     let client = MobileClient()
@@ -21,6 +24,8 @@ final class AppModel: ObservableObject {
         selectedID = defaults.string(forKey: "selectedInstallation") ?? installations.first?.id
     }
     var selected: Installation? { installations.first { $0.id == selectedID } }
+    var workspaceKey: String { "\(selected?.id ?? "none"):\(selected?.companyID ?? "none")" }
+    var mayWrite: Bool { guard let selected, let role = companies[selected.id]?.first(where: { $0.id == selected.companyID })?.role else { return false }; return role != "viewer" }
     var sortedInstallations: [Installation] { installations.sorted { $0.favorite != $1.favorite ? $0.favorite : $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending } }
     var companyName: String { guard let selected else { return "EmperorClaw" }; return companies[selected.id]?.first { $0.id == selected.companyID }?.name ?? selected.name }
     func start() { watchLink.activate() }
@@ -29,6 +34,7 @@ final class AppModel: ObservableObject {
     }
     func add(_ installation: Installation) {
         generations[installation.id] = UUID()
+        WidgetCache.remove(installationID: installation.id)
         if let index = installations.firstIndex(where: { $0.id == installation.id }) { installations[index] = installation }
         else { installations.append(installation) }
         snapshots = snapshots.filter { $0.key != installation.id }; companies[installation.id] = nil
@@ -47,6 +53,12 @@ final class AppModel: ObservableObject {
     func toggleFavorite(_ id: String) {
         guard let index = installations.firstIndex(where: { $0.id == id }) else { return }
         installations[index].favorite.toggle(); save()
+    }
+    func rename(_ id: String, name: String) {
+        guard let index = installations.firstIndex(where: { $0.id == id }) else { return }
+        let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+        installations[index].name = String(trimmed.prefix(80)); save()
     }
     func refresh() async {
         guard var installation = selected else { return }
@@ -76,11 +88,13 @@ final class AppModel: ObservableObject {
             guard generations[installationID] == generation,
                   installations.first(where: { $0.id == installationID })?.companyID == snapshot.companyId else { return }
             snapshots[installationID] = snapshot; errors[installationID] = nil
+            WidgetCache.write(.init(installationID: installationID, companyID: snapshot.companyId, name: "\(installation.name) · \(available.first { $0.id == snapshot.companyId }?.name ?? "Company")", working: snapshot.workingCount, total: snapshot.agents.count, needsYou: nil, date: Date()))
+            WidgetCenter.shared.reloadAllTimelines()
         } catch {
             if generations[installationID] == generation {
                 if let failure = error as? MobileFailure {
                     switch failure {
-                    case .signInRequired, .http(403), .http(404): snapshots[installationID] = nil; companies[installationID] = nil
+                    case .signInRequired, .http(403), .http(404), .server(403, _), .server(404, _): snapshots[installationID] = nil; companies[installationID] = nil; WidgetCache.remove(installationID: installationID); WidgetCenter.shared.reloadAllTimelines()
                     default: break
                     }
                 }
@@ -94,6 +108,7 @@ final class AppModel: ObservableObject {
             try await client.revoke(installation)
             guard generations[installation.id] == generation else { return }
             generations[installation.id] = UUID()
+            WidgetCache.remove(installationID: installation.id); WidgetCenter.shared.reloadAllTimelines()
             installations.removeAll { $0.id == installation.id }; snapshots[installation.id] = nil; companies[installation.id] = nil
             if selectedID == installation.id { selectedID = installations.first?.id }
             save()
@@ -119,6 +134,14 @@ final class AppModel: ObservableObject {
             if selectedID == nil { selectedID = installations.first?.id }
             save(); await refresh()
         } catch { notice = error.localizedDescription }
+    }
+    func open(_ url: URL) async {
+        guard let link = WorkspaceLink(url: url), installations.contains(where: { $0.id == link.installationID }) else { notice = "Connect the instance for this link first."; return }
+        selectedID = link.installationID
+        await refresh()
+        guard companies[link.installationID]?.contains(where: { $0.id == link.companyID }) == true else { notice = "This company is unavailable. Sign in again or check your access."; return }
+        selectCompany(link.companyID); await refresh()
+        destination = link
     }
 }
 

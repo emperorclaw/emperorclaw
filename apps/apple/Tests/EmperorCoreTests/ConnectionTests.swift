@@ -35,3 +35,20 @@ final class ConnectionTests: XCTestCase {
         XCTAssertFalse(String(data: try JSONEncoder().encode(profiles), encoding: .utf8)!.contains("accessToken"))
     }
 }
+
+final class WorkContractTests: XCTestCase {
+    func testWorkspaceLinksCannotChooseAnUnrelatedOriginOrAmbiguousContext() throws {
+        let installation = UUID().uuidString, company = UUID().uuidString, task = UUID().uuidString
+        let url = WorkspaceLink.url(installationID: installation, companyID: company, kind: "task", id: task)
+        XCTAssertEqual(WorkspaceLink(url: url)?.companyID, company)
+        XCTAssertNil(WorkspaceLink(url: URL(string: url.absoluteString + "&company=" + UUID().uuidString)!))
+        XCTAssertNil(WorkspaceLink(url: URL(string: url.absoluteString.replacingOccurrences(of: "com.emperorclaw.app://open", with: "https://evil.test"))!))
+        XCTAssertNil(WorkspaceLink(url: WorkspaceLink.url(installationID: installation, companyID: company, kind: "admin", id: task)))
+    }
+    func testForwardCompatibleEnvelopesHandleLargeNumbersWithoutCrashing() throws {
+        let value = try JSONDecoder().decode(JSONValue.self, from: Data(#"{"unknown":{"nested":true},"count":1e100}"#.utf8))
+        XCTAssertEqual(value["count"].count, 0)
+        XCTAssertTrue(value["unknown"]["nested"].flag)
+        XCTAssertEqual(try JSONDecoder().decode(JSONValue.self, from: JSONEncoder().encode(value)), value)
+    }
+}

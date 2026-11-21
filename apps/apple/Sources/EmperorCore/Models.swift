@@ -3,6 +3,8 @@ import CryptoKit
 
 public enum MobileFailure: Error, LocalizedError {
     case invalidServer, incompatibleServer, invalidCallback, signInRequired, http(Int), responseTooLarge
+    case server(Int, String), alreadyReceived
+    public var invalidatesContent: Bool { switch self { case .signInRequired, .http(403), .http(404), .server(403, _), .server(404, _): return true; default: return false } }
     public var errorDescription: String? {
         switch self {
         case .invalidServer: return "Enter an HTTPS server address without a path, password, query or fragment."
@@ -11,6 +13,8 @@ public enum MobileFailure: Error, LocalizedError {
         case .signInRequired: return "Sign in to this instance again. Your session has expired or was revoked."
         case .http(let code): return "The server returned an error (\(code)). Try again."
         case .responseTooLarge: return "The server response is too large."
+        case .server(_, let message): return message
+        case .alreadyReceived: return "The server already received this action. Refresh to check its result before starting another."
         }
     }
 }
@@ -53,6 +57,7 @@ public struct Agent: Codable, Identifiable, Equatable, Sendable {
     public var activity: String?
     public var taskTitle: String?
     public var lastSeenAt: String?
+    public var paused: Bool?
     public var statusLabel: String {
         switch state {
         case "working", "busy", "typing", "thinking": return "Working"

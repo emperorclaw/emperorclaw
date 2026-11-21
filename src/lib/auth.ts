@@ -1,4 +1,5 @@
 import { consumeMfaChallenge, recordSecurityEvent } from "@/lib/account-security";
+import { mobileRequestContext } from "@/lib/mobile-context";
 import type { Session } from "next-auth";
 import type { JWT } from "next-auth/jwt";
 import { NextAuthOptions } from "next-auth";
@@ -154,7 +155,9 @@ export const authOptions: NextAuthOptions = {
     }
 };
 
-export async function getValidatedServerSession() {
+export async function getValidatedServerSession(): Promise<SessionWithUserId | null> {
+    const native = mobileRequestContext.getStore();
+    if (native) return { user: { id: native.ctx.userId }, sessionId: native.sessionId, expires: new Date(Date.now() + 60_000).toISOString() };
     const { getServerSession } = await import("next-auth/next");
     const session = await getServerSession(authOptions);
     const typedSession = session as SessionWithUserId | null;
@@ -224,6 +227,8 @@ export async function isBrowserSessionActive(sessionId: string | null | undefine
 }
 
 export async function getCompanyId() {
+    const native = mobileRequestContext.getStore();
+    if (native) return native.ctx.companyId;
     const typedSession = await getValidatedServerSession();
     if (!typedSession || !typedSession.user || !typedSession.user.id) {
         return null;

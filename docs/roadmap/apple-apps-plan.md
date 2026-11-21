@@ -1,6 +1,6 @@
 # EmperorClaw for iPhone and Apple Watch
 
-Status: development started; initial connection/session/fleet foundation implemented. Full product release remains in progress.
+Status: core iPhone/watchOS workflows implemented; device validation and release gates remain open.
 Date: 2026-11-21.
 Scope: native iPhone app and Apple Watch companion for existing EmperorClaw installations, including independently hosted VPS deployments.
 
@@ -22,13 +22,13 @@ This document records the full proposed product, visual, connection and delivery
 
 ### Development checkpoint — 2026-11-21
 
-The initial implementation is in `apps/apple` with server routes under `/api/mobile/v1`. It provides native iPhone/watchOS projects, shared Swift models/transport, HTTPS origin validation, PKCE browser sign-in, rotating native user-session credentials, independent watch enrollment, company selection, multiple saved installations and a scoped read-only agent snapshot. Existing account-session revocation also revokes device credentials. See `apps/apple/README.md` for setup and limitations.
+The implementation is in `apps/apple` with server routes under `/api/mobile/v1`. Both apps support multiple saved HTTPS installations, independent workspace selection, PKCE browser authentication, rotating Keychain credentials and separate watch sessions. The iPhone has Home, Inbox, Messages, Projects and Agents tabs, task creation/editing/results, contextual agent/team/group chat, attachments, approvals, permitted agent controls, spending summaries, QR onboarding and appearance settings. The watch provides brief status, inbox, short replies, constrained approvals and phone handoff. WidgetKit targets support pinned workspaces on both platforms.
 
-The user considered Expo and asked for whichever approach simplifies development. SwiftUI remains the implementation choice for sharing the Apple stack between phone and watch.
+The user considered Expo and asked for whichever approach simplifies development. SwiftUI shares the native Apple stack between phone and watch. Foreground polling provides updates; widgets show cached timestamped summaries. The optional APNs relay is implemented separately in `services/apple-push-relay`, with per-installation signing keys and APNs delivery challenges before enabling notifications. No relay has been deployed or real push delivery tested.
 
-The current app exposes Home, Agents and Connections for this foundation milestone. The planned five-tab structure will arrive with actual messaging/inbox/project workflows. Chat, approvals, tasks, push delivery, QR onboarding, complications/widgets and production UI/accessibility validation are still pending; this checkpoint is not the finished app.
+Verification: 10 shared Swift tests, iPhone/watch app and widget SDK typechecks, 12 integration tests against temporary PostgreSQL, focused server/relay unit tests, TypeScript and lint checks. Existing account roles, company scopes and private-thread rules are reused; mutation retries have device-scoped idempotency records.
 
-Verification includes shared Swift tests, platform-SDK typechecking, TypeScript and lint checks, plus authentication/permission tests against a new temporary PostgreSQL database. Full simulator builds are blocked locally by an installed Xcode `IDESimulatorFoundation`/`DVTDownloads` framework mismatch. No customer database was migrated and no production services were changed.
+Release gates: repair the local Xcode system components (first-launch installation requires administrator authorization), install compatible simulator runtimes, perform linked builds and interactive device/UI/accessibility/network/battery validation, configure the Apple team, bundle IDs, App Groups, signing and APNs credentials, and prepare final icons, localization and App Store privacy disclosures. No customer database was migrated and no production services were changed. See `apps/apple/README.md` for setup and the distinction between implemented code and release validation.
 
 ## 2. Existing foundations and implementation gaps
 

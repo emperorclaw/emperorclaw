@@ -9,6 +9,7 @@ import { toast } from "sonner";
 import { IconLanguage, IconUsers } from "@tabler/icons-react";
 import type { Locale } from "@/i18n/config";
 import { Select } from "@/components/ui/select";
+import Link from "next/link";
 
 /** Settings → Your profile: name, role and the person's language. */
 export function ProfileTab({ identity, displayName, setDisplayName, roleTitle, setRoleTitle, onSave, saving, onLoad, loaded, error, onRetry, locale, onLocaleChange }: {
@@ -61,6 +62,7 @@ export function ProfileTab({ identity, displayName, setDisplayName, roleTitle, s
                 </div>
             </section>
             <AccountSecurity />
+            <Link href="/mobile/connect" className="inline-flex min-h-11 items-center rounded-xl border px-4 py-2 text-sm font-medium">{t("mobileApps")}</Link>
             <MfaSetting />
             <LanguageSetting locale={locale} disabled={!loaded} onChange={onLocaleChange} />
         </div>

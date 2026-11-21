@@ -1,4 +1,5 @@
 import { getValidatedServerSession } from "@/lib/auth";
+import { mobileRequestContext } from "@/lib/mobile-context";
 import { db } from "@/db";
 import { companyMembers, users } from "@/db/schema";
 import { asc, eq } from "drizzle-orm";
@@ -108,6 +109,11 @@ export const resolveRequestIdentity = cache(async (): Promise<RequestIdentity | 
 
 export function requireRole(...requiredRoles: Role[]) {
     return async function guard(): Promise<GuardContext> {
+        const native = mobileRequestContext.getStore();
+        if (native) {
+            if (!requiredRoles.some((role) => roleGte(native.ctx.role, role))) throw new AuthError("Forbidden — insufficient permissions", 403);
+            return native.ctx;
+        }
         const identity = await resolveRequestIdentity();
         if (!identity) {
             throw new AuthError("Unauthorized — please log in.", 401);
@@ -147,6 +153,8 @@ export async function getCurrentUserEffectiveRole(): Promise<{
     instanceRole: InstanceRole;
     companyRole: CompanyRole | null;
 } | null> {
+    const native = mobileRequestContext.getStore();
+    if (native) return { userId: native.ctx.userId, companyId: native.ctx.companyId, role: native.ctx.role, instanceRole: native.ctx.role === "instance_admin" ? "instance_admin" : "member", companyRole: native.ctx.role === "instance_admin" ? null : native.ctx.role as CompanyRole };
     const session = await getValidatedServerSession();
     if (!session || !session.user?.id) return null;
 
