@@ -9,6 +9,16 @@ tagged (e.g. `## [1.2.0] — 2026-07-22`). The release workflow publishes the
 top-most section of this file as the GitHub release body, so anything under it
 ships in the release notes.
 
+## [0.42.4] — 2026-11-21
+
+### Fixed
+
+- **A fresh install reproduces production's schema.** Four append-only migrations close the last divergences between the repository's migration chain and the schema production has been running since before the journal existed. `agents.monthly_budget_cents` is nullable again (null or 0 means unlimited, and every reader already coerced), `agents.monthly_token_usage` widens to `bigint` so the counter cannot hit the 32-bit ceiling, and the two production-only tables `paired_workers` and `ops_cleanup_backups` are declared baselines. Both are also declared in the Drizzle schema so a generated migration never emits a `DROP` for them.
+
+### Upgrade
+
+- Four new database migrations (`0091`–`0094`). On an existing database they change nothing: the table shapes, unique indexes and foreign keys are already there. A fresh install now ends up with the same 1.742 objects as production. `paired_workers` and `ops_cleanup_backups` keep their rows — `ops_cleanup_backups` still holds its June undo snapshot.
+
 ## [0.42.3] — 2026-11-21
 
 ### Fixed
