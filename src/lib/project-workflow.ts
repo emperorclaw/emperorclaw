@@ -103,6 +103,21 @@ export function validateTaskStateTransition(input: {
     return "A done or failed task cannot be reopened.";
   }
 
+  // Accountability: moving a task is an approval. Only the assignee (its own
+  // work), the project lead (routing and deciding), or a person may do it; a
+  // different agent's write is refused. Case c87002d6: a session of the
+  // implementing agent closed the reviewer's task and the event recorded
+  // "system". A null actor is an internal caller, handled by the signed PATCH
+  // path in updateTaskForCompany instead.
+  if (actorAgentId) {
+    const ownerDenial = taskStateChangeDenial({
+      project: { leadAgentId: project.leadAgentId ?? null },
+      task: { assignedAgentId: task.assignedAgentId ?? null },
+      signature: { type: "agent", id: actorAgentId },
+    });
+    if (ownerDenial) return ownerDenial;
+  }
+
   // Self-start: the assignee starts only from a queued/assigned state and hands
   // to review only from in_progress. The lead is exempt (it routes and decides).
   // Unblocking a task is explicitly allowed to restart it from `blocked`.
@@ -243,4 +258,90 @@ export function normalizeRequestedTaskState(input: unknown) {
 
 export function isHiddenBoardState(state: PersistedTaskState) {
   return state === TASK_STATES.failed || state === TASK_STATES.deadLetter;
+}
+
+/** A task write's identity: who the token resolved to, and which token. */
+export type TaskUpdateSignature = {
+    type: "agent" | "human" | "system";
+    id: string | null;
+    tokenId?: string | null;
+} | null;
+
+function signatureProblem(action: string, signature: TaskUpdateSignature): string | null {
+    const token = signature?.tokenId ? ` (token ${signature.tokenId})` : "";
+    // No actor at all is server code calling the library directly: the pipeline
+    // closing its own task, the hand-off helper, the run sweeper. Those write
+    // with no token and no customer behind them, and every HTTP route passes a
+    // human, an agent or a token-derived system actor, so trusting this case
+    // keeps the fleet moving without opening the door a token would.
+    if (!signature) return null;
+    if (signature.type === "system" && signature.tokenId) {
+        // A token is behind it, so "system" would erase who acted: that is the
+        // exact shape of the c87002d6 closure (actorType "system", actorId null).
+        return `A task ${action} cannot be performed by a token that is not bound to an agent${token}.`;
+    }
+    if (signature.type === "agent" && !signature.id) {
+        return `A task ${action} must name the agent behind the token${token}.`;
+    }
+    return null;
+}
+
+/**
+ * Who may change a task's status.
+ *
+ * A status change carries accountability: whoever moves work to `done` is
+ * approving it. So it must be the assignee (its own work), the project lead
+ * (routing and deciding), or a person acting from the UI.
+ *
+ * "system" is trusted only when no token is behind it — a scheduler or an
+ * approval flow. A token that resolves to no agent is refused, with its tokenId
+ * in the message: recording it as "system" is what made the c87002d6 closure
+ * unattributable afterwards.
+ */
+export function taskStateChangeDenial(input: {
+    project: { leadAgentId: string | null };
+    task: { assignedAgentId: string | null };
+    signature: TaskUpdateSignature;
+}): string | null {
+    const { project, task, signature } = input;
+    const problem = signatureProblem("status change", signature);
+    if (problem) return problem;
+    if (!signature || signature.type !== "agent") return null;
+    if (task.assignedAgentId && signature.id === task.assignedAgentId) return null;
+    if (project.leadAgentId && signature.id === project.leadAgentId) return null;
+    // Unassigned work is claimed and started by whoever takes it.
+    if (!task.assignedAgentId) return null;
+    const token = signature.tokenId ? ` (token ${signature.tokenId})` : "";
+    return `Only the assigned agent or the project lead can change this task's status${token}.`;
+}
+
+/**
+ * Who may move a task to another owner.
+ *
+ * A reassignment is how the board says "who is accountable now", so it takes the
+ * same identity rule as a status change. Exempt, because they are the ways work
+ * legitimately moves: the project lead routing, the current assignee handing the
+ * task back, and an agent claiming an unassigned task for itself. Case
+ * c87002d6 15:47:10: the implementing agent reassigned the closed task to itself
+ * four seconds after closing it, and nothing gated that write.
+ */
+export function taskAssignmentDenial(input: {
+    project: { leadAgentId: string | null };
+    task: { assignedAgentId: string | null };
+    nextAssignedAgentId: string | null;
+    signature: TaskUpdateSignature;
+}): string | null {
+    const { project, task, nextAssignedAgentId, signature } = input;
+    // Identity first, then whether anything moves. Callers only ask this for a
+    // real hand-off, but a token that cannot name its agent gets the identity
+    // answer rather than a silent null.
+    const problem = signatureProblem("reassignment", signature);
+    if (problem) return problem;
+    if ((task.assignedAgentId ?? null) === (nextAssignedAgentId ?? null)) return null;
+    if (!signature || signature.type !== "agent") return null;
+    if (project.leadAgentId && signature.id === project.leadAgentId) return null;
+    if (task.assignedAgentId && signature.id === task.assignedAgentId) return null;
+    if (!task.assignedAgentId && signature.id === nextAssignedAgentId) return null;
+    const token = signature.tokenId ? ` (token ${signature.tokenId})` : "";
+    return `Only the assigned agent, the project lead or a person can reassign this task${token}.`;
 }

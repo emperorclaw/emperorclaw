@@ -278,7 +278,8 @@ Important current behavior:
 
 - `done` tasks remain visible on the board
 - archived tasks are hidden by soft delete
-- claim is lease-based
+- claim is lease-based; the lease names the agent in `leaseOwner` and the session in `leaseSession`
+- only the assignee, the project lead or a person may change a task's status or assignee, and the change is signed with the calling agent
 - only the assigned agent can finalize a task result
 - tasks are sorted by priority (highest first), then by creation date
 - one task may be assigned to one human, one agent, or nobody

@@ -9,6 +9,40 @@ tagged (e.g. `## [1.2.0] — 2026-07-22`). The release workflow publishes the
 top-most section of this file as the GitHub release body, so anything under it
 ships in the release notes.
 
+## [0.42.0] — 2026-11-21
+
+### Added
+
+- **Native Apple app connectivity.** The mobile API supports consent-based browser sign-in with PKCE, rotating device sessions, multiple server/company connections and separate Apple Watch credentials. Existing role, company and private-conversation permissions apply to mobile workflows.
+- **Mobile work and attention.** Authenticated endpoints expose fleet activity, contextual chat, tasks/results, attachments, inbox, approvals and permitted agent controls. Mutations use idempotency claims to prevent duplicate execution on retry.
+- **Connection QR and optional Apple push.** Profile settings provide a QR containing only the HTTPS server origin. The optional, separately deployed APNs relay requires per-installation signatures and proof of delivery before enabling a device.
+- **iPhone and Apple Watch app sources.** SwiftUI apps and pinned-workspace WidgetKit extensions are included under `apps/apple`. App Store distribution, signing and real-device/APNs validation remain pending; this server release does not install an app on a user's devices.
+
+### Upgrade
+
+- Additive migration `0090_apple-mobile` adds four mobile tables after the existing v0.41.0 task-lease migrations. Docker applies it at startup. Upgrade and repeated migration were tested against a temporary v0.41.0 database.
+- Existing installations do not need APNs configuration to use the apps. Mobile sign-in requires a valid public HTTPS origin; no new browser or MCP permissions are granted automatically.
+
+## [0.41.0] — 2026-11-21
+
+### Fixed
+
+- **`tasks.lease_until` is `timestamptz` instead of `timestamp without time zone`.** Migration 0089 converts the column with `USING "lease_until" AT TIME ZONE 'UTC'`, pinning the stored value to the zone it was written in. `acquireTaskLease` compares the column against `now()`: with a naive column the comparison followed the *reader's* session zone, so the same instant counted as a live lease under one zone and as expired under another. Regression test `tests/integration/lease-until-tz.test.ts` asserts the type and the zone-independent read.
+
+## [0.40.0] — 2026-11-20
+
+### Changed
+
+- **The agent profile is seven ordered tabs instead of a scroll.** Overview (sessions, actions, runs), Configuration, Secrets, Instructions and memory, Access and actions, Chat, Runs. A deep link works for every one of them (`/agents?agent=<id>&tab=<tab>`), and the legacy `/agents/<id>?tab=scope` route now forwards the tab it was asked for instead of dropping it and landing on the first section.
+- **Credentials moved into their own tab.** The secrets block no longer renders inline between the configuration strip and the chat; it is a tab with its search, list and add/edit dialog, so the operator stops scrolling past secret names to reach the conversation. The connection banner stays with Configuration, where it explains the fields next to it.
+- **Threads live with the chat that opens them.** The duplicate recent-threads card on the overview is gone; the full thread list sits under Chat.
+
+## [0.39.1] — 2026-11-19
+
+### Fixed
+
+- **Team chat no longer answers 500 under concurrency.** The get-or-create of a company's team thread took no lock, so two simultaneous renders of `/messages` both inserted, the loser hit the `message_threads_one_team_per_company` unique index, and the page returned 500 (which made the chat browser test flake). The lookup now runs under a per-company advisory lock inside a transaction, the last-resort unique-violation branch recognises the error PostgreSQL actually raises (drizzle wraps the driver error, so the old check on `error.code` never matched) and re-reads the winner instead of failing.
+
 ## [0.39.0] — 2026-11-19
 
 ### Added

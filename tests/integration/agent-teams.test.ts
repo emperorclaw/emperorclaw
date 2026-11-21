@@ -517,7 +517,7 @@ maybe("blocked tasks keep their reason, are not nudged, and unblocking restarts 
     }).returning();
 
     // Blocking without a reason is rejected.
-    const missing = await updateTaskForCompany({ companyId, taskId: task.id, state: "blocked" });
+    const missing = await updateTaskForCompany({ companyId, taskId: task.id, state: "blocked", actorType: "human" });
     assert.equal(missing.status, 400);
 
     const blocked = await updateTaskForCompany({

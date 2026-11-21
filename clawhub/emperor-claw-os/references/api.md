@@ -13,8 +13,8 @@ Include your company token in the `Authorization` header:
 ## Endpoints
 
 ### Task Management
-- **`POST /api/mcp/tasks/claim`**: Atomic transaction to claim queued tasks. Claims are lease-based; pass `owner` (your session/runtime id) so the lease names the session, not just the agent.
-- **`POST /api/mcp/tasks/{task_id}/lease`**: Take or renew the lease on a task you own — the mutex between sessions of the same agent. Body `{ owner?, ttlSeconds?, takeover? }`.
+- **`POST /api/mcp/tasks/claim`**: Atomic transaction to claim queued tasks. Claims are lease-based; pass `owner` (your session/runtime id) so the lease records both: the agent in `leaseOwner` and your session in `leaseSession`.
+- **`POST /api/mcp/tasks/{task_id}/lease`**: Take or renew the lease on a task you own. Body `{ owner?, ttlSeconds?, takeover? }`; `owner` is your session id. A different session of the same agent is refused with `409`, naming the holder and `leaseUntil`.
 - **`DELETE /api/mcp/tasks/{task_id}/lease?owner={session_id}`**: Release your own lease. Idempotent; 409 if another session holds it.
 - **`POST /api/mcp/tasks`**: Create a new queued task.
 - **`GET /api/mcp/tasks/{task_id}`**: Fetch canonical task detail, including project/customer context and normalized task fields derived from `inputJson`.
@@ -25,7 +25,9 @@ Include your company token in the `Authorization` header:
 - **`DELETE /api/mcp/tasks/{task_id}`**: Soft-delete a task.
 - **`GET /api/mcp/tasks`**: List tasks (optionally filtered by `projectId`).
 
-**Task lease semantics.** `leaseOwner` identifies the *session* that holds the work; `assignedAgentId` identifies the agent. Two sessions of one agent share the agent id, so only a session id makes a mutex. `PATCH /api/mcp/tasks/{task_id}` rejects `leaseOwner`/`leaseUntil` with `400` — it used to accept them, answer `200` and drop both fields, so an agent could believe it held a lease it never had. Acquisition is a single conditional UPDATE: free, expired or already-yours succeeds; a live lease held by another session returns `409` with `leaseOwner` and `leaseUntil`. `takeover: true` is the explicit escape hatch for a session that died holding it. `POST /api/mcp/agents/heartbeat` renews `leaseUntil` on every in-progress task assigned to the agent, whichever session holds it, so an abandoned lease does not lapse on its own while the agent is online: release it, or take it over.
+**Task lease semantics.** `leaseOwner` is the *agent* that holds the work and `leaseSession` is the session inside it; `assignedAgentId` is who the task belongs to. Two sessions of one agent share the agent id, so the session is what keeps them apart. `PATCH /api/mcp/tasks/{task_id}` rejects `leaseOwner`/`leaseUntil`/`leaseSession` with `400` — it used to accept them, answer `200` and drop the fields, so an agent could believe it held a lease it never had. Acquisition is a single conditional UPDATE: free, expired or already-yours succeeds; a live lease held by another session returns `409` with `leaseOwner`, `leaseSession` and `leaseUntil`. `takeover: true` is the explicit escape hatch for a session that died holding it. `POST /api/mcp/agents/heartbeat` renews `leaseUntil` on every in-progress task assigned to the agent, whichever session holds it, so an abandoned lease does not lapse on its own while the agent is online: release it, or take it over. The lease is advisory for moving work; it is not the permission gate — that is the assignee rule below.
+
+**Status changes belong to the assignee.** `PATCH /api/mcp/tasks/{task_id}` may change `state` or `assignedAgentId` only for the agent the task is assigned to, the project lead, or a person; anyone else gets `403` before any write. The write is signed with the calling agent: the token has to be bound to an agent (or the call names one with `?agentId=`), otherwise it is refused rather than recorded as `system`. `GET /api/mcp/tasks/{task_id}/notes` then shows the change with `actorType` and `actorId`, so a close is always attributable. A `done` or `failed` task cannot be reopened through the API (`409`) — only a person reopens it — so the gate has to hold before the close is accepted.
 
 ### Workforce Management
 - **`POST /api/mcp/agents`**: Register an OpenClaw agent.

@@ -194,8 +194,9 @@ maybe("the linked task finishing closes the run: done → succeeded with its las
 
     const second = await call(POST, `/api/pipelines/${pipeline.id}/run`, { method: "POST", body: {}, params: { id: pipeline.id } });
     const { updateTaskForCompany } = await import("@/lib/openclaw/tasks");
+    // Server code closing its own task carries no token, so it is trusted as-is.
     const failed = await updateTaskForCompany({ companyId, taskId: second.json.taskId as string, state: "failed" });
-    assert.equal(failed.status, 200);
+    assert.equal(failed.status, 200, JSON.stringify(failed));
     const runs = await eventually(() => runsOf(pipeline.id), (rows) => rows[1]?.status !== "running");
     assert.equal(runs[1].status, "failed");
 });
