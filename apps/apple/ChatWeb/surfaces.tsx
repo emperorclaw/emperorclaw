@@ -7,10 +7,11 @@ import type { SceneStatus } from '@/lib/team-scene';
 import type { CharacterExpression } from '@/lib/character/draw';
 
 export type FleetAgent = { id: string; name: string; role: string; state: string; taskTitle?: string; activity?: string; avatarAppearance?: unknown; avatarUrl?: string; paused?: boolean };
-export type SurfaceData = { mode?: 'chat' | 'fleet' | 'document' | 'view'; embedded?: boolean; text?: string; textScale?: number; reducedMotion?: boolean; fresh?: boolean; agents?: FleetAgent[]; view?: { title: string; description?: string; access: string; panels: ViewPanelView[]; createdAt: string; refreshEveryMinutes?: number } };
+export type SurfaceData = { mode?: 'chat' | 'fleet' | 'document' | 'view'; embedded?: boolean; text?: string; textScale?: number; reducedMotion?: boolean; fresh?: boolean; agents?: FleetAgent[]; view?: { title: string; description?: string; access: string; panels: ViewPanelView[]; createdAt: string; scopeLabel?: string; scopeType?: string; maintainer?: { name: string }; refreshEveryMinutes?: number } };
 export function OtherSurface({ data, post }: { data: SurfaceData; post: (message: { type: string; [key: string]: unknown }) => void }) {
     const ref = useRef<HTMLDivElement>(null);
     const [awake, setAwake] = useState(true);
+    useEffect(() => { post({ type: "surfaceReady" }); }, [data.mode, post]);
     useEffect(() => {
         const visible = () => setAwake(!document.hidden);
         document.addEventListener('visibilitychange', visible);
@@ -25,10 +26,7 @@ export function OtherSurface({ data, post }: { data: SurfaceData; post: (message
     }, [data.embedded, post]);
     return <div className={`surface-scroll ${data.embedded ? 'surface-embedded' : ''}`}><div ref={ref} className={`surface-body surface-${data.mode}`}>
         {data.mode === 'document' && <MarkdownRenderer content={data.text ?? ''} density="compact" />}
-        {data.mode === 'view' && (data.view?.access === 'metadata' ? <div className="surface-private"><span aria-hidden>◈</span><h2>This view is private</h2><p>Its owner can share access with you. Panel values stay private.</p></div> : data.view && <>
-            <div className="view-intro"><span className="surface-eyebrow">LIVE VIEW</span><h1>{data.view.title}</h1>{data.view.description && <MarkdownRenderer content={data.view.description} density="compact" allowWidgets={false} allowImages={false} />}</div>
-            <ViewGrid panels={data.view.panels} refreshEveryMinutes={data.view.refreshEveryMinutes} since={data.view.createdAt} />
-        </>)}
+        {data.mode === 'view' && data.view && <ViewReading view={data.view} />}
         {data.mode === 'fleet' && <div className={`fleet-floor ${data.reducedMotion || !awake || data.fresh === false ? 'fleet-still' : ''}`}>
             {data.agents?.map(agent => <Desk key={agent.id} agent={agent} fresh={data.fresh !== false} onSelect={() => post({ type: 'agent', agentId: agent.id })} />)}
         </div>}
@@ -52,4 +50,36 @@ function Desk({ agent, fresh, onSelect }: { agent: FleetAgent; fresh: boolean; o
         </svg></div>
         <div className="desk-copy"><h2>{agent.name}</h2><p className="desk-work">{line}</p></div>
     </button>;
+}
+
+function ViewReading({ view }: { view: NonNullable<SurfaceData['view']> }) {
+    const [focusedID, setFocusedID] = useState<string | null>(null);
+    const focused = view.access === 'full' ? view.panels.find(panel => panel.id === focusedID) : undefined;
+    if (view.access === 'metadata') return <div className="surface-private"><span className="private-mark" aria-hidden>◇</span><span className="surface-eyebrow">RESTRICTED VIEW</span><h2>This view is private</h2><p>Ask the owner to share this view with you.<br />Its panel values stay private.</p></div>;
+    return <>
+        <header className="view-intro">
+            <div className="view-kicker"><span className="surface-eyebrow">{view.scopeLabel || view.scopeType || 'WORKSPACE'}</span><span className="view-panel-count">{view.panels.length} panels</span></div>
+            <h1>{view.title}</h1>
+            {view.description && <div className="view-description"><MarkdownRenderer content={view.description} density="compact" allowWidgets={false} allowImages={false} /></div>}
+            {view.maintainer?.name && <div className="view-curator"><span className="curator-mark" aria-hidden>✦</span> Maintained by <strong>{view.maintainer.name}</strong></div>}
+            <div className="view-rule" />
+        </header>
+        <ViewGrid panels={view.panels} refreshEveryMinutes={view.refreshEveryMinutes} since={view.createdAt} onFocus={panel => setFocusedID(panel.id)} />
+        {focused && <FocusedPanel panel={focused} refreshEveryMinutes={view.refreshEveryMinutes} since={view.createdAt} onClose={() => setFocusedID(null)} />}
+    </>;
+}
+function FocusedPanel({ panel, refreshEveryMinutes, since, onClose }: { panel: ViewPanelView; refreshEveryMinutes?: number; since: string; onClose: () => void }) {
+    const dialog = useRef<HTMLDialogElement>(null);
+    useEffect(() => {
+        const node = dialog.current;
+        const opener = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+        node?.showModal();
+        return () => { node?.close(); if (opener?.isConnected) opener.focus({ preventScroll: true }); };
+    }, []);
+    return <dialog ref={dialog} className="panel-dialog" aria-label={`${panel.title} expanded`} onCancel={onClose} onClick={event => { if (event.target === event.currentTarget) onClose(); }}>
+        <div className="focus-shell">
+            <header className="focus-toolbar"><span className="surface-eyebrow">FOCUS</span><button type="button" onClick={onClose} aria-label="Close expanded panel">Done <span aria-hidden>×</span></button></header>
+            <div className="focus-content"><ViewGrid panels={[{ ...panel, id: `${panel.id}-expanded`, w: 12, h: Math.max(panel.h, 4) }]} refreshEveryMinutes={refreshEveryMinutes} since={since} /></div>
+        </div>
+    </dialog>;
 }

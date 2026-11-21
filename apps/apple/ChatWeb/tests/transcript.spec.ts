@@ -134,3 +134,23 @@ test('all seven View panels adapt between narrow and wide layouts in both appear
     await expect(page.getByRole('heading', { name: 'This view is private' })).toBeVisible();
     await expect(page.getByText('Panel metric', { exact: true })).toHaveCount(0);
 });
+
+test('View focus expands the real panel, supports dismissal and clears private data when access changes', async ({ page }) => {
+    const panel = { id: 'delivery', title: 'Delivery momentum', type: 'table', w: 12, h: 3, data: { columns: [{ key: 'name', label: 'Project' }], rows: [{ name: 'Aurora' }] }, updatedAt: new Date().toISOString(), updatedBy: null };
+    const view = { title: 'Operations, in focus.', access: 'full', scopeLabel: 'Company', maintainer: { name: 'Atlas' }, panels: [panel], createdAt: new Date().toISOString() };
+    await update(page, payload({ mode: 'view', view, dark: false }));
+    await page.getByRole('button', { name: 'Expand Delivery momentum' }).click();
+    await expect(page.getByRole('dialog', { name: 'Delivery momentum expanded' })).toBeVisible();
+    await expect(page.getByRole('dialog').locator('table')).toContainText('Aurora');
+    await expect(page.getByRole('button', { name: 'Close expanded panel' })).toBeFocused();
+    await page.keyboard.press('Escape');
+    await expect(page.getByRole('dialog')).toHaveCount(0);
+    await expect(page.getByRole('button', { name: 'Expand Delivery momentum' })).toBeFocused();
+    await page.getByRole('button', { name: 'Expand Delivery momentum' }).click();
+    await page.getByRole('button', { name: 'Close expanded panel' }).click();
+    await expect(page.getByRole('dialog')).toHaveCount(0);
+    await page.getByRole('button', { name: 'Expand Delivery momentum' }).click();
+    await update(page, payload({ mode: 'view', view: { ...view, access: 'metadata' } }));
+    await expect(page.getByRole('dialog')).toHaveCount(0);
+    await expect(page.getByText('Aurora')).toHaveCount(0);
+});

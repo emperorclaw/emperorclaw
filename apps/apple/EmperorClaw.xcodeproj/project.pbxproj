@@ -71,6 +71,18 @@
 			"path" = "iPhone/QRScanner.swift";
 			"sourceTree" = "<group>";
 		};
+		"D337EFD8AA828571879BA6FB" = {
+			"isa" = "PBXFileReference";
+			"lastKnownFileType" = "sourcecode.swift";
+			"path" = "iPhone/ViewCollectionCard.swift";
+			"sourceTree" = "<group>";
+		};
+		"7E356846EAEF22D467BFAF3C" = {
+			"isa" = "PBXFileReference";
+			"lastKnownFileType" = "sourcecode.swift";
+			"path" = "iPhone/ViewDesignPreview.swift";
+			"sourceTree" = "<group>";
+		};
 		"DF616F1C59212219EFE04B10" = {
 			"isa" = "PBXFileReference";
 			"lastKnownFileType" = "sourcecode.swift";
@@ -576,6 +588,14 @@
 			"isa" = "PBXBuildFile";
 			"fileRef" = "30D25A41EEDC2E24B272873F";
 		};
+		"0F330CD07D91146BC03D6603" = {
+			"isa" = "PBXBuildFile";
+			"fileRef" = "D337EFD8AA828571879BA6FB";
+		};
+		"7C37340DEA24FC14E7F24312" = {
+			"isa" = "PBXBuildFile";
+			"fileRef" = "7E356846EAEF22D467BFAF3C";
+		};
 		"E9DA98BBDE6F948BA060C7FC" = {
 			"isa" = "PBXSourcesBuildPhase";
 			"buildActionMask" = "2147483647";
@@ -591,6 +611,8 @@
 				"773BD53107C50DFC3094822B",
 				"AEA6E3B81E4BB0ACEB7BBFD8",
 				"B5F6B423C031F192A6244CA0",
+				"0F330CD07D91146BC03D6603",
+				"7C37340DEA24FC14E7F24312",
 			);
 			"runOnlyForDeploymentPostprocessing" = "0";
 		};
@@ -787,6 +809,8 @@
 				"78492DAD9EAB974DA5EBE1E9",
 				"8B37B34B242FB344FFE0A71F",
 				"30D25A41EEDC2E24B272873F",
+				"D337EFD8AA828571879BA6FB",
+				"7E356846EAEF22D467BFAF3C",
 				"DF616F1C59212219EFE04B10",
 				"6D123AE8AB04EEE632CC6C18",
 				"AC5EA28A09717838C9BBE6CA",

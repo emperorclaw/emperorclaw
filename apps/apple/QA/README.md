@@ -69,3 +69,23 @@ Xcode lists an iPhone Duo device type, but the installed iOS 27.2 runtime refuse
 to create it with “Incompatible device.” Responsive content was checked in
 WebKit; a real folding transition and physical-device accessibility remain
 unverified. See [the design record](../Design/native-redesign.md).
+
+## Views editorial refinement
+
+The native collection now has pinned/featured hierarchy, actual key-metric
+summaries, scope search and All/Pinned/Projects filters. Detail panels retain the
+production renderers with a presentation-only expansion action. Modal dismissal,
+keyboard focus restoration and removal on access revocation are covered by a new
+WebKit regression. Expanded content does not introduce additional API access.
+
+Ten WebKit regressions and 47 targeted View/access/translation tests pass.
+TypeScript, focused ESLint and the signed phone/embedded Watch/widget build pass.
+The new translated expansion label is recorded in the English copy snapshot.
+
+The labeled Debug-only design preview was visually inspected on the iPhone 17
+Pro in light and dark appearances. Opening the featured card and filtering to
+project Views were exercised through Device Hub. Preview values are fictional;
+no customer View was created or changed. The dark preview overrides appearance
+only for that debug process and does not change the saved preference. Normal
+launches still use real server data; the existing mobile Views API patch remains
+necessary on Brain. Physical-device accessibility/folding tests remain pending.

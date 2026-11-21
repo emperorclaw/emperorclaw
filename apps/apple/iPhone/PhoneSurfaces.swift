@@ -12,9 +12,12 @@ struct PhoneSurface: View {
     var values: [String: JSONValue]
     var selectAgent: (String) -> Void = { _ in }
     var contentHeight: (Double) -> Void = { _ in }
+    @State private var rendered = false
     var body: some View {
         ChatWebView(payload: payload, workspace: workspace, client: model.client,
-                    openLink: { openURL($0) }, selectAgent: selectAgent, contentHeight: contentHeight)
+                    openLink: { openURL($0) }, selectAgent: selectAgent, contentHeight: contentHeight,
+                    didRenderSurface: { rendered = true })
+            .overlay { if !rendered { ProgressView("Loading content…").font(.caption).tint(Color.secondary).allowsHitTesting(false) } }
     }
     private var payload: JSONValue {
         var data: [String: JSONValue] = ["messages": .array([]), "previews": .array([]), "participants": .array([]), "agentNames": .object([:]), "liveRuns": .array([]), "replyRuns": .object([:]), "hasMore": .bool(false), "loaded": .bool(true), "streaming": .bool(false), "title": .string(""), "locale": .string(Locale.current.identifier), "mayWrite": .bool(false), "forceBottom": .number(0), "loadingOlder": .bool(false)]
@@ -98,7 +101,7 @@ struct ViewsRoot: View {
                 if let workspace = model.selected { ViewsDirectory(workspace: workspace) }
                 else { ContentUnavailableView("Connect an instance", systemImage: "server.rack", description: Text("Use Connections to choose your EmperorClaw server.")) }
             }
-            .navigationTitle("Views")
+            .navigationTitle("Views").navigationBarTitleDisplayMode(.inline)
             .toolbar { ToolbarItem(placement: .topBarTrailing) { Button { connections = true } label: { Image(systemName: "server.rack") }.accessibilityLabel("Connections") } }
             .sheet(isPresented: $connections) { ConnectionsView() }
         }.id(model.workspaceKey)
@@ -113,30 +116,83 @@ private struct ViewsDirectory: View {
     @State private var error: String?
     @State private var loading = true
     @State private var requestID = UUID()
+    @State private var filter = "All"
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Namespace private var viewTransition
+    private var filtered: [WorkItem] {
+        views.filter { view in
+            let matchesSearch = query.isEmpty || view["title"].text.localizedCaseInsensitiveContains(query) || view["scopeLabel"].text.localizedCaseInsensitiveContains(query)
+            return matchesSearch && (filter == "All" || (filter == "Pinned" && view["pinned"].flag) || (filter == "Projects" && view["scopeType"].text == "project"))
+        }
+    }
+    private var featured: WorkItem? { filtered.first(where: { $0["pinned"].flag && $0["access"].text == "full" }) ?? filtered.first(where: { $0["access"].text == "full" }) }
     var body: some View {
         ScrollView {
-            LazyVStack(alignment: .leading, spacing: 16) {
-                Text("Your team's living reports.").font(.title2.bold()).fontDesign(.rounded)
-                Text("Metrics, progress and context, kept together.").font(.subheadline).foregroundStyle(.secondary)
+            VStack(alignment: .leading, spacing: 24) {
+                galleryHeader
                 if let error { ErrorRow(error: error) { Task { await load() } } }
-                if loading { ProgressView("Loading views…").frame(maxWidth: .infinity) }
-                ForEach(views.filter { query.isEmpty || $0["title"].text.localizedCaseInsensitiveContains(query) }) { view in
-                    NavigationLink { PhoneViewDetail(workspace: workspace, id: view.id) } label: {
-                        VStack(alignment: .leading, spacing: 12) {
-                            HStack { Image(systemName: view["pinned"].flag ? "pin.fill" : "rectangle.3.group").foregroundStyle(.tint); Spacer(); Image(systemName: view["access"].text == "metadata" ? "lock" : "arrow.up.right").foregroundStyle(.secondary) }
-                            Text(view["title"].text).font(.title3.bold()).fontDesign(.rounded).foregroundStyle(.primary)
-                            if !view["description"].text.isEmpty { Text(view["description"].text).font(.subheadline).foregroundStyle(.secondary).lineLimit(3) }
-                            HStack { Text(view["scopeLabel"].text); Spacer(); Text("\(view["panelCount"].count) panels") }.font(.caption).foregroundStyle(.secondary)
-                        }.padding(20).frame(maxWidth: .infinity, alignment: .leading).background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 24))
-                    }.buttonStyle(.plain)
+                if loading { ProgressView("Gathering your views…").frame(maxWidth: .infinity).padding(.vertical, 48) }
+                if let featured {
+                    galleryLabel(filter == "Pinned" || featured["pinned"].flag ? "PINNED PERSPECTIVE" : "IN FOCUS")
+                    card(featured, featured: true)
                 }
-                if !loading && error == nil && views.isEmpty { ContentUnavailableView("Space for a clearer picture", systemImage: "rectangle.3.group", description: Text("Create a View on the web and it will appear here.")) }
-                else if !loading && !query.isEmpty && !views.contains(where: { $0["title"].text.localizedCaseInsensitiveContains(query) }) { ContentUnavailableView.search(text: query) }
-            }.padding(24).frame(maxWidth: 760).frame(maxWidth: .infinity)
-        }.background(Color(.systemGroupedBackground)).searchable(text: $query, prompt: "Find a view")
+                if filtered.contains(where: { $0.id != featured?.id }) {
+                    galleryLabel("YOUR COLLECTION")
+                    LazyVGrid(columns: [GridItem(.adaptive(minimum: 250), spacing: 16, alignment: .top)], alignment: .leading, spacing: 16) {
+                        ForEach(filtered.filter { $0.id != featured?.id }) { view in card(view) }
+                    }
+                }
+                if !loading && error == nil && views.isEmpty {
+                    ContentUnavailableView("A space for perspective", systemImage: "rectangle.3.group", description: Text("Views created by your team bring metrics, progress and context into one place."))
+                } else if !loading && filtered.isEmpty && error == nil {
+                    ContentUnavailableView("No matching views", systemImage: "line.3.horizontal.decrease", description: Text("Try another filter or search."))
+                }
+            }.padding(24).frame(maxWidth: 1000).frame(maxWidth: .infinity)
+        }.background(Color(.systemGroupedBackground)).searchable(text: $query, prompt: "Search your collection")
             .task { await load() }.refreshable { await load() }
+            .sensoryFeedback(.selection, trigger: filter)
+    }
+    private var collectionLabel: String {
+        #if DEBUG
+        if ViewDesignPreview.enabled { return "DESIGN PREVIEW · SAMPLE DATA" }
+        #endif
+        return model.companyName.uppercased()
+    }
+    private var galleryHeader: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            HStack {
+                Text(collectionLabel).font(.caption2.weight(.semibold)).tracking(2).foregroundStyle(.secondary)
+                Spacer()
+                if !loading { Text("\(views.count) views").font(.caption).foregroundStyle(.secondary).monospacedDigit() }
+            }
+            Text("A clearer perspective.").font(.largeTitle.weight(.semibold)).fontDesign(.serif).tracking(-0.8).fixedSize(horizontal: false, vertical: true)
+            ScrollView(.horizontal) { HStack(spacing: 8) {
+                ForEach(["All", "Pinned", "Projects"], id: \.self) { value in
+                    Button { filter = value } label: {
+                        Text(value).font(.subheadline.weight(filter == value ? .semibold : .regular)).padding(.horizontal, 16).frame(minHeight: 44)
+                            .foregroundStyle(filter == value ? Color(.systemBackground) : Color.primary)
+                            .background(filter == value ? Color.primary : Color(.secondarySystemGroupedBackground), in: Capsule())
+                    }.buttonStyle(QuietCardPress()).accessibilityAddTraits(filter == value ? .isSelected : [])
+                }
+            } }.scrollIndicators(.hidden).padding(.top, 4)
+        }
+    }
+    private func galleryLabel(_ text: String) -> some View { Text(text).font(.caption2.weight(.semibold)).tracking(1.8).foregroundStyle(.secondary) }
+    @ViewBuilder private func card(_ view: WorkItem, featured: Bool = false) -> some View {
+        if #available(iOS 18.0, *), !reduceMotion {
+            NavigationLink {
+                PhoneViewDetail(workspace: workspace, id: view.id).navigationTransition(.zoom(sourceID: view.id, in: viewTransition))
+            } label: {
+                ViewCollectionCard(view: view, featured: featured).matchedTransitionSource(id: view.id, in: viewTransition)
+            }.buttonStyle(QuietCardPress())
+        } else {
+            NavigationLink { PhoneViewDetail(workspace: workspace, id: view.id) } label: { ViewCollectionCard(view: view, featured: featured) }.buttonStyle(QuietCardPress())
+        }
     }
     private func load() async {
+        #if DEBUG
+        if ViewDesignPreview.enabled { views = ViewDesignPreview.views; loading = false; return }
+        #endif
         let request = UUID(); requestID = request
         do {
             let result = try await model.client.work(workspace, path: "views")
@@ -169,6 +225,9 @@ private struct PhoneViewDetail: View {
             }
     }
     private func load() async {
+        #if DEBUG
+        if ViewDesignPreview.enabled { view = ViewDesignPreview.detail(id); return }
+        #endif
         let request = UUID(); requestID = request
         do { let result = try await model.client.work(workspace, path: "views/\(id)"); try Task.checkCancellation(); guard requestID == request else { return }; view = result["view"]; error = nil }
         catch is CancellationError { return }

@@ -9,13 +9,24 @@ struct EmperorPhoneApp: App {
     var body: some Scene {
         WindowGroup {
             navigation.environmentObject(model)
-                .preferredColorScheme(appearance == "system" ? nil : appearance == "dark" ? .dark : .light)
+                .preferredColorScheme(preferredAppearance)
                 .tint(colorScheme == .dark ? EmperorTheme.brightAccent : EmperorTheme.accent)
-                .task { push.model = model; model.start(); await push.restore() }
+                .task {
+                    push.model = model; model.start(); await push.restore()
+                    #if DEBUG
+                    if ViewDesignPreview.enabled { model.tab = 4 }
+                    #endif
+                }
                 .onOpenURL { url in Task { await model.open(url) } }
                 .sheet(item: $model.destination) { link in ResourceSheet(link: link).environmentObject(model) }
                 .alert("EmperorClaw", isPresented: Binding(get: { model.notice != nil }, set: { if !$0 { model.notice = nil } })) { Button("OK") { model.notice = nil } } message: { Text(model.notice ?? "") }
         }
+    }
+    private var preferredAppearance: ColorScheme? {
+        #if DEBUG
+        if ViewDesignPreview.enabled && ProcessInfo.processInfo.arguments.contains("--views-design-dark") { return .dark }
+        #endif
+        return appearance == "system" ? nil : appearance == "dark" ? .dark : .light
     }
     @ViewBuilder private var navigation: some View {
         if #available(iOS 18.0, *) {

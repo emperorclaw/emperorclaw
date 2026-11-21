@@ -78,3 +78,34 @@ installed Xcode device types, but creating it with the installed iOS 27.2 runtim
 returns “Incompatible device”; folding transitions have therefore not been
 validated in that simulator. Physical-device VoiceOver, extreme Dynamic Type,
 battery profiling and real folding transitions remain acceptance checks.
+
+
+## Views refinement — editorial collection
+
+The collection now promotes one accessible pinned View (otherwise the first
+accessible View), then shows the remaining collection in an adaptive native grid.
+All/Pinned/Projects filters and scope/title search operate on the current server
+response. Cards show the actual key metric when available, its label, scope,
+maintainer and last panel update. No synthetic chart thumbnail, fabricated metric
+or “live” claim is used. Metadata-only cards suppress content fields locally too.
+
+The visual direction uses a serif editorial heading, rounded data typography,
+neutral grouped surfaces, restrained teal illumination and thin separators.
+The detail reader applies the same framing around all seven production panel
+renderers. Each panel can open in an accessible focus dialog, including long
+lists/tables; closing restores keyboard focus and revoked access removes any
+expanded content immediately. Gallery-to-detail zoom is native on iOS 18+ and
+falls back to regular navigation with Reduce Motion or iOS 17.
+
+Debug builds have an explicit `--views-design-preview` launch option containing
+fictional sample data, labeled as such in both collection and detail. This mode
+does not read or write View data on a server. `--views-design-dark` additionally
+sets a temporary dark appearance without changing saved user preferences. Both
+flags and fixtures are excluded from Release builds. Normal launches continue
+to use the real selected instance, which still requires the mobile Views patch.
+
+Validation: ten mobile WebKit tests pass, including all panel types in both
+appearances, narrow/wide widths, modal keyboard/dismissal/focus restoration and
+access revocation. Forty-seven View contract/access/translation tests pass;
+TypeScript, focused ESLint and the signed phone/Watch/widget build pass. Native
+collection and detail were visually inspected with labeled sample data.

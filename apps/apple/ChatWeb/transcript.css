@@ -55,3 +55,39 @@ body { font: -apple-system-body; background: transparent; color: var(--foregroun
 .fleet-still *, .reduced-motion * { animation:none !important; transition:none !important; }
 @media(prefers-reduced-motion:reduce) { .fleet-desk, .fleet-desk * { animation:none !important; transition:none !important; } }
 @media(min-width:600px) { .surface-body { padding:28px; } .surface-document { padding:0; } .surface-fleet { padding:16px 28px 28px; } .fleet-floor { grid-template-columns:repeat(auto-fit,minmax(160px,1fr)); gap:14px; } .fleet-desk { padding:14px; } .desk-stage { height:76px; } }
+/* A quiet editorial reader around the exact production panel renderers. */
+.surface-view { --chart-1:#168575; --chart-2:#4b82b5; --chart-3:#b68b47; max-width:1100px; padding:24px 20px 40px; }
+.view-intro { margin:0 0 24px; max-width:none; }
+.view-kicker { display:flex; justify-content:space-between; align-items:center; gap:16px; }
+.view-kicker .surface-eyebrow { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; text-transform:uppercase; }
+.view-panel-count { flex-shrink:0; font-size:.6875rem; color:var(--muted-foreground); font-variant-numeric:tabular-nums; }
+.view-intro h1 { font-family:ui-serif,Georgia,serif; font-size:clamp(2rem,5vw,3.5rem); font-weight:500; line-height:1.08; letter-spacing:-.045em; margin:22px 0 16px; max-width:20ch; }
+.view-description { max-width:56ch; color:var(--muted-foreground); font-size:.875rem; line-height:1.6; }
+.view-curator { display:flex; align-items:center; gap:5px; margin-top:20px; font-size:.6875rem; color:var(--muted-foreground); }
+.view-curator strong { font-weight:500; color:var(--foreground); }
+.curator-mark { margin-right:4px; color:var(--chart-1); }
+.view-rule { height:1px; margin-top:24px; background:linear-gradient(90deg,var(--border),transparent); }
+.surface-view > .grid { gap:14px; }
+.surface-view section[data-panel-type] { padding:20px; border-radius:24px; border-color:color-mix(in srgb,var(--foreground) 8%,transparent); box-shadow:0 4px 20px #00000003; }
+.surface-view section[data-panel-type] > header { align-items:center; margin-bottom:16px; }
+.surface-view section[data-panel-type] > header h2 { font-size:.8125rem; font-weight:550; white-space:normal; letter-spacing:-.01em; }
+.surface-view section[data-panel-type] > footer { margin-top:20px; font-size:.625rem; letter-spacing:.01em; }
+.surface-view section[data-panel-type=metric] .text-3xl { font-size:2.5rem; font-weight:500; letter-spacing:-.05em; }
+.panel-focus { display:flex; align-items:center; justify-content:center; flex-shrink:0; min-width:44px; min-height:44px; margin:-10px -10px -10px 0; border-radius:50%; color:var(--muted-foreground); }
+.panel-focus:active { background:color-mix(in srgb,var(--foreground) 7%,transparent); }
+.panel-focus:focus-visible, .focus-toolbar button:focus-visible { outline:2px solid var(--foreground); outline-offset:2px; }
+.panel-dialog { position:fixed; inset:0; width:calc(100% - 24px); max-width:1000px; height:calc(100% - 24px); max-height:none; padding:0; margin:auto; border:1px solid var(--border); border-radius:28px; background:var(--background); color:var(--foreground); box-shadow:0 20px 80px #0004; overflow:hidden; }
+.panel-dialog::backdrop { background:#10182070; backdrop-filter:blur(8px); }
+.focus-shell { display:flex; flex-direction:column; height:100%; }
+.focus-toolbar { display:flex; align-items:center; justify-content:space-between; padding:12px 20px; border-bottom:1px solid var(--border); }
+.focus-toolbar button { display:flex; gap:12px; align-items:center; min-height:44px; padding:0 12px; border-radius:24px; font-size:.875rem; font-weight:500; }
+.focus-toolbar button span { font-size:1.5rem; font-weight:300; }
+.focus-content { padding:20px; overflow:auto; flex:1; }
+.focus-content section[data-panel-type] { min-height:calc(100dvh - 160px); box-shadow:none; }
+.focus-content section[data-panel-type] > div { max-height:none; }
+.focus-content section[data-panel-type] > header h2 { font-size:1.25rem; }
+.surface-private { min-height:65vh; display:flex; flex-direction:column; align-items:center; justify-content:center; }
+.private-mark { font-size:3rem; line-height:1; margin-bottom:24px; color:var(--muted-foreground); }
+.surface-private h2 { font-family:ui-serif,Georgia,serif; font-size:2rem; font-weight:500; letter-spacing:-.04em; }
+.surface-private p { font-size:.875rem; line-height:1.6; }
+@media(min-width:768px) { .surface-view { padding:32px 28px 48px; } .view-intro { margin-bottom:28px; } .surface-view > .grid { gap:18px; } .surface-view section[data-panel-type] { padding:24px; border-radius:28px; } }

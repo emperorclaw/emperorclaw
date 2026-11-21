@@ -15,6 +15,7 @@ struct ChatWebView: UIViewRepresentable {
     var openLink: (URL) -> Void = { _ in }
     var selectAgent: (String) -> Void = { _ in }
     var contentHeight: (Double) -> Void = { _ in }
+    var didRenderSurface: () -> Void = {}
 
     func makeCoordinator() -> Coordinator { Coordinator(self) }
     func makeUIView(context: Context) -> WKWebView {
@@ -77,6 +78,9 @@ struct ChatWebView: UIViewRepresentable {
                   let body = message.body as? [String: Any], let type = body["type"] as? String else { return }
             switch type {
             case "ready": ready = true; update()
+            case "surfaceReady":
+                guard ["fleet", "document", "view"].contains(parent.payload["mode"].text) else { return }
+                parent.didRenderSurface()
             case "older": parent.loadOlder()
             case "height":
                 guard let height = body["height"] as? Double, height.isFinite, height >= 1, height <= 100_000 else { return }
