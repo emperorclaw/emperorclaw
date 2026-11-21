@@ -36,42 +36,54 @@ struct PhoneHome: View {
     @State private var connections = false
     @State private var directory = false
     @State private var selectedAgent: Agent?
+    @State private var fleetHeight = 520.0
+    @State private var refreshTick = 0
     var body: some View {
         NavigationStack {
-            VStack(alignment: .leading, spacing: 0) {
+            Group {
                 if let workspace = model.selected {
-                    VStack(alignment: .leading, spacing: 10) {
-                        Button { connections = true } label: {
-                            HStack(spacing: 6) { Text(model.companyName).font(.subheadline.weight(.semibold)); Image(systemName: "chevron.down").font(.caption2.bold()) }
-                        }.accessibilityHint("Switch instance or company")
-                        if let snapshot = model.snapshots[workspace.id] {
-                            Label("\(snapshot.workingCount) working · \(snapshot.agents.count) agents", systemImage: "circle.grid.2x2.fill")
-                                .font(.subheadline).foregroundStyle(.secondary).monospacedDigit()
+                    ScrollView {
+                        VStack(alignment: .leading, spacing: 22) {
+                            HomeHeader(snapshot: model.snapshots[workspace.id]) { connections = true }
+                            if let error = model.errors[workspace.id] {
+                                ErrorRow(error: error) { Task { await model.refresh() } }
+                            }
+                            NeedsYouCard(workspace: workspace, refreshKey: refreshTick)
+                            if let snapshot = model.snapshots[workspace.id] {
+                                VStack(alignment: .leading, spacing: 6) {
+                                    SectionLabel(text: "Your team", systemImage: "person.3.fill")
+                                    if snapshot.agents.isEmpty {
+                                        ContentUnavailableView("Your team starts here", systemImage: "person.3", description: Text("Agents added to this company will appear here."))
+                                    } else {
+                                        PhoneSurface(workspace: workspace, values: ["mode": .string("fleet"), "embedded": .bool(true), "agents": encodedAgents(snapshot.agents), "fresh": .bool(model.errors[workspace.id] == nil && scene == .active)],
+                                                     selectAgent: { id in selectedAgent = snapshot.agents.first { $0.id == id } },
+                                                     contentHeight: { measured in if abs(fleetHeight - measured) > 1 { fleetHeight = measured } })
+                                            .frame(height: fleetHeight).padding(.horizontal, -20)
+                                    }
+                                }
+                            } else { ProgressView("Bringing your team closer…").frame(maxWidth: .infinity).padding(.vertical, 60) }
                         }
-                    }.padding(.horizontal, 24).padding(.top, 12).padding(.bottom, 8).frame(maxWidth: 1200, alignment: .leading).frame(maxWidth: .infinity)
-                    if let error = model.errors[workspace.id] {
-                        ErrorRow(error: error) { Task { await model.refresh() } }.padding(.horizontal, 24)
+                        .padding(.horizontal, 20).padding(.top, 4).padding(.bottom, 32)
+                        .frame(maxWidth: 1100).frame(maxWidth: .infinity)
                     }
-                    if let snapshot = model.snapshots[workspace.id] {
-                        if snapshot.agents.isEmpty {
-                            ContentUnavailableView("Your team starts here", systemImage: "person.3", description: Text("Agents added to this company will appear here."))
-                        } else {
-                            PhoneSurface(workspace: workspace, values: ["mode": .string("fleet"), "agents": encodedAgents(snapshot.agents), "fresh": .bool(model.errors[workspace.id] == nil && scene == .active)], selectAgent: { id in selectedAgent = snapshot.agents.first { $0.id == id } })
-                        }
-                    } else { ProgressView("Bringing your team closer…").frame(maxWidth: .infinity, maxHeight: .infinity) }
+                    .refreshable { await model.refresh(); refreshTick += 1 }
                 } else {
                     ContentUnavailableView {
-                        Label("Your team, wherever you are", systemImage: "person.3.sequence.fill")
+                        VStack(spacing: 16) {
+                            Image("Mascot").resizable().interpolation(.high).scaledToFit().frame(height: 150).accessibilityHidden(true)
+                            Text("Your team, wherever you are").font(.title2.bold()).fontDesign(.rounded)
+                        }
                     } description: { Text("Connect an EmperorClaw instance to begin. You can add more and switch anytime.") } actions: {
-                        Button("Connect EmperorClaw") { connections = true }.buttonStyle(.borderedProminent)
+                        Button("Connect EmperorClaw") { connections = true }.buttonStyle(.borderedProminent).controlSize(.large)
                     }
                 }
             }
             .background(Color(.systemGroupedBackground))
-            .navigationTitle("Home").navigationBarTitleDisplayMode(.inline)
+            .navigationBarTitleDisplayMode(.inline)
             .toolbar {
+                ToolbarItem(placement: .principal) { BrandMark(size: 22) }
                 ToolbarItem(placement: .topBarLeading) { Button { directory = true } label: { Image(systemName: "person.3") }.accessibilityLabel("Agent directory") }
-                ToolbarItem(placement: .topBarTrailing) { Button { Task { await model.refresh() } } label: { Image(systemName: "arrow.clockwise") }.accessibilityLabel("Refresh team") }
+                ToolbarItem(placement: .topBarTrailing) { Button { Task { await model.refresh(); refreshTick += 1 } } label: { Image(systemName: "arrow.clockwise") }.accessibilityLabel("Refresh team") }
             }
             .sheet(isPresented: $connections) { ConnectionsView() }
             .sheet(isPresented: $directory) { FleetView(agentsOnly: true) }
@@ -87,6 +99,8 @@ struct PhoneHome: View {
         }
     }
     private func encodedAgents(_ agents: [Agent]) -> JSONValue {
+        // Stable order: refreshes must never move a card under the reader's finger.
+        let agents = agents.sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
         guard let data = try? JSONEncoder().encode(agents), let value = try? JSONDecoder().decode(JSONValue.self, from: data) else { return .array([]) }
         return value
     }
@@ -177,7 +191,7 @@ private struct ViewsDirectory: View {
             } }.scrollIndicators(.hidden).padding(.top, 4)
         }
     }
-    private func galleryLabel(_ text: String) -> some View { Text(text).font(.caption2.weight(.semibold)).tracking(1.8).foregroundStyle(.secondary) }
+    private func galleryLabel(_ text: String) -> some View { SectionLabel(text: text.capitalized, systemImage: text.contains("PINNED") ? "pin.fill" : text.contains("FOCUS") ? "scope" : "square.grid.2x2.fill") }
     @ViewBuilder private func card(_ view: WorkItem, featured: Bool = false) -> some View {
         if #available(iOS 18.0, *), !reduceMotion {
             NavigationLink {

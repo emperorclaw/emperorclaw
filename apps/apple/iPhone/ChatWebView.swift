@@ -3,6 +3,21 @@ import WebKit
 import OSLog
 import EmperorCore
 
+/// Keeps the renderer's process and caches warm so the first conversation
+/// opens without a cold WebKit start. Content stays non-persistent.
+@MainActor enum ChatRenderer {
+    static let store = WKWebsiteDataStore.nonPersistent()
+    private static var warm: WKWebView?
+    static var documentURL: URL? { Bundle.main.url(forResource: "index", withExtension: "html", subdirectory: "ChatWeb") }
+    static func prewarm() {
+        guard warm == nil, let url = documentURL else { return }
+        let configuration = WKWebViewConfiguration(); configuration.websiteDataStore = store
+        let view = WKWebView(frame: .zero, configuration: configuration)
+        view.loadFileURL(url, allowingReadAccessTo: url.deletingLastPathComponent())
+        warm = view
+    }
+}
+
 /// One offline transcript, using the same renderer as the web. Credentials and
 /// company selection remain in MobileClient; JavaScript only receives content.
 struct ChatWebView: UIViewRepresentable {
@@ -16,18 +31,19 @@ struct ChatWebView: UIViewRepresentable {
     var selectAgent: (String) -> Void = { _ in }
     var contentHeight: (Double) -> Void = { _ in }
     var didRenderSurface: () -> Void = {}
+    var didPaintTranscript: () -> Void = {}
 
     func makeCoordinator() -> Coordinator { Coordinator(self) }
     func makeUIView(context: Context) -> WKWebView {
         let configuration = WKWebViewConfiguration()
-        configuration.websiteDataStore = .nonPersistent()
+        configuration.websiteDataStore = ChatRenderer.store
         configuration.userContentController.add(context.coordinator, name: "chat")
         let view = WKWebView(frame: .zero, configuration: configuration)
         view.navigationDelegate = context.coordinator
         view.isOpaque = false; view.backgroundColor = .clear
         view.scrollView.isScrollEnabled = false // the transcript owns its scroll anchor
         view.scrollView.backgroundColor = .clear
-        if let url = Bundle.main.url(forResource: "index", withExtension: "html", subdirectory: "ChatWeb") {
+        if let url = ChatRenderer.documentURL {
             context.coordinator.documentURL = url
             view.loadFileURL(url, allowingReadAccessTo: url.deletingLastPathComponent())
         }
@@ -81,6 +97,7 @@ struct ChatWebView: UIViewRepresentable {
             case "surfaceReady":
                 guard ["fleet", "document", "view"].contains(parent.payload["mode"].text) else { return }
                 parent.didRenderSurface()
+            case "painted": parent.didPaintTranscript()
             case "older": parent.loadOlder()
             case "height":
                 guard let height = body["height"] as? Double, height.isFinite, height >= 1, height <= 100_000 else { return }

@@ -6,16 +6,24 @@
 @source '../../../src/components/chat/streaming-markdown.tsx';
 @source '../../../src/components/run-timeline.tsx';
 html, body, #root { height: 100%; margin: 0; overflow: hidden; }
+html { background: transparent; }
 body { font: -apple-system-body; background: transparent; color: var(--foreground); -webkit-text-size-adjust: 100%; }
 #transcript { height: 100%; overflow: auto; overscroll-behavior: contain; overflow-anchor: none; padding: 14px; box-sizing: border-box; }
 .chat-message { margin: 0 0 14px; min-width: 0; overflow-wrap: anywhere; }
-.chat-message > header { font-size: 12px; color: var(--muted-foreground); margin-bottom: 5px; }
+.chat-message > header { font: 600 12px/1.2 ui-rounded, -apple-system, system-ui; letter-spacing: .01em; color: var(--muted-foreground); margin: 0 4px 6px; }
+.chat-message.human { margin-left: 14%; }
+.chat-message.human > header { text-align: right; }
+.chat-message.agent .body { border-top-left-radius: 6px; }
+.chat-message.human .body { border-top-right-radius: 6px; }
 .chat-message .body { border-radius: 14px; padding: 12px; background: color-mix(in srgb, var(--foreground) 6%, transparent); }
-.chat-message.human .body { background: color-mix(in srgb, cyan 10%, transparent); }
+.chat-message.human .body { background: color-mix(in srgb, #2ab7d6 16%, transparent); }
 .chat-message button, #transcript > button, .attachment { min-height: 44px; }
 #latest { position: fixed; bottom: 10px; right: 16px; min-height: 44px; padding: 6px 14px; border-radius: 24px; background: var(--background); border: 1px solid var(--border); box-shadow: 0 2px 8px #0003; }
 .attachment { display: flex; align-items: center; color: var(--color-cyan-400); }
-.activity { font-size: 12px; padding: 12px; border-left: 2px solid var(--color-cyan-400); margin-bottom: 12px; }
+.chat-empty { min-height: 60vh; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; gap: 6px; padding: 24px; color: var(--muted-foreground); font-size: 14px; }
+.chat-empty p { margin: 0; max-width: 280px; }
+.chat-empty-title { color: var(--foreground); font-size: 17px; font-weight: 600; letter-spacing: -.01em; }
+.activity { font-size: 12px; padding: 12px 14px; border-left: 2px solid var(--color-cyan-400); border-radius: 4px 14px 14px 4px; background: color-mix(in srgb, #2ab7d6 6%, transparent); margin-bottom: 12px; }
 .markdown-content pre, .markdown-content table { max-width: 100%; }
 .markdown-content pre { overflow-x: auto; }
 

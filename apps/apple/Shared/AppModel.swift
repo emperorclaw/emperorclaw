@@ -13,6 +13,8 @@ final class AppModel: ObservableObject {
     @Published var notice: String?
     @Published var destination: WorkspaceLink?
     @Published var tab = 0
+    /// Decisions + blockers for the selected workspace (web attention rules).
+    @Published private(set) var needsYou: [String: Int] = [:]
     private var pendingRefresh: Set<String> = []
     private var generations: [String: UUID] = [:]
     let client = MobileClient()
@@ -44,6 +46,15 @@ final class AppModel: ObservableObject {
         selectedID = installation.id; save()
     }
     func select(_ id: String) { selectedID = id }
+    func setNeedsYou(_ count: Int, for installation: Installation) {
+        guard needsYou[installation.id] != count else { return }
+        needsYou[installation.id] = count
+        if let snapshot = snapshots[installation.id] {
+            WidgetCache.write(.init(installationID: installation.id, companyID: snapshot.companyId, name: "\(installation.name) · \(companyName)", working: snapshot.workingCount, total: snapshot.agents.count, needsYou: count, date: Date()))
+            WidgetCenter.shared.reloadAllTimelines()
+        }
+    }
+    var selectedNeedsYou: Int { selected.flatMap { needsYou[$0.id] } ?? 0 }
     func selectCompany(_ id: String) {
         guard let index = installations.firstIndex(where: { $0.id == selectedID }) else { return }
         installations[index].companyID = id
@@ -88,7 +99,7 @@ final class AppModel: ObservableObject {
             guard generations[installationID] == generation,
                   installations.first(where: { $0.id == installationID })?.companyID == snapshot.companyId else { return }
             snapshots[installationID] = snapshot; errors[installationID] = nil
-            WidgetCache.write(.init(installationID: installationID, companyID: snapshot.companyId, name: "\(installation.name) · \(available.first { $0.id == snapshot.companyId }?.name ?? "Company")", working: snapshot.workingCount, total: snapshot.agents.count, needsYou: nil, date: Date()))
+            WidgetCache.write(.init(installationID: installationID, companyID: snapshot.companyId, name: "\(installation.name) · \(available.first { $0.id == snapshot.companyId }?.name ?? "Company")", working: snapshot.workingCount, total: snapshot.agents.count, needsYou: needsYou[installationID], date: Date()))
             WidgetCenter.shared.reloadAllTimelines()
         } catch {
             if generations[installationID] == generation {

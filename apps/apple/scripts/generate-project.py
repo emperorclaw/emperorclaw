@@ -40,12 +40,15 @@ for path in shared + sorted((ROOT / 'iPhone').glob('*.swift')) + sorted((ROOT / 
 privacy = obj('PrivacyInfo.xcprivacy', 'PBXFileReference', lastKnownFileType='text.xml', path='PrivacyInfo.xcprivacy', sourceTree='<group>')
 file_refs['PrivacyInfo.xcprivacy'] = privacy
 
+assets = obj('Assets.xcassets', 'PBXFileReference', lastKnownFileType='folder.assetcatalog', path='Assets.xcassets', sourceTree='<group>')
+file_refs['Assets.xcassets'] = assets
+
 chat_web = obj('ChatWeb', 'PBXFileReference', lastKnownFileType='folder', path='iPhone/ChatWeb', sourceTree='<group>')
 file_refs['ChatWeb'] = chat_web
 
 def privacy_resources(name):
     entry = obj(name + 'PrivacyFile', 'PBXBuildFile', fileRef=privacy)
-    return obj(name + 'Resources', 'PBXResourcesBuildPhase', buildActionMask='2147483647', files=[entry] + ([obj('ChatWebBuild', 'PBXBuildFile', fileRef=chat_web)] if name == 'EmperorPhone' else []), runOnlyForDeploymentPostprocessing='0')
+    return obj(name + 'Resources', 'PBXResourcesBuildPhase', buildActionMask='2147483647', files=[entry] + ([obj('ChatWebBuild', 'PBXBuildFile', fileRef=chat_web)] if name == 'EmperorPhone' else []) + ([obj(name + 'AssetsBuild', 'PBXBuildFile', fileRef=assets)] if name in ('EmperorPhone', 'EmperorWatch') else []), runOnlyForDeploymentPostprocessing='0')
 
 package = obj('package', 'XCLocalSwiftPackageReference', relativePath='.')
 
@@ -105,7 +108,8 @@ for name, folder, sdk, deployment, family, bundle in [
                     'TARGETED_DEVICE_FAMILY': family, 'PRODUCT_BUNDLE_IDENTIFIER': bundle, 'PRODUCT_NAME': '$(TARGET_NAME)',
                     'SWIFT_VERSION': '5.0', 'APS_ENVIRONMENT': 'development' if config == 'Debug' else 'production', 'CODE_SIGN_ENTITLEMENTS': folder + '/App.entitlements', 'INFOPLIST_FILE': folder + '/Info.plist', 'GENERATE_INFOPLIST_FILE': 'NO',
                     'MARKETING_VERSION': '0.1.0', 'CURRENT_PROJECT_VERSION': '1', 'CODE_SIGN_STYLE': 'Automatic',
-                    'SWIFT_ACTIVE_COMPILATION_CONDITIONS': 'DEBUG' if config == 'Debug' else '', 'SWIFT_OPTIMIZATION_LEVEL': '-Onone' if config == 'Debug' else '-O', 'ENABLE_USER_SCRIPT_SANDBOXING': 'YES'}
+                    'SWIFT_ACTIVE_COMPILATION_CONDITIONS': 'DEBUG' if config == 'Debug' else '',
+                    'ASSETCATALOG_COMPILER_APPICON_NAME': 'AppIcon', 'ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME': 'AccentColor', 'SWIFT_OPTIMIZATION_LEVEL': '-Onone' if config == 'Debug' else '-O', 'ENABLE_USER_SCRIPT_SANDBOXING': 'YES'}
         configs.append(obj(name + config, 'XCBuildConfiguration', buildSettings=settings, name=config))
     config_list = obj(name + 'ConfigList', 'XCConfigurationList', buildConfigurations=configs, defaultConfigurationIsVisible='0', defaultConfigurationName='Release')
     target = obj(name, 'PBXNativeTarget', buildConfigurationList=config_list, buildPhases=phases, buildRules=[], dependencies=dependencies,
@@ -117,7 +121,7 @@ for name, folder, sdk, deployment, family, bundle in [
     if folder == 'Watch':
         info.update({'WKApplication': True, 'WKCompanionAppBundleIdentifier': 'com.emperorclaw.app', 'WKWatchOnly': False})
     else:
-        info.update({'LSRequiresIPhoneOS': True, 'UILaunchScreen': {}, 'UISupportedInterfaceOrientations': ['UIInterfaceOrientationPortrait', 'UIInterfaceOrientationPortraitUpsideDown', 'UIInterfaceOrientationLandscapeLeft', 'UIInterfaceOrientationLandscapeRight'],
+        info.update({'LSRequiresIPhoneOS': True, 'UILaunchScreen': {'UIColorName': 'LaunchBackground', 'UIImageName': 'LaunchEmblem', 'UIImageRespectsSafeAreaInsets': True}, 'UISupportedInterfaceOrientations': ['UIInterfaceOrientationPortrait', 'UIInterfaceOrientationPortraitUpsideDown', 'UIInterfaceOrientationLandscapeLeft', 'UIInterfaceOrientationLandscapeRight'],
                      'CFBundleURLTypes': [{'CFBundleURLName': 'EmperorClaw sign-in', 'CFBundleURLSchemes': ['com.emperorclaw.app']}]})
     if folder == 'iPhone':
         info.update({'NSCameraUsageDescription': 'Scan the connection QR code from your own EmperorClaw server.', 'UIBackgroundModes': ['remote-notification']})

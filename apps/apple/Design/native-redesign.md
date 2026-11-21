@@ -46,6 +46,25 @@ native. Rich task descriptions, timeline notes, approval rationale and attention
 details reuse the web Markdown renderer for block content; short inline notes
 remain native. Embedded documents report their complete content height.
 
+## Brand and design system (2026-11-21)
+
+`Shared/DesignSystem.swift` is the shared vocabulary for iPhone and Watch, following the
+iOS design-agent audit pillars. Typography uses SF design axes only: `.rounded` heavy large
+titles (set globally on the navigation bar), rounded names/headlines/numbers, `.serif` for the
+editorial Views gallery, small-caps `SectionLabel`s for structure and `.monospacedDigit()` for
+live counts. Colour carries meaning only: teal = interactive/working, orange = decide,
+red = blocked, green = done/clear, indigo = review. `TaskStateStyle`, `StatusPill`,
+`AgentMonogram` (stable per-agent hue + status badge) and `SoftDivider` replace ad-hoc styling.
+
+`Assets.xcassets` holds the crown app icon (light/dark), the `Emblem` and `Mascot` artwork from
+the web branding, a brand-dark launch screen and an adaptive `AccentColor`
+(#006A8C light, #5ED6F5 dark/watch: 5.5:1+ and 8:1+). The previous teal measured 2.8:1 on
+dark glass controls. Home leads with a "Needs you" card (web attention rules) that also drives
+the Inbox tab badge and the widget's `needsYou` count. Watch home (`Watch/WatchHome.swift`) is a
+carousel: crown + company + working gauge, one needs-you tile, team rows and quick actions.
+DEBUG-only `--qa-team` / `--qa-agent` launch arguments open below-the-fold Watch screens for
+simulator capture, since watch simulators accept no injected touches here.
+
 ## Views and shared content
 
 Views has native search, scope/panel summaries and private-access indicators.

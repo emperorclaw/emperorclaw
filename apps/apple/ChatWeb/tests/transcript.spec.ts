@@ -154,3 +154,15 @@ test('View focus expands the real panel, supports dismissal and clears private d
     await expect(page.getByRole('dialog')).toHaveCount(0);
     await expect(page.getByText('Aurora')).toHaveCount(0);
 });
+test('signals the first painted transcript once and explains an empty conversation without hiding activity', async ({ page }) => {
+    const painted = () => page.evaluate(() => (window as unknown as { nativeMessages: { type: string }[] }).nativeMessages.filter(message => message.type === 'painted').length);
+    await update(page, payload({ loaded: false }));
+    await expect(page.getByText('Loading conversation…')).toBeVisible(); expect(await painted()).toBe(0);
+    await update(page, payload());
+    await expect(page.getByText('Start a conversation with Builder')).toBeVisible();
+    await expect.poll(painted).toBe(1);
+    await update(page, payload({ participants: [{ participantType: 'agent', participantId: uuid, typingUntil: new Date(Date.now() + 60_000).toISOString(), currentActivity: 'Reading project files' }] }));
+    await expect(page.locator('.chat-empty')).toHaveCount(0);
+    await update(page, payload({ messages: [message('1', 'Hello')] }));
+    await expect(page.locator('.chat-empty')).toHaveCount(0); expect(await painted()).toBe(1);
+});

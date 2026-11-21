@@ -4,14 +4,25 @@ import SwiftUI
 struct EmperorPhoneApp: App {
     @UIApplicationDelegateAdaptor(PushDelegate.self) private var push
     @StateObject private var model = AppModel()
-    @Environment(\.colorScheme) private var colorScheme
     @AppStorage("appearance") private var appearance = "system"
+    init() {
+        // Screen titles speak in the same rounded voice as the team, distinct from system chrome.
+        let appearance = UINavigationBar.appearance()
+        func rounded(_ style: UIFont.TextStyle, _ weight: UIFont.Weight) -> UIFont {
+            let base = UIFont.preferredFont(forTextStyle: style)
+            let font = UIFont.systemFont(ofSize: base.pointSize, weight: weight)
+            return UIFont(descriptor: font.fontDescriptor.withDesign(.rounded) ?? font.fontDescriptor, size: base.pointSize)
+        }
+        appearance.largeTitleTextAttributes = [.font: rounded(.largeTitle, .heavy)]
+        appearance.titleTextAttributes = [.font: rounded(.headline, .semibold)]
+    }
     var body: some Scene {
         WindowGroup {
             navigation.environmentObject(model)
                 .preferredColorScheme(preferredAppearance)
-                .tint(colorScheme == .dark ? EmperorTheme.brightAccent : EmperorTheme.accent)
+                .tint(EmperorTheme.accent)
                 .task {
+                    ChatRenderer.prewarm()
                     push.model = model; model.start()
                     #if DEBUG
                     if ViewDesignPreview.enabled || ProcessInfo.processInfo.arguments.contains("--open-views") { model.tab = 4 }
@@ -32,19 +43,19 @@ struct EmperorPhoneApp: App {
     @ViewBuilder private var navigation: some View {
         if #available(iOS 18.0, *) {
             TabView(selection: $model.tab) {
-                Tab("Home", systemImage: "house", value: 0) { PhoneHome().id(model.workspaceKey) }
-                Tab("Inbox", systemImage: "tray", value: 1) { WorkRoot(kind: "Inbox") }
-                Tab("Messages", systemImage: "bubble.left.and.bubble.right", value: 2) { WorkRoot(kind: "Messages") }
-                Tab("Projects", systemImage: "folder", value: 3) { WorkRoot(kind: "Projects") }
-                Tab("Views", systemImage: "rectangle.3.group", value: 4) { ViewsRoot() }
+                Tab("Home", systemImage: "crown", value: 0) { PhoneHome().id(model.workspaceKey) }
+                Tab("Inbox", systemImage: "tray.full", value: 1) { WorkRoot(kind: "Inbox") }.badge(model.selectedNeedsYou)
+                Tab("Messages", systemImage: "bubble.left.and.text.bubble.right", value: 2) { WorkRoot(kind: "Messages") }
+                Tab("Projects", systemImage: "checklist", value: 3) { WorkRoot(kind: "Projects") }
+                Tab("Views", systemImage: "chart.bar.doc.horizontal", value: 4) { ViewsRoot() }
             }.tabViewStyle(.sidebarAdaptable)
         } else {
             TabView(selection: $model.tab) {
-                PhoneHome().id(model.workspaceKey).tabItem { Label("Home", systemImage: "house") }.tag(0)
-                WorkRoot(kind: "Inbox").tabItem { Label("Inbox", systemImage: "tray") }.tag(1)
-                WorkRoot(kind: "Messages").tabItem { Label("Messages", systemImage: "bubble.left.and.bubble.right") }.tag(2)
-                WorkRoot(kind: "Projects").tabItem { Label("Projects", systemImage: "folder") }.tag(3)
-                ViewsRoot().tabItem { Label("Views", systemImage: "rectangle.3.group") }.tag(4)
+                PhoneHome().id(model.workspaceKey).tabItem { Label("Home", systemImage: "crown") }.tag(0)
+                WorkRoot(kind: "Inbox").tabItem { Label("Inbox", systemImage: "tray.full") }.badge(model.selectedNeedsYou).tag(1)
+                WorkRoot(kind: "Messages").tabItem { Label("Messages", systemImage: "bubble.left.and.text.bubble.right") }.tag(2)
+                WorkRoot(kind: "Projects").tabItem { Label("Projects", systemImage: "checklist") }.tag(3)
+                ViewsRoot().tabItem { Label("Views", systemImage: "chart.bar.doc.horizontal") }.tag(4)
             }
         }
     }

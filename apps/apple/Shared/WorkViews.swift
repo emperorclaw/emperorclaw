@@ -39,31 +39,48 @@ struct WorkList: View {
     var isTasks: Bool { kind == "Projects" }
     var body: some View {
         List {
-            Section { Text(model.companyName).font(.caption).foregroundStyle(.secondary) }
             if let error { Section { ErrorRow(error: error) { Task { await load() } } } }
             if loading && rows.isEmpty { ProgressView("Loading…") }
             if isTasks {
-                Picker("Show", selection: $filter) { ForEach(["All", "Active", "Blocked", "Completed"], id: \.self) { Text($0) } }
                 #if os(iOS)
-                Button("New task", systemImage: "plus.circle") { create = true }.disabled(!model.mayWrite)
+                Section {
+                    ScrollView(.horizontal) {
+                        HStack(spacing: 8) {
+                            ForEach(["All", "Active", "Blocked", "Completed"], id: \.self) { value in
+                                FilterChip(title: value, count: count(for: value), selected: filter == value) { withAnimation(.snappy) { filter = value } }
+                            }
+                        }.padding(.vertical, 2)
+                    }.scrollIndicators(.hidden)
+                }.listRowBackground(Color.clear).listRowInsets(EdgeInsets(top: 0, leading: 0, bottom: 0, trailing: 0))
+                #else
+                Picker("Show", selection: $filter) { ForEach(["All", "Active", "Blocked", "Completed"], id: \.self) { Text($0) } }
                 #endif
             }
-            ForEach(rows.filter { item in
-                guard isTasks else { return true }
-                let state = item["state"].text
-                return filter == "All" || (filter == "Blocked" && state == "blocked") || (filter == "Completed" && ["done", "cancelled"].contains(state)) || (filter == "Active" && !["done", "cancelled", "blocked"].contains(state))
-            }) { item in
-                if isTasks {
-                    NavigationLink { TaskScreen(workspace: workspace, id: item.id) } label: { WorkRow(title: item["title"].text, subtitle: item["state"].text, icon: "checklist") }
-                } else if !item["approvalId"].text.isEmpty {
-                    NavigationLink { ApprovalScreen(workspace: workspace, id: item["approvalId"].text) } label: { WorkRow(title: item["title"].text, subtitle: item["reason"].text, icon: "hand.raised") }
-                } else if !item["taskId"].text.isEmpty {
-                    NavigationLink { TaskScreen(workspace: workspace, id: item["taskId"].text) } label: { WorkRow(title: item["title"].text, subtitle: item["reason"].text, icon: "exclamationmark.bubble") }
-                } else {
-                    NavigationLink { AttentionDetail(workspace: workspace, item: item) } label: { WorkRow(title: item["title"].text, subtitle: item["reason"].text, icon: "bubble.left") }
+            if isTasks {
+                ForEach(rows.filter { matches($0, filter) }) { item in
+                    NavigationLink { TaskScreen(workspace: workspace, id: item.id) } label: { TaskRow(item: item, assignee: agentName(item["assignedAgentId"].text)) }
+                }
+            } else {
+                ForEach(inboxGroups, id: \.title) { group in
+                    Section {
+                        ForEach(group.items) { item in inboxLink(item, tint: group.tint) }
+                    } header: {
+                        SectionLabel(text: group.title, systemImage: group.icon, tint: group.tint).textCase(nil)
+                    }
                 }
             }
-            if !loading && rows.isEmpty && error == nil { Label(isTasks ? "No tasks yet" : "Nothing needs your attention", systemImage: "checkmark.circle").foregroundStyle(.secondary) }
+            if !loading && rows.isEmpty && error == nil {
+                if isTasks { Label("No tasks yet", systemImage: "checklist").foregroundStyle(.secondary) }
+                else {
+                    ContentUnavailableView {
+                        VStack(spacing: 14) {
+                            Image("Mascot").resizable().interpolation(.high).scaledToFit().frame(height: 120).accessibilityHidden(true)
+                            Text("You’re all caught up").font(.title3.bold()).fontDesign(.rounded)
+                        }
+                    } description: { Text("Decisions, blockers and mentions from your team will land here.") }
+                    .listRowBackground(Color.clear)
+                }
+            }
             if isTasks, nextBefore != nil { Button("Load older tasks") { Task { await load(older: true) } } }
         }
         #if os(iOS)
@@ -72,6 +89,10 @@ struct WorkList: View {
         .background(Color(.systemGroupedBackground))
         #endif
         .refreshable { await load() }
+        .sensoryFeedback(.selection, trigger: filter)
+        #if os(iOS)
+        .toolbar { if isTasks { ToolbarItem(placement: .topBarLeading) { Button { create = true } label: { Image(systemName: "plus") }.disabled(!model.mayWrite).accessibilityLabel("New task") } } }
+        #endif
         .task(id: scene) {
             guard scene == .active else { return }
             await load()
@@ -79,12 +100,41 @@ struct WorkList: View {
         }
         .sheet(isPresented: $create, onDismiss: { Task { await load() } }) { NavigationStack { NewTaskScreen(workspace: workspace) } }
     }
+    private func matches(_ item: WorkItem, _ filter: String) -> Bool {
+        let state = item["state"].text
+        return filter == "All" || (filter == "Blocked" && state == "blocked") || (filter == "Completed" && ["done", "cancelled"].contains(state)) || (filter == "Active" && !["done", "cancelled", "blocked"].contains(state))
+    }
+    private func count(for filter: String) -> Int? { filter == "All" ? nil : rows.filter { matches($0, filter) }.count }
+    private func agentName(_ id: String) -> String? { id.isEmpty ? nil : model.snapshots[workspace.id]?.agents.first { $0.id == id }?.name }
+    private struct InboxGroup { let title: String; let icon: String; let tint: Color; let items: [WorkItem] }
+    private static let actionKinds: Set<String> = ["approval", "decision", "incident", "agent", "paused", "run_failed", "task_blocked", "request", "stalled"]
+    /// Same three sections as the web Inbox (attention-rules.ts), most urgent first.
+    private var inboxGroups: [InboxGroup] {
+        func needsYou(_ item: WorkItem) -> Bool { if case .bool(let required) = item["actionRequired"] { return required }; return Self.actionKinds.contains(item["kind"].text) }
+        let decide = rows.filter { needsYou($0) && ["approval", "decision"].contains($0["kind"].text) }
+        let blocked = rows.filter { needsYou($0) && !["approval", "decision"].contains($0["kind"].text) }
+        let fyi = rows.filter { !needsYou($0) }
+        return [InboxGroup(title: "Needs a decision", icon: "hand.raised.fill", tint: .orange, items: decide),
+                InboxGroup(title: "Blocked or failing", icon: "exclamationmark.triangle.fill", tint: .red, items: blocked),
+                InboxGroup(title: "For your information", icon: "info.circle.fill", tint: .secondary, items: fyi)].filter { !$0.items.isEmpty }
+    }
+    @ViewBuilder private func inboxLink(_ item: WorkItem, tint: Color) -> some View {
+        let subtitle = [item["memberName"].text, item["reason"].text.isEmpty ? item["detail"].text : item["reason"].text].filter { !$0.isEmpty }.joined(separator: " · ")
+        if !item["approvalId"].text.isEmpty {
+            NavigationLink { ApprovalScreen(workspace: workspace, id: item["approvalId"].text) } label: { WorkRow(title: item["title"].text, subtitle: subtitle, icon: "hand.raised", tint: tint) }
+        } else if !item["taskId"].text.isEmpty {
+            NavigationLink { TaskScreen(workspace: workspace, id: item["taskId"].text) } label: { WorkRow(title: item["title"].text, subtitle: subtitle, icon: "exclamationmark.bubble", tint: tint) }
+        } else {
+            NavigationLink { AttentionDetail(workspace: workspace, item: item) } label: { WorkRow(title: item["title"].text, subtitle: subtitle, icon: "bubble.left", tint: tint) }
+        }
+    }
     private func load(older: Bool = false) async {
         do {
             let result = try await model.client.work(workspace, path: isTasks ? "tasks" : "inbox", query: older ? ["before": nextBefore ?? ""] : [:])
             let incoming = result[isTasks ? "tasks" : "entries"].items.map(WorkItem.init)
             if older { let ids = Set(rows.map(\.id)); rows += incoming.filter { !ids.contains($0.id) } } else { rows = incoming }
             nextBefore = result["nextBefore"].text.isEmpty ? nil : result["nextBefore"].text
+            if !isTasks { model.setNeedsYou(inboxGroups.filter { $0.title != "For your information" }.reduce(0) { $0 + $1.items.count }, for: workspace) }
             error = nil
         } catch { self.error = error.localizedDescription; if (error as? MobileFailure)?.invalidatesContent == true { rows = [] } }
         loading = false
@@ -93,11 +143,12 @@ struct WorkList: View {
 
 struct WorkRow: View {
     let title: String; let subtitle: String; let icon: String
+    var tint: Color? = nil
     var body: some View {
         HStack(alignment: .top, spacing: 14) {
             #if os(iOS)
-            Image(systemName: icon).font(.title3.weight(.medium)).foregroundStyle(.tint)
-                .frame(width: 44, height: 44).background(Color.accentColor.opacity(0.08), in: RoundedRectangle(cornerRadius: 14))
+            Image(systemName: icon).font(.title3.weight(.medium)).foregroundStyle(tint ?? Color.accentColor)
+                .frame(width: 44, height: 44).background((tint ?? Color.accentColor).opacity(0.12), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
             #endif
             VStack(alignment: .leading, spacing: 8) {
                 Text(title).font(.headline).fontDesign(.rounded).fixedSize(horizontal: false, vertical: true)
@@ -106,6 +157,44 @@ struct WorkRow: View {
         }.padding(.vertical, 12)
     }
 }
+struct TaskRow: View {
+    let item: WorkItem
+    var assignee: String?
+    var body: some View {
+        let style = TaskStateStyle(item["state"].text)
+        HStack(alignment: .top, spacing: 14) {
+            Image(systemName: style.symbol).font(.title3).foregroundStyle(style.color).symbolRenderingMode(.hierarchical)
+                .frame(width: 36, height: 36).background(style.color.opacity(0.12), in: RoundedRectangle(cornerRadius: DS.Radius.tile, style: .continuous))
+            VStack(alignment: .leading, spacing: 7) {
+                Text(item["title"].text).font(.body.weight(.semibold)).fontDesign(.rounded).lineLimit(3).fixedSize(horizontal: false, vertical: true)
+                HStack(spacing: 8) {
+                    StatusPill(text: style.label, color: style.color)
+                    if let assignee { Label(assignee, systemImage: "person.crop.circle").labelStyle(.titleAndIcon).font(.caption).foregroundStyle(.secondary).lineLimit(1) }
+                }
+            }
+        }.padding(.vertical, 6).accessibilityElement(children: .combine)
+    }
+}
+
+struct FilterChip: View {
+    let title: String
+    var count: Int? = nil
+    let selected: Bool
+    let action: () -> Void
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 6) {
+                Text(title)
+                if let count, count > 0 { Text(count, format: .number).monospacedDigit().foregroundStyle(selected ? Color.groupedBackground.opacity(0.7) : .secondary) }
+            }
+            .font(.subheadline.weight(selected ? .semibold : .medium)).fontDesign(.rounded)
+            .padding(.horizontal, 14).frame(minHeight: 36)
+            .foregroundStyle(selected ? Color.groupedBackground : Color.primary)
+            .background(selected ? Color.primary : Color.cardSurface, in: Capsule())
+        }.buttonStyle(.plain).accessibilityAddTraits(selected ? .isSelected : [])
+    }
+}
+
 struct ErrorRow: View {
     let error: String; let retry: () -> Void
     var body: some View { VStack(alignment: .leading, spacing: 8) { Label(error, systemImage: "exclamationmark.triangle").font(.footnote).foregroundStyle(.orange); Button("Try again", action: retry) } }
@@ -121,32 +210,52 @@ struct ChatDirectory: View {
         Group {
             #if os(iOS)
             ScrollView {
-                LazyVStack(alignment: .leading, spacing: 16) {
-                    Text(model.companyName.uppercased()).font(.caption.weight(.semibold)).tracking(2).foregroundStyle(.secondary)
+                LazyVStack(alignment: .leading, spacing: DS.Space.xl) {
                     if let error { ErrorRow(error: error) { Task { await load() } } }
                     NavigationLink { ChatScreen(workspace: workspace, title: "Team") } label: {
-                        HStack(spacing: 16) {
-                            Image(systemName: "bubble.left.and.bubble.right.fill").font(.title2).foregroundStyle(.tint)
-                            VStack(alignment: .leading, spacing: 5) { Text("Team conversation").font(.headline).fontDesign(.rounded); Text("Bring everyone into the conversation.").font(.subheadline).foregroundStyle(.secondary) }
-                            Spacer(minLength: 0); Image(systemName: "arrow.up.right").foregroundStyle(.secondary)
-                        }.padding(20).background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 24))
-                    }.buttonStyle(.plain)
-                    Text("Your agents").font(.title2.bold()).fontDesign(.rounded).padding(.top, 12)
-                    ForEach((model.snapshots[workspace.id]?.agents ?? []).filter { query.isEmpty || $0.name.localizedCaseInsensitiveContains(query) }) { agent in
-                        NavigationLink { ChatScreen(workspace: workspace, title: agent.name, agentID: agent.id) } label: {
-                            AgentRow(agent: agent).padding(16).frame(maxWidth: .infinity, alignment: .leading)
-                                .background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 22))
-                        }.buttonStyle(.plain)
-                    }
-                    if !groups.isEmpty {
-                        Text("Groups").font(.title2.bold()).fontDesign(.rounded).padding(.top, 12)
-                        ForEach(groups.filter { query.isEmpty || $0["title"].text.localizedCaseInsensitiveContains(query) }) { group in
-                            NavigationLink { ChatScreen(workspace: workspace, title: group["title"].text, groupID: group.id) } label: {
-                                WorkRow(title: group["title"].text.isEmpty ? "Group conversation" : group["title"].text, subtitle: "", icon: "person.2").padding(.horizontal, 16).frame(maxWidth: .infinity, alignment: .leading).background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 22))
-                            }.buttonStyle(.plain)
+                        HStack(spacing: DS.Space.l) {
+                            Image(systemName: "person.3.sequence.fill").font(.title3).foregroundStyle(.white).symbolRenderingMode(.hierarchical)
+                                .frame(width: 52, height: 52)
+                                .background(LinearGradient(colors: [Color.accentColor, Color.accentColor.opacity(0.55)], startPoint: .topLeading, endPoint: .bottomTrailing), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text("Team room").font(.headline).fontDesign(.rounded)
+                                Text("Talk to every agent at once").font(.subheadline).foregroundStyle(.secondary)
+                            }
+                            Spacer(minLength: 0)
+                            Image(systemName: "chevron.right").font(.footnote.weight(.semibold)).foregroundStyle(.tertiary)
+                        }
+                        .padding(DS.Space.l)
+                        .background(LinearGradient(colors: [Color.accentColor.opacity(0.14), Color.cardSurface], startPoint: .topLeading, endPoint: .bottomTrailing), in: RoundedRectangle(cornerRadius: DS.Radius.card, style: .continuous))
+                    }.buttonStyle(QuietCardPress())
+                    let agents = (model.snapshots[workspace.id]?.agents ?? []).sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }.filter { query.isEmpty || $0.name.localizedCaseInsensitiveContains(query) }
+                    if !agents.isEmpty {
+                        VStack(alignment: .leading, spacing: DS.Space.s) {
+                            SectionLabel(text: "Agents", systemImage: "sparkles")
+                            VStack(spacing: 0) {
+                                ForEach(Array(agents.enumerated()), id: \.element.id) { index, agent in
+                                    if index > 0 { SoftDivider().padding(.leading, 76) }
+                                    NavigationLink { ChatScreen(workspace: workspace, title: agent.name, agentID: agent.id) } label: {
+                                        AgentRow(agent: agent).padding(.horizontal, DS.Space.l).padding(.vertical, DS.Space.m).contentShape(Rectangle())
+                                    }.buttonStyle(QuietCardPress())
+                                }
+                            }.background(Color.cardSurface, in: RoundedRectangle(cornerRadius: DS.Radius.card, style: .continuous))
                         }
                     }
-                }.padding(24).frame(maxWidth: 760).frame(maxWidth: .infinity)
+                    let visibleGroups = groups.filter { query.isEmpty || $0["title"].text.localizedCaseInsensitiveContains(query) }
+                    if !visibleGroups.isEmpty {
+                        VStack(alignment: .leading, spacing: DS.Space.s) {
+                            SectionLabel(text: "Groups", systemImage: "person.2.fill")
+                            VStack(spacing: 0) {
+                                ForEach(Array(visibleGroups.enumerated()), id: \.element.id) { index, group in
+                                    if index > 0 { SoftDivider().padding(.leading, 76) }
+                                    NavigationLink { ChatScreen(workspace: workspace, title: group["title"].text, groupID: group.id) } label: {
+                                        WorkRow(title: group["title"].text.isEmpty ? "Group conversation" : group["title"].text, subtitle: "", icon: "person.2.fill").padding(.horizontal, DS.Space.l).contentShape(Rectangle())
+                                    }.buttonStyle(QuietCardPress())
+                                }
+                            }.background(Color.cardSurface, in: RoundedRectangle(cornerRadius: DS.Radius.card, style: .continuous))
+                        }
+                    }
+                }.padding(.horizontal, 20).padding(.vertical, DS.Space.s).frame(maxWidth: 760).frame(maxWidth: .infinity)
             }.background(Color(.systemGroupedBackground)).searchable(text: $query, prompt: "Find a conversation")
             #else
             List {
@@ -189,6 +298,7 @@ struct ChatScreen: View {
     @State private var previewURL: URL?
     @State private var createTask = false
     @State private var attemptedText: String?
+    @State private var painted = false
     @Environment(\.scenePhase) private var scene
     var key: String { "draft:\(workspace.id):\(workspace.companyID ?? ""):\(agentID ?? groupID ?? "team"):\(newChat ? "new-" + newChatKey.uuidString : directID ?? "main")" }
     var query: [String: String] {
@@ -211,21 +321,47 @@ struct ChatScreen: View {
                     return await send()
                 },
                 openAttachment: { file in Task { await openAttachment(file) } },
-                openLink: { url in openURL(url) })
+                openLink: { url in openURL(url) },
+                didPaintTranscript: { withAnimation(.easeOut(duration: 0.2)) { painted = true } })
+                .opacity(painted ? 1 : 0)
+                .overlay { if !painted { ProgressView().controlSize(.regular).allowsHitTesting(false) } }
                 .id("\(key):\(conversationGeneration)")
+                .onChange(of: "\(key):\(conversationGeneration)") { _, _ in painted = false }
             #else
             watchTranscript
             #endif
             if let error { Text(error).font(.caption).foregroundStyle(.orange).padding(8) }
             if error != nil { Button("Start a new message") { draft = ""; attachments = []; sendID = UUID(); error = nil } .font(.caption) }
             if !attachments.isEmpty { Text("\(attachments.count) attachment(s) ready").font(.caption).padding(5) }
+            #if os(iOS)
+            let canSend = !sending && !(draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && attachments.isEmpty) && model.mayWrite
+            HStack(alignment: .bottom, spacing: 8) {
+                Button { importing = true } label: {
+                    Image(systemName: "plus").font(.body.weight(.semibold)).foregroundStyle(.secondary)
+                        .frame(width: 36, height: 36).background(Color.cardSurface, in: Circle())
+                }.frame(minWidth: 44, minHeight: 44).accessibilityLabel("Attach file").disabled(sending)
+                HStack(alignment: .bottom, spacing: 6) {
+                    TextField("Message \(title)…", text: $draft, axis: .vertical).lineLimit(1...6).accessibilityLabel("Message").disabled(sending)
+                        .padding(.vertical, 9).padding(.leading, 14)
+                    Button { Task { await send() } } label: {
+                        Image(systemName: sending ? "ellipsis" : "arrow.up").font(.body.weight(.bold)).foregroundStyle(canSend ? Color.white : Color.secondary)
+                            .frame(width: 30, height: 30).background(canSend ? Color.accentColor : Color.secondary.opacity(0.2), in: Circle())
+                            .symbolEffect(.variableColor.iterative, isActive: sending)
+                            .contentTransition(.symbolEffect(.replace))
+                    }.disabled(!canSend).padding(4).accessibilityLabel("Send message")
+                }
+                .background(Color.cardSurface, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+                .overlay(RoundedRectangle(cornerRadius: 20, style: .continuous).strokeBorder(Color.secondary.opacity(0.18)))
+                .animation(.snappy, value: canSend)
+            }.padding(.horizontal, 10).padding(.vertical, 8).background(.bar)
+            .sensoryFeedback(.impact(weight: .light), trigger: sendID)
+            .sensoryFeedback(.error, trigger: error)
+            #else
             HStack(alignment: .bottom, spacing: 10) {
-                #if os(iOS)
-                Button { importing = true } label: { Image(systemName: "paperclip").frame(minWidth: 44, minHeight: 44) }.accessibilityLabel("Attach file").disabled(sending)
-                #endif
                 TextField("Message or dictate…", text: $draft, axis: .vertical).lineLimit(1...5).accessibilityLabel("Message").disabled(sending)
                 Button { Task { await send() } } label: { Image(systemName: sending ? "hourglass" : "arrow.up.circle.fill").font(.title2).frame(minWidth: 44, minHeight: 44) }.disabled(sending || (draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && attachments.isEmpty) || !model.mayWrite).accessibilityLabel("Send message")
-            }.padding(10).background(.thinMaterial)
+            }.padding(10)
+            #endif
         }
         .navigationTitle(title)
         .onAppear { draft = UserDefaults.standard.string(forKey: key) ?? ""; if let saved = UserDefaults.standard.string(forKey: key + ":command"), let id = UUID(uuidString: saved) { sendID = id }; if draft.isEmpty, let context { draft = "\(context)\n\n" } }

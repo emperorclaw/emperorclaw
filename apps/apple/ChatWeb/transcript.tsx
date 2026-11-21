@@ -42,7 +42,7 @@ function Transcript() {
     const [following, setFollowing] = useState(true);
     const [runs, setRuns] = useState<ClientLiveRun[]>([]);
     const scroll = useRef<HTMLDivElement>(null), content = useRef<HTMLDivElement>(null);
-    const follow = useRef(true), placed = useRef(false), lastForce = useRef(0);
+    const follow = useRef(true), placed = useRef(false), lastForce = useRef(0), painted = useRef(false);
     const anchor = useRef<{ id: string; offset: number } | null>(null);
     const spanish = data.locale.startsWith('es');
     useEffect(() => {
@@ -88,6 +88,8 @@ function Transcript() {
             if (row) node.scrollTop += row.getBoundingClientRect().top - node.getBoundingClientRect().top - anchor.current.offset;
         }
         anchor.current = null;
+        // Native shows its own placeholder until the first loaded transcript is on screen.
+        if (!painted.current) { painted.current = true; requestAnimationFrame(() => post({ type: 'painted' })); }
     }, [data]);
     useEffect(() => {
         const resize = new ResizeObserver(() => { if (follow.current && scroll.current) scroll.current.scrollTop = scroll.current.scrollHeight; });
@@ -120,20 +122,24 @@ function Transcript() {
                         </RichMessageActionsContext.Provider>
                     </article>;
                 })}
-                <Activity runs={runs} data={data} spanish={spanish} />
+                <Activity runs={runs} data={data} spanish={spanish} empty={data.loaded && rows.length === 0} />
             </div>
         </div>
         {!following && <button id="latest" onClick={() => { follow.current = true; setFollowing(true); if (scroll.current) scroll.current.scrollTop = scroll.current.scrollHeight; }}>{spanish ? 'Último mensaje ↓' : 'Latest message ↓'}</button>}
         </>}
     </NextIntlClientProvider>;
 }
-function Activity({ runs, data, spanish }: { runs: ClientLiveRun[]; data: Payload; spanish: boolean }) {
+function Activity({ runs, data, spanish, empty }: { runs: ClientLiveRun[]; data: Payload; spanish: boolean; empty: boolean }) {
     const [now, setNow] = useState(() => Date.now());
     useEffect(() => { const timer = setInterval(() => setNow(Date.now()), 1000); return () => clearInterval(timer); }, []);
     const active = runs.filter(run => run.status === 'running');
     const covered = new Set(active.map(run => run.agentId));
     const typing = data.participants.filter(participant => participant.participantType === 'agent' && !covered.has(participant.participantId) && participant.typingUntil && new Date(participant.typingUntil).getTime() > now);
     return <>
+        {empty && active.length === 0 && typing.length === 0 && <div className="chat-empty">
+            <p className="chat-empty-title">{spanish ? `Empieza una conversación con ${data.title}` : `Start a conversation with ${data.title}`}</p>
+            <p>{spanish ? 'Tus mensajes y el trabajo del agente aparecerán aquí.' : 'Your messages and the agent’s work will appear here.'}</p>
+        </div>}
         {active.map(run => <section className="activity" key={run.runId} aria-label={spanish ? 'Actividad del agente' : 'Agent activity'}>
             <p role="status">{data.agentNames[run.agentId ?? ''] || data.title}: {run.current.summary || (spanish ? 'Trabajando…' : 'Working…')}</p>
             {lastReasoningLine(run) && <p className="mt-1 text-zinc-400">{lastReasoningLine(run)}</p>}

@@ -2,7 +2,8 @@ import SwiftUI
 import EmperorCore
 
 enum EmperorTheme {
-    static let accent = Color(red: 0.02, green: 0.47, blue: 0.62)
+    /// Adaptive brand teal from the asset catalog: 5.5:1+ on light surfaces, 8:1+ on dark.
+    static let accent = Color("AccentColor")
     static let brightAccent = Color(red: 0.35, green: 0.83, blue: 0.96)
 }
 
@@ -104,16 +105,20 @@ struct AgentRow: View {
     let agent: Agent
     var body: some View {
         #if os(iOS)
-        HStack(alignment: .top, spacing: 14) {
-            Text(String(agent.name.prefix(1))).font(.title2.bold()).fontDesign(.rounded)
-                .foregroundStyle(agent.statusLabel == "Working" ? Color.teal : Color.secondary)
-                .frame(width: 48, height: 48).background(Color(.tertiarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 16))
-            VStack(alignment: .leading, spacing: 6) {
-                HStack { Text(agent.name).font(.headline).fontDesign(.rounded); Spacer(); Circle().fill(agent.statusLabel == "Working" ? Color.teal : Color.secondary).frame(width: 7, height: 7).accessibilityHidden(true) }
-                Text(agent.paused == true ? "Paused" : agent.statusLabel).font(.caption.weight(.medium)).foregroundStyle(.secondary)
-                if let line = agent.activity ?? agent.taskTitle { Text(line).font(.subheadline).foregroundStyle(.secondary).lineLimit(2) }
+        HStack(spacing: 14) {
+            AgentMonogram(agent: agent, size: 46)
+            VStack(alignment: .leading, spacing: 4) {
+                HStack(alignment: .firstTextBaseline) {
+                    Text(agent.name).font(.headline).fontDesign(.rounded).foregroundStyle(.primary).lineLimit(1)
+                    Spacer(minLength: 8)
+                    Text(agent.paused == true ? "Paused" : agent.statusLabel).font(.caption.weight(.semibold)).foregroundStyle(agent.isWorking ? Color.green : .secondary)
+                }
+                if let line = agent.activity ?? agent.taskTitle, !line.isEmpty {
+                    Text(line).font(.subheadline).foregroundStyle(.secondary).lineLimit(1)
+                } else { Text(agent.role.isEmpty ? "Ready when you are" : agent.role).font(.subheadline).foregroundStyle(.secondary).lineLimit(1) }
             }
-        }.padding(.vertical, 4)
+        }
+        .accessibilityElement(children: .combine)
         #else
         VStack(alignment: .leading, spacing: 5) {
             Text(agent.name).font(.headline)
