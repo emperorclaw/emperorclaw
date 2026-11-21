@@ -16,6 +16,8 @@ The apps answer three questions:
 
 The user specifically requested quick access to agents, conversations when they have questions, visibility into whether agents are working, a compact dashboard, tasks, and Apple Watch support planned from the beginning. The phone experience should be useful without becoming a complete reproduction of the administration website.
 
+Multiple saved installations and switching between them on both iPhone and Apple Watch are first-release requirements. Support more than two installations without an arbitrary two-installation cap; the interface and data model must handle a growing list.
+
 This document records the full proposed product, visual, connection and delivery plan. It authorizes no implementation, deployment, infrastructure provisioning or publishing by itself. The user requested documentation committed on a separate branch before switching models and beginning development later.
 
 ## 2. Existing foundations and implementation gaps
@@ -160,6 +162,10 @@ The watch delivers a glance followed by a brief action. It is designed alongside
 
 Use a black background, readable text, cyan accents and vertical controls. Support Digital Crown scrolling and shallow navigation. Start with a selected workspace and favorite agents configured on iPhone; always identify the workspace in consequential interactions.
 
+The company/installation name opens a watch-native installation selector. Show favorites first, then all installations enabled for that watch, using a vertically scrollable list with names, connection state and attention counts. The user can switch directly on the watch without reaching for the phone. If an installation contains multiple accessible companies, select the company within that installation. Adding a server and initial authorization happen on iPhone; switching already authorized servers happens on either device.
+
+Remember the active workspace independently on each device: changing the phone selection must not interrupt a watch conversation or decision. Sync saved connection metadata and favorites when connectivity allows, while issuing separate watch credentials per installation. Pending authorization or unavailable credentials must appear explicitly. Each complication/widget is pinned to a chosen installation/company by default and identifies that context; switching the app does not silently change what a pinned complication represents.
+
 Watch approval detail must include the requester, proposed action, target and material consequences. If sufficient context cannot be displayed clearly, offer Review on iPhone. Do not approve from a truncated notification or stale cached summary. Keep the same server permission and race handling rules as iPhone.
 
 Handoff/deep links open the exact conversation, task or approval on iPhone with its installation and company context. Complications and widgets show minimal information and respect privacy settings; sensitive content should not be exposed in Always On or locked contexts.
@@ -207,7 +213,15 @@ Document supported reverse-proxy behavior, API paths, authentication callbacks, 
 
 Save independent connection profiles and credentials. Partition caches, drafts, subscriptions and deep links by stable installation identity, user and company. Show the origin and friendly name in the selector. Handle server migration as an authenticated reconnection rather than silently reusing credentials at a new address.
 
-Start with one active workspace at a time. Alerts may arrive for another saved workspace; opening one selects its explicit context. A combined cross-installation dashboard is deferred.
+An installation is a server connection; a company is an authorized workspace within that server. Keep these concepts distinct even when an installation has only one company. Support three, five or more saved installations; do not hardcode a pair of server slots. Any future practical limit must be justified by measured resource constraints and documented explicitly.
+
+On iPhone, tapping the header opens a searchable selector with friendly name, server origin, connection state, selected company and attention count. Support favorites, recent selections, rename, add and remove connection. Names may be duplicated, so show the origin to disambiguate. On watch, use the compact selector described in section 7. Each device has one active workspace at a time and remembers navigation and drafts per workspace.
+
+Switching must not redirect an in-flight action to the newly selected server. Bind every request to the installation, company and user captured when the action began; isolate responses from the currently visible workspace if selection changes. Unreachable or expired connections do not block using other installations. Refresh the visible workspace first and bound background refresh work rather than maintaining a live stream to every saved server on the watch.
+
+Alerts can arrive from any authorized installation, subject to per-installation preferences and device notification settings. Opening an alert resolves its exact server/company context and preserves the previous workspace's draft and navigation. If access has expired, request sign-in to that specific server; never fall back to a similarly named workspace. Sign-out/removal affects only the chosen connection and its applicable device registrations. Distinguish removing the phone connection from revoking a separately authorized watch session.
+
+A combined cross-installation dashboard is deferred; saving and switching among multiple installations on both devices is included in the initial release.
 
 ## 9. Notifications and optional push relay
 
@@ -291,11 +305,15 @@ Product acceptance:
 - A blocked task explains its reason and offers an applicable next step.
 - Every successful consequential action has a server acknowledgement.
 - Switching installations never mixes data, drafts, notifications or credentials.
+- Users can save and switch among at least three installations on iPhone and Apple Watch, with independent active selections and no arbitrary two-server cap.
 - Watch interactions remain brief and useful without routine notification overload.
 
 Required validation scenarios for later implementation:
 
-- At least two independent VPS installations and multiple user scopes/companies.
+- At least three independent VPS installations, plus a larger saved list (for example ten profiles), and multiple user scopes/companies; validate selector usability, lazy loading and bounded resource use.
+- Duplicate installation/company names, an unreachable server among healthy servers, and expired authorization on only one connection.
+- Switching while a message or approval is in flight, opening another installation's notification, preserving drafts, and keeping a pinned complication tied to its configured workspace.
+- Different active installations on phone and watch, metadata synchronization after reconnection, and per-device/per-installation revocation.
 - HTTPS domain, standard reverse proxy, private network, unreachable host and invalid certificate.
 - Expired and revoked tokens, changed permissions and removed company access.
 - Old server capabilities and unsupported API versions.
