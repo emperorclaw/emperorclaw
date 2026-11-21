@@ -26,7 +26,10 @@ jobs:
     with:
       sha: ${{ inputs.sha }}
       ref_name: ${{ inputs.ref_name }}
-      timeout_minutes: ${{ inputs.timeout_minutes }}
+      # A workflow_dispatch number input arrives as a string; the callee
+      # declares type: number, and a string there makes GitHub drop the whole
+      # calling job without a log line.
+      timeout_minutes: ${{ fromJSON(inputs.timeout_minutes) }}
 
   report:
     needs: gate
