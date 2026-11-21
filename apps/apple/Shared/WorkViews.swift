@@ -126,6 +126,7 @@ struct ChatScreen: View {
     var context: String? = nil
     @State private var transcript = ChatTranscript()
     @State private var loadingOlder = false
+    @State private var conversationGeneration = UUID()
     @State private var regularRequest = UUID()
     @State private var forceBottom = 0
     @Environment(\.colorScheme) private var colorScheme
@@ -167,7 +168,7 @@ struct ChatScreen: View {
                 },
                 openAttachment: { file in Task { await openAttachment(file) } },
                 openLink: { url in openURL(url) })
-                .id(key)
+                .id("\(key):\(conversationGeneration)")
             #else
             watchTranscript
             #endif
@@ -185,7 +186,7 @@ struct ChatScreen: View {
         .navigationTitle(title)
         .onAppear { draft = UserDefaults.standard.string(forKey: key) ?? ""; if let saved = UserDefaults.standard.string(forKey: key + ":command"), let id = UUID(uuidString: saved) { sendID = id }; if draft.isEmpty, let context { draft = "\(context)\n\n" } }
         .onChange(of: draft) { _, value in UserDefaults.standard.set(value, forKey: key); if let attemptedText, attemptedText != value, !sending { sendID = UUID(); self.attemptedText = nil; UserDefaults.standard.removeObject(forKey: key + ":command") } }
-        .task(id: "\(scene):\(key)") {
+        .task(id: "\(scene):\(key):\(conversationGeneration)") {
             guard scene == .active else { return }; await load()
             while !Task.isCancelled {
                 do { try await Task.sleep(for: .milliseconds(transcript.liveRuns.contains { $0["status"].text == "running" } || !transcript.previews.isEmpty ? 1500 : 3000)) } catch { break }
@@ -224,7 +225,7 @@ struct ChatScreen: View {
     }
     private func switchConversation(_ id: String?) {
         directID = id; newChat = false; transcript = ChatTranscript(); attachments = []; error = nil
-        regularRequest = UUID(); loadingOlder = false; attemptedText = nil
+        conversationGeneration = UUID(); regularRequest = UUID(); loadingOlder = false; attemptedText = nil
         draft = UserDefaults.standard.string(forKey: key) ?? ""
         sendID = UserDefaults.standard.string(forKey: key + ":command").flatMap(UUID.init(uuidString:)) ?? UUID()
     }
@@ -266,25 +267,25 @@ struct ChatScreen: View {
     #endif
     private func load(older: Bool = false) async {
         if newChat { transcript.receive(.object(["messages": .array([]), "hasMore": .bool(false)])); return }
-        let requestKey = key, requestID = UUID()
+        let requestKey = key, generation = conversationGeneration, requestID = UUID()
         if older { guard !loadingOlder else { return }; loadingOlder = true }
         else { regularRequest = requestID }
-        defer { if older && requestKey == key { loadingOlder = false } }
+        defer { if older && requestKey == key && generation == conversationGeneration { loadingOlder = false } }
         do {
             var q = query
             if older { q["before"] = transcript.messages.first?["createdAt"].text }
             let response = try await model.client.work(workspace, path: "chat", query: q)
-            guard !Task.isCancelled, key == requestKey, older || regularRequest == requestID else { return }
+            guard !Task.isCancelled, key == requestKey, conversationGeneration == generation, older || regularRequest == requestID else { return }
             transcript.receive(response, older: older)
             error = nil
             if !older {
                 var previewQuery = query; previewQuery["previews"] = "1"
                 let live = try await model.client.work(workspace, path: "chat", query: previewQuery)
-                guard !Task.isCancelled, key == requestKey, regularRequest == requestID else { return }
+                guard !Task.isCancelled, key == requestKey, conversationGeneration == generation, regularRequest == requestID else { return }
                 transcript.receivePreviews(live)
             }
         } catch {
-            guard !Task.isCancelled, key == requestKey, older || regularRequest == requestID else { return }
+            guard !Task.isCancelled, key == requestKey, conversationGeneration == generation, older || regularRequest == requestID else { return }
             self.error = error.localizedDescription
             if (error as? MobileFailure)?.invalidatesContent == true { transcript = ChatTranscript() }
         }

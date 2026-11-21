@@ -8,3 +8,7 @@ integrations/hermes/install/*      text eol=lf
 integrations/hermes/entrypoint.sh  text eol=lf
 integrations/hermes/Dockerfile     text eol=lf
 tests/contract/hermes/Dockerfile*  text eol=lf
+
+# Generated renderer contains dependency CSS template literals; preserve their whitespace.
+apps/apple/iPhone/ChatWeb/* linguist-generated=true
+apps/apple/iPhone/ChatWeb/transcript.js whitespace=-blank-at-eol
