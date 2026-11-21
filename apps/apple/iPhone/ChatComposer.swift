@@ -62,7 +62,7 @@ struct ChatComposer: View {
             Task {
                 for item in items {
                     if let data = try? await item.loadTransferable(type: Data.self), let image = UIImage(data: data) {
-                        let jpeg = image.jpegData(compressionQuality: 0.85) ?? data
+                        let jpeg = image.chatJPEG() ?? data
                         onAttach(jpeg, "Photo \(Date().formatted(.dateTime.hour().minute().second())).jpg", "image/jpeg", .image(image))
                     }
                 }
@@ -182,7 +182,7 @@ struct ChatComposer: View {
 
     private func pasteImages(_ images: [UIImage]) {
         for image in images.prefix(6) {
-            guard let data = image.jpegData(compressionQuality: 0.85) else { continue }
+            guard let data = image.chatJPEG() else { continue }
             onAttach(data, "Pasted image \(Date().formatted(.dateTime.hour().minute().second())).jpg", "image/jpeg", .image(image))
         }
     }
@@ -234,6 +234,19 @@ private struct VoiceLevels: View {
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .trailing)
             .animation(.smooth(duration: 0.12), value: levels.count)
         }
+    }
+}
+
+extension UIImage {
+    /// Chat-sized JPEG: at most 2048 px on the long side, 0.8 quality, metadata stripped
+    /// (re-rendering drops EXIF/GPS). Full-resolution photos are ~3x larger for no visible gain.
+    func chatJPEG(maxDimension: CGFloat = 2048) -> Data? {
+        let longest = max(size.width, size.height) * scale
+        guard longest > maxDimension else { return jpegData(compressionQuality: 0.8) }
+        let ratio = maxDimension / longest
+        let target = CGSize(width: (size.width * scale * ratio).rounded(), height: (size.height * scale * ratio).rounded())
+        let format = UIGraphicsImageRendererFormat(); format.scale = 1
+        return UIGraphicsImageRenderer(size: target, format: format).image { _ in draw(in: CGRect(origin: .zero, size: target)) }.jpegData(compressionQuality: 0.8)
     }
 }
 

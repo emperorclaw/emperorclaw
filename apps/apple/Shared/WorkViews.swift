@@ -480,7 +480,7 @@ struct ChatScreen: View {
             attemptedText = draft
             UserDefaults.standard.set(sendID.uuidString, forKey: key + ":command")
             let text = context.map { draft.hasPrefix($0) ? draft : "\($0)\n\n\(draft)" } ?? draft
-            var body: [String: JSONValue] = ["text": .string(text), "clientMessageId": .string(sendID.uuidString), "attachments": .array(attachments)]
+            var body: [String: JSONValue] = ["text": .string(text), "clientMessageId": .string(sendID.uuidString), "attachments": .array(attachments.map { .string($0["id"].text) }.filter { $0 != .string("") })]
             if let agentID { body["targetAgentId"] = .string(agentID) }; if let groupID { body["threadId"] = .string(groupID) }; if let directID { body["directThreadId"] = .string(directID) }
             if newChat { body["newChat"] = .object(["clientKey": .string(sendID.uuidString)]) }
             let result = try await model.client.work(workspace, path: "chat", method: "POST", body: .object(body), commandID: sendID)
