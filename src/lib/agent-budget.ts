@@ -47,7 +47,7 @@ export async function readAgentBudget(companyId: string, agentId: string) {
         const pricing = agent.llmModel ? await lookupUsagePricing(tx, agent.llmModel) : null;
         const budgetStatus = nextBudgetStatus({
             spentCents: agent.monthlyCostCents,
-            budgetCents: agent.monthlyBudgetCents,
+            budgetCents: agent.monthlyBudgetCents ?? 0,
             current: agent.budgetStatus as BudgetStatus,
         });
         if (budgetStatus !== agent.budgetStatus) {
@@ -55,12 +55,12 @@ export async function readAgentBudget(companyId: string, agentId: string) {
         }
         // Return only the fields needed by runtime guards, never credentials.
         return {
-            id: agent.id, monthlyBudgetCents: agent.monthlyBudgetCents,
+            id: agent.id, monthlyBudgetCents: agent.monthlyBudgetCents ?? 0,
             monthlyCostCents: agent.monthlyCostCents, monthlyTokenUsage: agent.monthlyTokenUsage,
             lastResetMonth: agent.lastResetMonth, budgetStatus,
-            executionAllowed: budgetStatus !== "paused" && (agent.monthlyBudgetCents <= 0 || Boolean(pricing)),
+            executionAllowed: budgetStatus !== "paused" && ((agent.monthlyBudgetCents ?? 0) <= 0 || Boolean(pricing)),
             budgetBlockReason: budgetStatus === "paused" ? "Budget exhausted" :
-                agent.monthlyBudgetCents > 0 && !pricing ? "Active model pricing required for capped agents" : null,
+                (agent.monthlyBudgetCents ?? 0) > 0 && !pricing ? "Active model pricing required for capped agents" : null,
         };
     });
 }

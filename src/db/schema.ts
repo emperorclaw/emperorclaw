@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { pgTable, text, timestamp, boolean, jsonb, uuid, integer, uniqueIndex, index, check, doublePrecision, date, primaryKey, type AnyPgColumn } from "drizzle-orm/pg-core";
+import { pgTable, text, timestamp, boolean, jsonb, uuid, integer, bigint, uniqueIndex, index, check, doublePrecision, date, primaryKey, type AnyPgColumn } from "drizzle-orm/pg-core";
 
 // --- Auth Tables ---
 export const users = pgTable("users", {
@@ -358,8 +358,11 @@ export const agents = pgTable("agents", {
     actionPoliciesJson: jsonb("action_policies_json").default("{}").$type<Record<string, string>>().notNull(),
     // Who approves this agent's requests (lib/approval-routing.ts). {} = automatic (org chart).
     approvalSettingsJson: jsonb("approval_settings_json").default("{}").$type<Record<string, unknown>>().notNull(),
-    monthlyBudgetCents: integer("monthly_budget_cents").default(0).notNull(), // 0 = unlimited
-    monthlyTokenUsage: integer("monthly_token_usage").default(0).notNull(),
+    // Production shape: null or 0 = unlimited. Nullable and without a default because 94 of 97
+    // agents in production carry NULL; every reader already coerces with `?? 0`.
+    monthlyBudgetCents: integer("monthly_budget_cents"), // null or 0 = unlimited
+    // bigint: the counter passes 2^31. mode "number" keeps the TS type a number (safe to 2^53).
+    monthlyTokenUsage: bigint("monthly_token_usage", { mode: "number" }).default(0).notNull(),
     monthlyCostCents: doublePrecision("monthly_cost_cents").default(0).notNull(), // calculated spend in cents
     lastResetMonth: text("last_reset_month"), // "2026-07" — resets counters when month changes
     budgetStatus: text("budget_status").default("active").notNull(), // active | warning | paused
@@ -1817,3 +1820,28 @@ export const chatResponsePreviews = pgTable("chat_response_previews", {
     threadIdx: index("chat_response_previews_thread_idx").on(table.companyId, table.threadId, table.updatedAt),
     expiryIdx: index("chat_response_previews_expiry_idx").on(table.expiresAt),
 }));
+
+// Production-only table: created outside the migration chain by the long-deleted 0055/0056 files.
+// No application code reads it. Declared so a generated migration never emits a DROP for it.
+export const pairedWorkers = pgTable("paired_workers", {
+    id: uuid("id").primaryKey().defaultRandom(),
+    workerId: text("worker_id").notNull(),
+    companyId: uuid("company_id").references(() => companies.id, { onDelete: "cascade" }),
+    agentId: uuid("agent_id").references(() => agents.id, { onDelete: "set null" }),
+    pendingTokenEncrypted: text("pending_token_encrypted"),
+    lastSeenAt: timestamp("last_seen_at").defaultNow().notNull(),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+}, table => ({
+    workerIdUnique: uniqueIndex("paired_workers_worker_id_unique").on(table.workerId),
+    agentIdUnique: uniqueIndex("paired_workers_agent_id_unique").on(table.agentId),
+}));
+
+// Production-only table: no trace in any commit, holds one undo snapshot from a June 2026 cleanup.
+// Declared so a generated migration never emits a DROP for it. No FK in production.
+export const opsCleanupBackups = pgTable("ops_cleanup_backups", {
+    id: uuid("id").primaryKey().defaultRandom(),
+    companyId: uuid("company_id").notNull(),
+    cleanupKey: text("cleanup_key").notNull(),
+    payload: jsonb("payload").notNull(),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+});

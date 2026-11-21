@@ -272,7 +272,7 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
             createdAt: a.createdAt.toISOString(),
             spendTodayCents: spendTodayByAgent.get(a.id) ?? 0,
             monthlyCostCents: monthSpend(a),
-            monthlyBudgetCents: a.monthlyBudgetCents,
+            monthlyBudgetCents: a.monthlyBudgetCents ?? 0,
             lastActivityAt: h?.lastSeenAt ?? null, runtimeOnline: (h?.online ?? false) || agentsWithOpenRun.has(a.id), canRestartRuntime: a.provider === "hermes" && a.deploymentMode === "local",
             ...workFor(`agent:${a.id}`),
         });
@@ -333,12 +333,12 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
         spendMonthCents: usageToday.reduce((sum, row) => sum + row.monthCostCents, 0) + agentRows.filter((a) => !spendMonthByAgent.has(a.id)).reduce((sum, a) => sum + monthSpend(a), 0),
         usageReportsToday: usageToday.reduce((sum, row) => sum + row.reports, 0),
         reportedTokensToday: usageToday.reduce((sum, row) => sum + row.tokens, 0),
-        budgetCents: agentRows.reduce((s, a) => s + a.monthlyBudgetCents, 0),
+        budgetCents: agentRows.reduce((s, a) => s + (a.monthlyBudgetCents ?? 0), 0),
         agents: agentRows.map((a) => ({
             key: `agent:${a.id}`, name: a.name,
             spendTodayCents: spendTodayByAgent.get(a.id) ?? 0,
             monthCents: monthSpend(a),
-            budgetCents: a.monthlyBudgetCents,
+            budgetCents: a.monthlyBudgetCents ?? 0,
         })).sort((a, b) => b.monthCents - a.monthCents).slice(0, 5),
     };
 

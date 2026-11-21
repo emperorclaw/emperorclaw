@@ -61,7 +61,7 @@ export async function POST(req: NextRequest) {
             // model configured) must still record usage — otherwise the first turn
             // returns 422, the bridge retains the sample, and the preflight budget
             // check then blocks every later turn, wedging the agent permanently.
-            if (totalTokens > 0 && !pricing && agent.monthlyBudgetCents > 0) {
+            if (totalTokens > 0 && !pricing && (agent.monthlyBudgetCents ?? 0) > 0) {
                 // Keep the sample unacknowledged so bridges retain it and stop dispatching.
                 return NextResponse.json({ error: "Active pricing required for reported model", model: pricingLookupModel }, { status: 422 });
             }
@@ -72,7 +72,7 @@ export async function POST(req: NextRequest) {
             const monthlyTokenUsage = agent.monthlyTokenUsage + totalTokens;
             const monthlyCostCents = agent.monthlyCostCents + costCents;
             const budgetStatus = nextBudgetStatus({
-                spentCents: monthlyCostCents, budgetCents: agent.monthlyBudgetCents,
+                spentCents: monthlyCostCents, budgetCents: agent.monthlyBudgetCents ?? 0,
                 current: agent.budgetStatus as BudgetStatus,
             });
             await tx.update(agents).set({ monthlyTokenUsage, monthlyCostCents, budgetStatus })

@@ -1,0 +1,1 @@
+ALTER TABLE "agents" ALTER COLUMN "monthly_token_usage" SET DATA TYPE bigint;
