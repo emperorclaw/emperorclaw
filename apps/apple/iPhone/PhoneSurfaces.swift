@@ -168,27 +168,25 @@ private struct ViewsDirectory: View {
     }
     private var collectionLabel: String {
         #if DEBUG
-        if ViewDesignPreview.enabled { return "DESIGN PREVIEW · SAMPLE DATA" }
+        if ViewDesignPreview.enabled { return "Design preview · sample data" }
         #endif
-        return model.companyName.uppercased()
+        return model.companyName
     }
     private var galleryHeader: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            HStack {
-                Text(collectionLabel).font(.caption2.weight(.semibold)).tracking(2).foregroundStyle(.secondary)
+        VStack(alignment: .leading, spacing: 14) {
+            HStack(alignment: .firstTextBaseline) {
+                SectionLabel(text: collectionLabel, systemImage: "building.2")
                 Spacer()
-                if !loading && error == nil { Text("\(views.count) views").font(.caption).foregroundStyle(.secondary).monospacedDigit() }
+                if !loading && error == nil { Text("\(views.count) views").font(.footnote.weight(.medium)).foregroundStyle(.secondary).monospacedDigit() }
             }
-            Text("A clearer perspective.").font(.largeTitle.weight(.semibold)).fontDesign(.serif).tracking(-0.8).fixedSize(horizontal: false, vertical: true)
-            ScrollView(.horizontal) { HStack(spacing: 8) {
-                ForEach(["All", "Pinned", "Projects"], id: \.self) { value in
-                    Button { filter = value } label: {
-                        Text(value).font(.subheadline.weight(filter == value ? .semibold : .regular)).padding(.horizontal, 16).frame(minHeight: 44)
-                            .foregroundStyle(filter == value ? Color(.systemBackground) : Color.primary)
-                            .background(filter == value ? Color.primary : Color(.secondarySystemGroupedBackground), in: Capsule())
-                    }.buttonStyle(QuietCardPress()).accessibilityAddTraits(filter == value ? .isSelected : [])
-                }
-            } }.scrollIndicators(.hidden).padding(.top, 4)
+            Text("A clearer perspective.").font(.largeTitle.weight(.bold)).fontDesign(.rounded).tracking(-0.5).fixedSize(horizontal: false, vertical: true)
+            ScrollView(.horizontal) {
+                HStack(spacing: 8) {
+                    ForEach(["All", "Pinned", "Projects"], id: \.self) { value in
+                        FilterChip(title: value, count: value == "All" ? nil : views.filter { value == "Pinned" ? $0["pinned"].flag : $0["scopeType"].text == "project" }.count, selected: filter == value) { withAnimation(.snappy) { filter = value } }
+                    }
+                }.padding(.vertical, 2)
+            }.scrollIndicators(.hidden)
         }
     }
     private func galleryLabel(_ text: String) -> some View { SectionLabel(text: text.capitalized, systemImage: text.contains("PINNED") ? "pin.fill" : text.contains("FOCUS") ? "scope" : "square.grid.2x2.fill") }

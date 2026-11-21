@@ -5,7 +5,6 @@ import EmperorCore
 ///
 /// Typography uses SF's design axes rather than custom fonts:
 /// - `.rounded` for names, titles and numbers (the team's friendly voice)
-/// - `.serif` for editorial moments (Views)
 /// - small caps for structural labels
 /// - `.monospacedDigit()` for any count that changes
 /// Colour encodes meaning only: teal = interactive/working, orange = decide,

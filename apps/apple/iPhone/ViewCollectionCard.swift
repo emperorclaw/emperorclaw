@@ -26,7 +26,7 @@ struct ViewCollectionCard: View {
             if metric != .null {
                 VStack(alignment: .leading, spacing: 4) {
                     HStack(alignment: .firstTextBaseline, spacing: 6) {
-                        Text(metricValue).font(featured ? .largeTitle.weight(.medium) : .title.weight(.medium)).fontDesign(.rounded).tracking(-1).monospacedDigit().foregroundStyle(.primary)
+                        Text(metricValue).font(featured ? .largeTitle.weight(.semibold) : .title.weight(.semibold)).fontDesign(.rounded).tracking(-0.5).monospacedDigit().foregroundStyle(.primary)
                         if !metric["data"]["unit"].text.isEmpty { Text(metric["data"]["unit"].text).font(.subheadline).foregroundStyle(.secondary) }
                     }
                     Text(metric["title"].text).font(.caption).foregroundStyle(.secondary)

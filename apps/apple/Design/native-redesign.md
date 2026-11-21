@@ -50,8 +50,7 @@ remain native. Embedded documents report their complete content height.
 
 `Shared/DesignSystem.swift` is the shared vocabulary for iPhone and Watch, following the
 iOS design-agent audit pillars. Typography uses SF design axes only: `.rounded` heavy large
-titles (set globally on the navigation bar), rounded names/headlines/numbers, `.serif` for the
-editorial Views gallery, small-caps `SectionLabel`s for structure and `.monospacedDigit()` for
+titles (set globally on the navigation bar), rounded names/headlines/numbers, small-caps `SectionLabel`s for structure and `.monospacedDigit()` for
 live counts. Colour carries meaning only: teal = interactive/working, orange = decide,
 red = blocked, green = done/clear, indigo = review. `TaskStateStyle`, `StatusPill`,
 `AgentMonogram` (stable per-agent hue + status badge) and `SoftDivider` replace ad-hoc styling.

@@ -47,7 +47,7 @@ body { font: -apple-system-body; background: transparent; color: var(--foregroun
 .surface-document { padding:0; }
 .embedded, .embedded body, .embedded #root { height:auto; overflow:visible; }
 .surface-embedded { height:auto; overflow:visible; }
-.surface-eyebrow { font-size:.6875rem; font-weight:700; letter-spacing:.14em; color:var(--muted-foreground); }
+.surface-eyebrow { font-size:.75rem; font-weight:600; letter-spacing:.06em; color:var(--muted-foreground); }
 .view-intro { margin-bottom:24px; max-width:680px; }
 .view-intro h1 { font-size:clamp(24px,4vw,36px); font-weight:750; letter-spacing:-.035em; margin:8px 0 12px; }
 .surface-private { padding:48px 16px; text-align:center; color:var(--muted-foreground); }
@@ -81,7 +81,7 @@ body { font: -apple-system-body; background: transparent; color: var(--foregroun
 .view-kicker { display:flex; justify-content:space-between; align-items:center; gap:16px; }
 .view-kicker .surface-eyebrow { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; text-transform:uppercase; }
 .view-panel-count { flex-shrink:0; font-size:.6875rem; color:var(--muted-foreground); font-variant-numeric:tabular-nums; }
-.view-intro h1 { font-family:ui-serif,Georgia,serif; font-size:clamp(2rem,5vw,3.5rem); font-weight:500; line-height:1.08; letter-spacing:-.045em; margin:22px 0 16px; max-width:20ch; }
+.view-intro h1 { font-family:ui-rounded,-apple-system,system-ui,sans-serif; font-size:clamp(1.75rem,5vw,2.75rem); font-weight:700; line-height:1.1; letter-spacing:-.025em; margin:18px 0 14px; max-width:22ch; }
 .view-description { max-width:56ch; color:var(--muted-foreground); font-size:.875rem; line-height:1.6; }
 .view-curator { display:flex; align-items:center; gap:5px; margin-top:20px; font-size:.6875rem; color:var(--muted-foreground); }
 .view-curator strong { font-weight:500; color:var(--foreground); }
@@ -108,7 +108,7 @@ body { font: -apple-system-body; background: transparent; color: var(--foregroun
 .focus-content section[data-panel-type] > header h2 { font-size:1.25rem; }
 .surface-private { min-height:65vh; display:flex; flex-direction:column; align-items:center; justify-content:center; }
 .private-mark { font-size:3rem; line-height:1; margin-bottom:24px; color:var(--muted-foreground); }
-.surface-private h2 { font-family:ui-serif,Georgia,serif; font-size:2rem; font-weight:500; letter-spacing:-.04em; }
+.surface-private h2 { font-family:ui-rounded,-apple-system,system-ui,sans-serif; font-size:1.75rem; font-weight:700; letter-spacing:-.02em; }
 .surface-private p { font-size:.875rem; line-height:1.6; }
 @media(min-width:768px) { .surface-view { padding:32px 28px 48px; } .view-intro { margin-bottom:28px; } .surface-view > .grid { gap:18px; } .surface-view section[data-panel-type] { padding:24px; border-radius:28px; } }
 
@@ -173,3 +173,10 @@ body { font: -apple-system-body; background: transparent; color: var(--foregroun
 /* Group readability: a colour per agent, and quiet "nothing to add" notes. */
 .sender-dot { display: inline-block; width: 7px; height: 7px; border-radius: 50%; margin-right: 6px; vertical-align: 1px; }
 .chat-quiet { display: flex; align-items: center; justify-content: center; gap: 0; margin: -4px 0 12px; font: 500 12px ui-rounded, -apple-system, system-ui; color: var(--muted-foreground); opacity: .75; }
+
+/* One type system with the native app: the web's Geist font isn't bundled offline,
+   so map it to SF; titles and figures use SF Rounded like native headings and counts. */
+:root { --font-geist-sans: -apple-system, system-ui, "Helvetica Neue", sans-serif; --font-geist-mono: ui-monospace, "SF Mono", Menlo, monospace; }
+html, body { font-family: -apple-system, system-ui, sans-serif; }
+.surface-view h2, .surface-view h3, .surface-view .tabular-nums.text-3xl, .surface-view .tabular-nums.text-2xl, .desk-copy h2 { font-family: ui-rounded, -apple-system, system-ui, sans-serif; }
+.surface-view .tabular-nums { font-variant-numeric: tabular-nums; }
