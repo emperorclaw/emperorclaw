@@ -166,3 +166,20 @@ test('signals the first painted transcript once and explains an empty conversati
     await update(page, payload({ messages: [message('1', 'Hello')] }));
     await expect(page.locator('.chat-empty')).toHaveCount(0); expect(await painted()).toBe(1);
 });
+test('shows motion, not status words, while a reply is on its way', async ({ page }) => {
+    const preview = { responseId: uuid, runId: uuid, agentId: uuid, agentName: 'Builder', segmentIndex: 0, revision: 1, text: '', state: 'streaming', updatedAt: '2026-11-21T12:10:00Z', finalMessageId: null, runStatus: 'running' };
+    await update(page, payload({ previews: [preview] }));
+    await expect(page.locator('.typing-dots')).toBeVisible();
+    await expect(page.locator('.sr-only', { hasText: 'Responding…' })).toHaveCount(1); // VoiceOver only
+    await expect(page.locator('.preview-note')).toHaveCount(0);
+    await update(page, payload({ previews: [{ ...preview, revision: 2, text: 'Hello there' }] }));
+    await expect(page.locator('.typing-dots')).toHaveCount(0);
+    await expect(page.locator('.stream-caret')).toBeVisible();
+    await update(page, payload({ previews: [{ ...preview, revision: 3, text: 'Hello there', state: 'interrupted' }] }));
+    await expect(page.locator('.stream-caret')).toHaveCount(0);
+    await expect(page.getByText('Response interrupted')).toBeVisible();
+    const run = { runId: uuid, agentId: uuid, status: 'running', startedAt: new Date().toISOString(), current: { kind: 'reasoning', summary: 'Reading project files', sinceMs: 1000 }, steps: [] };
+    await update(page, payload({ liveRuns: [run] }));
+    await expect(page.locator('.activity .thinking-glyph')).toBeVisible();
+    await expect(page.locator('.activity .shimmer')).toHaveText('Reading project files');
+});

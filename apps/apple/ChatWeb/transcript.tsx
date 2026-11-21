@@ -112,9 +112,11 @@ function Transcript() {
                     return <article key={key} data-message-id={key} className={`chat-message ${human ? 'human' : 'agent'}`}>
                         <header>{human ? (spanish ? 'Tú' : 'You') : message.senderName || data.agentNames[message.senderId ?? ""] || data.title}</header>
                         <RichMessageActionsContext.Provider value={{ sendPrompt: data.mayWrite && !preview ? async prompt => { try { return await request('sendPrompt', { prompt }) === true; } catch { return false; } } : undefined, laterReplies: rows.slice(index + 1).filter(row => row.senderType === 'human').map(row => row.text) }}>
-                            <div className="body">{preview ? <StreamingMarkdown text={message.text} /> : <MarkdownRenderer content={message.text} density="compact" />}
+                            <div className={`body ${preview && !message.text.trim() ? 'is-typing' : ''}`}>{preview ? (message.text.trim() ? <><StreamingMarkdown text={message.text} />{preview.state === 'streaming' && <span className="stream-caret" aria-hidden="true" />}</> : <TypingDots />) : <MarkdownRenderer content={message.text} density="compact" />}
                                 {message.metadataJson?.attachments?.map(file => <button className="attachment" key={file.id} type="button" onClick={() => post({ type: 'attachment', file })}>{file.name || (spanish ? 'Abrir archivo' : 'Open attachment')}</button>)}
-                                {preview && <p className="text-xs text-zinc-500" role="status">{preview.state === 'streaming' ? (spanish ? 'Respondiendo…' : 'Responding…') : preview.state === 'capped' ? (spanish ? 'Límite de vista previa alcanzado; esperando la respuesta final…' : 'Preview limit reached; waiting for the saved reply…') : preview.state === 'failed' || preview.state === 'interrupted' ? (spanish ? 'Respuesta interrumpida' : 'Response interrupted') : (spanish ? 'Guardando respuesta…' : 'Saving reply…')}</p>}
+                                {preview && (preview.state === 'streaming' || !['capped', 'failed', 'interrupted'].includes(preview.state)
+                                    ? <p className="sr-only" role="status">{preview.state === 'streaming' ? (spanish ? 'Respondiendo…' : 'Responding…') : (spanish ? 'Guardando respuesta…' : 'Saving reply…')}</p>
+                                    : <p className="preview-note" role="status">{preview.state === 'capped' ? (spanish ? 'Límite de vista previa alcanzado; esperando la respuesta final…' : 'Preview limit reached; waiting for the saved reply…') : (spanish ? 'Respuesta interrumpida' : 'Response interrupted')}</p>)}
                                 {!human && !preview && message.metadataJson?.hasReasoning && <MessageReasoningDisclosure messageId={message.id} />}
                                 {!human && !preview && data.replyRuns[message.id] && <ReplyRunFooter run={data.replyRuns[message.id]} />}
                                 {human && <p className="text-xs text-zinc-500">{spanish ? 'Recibido por el servidor' : 'Received by server'}</p>}
@@ -141,11 +143,17 @@ function Activity({ runs, data, spanish, empty }: { runs: ClientLiveRun[]; data:
             <p>{spanish ? 'Tus mensajes y el trabajo del agente aparecerán aquí.' : 'Your messages and the agent’s work will appear here.'}</p>
         </div>}
         {active.map(run => <section className="activity" key={run.runId} aria-label={spanish ? 'Actividad del agente' : 'Agent activity'}>
-            <p role="status">{data.agentNames[run.agentId ?? ''] || data.title}: {run.current.summary || (spanish ? 'Trabajando…' : 'Working…')}</p>
+            <p role="status" className="activity-line"><ThinkingGlyph /><span className="activity-name">{data.agentNames[run.agentId ?? ''] || data.title}</span> <span className="shimmer">{run.current.summary || (spanish ? 'Pensando…' : 'Thinking…')}</span></p>
             {lastReasoningLine(run) && <p className="mt-1 text-zinc-400">{lastReasoningLine(run)}</p>}
             <LiveRunSteps steps={run.steps} usage={run.usage} />
         </section>)}
-        {typing.map(participant => <section className="activity" key={participant.participantId}><p role="status">{data.agentNames[participant.participantId] || data.title}: {participant.currentActivity || (spanish ? 'Trabajando…' : 'Working…')}</p></section>)}
+        {typing.map(participant => <section className="activity" key={participant.participantId}><p role="status" className="activity-line"><ThinkingGlyph /><span className="activity-name">{data.agentNames[participant.participantId] || data.title}</span> <span className="shimmer">{participant.currentActivity || (spanish ? 'Pensando…' : 'Thinking…')}</span></p></section>)}
     </>;
+}
+/** Three dots that bounce in sequence: the reply is on its way. */
+function TypingDots() { return <span className="typing-dots" aria-hidden="true"><i /><i /><i /></span>; }
+/** The brand sparkle that breathes and turns while an agent thinks or works. */
+function ThinkingGlyph() {
+    return <svg className="thinking-glyph" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 1.5c.5 4.9 3.2 8.1 8.6 10.5-5.4 2.4-8.1 5.6-8.6 10.5-.5-4.9-3.2-8.1-8.6-10.5C8.8 9.6 11.5 6.4 12 1.5z" /></svg>;
 }
 createRoot(document.getElementById('root')!).render(<Transcript />);
