@@ -34,11 +34,13 @@ body { font: -apple-system-body; background: transparent; color: var(--foregroun
 .chat-empty p { margin: 0; max-width: 280px; }
 .chat-empty-title { color: var(--foreground); font-size: 17px; font-weight: 600; letter-spacing: -.01em; }
 .activity { font-size: 12px; padding: 12px 14px; border-left: 2px solid var(--color-cyan-400); border-radius: 4px 14px 14px 4px; background: color-mix(in srgb, #2ab7d6 6%, transparent); margin-bottom: 12px; }
-.markdown-content pre, .markdown-content table { max-width: 100%; }
-.markdown-content pre { overflow-x: auto; }
+.markdown-content pre { max-width: 100%; overflow-x: auto; }
 
-/* Preserve readable cells on a narrow phone; the shared wrapper scrolls. */
-.markdown-content table { min-width: 28rem; }
+/* Tables keep their natural width and scroll sideways inside the shared wrapper,
+   instead of squeezing columns until code breaks letter by letter. */
+.markdown-content table { width: max-content; min-width: 100%; max-width: none; }
+.markdown-content th, .markdown-content td { overflow-wrap: normal; word-break: normal; max-width: 16rem; vertical-align: top; }
+.markdown-content td code, .markdown-content th code { white-space: nowrap; }
 @source '../../../src/components/views/view-panels.tsx';
 .surface-scroll { height:100%; overflow:auto; overscroll-behavior:contain; }
 .surface-body { padding:20px; max-width:1200px; margin:auto; overflow-wrap:anywhere; }
@@ -167,3 +169,7 @@ body { font: -apple-system-body; background: transparent; color: var(--foregroun
 .typing-dots i { animation-timing-function: cubic-bezier(.45,0,.55,1); }
 .reduced-motion .smooth-height, .reduced-motion .live-area { transition: none; }
 .reduced-motion .row-enter, .reduced-motion .activity-line .shimmer { animation: none; }
+
+/* Group readability: a colour per agent, and quiet "nothing to add" notes. */
+.sender-dot { display: inline-block; width: 7px; height: 7px; border-radius: 50%; margin-right: 6px; vertical-align: 1px; }
+.chat-quiet { display: flex; align-items: center; justify-content: center; gap: 0; margin: -4px 0 12px; font: 500 12px ui-rounded, -apple-system, system-ui; color: var(--muted-foreground); opacity: .75; }

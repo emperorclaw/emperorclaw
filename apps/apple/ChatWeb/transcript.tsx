@@ -116,8 +116,16 @@ function Transcript() {
                 {rows.map((message, index) => {
                     const human = message.senderType === 'human', preview = message.preview;
                     const key = chatRowKey(message, data.previews);
+                    const sender = human ? (spanish ? 'Tú' : 'You') : message.senderName || data.agentNames[message.senderId ?? ""] || data.title;
+                    // "[no-reply]" means the agent had nothing to add: a quiet note, not a bubble.
+                    if (!human && !preview && /^\s*\[no-reply\]\s*$/i.test(message.text)) {
+                        return <Row key={key} id={key} animate={settled} className="chat-quiet">
+                            <span className="sender-dot" style={{ background: senderColor(message.senderId || sender) }} aria-hidden="true" />
+                            {sender} · {spanish ? 'sin nada que añadir' : 'nothing to add'}
+                        </Row>;
+                    }
                     return <Row key={key} id={key} animate={settled} className={`chat-message ${human ? 'human' : 'agent'}`}>
-                        <header>{human ? (spanish ? 'Tú' : 'You') : message.senderName || data.agentNames[message.senderId ?? ""] || data.title}</header>
+                        <header>{!human && <span className="sender-dot" style={{ background: senderColor(message.senderId || sender) }} aria-hidden="true" />}{sender}</header>
                         <RichMessageActionsContext.Provider value={{ sendPrompt: data.mayWrite && !preview ? async prompt => { try { return await request('sendPrompt', { prompt }) === true; } catch { return false; } } : undefined, laterReplies: rows.slice(index + 1).filter(row => row.senderType === 'human').map(row => row.text) }}>
                             <div className={`body ${preview && !message.text.trim() ? 'is-typing' : ''}`}><SmoothHeight>{preview ? (message.text.trim() ? <><StreamingMarkdown text={message.text} />{preview.state === 'streaming' && <span className="stream-caret" aria-hidden="true" />}</> : <TypingDots />) : <MarkdownRenderer content={message.text} density="compact" />}
                                 {message.metadataJson?.attachments?.map(file => <AttachmentChip key={file.id} file={file} spanish={spanish} onOpen={() => post({ type: 'attachment', file })} />)}
@@ -230,6 +238,13 @@ function AttachmentChip({ file, spanish, onOpen }: { file: File; spanish: boolea
                 : <svg viewBox="0 0 24 24"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z" /><path d="M14 3v5h5" /></svg>}</span>
         <span className="attachment-text"><span className="attachment-title">{title}</span>{detail && <span className="attachment-detail">{detail}</span>}</span>
     </button>;
+}
+/** Same stable hue as the native avatars (FNV-1a 64-bit of the id, mod 360). */
+function senderColor(id: string) {
+    let hash = BigInt('1469598103934665603');
+    const prime = BigInt('1099511628211'), mask = BigInt('0xFFFFFFFFFFFFFFFF');
+    for (const byte of new TextEncoder().encode(id)) hash = ((hash ^ BigInt(byte)) * prime) & mask;
+    return `hsl(${Number(hash % BigInt(360))} 62% 62%)`;
 }
 /** Three dots that bounce in sequence: the reply is on its way. */
 function TypingDots() { return <span className="typing-dots" aria-hidden="true"><i /><i /><i /></span>; }

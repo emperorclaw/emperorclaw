@@ -221,3 +221,24 @@ test('attachments render as typed chips and open through the native bridge', asy
     await page.locator('.attachment-audio').click();
     await expect.poll(() => page.evaluate(() => (window as unknown as { nativeMessages: { type: string; file?: { id: string } }[] }).nativeMessages.filter(m => m.type === 'attachment').map(m => m.file?.id))).toEqual(['11111111-1111-4111-8111-000000000002']);
 });
+test('group readability: "[no-reply]" is a quiet note and agents carry a colour', async ({ page }) => {
+    const agent = { ...message('10', '[no-reply]'), senderId: uuid, senderName: 'Builder' };
+    const real = { ...message('20', 'Pushed the fix'), senderId: uuid, senderName: 'Builder' };
+    await update(page, payload({ messages: [agent, real] }));
+    await expect(page.locator('.chat-quiet')).toHaveText('Builder · nothing to add');
+    await expect(page.locator('.chat-message')).toHaveCount(1);
+    const colours = await page.locator('.sender-dot').evaluateAll(dots => dots.map(dot => getComputedStyle(dot).backgroundColor));
+    expect(colours).toHaveLength(2);
+    expect(colours[0]).toBe(colours[1]);
+});
+test('tables scroll sideways instead of breaking code letter by letter', async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 700 });
+    const table = '| Pieza | Estado hoy | Qué falta |\n| --- | --- | --- |\n| `src/lib/runtime-hosts/commands.ts:29` | `ENABLED_HOST_COMMANDS` = 4 comandos | añadirlo |';
+    await update(page, payload({ messages: [message('1', table)] }));
+    const code = page.locator('td code').first();
+    await expect(code).toBeVisible();
+    const box = await code.evaluate(node => { const r = node.getBoundingClientRect(); return { h: r.height, line: parseFloat(getComputedStyle(node).lineHeight) || 20 }; });
+    expect(box.h).toBeLessThan(box.line * 1.6); // one line, not a column of letters
+    const scrolls = await page.locator('table').first().evaluate(t => { const w = t.parentElement!; return w.scrollWidth > w.clientWidth; });
+    expect(scrolls).toBe(true);
+});

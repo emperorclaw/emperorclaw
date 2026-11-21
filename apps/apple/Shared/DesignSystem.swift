@@ -74,11 +74,7 @@ extension Agent {
         }
     }
     /// Stable per-agent hue so the same person always has the same colour.
-    var hue: Double {
-        var hash: UInt64 = 1469598103934665603
-        for byte in id.utf8 { hash = (hash ^ UInt64(byte)) &* 1099511628211 }
-        return Double(hash % 360) / 360
-    }
+    var hue: Double { stableHue(id) }
 }
 
 /// Monogram avatar with the agent's hue and a live status badge.
@@ -128,4 +124,48 @@ struct SoftDivider: View {
 
 extension ISO8601DateFormatter {
     static let fractional: ISO8601DateFormatter = { let f = ISO8601DateFormatter(); f.formatOptions = [.withInternetDateTime, .withFractionalSeconds]; return f }()
+}
+
+/// Stable hue for any id (agents, members): the same person keeps the same colour everywhere.
+func stableHue(_ id: String) -> Double {
+    var hash: UInt64 = 1469598103934665603
+    for byte in id.utf8 { hash = (hash ^ UInt64(byte)) &* 1099511628211 }
+    return Double(hash % 360) / 360
+}
+
+/// Monogram for anyone with a name and id (group members, people).
+struct MemberMonogram: View {
+    let name: String
+    let id: String
+    var size: CGFloat = 32
+    var isHuman = false
+    var body: some View {
+        let hue = stableHue(id)
+        Text(String(name.prefix(1)).uppercased())
+            .font(.system(size: size * 0.44, weight: .bold, design: .rounded))
+            .foregroundStyle(.white)
+            .frame(width: size, height: size)
+            .background(LinearGradient(colors: isHuman ? [Color.gray, Color.gray.opacity(0.7)] : [Color(hue: hue, saturation: 0.55, brightness: 0.85), Color(hue: hue, saturation: 0.7, brightness: 0.55)],
+                                       startPoint: .topLeading, endPoint: .bottomTrailing),
+                        in: isHuman ? AnyShape(Circle()) : AnyShape(RoundedRectangle(cornerRadius: size * 0.32, style: .continuous)))
+            .accessibilityHidden(true)
+    }
+}
+
+/// Up to three overlapping member avatars, ringed by the surface colour.
+struct AvatarStack: View {
+    let members: [(name: String, id: String, human: Bool)]
+    var size: CGFloat = 30
+    var body: some View {
+        let shown = Array(members.prefix(3))
+        ZStack(alignment: .leading) {
+            ForEach(Array(shown.enumerated()), id: \.offset) { index, member in
+                MemberMonogram(name: member.name, id: member.id, size: size, isHuman: member.human)
+                    .overlay(RoundedRectangle(cornerRadius: size * 0.32, style: .continuous).stroke(Color.cardSurface, lineWidth: 2))
+                    .offset(x: CGFloat(index) * size * 0.4, y: index.isMultiple(of: 2) ? 0 : size * 0.18)
+            }
+        }
+        .frame(width: size + CGFloat(max(0, shown.count - 1)) * size * 0.4, height: size * 1.18, alignment: .leading)
+        .accessibilityHidden(true)
+    }
 }
