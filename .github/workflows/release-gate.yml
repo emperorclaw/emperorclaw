@@ -59,6 +59,9 @@ jobs:
                 return 0
               fi
               case "$out" in
+                # A 403 is usually credentials, but GitHub also uses it for the primary rate limit;
+                # that one is transient and must not be reported as a permission problem.
+                *"rate limit"*|*"HTTP 429"*) : ;;
                 *"HTTP 401"*|*"HTTP 403"*|*"HTTP 404"*|*"Bad credentials"*)
                   echo "::error::gh api refused a non-retryable error: $out" >&2
                   return 1 ;;
