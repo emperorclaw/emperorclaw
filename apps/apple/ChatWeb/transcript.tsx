@@ -97,7 +97,10 @@ function Transcript() {
         if (scroll.current) resize.observe(scroll.current);
         return () => resize.disconnect();
     }, []);
-    const rows = withResponsePreviews(data.messages, data.previews, preview => ({ id: preview.responseId, text: preview.text, senderType: 'agent', senderName: preview.agentName, createdAt: preview.updatedAt, preview }));
+    // A preview with no text yet carries nothing to read: it never takes a place in the
+    // history (its timestamp can sort it above newer replies). The single live row at the
+    // bottom represents it instead.
+    const rows = withResponsePreviews(data.messages, data.previews.filter(preview => preview.text.trim()), preview => ({ id: preview.responseId, text: preview.text, senderType: 'agent', senderName: preview.agentName, createdAt: preview.updatedAt, preview }));
     return <NextIntlClientProvider locale="en" messages={en} timeZone="UTC">
         {data.mode && data.mode !== 'chat' ? <OtherSurface data={data} post={post} /> : <><div id="transcript" ref={scroll} role="log" aria-label={spanish ? 'Conversación' : 'Conversation'} aria-live="off"
             onTouchMove={() => { follow.current = false; setFollowing(false); }}
@@ -137,8 +140,17 @@ function Activity({ runs, data, spanish, empty }: { runs: ClientLiveRun[]; data:
     const active = runs.filter(run => run.status === 'running');
     const covered = new Set(active.map(run => run.agentId));
     const typing = data.participants.filter(participant => participant.participantType === 'agent' && !covered.has(participant.participantId) && participant.typingUntil && new Date(participant.typingUntil).getTime() > now);
+    // One live indicator, always last: work in progress wins; otherwise a reply that
+    // has started but has no words yet shows typing dots.
+    const pending = active.length === 0 && typing.length === 0
+        ? data.previews.filter(preview => preview.state === 'streaming' && !preview.text.trim() && !preview.finalMessageId).slice(-1)
+        : [];
     return <>
-        {empty && active.length === 0 && typing.length === 0 && <div className="chat-empty">
+        {pending.map(preview => <article key={`pending-${preview.responseId}`} className="chat-message agent">
+            <header>{preview.agentName || data.agentNames[preview.agentId ?? ''] || data.title}</header>
+            <div className="body is-typing"><TypingDots /><span className="sr-only" role="status">{spanish ? 'Respondiendo…' : 'Responding…'}</span></div>
+        </article>)}
+        {empty && active.length === 0 && typing.length === 0 && pending.length === 0 && <div className="chat-empty">
             <p className="chat-empty-title">{spanish ? `Empieza una conversación con ${data.title}` : `Start a conversation with ${data.title}`}</p>
             <p>{spanish ? 'Tus mensajes y el trabajo del agente aparecerán aquí.' : 'Your messages and the agent’s work will appear here.'}</p>
         </div>}

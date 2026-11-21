@@ -183,3 +183,14 @@ test('shows motion, not status words, while a reply is on its way', async ({ pag
     await expect(page.locator('.activity .thinking-glyph')).toBeVisible();
     await expect(page.locator('.activity .shimmer')).toHaveText('Reading project files');
 });
+test('one live indicator, always after the newest reply', async ({ page }) => {
+    const empty = { responseId: uuid, runId: uuid, agentId: uuid, agentName: 'Builder', segmentIndex: 1, revision: 1, text: '', state: 'streaming', updatedAt: '2026-11-21T12:05:00Z', finalMessageId: null, runStatus: 'running' };
+    const messages = [message('10', 'Older'), message('20', 'Newest reply')];
+    await update(page, payload({ messages, previews: [empty] }));
+    const order = () => page.locator('.chat-message').evaluateAll(rows => rows.map(row => row.querySelector('.typing-dots') ? 'dots' : row.textContent?.includes('Newest') ? 'newest' : 'other'));
+    await expect.poll(order).toEqual(['other', 'newest', 'dots']);
+    const run = { runId: uuid, agentId: uuid, status: 'running', startedAt: new Date().toISOString(), current: { kind: 'reasoning', summary: 'Still working', sinceMs: 1000 }, steps: [] };
+    await update(page, payload({ messages, previews: [empty], liveRuns: [run] }));
+    await expect(page.locator('.typing-dots')).toHaveCount(0);
+    await expect(page.locator('.thinking-glyph')).toHaveCount(1);
+});
