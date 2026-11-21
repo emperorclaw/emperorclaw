@@ -13,7 +13,7 @@ import { withResponsePreviews, chatRowKey } from '@/lib/chat/use-chat-responses'
 import type { ChatPreview } from '@/lib/chat/response-contract';
 import type { RunLive } from '@/lib/run-events';
 
-type File = { id: string; name: string };
+type File = { id: string; name: string; contentType?: string; sizeBytes?: number };
 type Message = { id: string; text: string; senderType: string; senderName?: string; senderId?: string; createdAt: string; clientMessageId?: string; metadataJson?: { attachments?: File[]; hasReasoning?: boolean }; preview?: ChatPreview };
 type Participant = { participantType: string; participantId: string; typingUntil?: string; currentActivity?: string };
 type Payload = SurfaceData & { participants: Participant[]; agentNames: Record<string, string>; messages: Message[]; previews: ChatPreview[]; liveRuns: RunLive[]; replyRuns: Record<string, ReplyRun>; hasMore: boolean; loaded: boolean; streaming: boolean; title: string; locale: string; mayWrite: boolean; forceBottom: number; dark: boolean; loadingOlder: boolean };
@@ -120,7 +120,7 @@ function Transcript() {
                         <header>{human ? (spanish ? 'Tú' : 'You') : message.senderName || data.agentNames[message.senderId ?? ""] || data.title}</header>
                         <RichMessageActionsContext.Provider value={{ sendPrompt: data.mayWrite && !preview ? async prompt => { try { return await request('sendPrompt', { prompt }) === true; } catch { return false; } } : undefined, laterReplies: rows.slice(index + 1).filter(row => row.senderType === 'human').map(row => row.text) }}>
                             <div className={`body ${preview && !message.text.trim() ? 'is-typing' : ''}`}><SmoothHeight>{preview ? (message.text.trim() ? <><StreamingMarkdown text={message.text} />{preview.state === 'streaming' && <span className="stream-caret" aria-hidden="true" />}</> : <TypingDots />) : <MarkdownRenderer content={message.text} density="compact" />}
-                                {message.metadataJson?.attachments?.map(file => <button className="attachment" key={file.id} type="button" onClick={() => post({ type: 'attachment', file })}>{file.name || (spanish ? 'Abrir archivo' : 'Open attachment')}</button>)}
+                                {message.metadataJson?.attachments?.map(file => <AttachmentChip key={file.id} file={file} spanish={spanish} onOpen={() => post({ type: 'attachment', file })} />)}
                                 {preview && (preview.state === 'streaming' || !['capped', 'failed', 'interrupted'].includes(preview.state)
                                     ? <p className="sr-only" role="status">{preview.state === 'streaming' ? (spanish ? 'Respondiendo…' : 'Responding…') : (spanish ? 'Guardando respuesta…' : 'Saving reply…')}</p>
                                     : <p className="preview-note" role="status">{preview.state === 'capped' ? (spanish ? 'Límite de vista previa alcanzado; esperando la respuesta final…' : 'Preview limit reached; waiting for the saved reply…') : (spanish ? 'Respuesta interrumpida' : 'Response interrupted')}</p>)}
@@ -195,16 +195,41 @@ function LiveArea({ open, children }: { open: boolean; children: React.ReactNode
     // The last live content is kept only so it can fade out while collapsing.
     const last = useRef<React.ReactNode>(null);
     const [mounted, setMounted] = useState(open);
+    // Mount collapsed, then spring open on the next frame (otherwise it would appear at full height).
+    const [expanded, setExpanded] = useState(false);
     // eslint-disable-next-line react-hooks/refs -- exit-animation snapshot, never drives what is current
     if (open) last.current = children;
     useEffect(() => {
+        if (!open) { setExpanded(false); return; }
+        const frame = requestAnimationFrame(() => requestAnimationFrame(() => setExpanded(true)));
+        return () => cancelAnimationFrame(frame);
+    }, [open]);
+    useEffect(() => {
         if (open) { setMounted(true); return; }
-        const timer = setTimeout(() => { setMounted(false); last.current = null; }, 560);
+        const timer = setTimeout(() => { setMounted(false); last.current = null; }, 1050);
         return () => clearTimeout(timer);
     }, [open]);
     if (!open && !mounted) return null;
-    return <div className={`live-area ${open ? 'is-open' : 'is-closing'}`}><div className="live-area-inner">{/* eslint-disable-next-line react-hooks/refs -- exit-animation snapshot */}
+    return <div className={`live-area ${open && expanded ? 'is-open' : 'is-closing'}`}><div className="live-area-inner">{/* eslint-disable-next-line react-hooks/refs -- exit-animation snapshot */}
         <SmoothHeight>{open ? children : last.current}</SmoothHeight></div></div>;
+}
+/** An attachment as a typed chip: photo, voice note or document. Opens natively (Quick Look). */
+function AttachmentChip({ file, spanish, onOpen }: { file: File; spanish: boolean; onOpen: () => void }) {
+    const type = (file.contentType ?? '').toLowerCase(), name = file.name || (spanish ? 'Archivo' : 'Attachment');
+    const kind = type.startsWith('image/') || /\.(png|jpe?g|gif|webp|heic)$/i.test(name) ? 'image' : type.startsWith('audio/') || /\.(m4a|mp3|wav|aac|ogg)$/i.test(name) ? 'audio' : 'doc';
+    const voice = kind === 'audio' && /^voice note/i.test(name);
+    const title = voice ? (spanish ? 'Nota de voz' : 'Voice note') : name;
+    const length = voice ? name.match(/(\d+:\d{2})/)?.[1] : undefined;
+    const size = file.sizeBytes ? file.sizeBytes < 1024 * 1024 ? `${Math.max(1, Math.round(file.sizeBytes / 1024))} KB` : `${(file.sizeBytes / 1024 / 1024).toFixed(1)} MB` : undefined;
+    const detail = [length, kind === 'doc' ? name.split('.').pop()?.toUpperCase() : undefined, size].filter(Boolean).join(' · ');
+    return <button className={`attachment attachment-${kind}`} type="button" onClick={onOpen} aria-label={`${title}${detail ? `, ${detail}` : ''}. ${spanish ? 'Abrir' : 'Open'}`}>
+        <span className="attachment-icon" aria-hidden="true">{kind === 'image'
+            ? <svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="3" /><circle cx="9" cy="10" r="2" /><path d="M21 17l-5-5-9 8" /></svg>
+            : kind === 'audio'
+                ? <svg viewBox="0 0 24 24"><path d="M4 10v4M8 7v10M12 4v16M16 8v8M20 11v2" /></svg>
+                : <svg viewBox="0 0 24 24"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z" /><path d="M14 3v5h5" /></svg>}</span>
+        <span className="attachment-text"><span className="attachment-title">{title}</span>{detail && <span className="attachment-detail">{detail}</span>}</span>
+    </button>;
 }
 /** Three dots that bounce in sequence: the reply is on its way. */
 function TypingDots() { return <span className="typing-dots" aria-hidden="true"><i /><i /><i /></span>; }

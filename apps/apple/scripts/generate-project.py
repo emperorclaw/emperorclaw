@@ -124,7 +124,7 @@ for name, folder, sdk, deployment, family, bundle in [
         info.update({'LSRequiresIPhoneOS': True, 'UILaunchScreen': {'UIColorName': 'LaunchBackground', 'UIImageName': 'LaunchEmblem', 'UIImageRespectsSafeAreaInsets': True}, 'UISupportedInterfaceOrientations': ['UIInterfaceOrientationPortrait', 'UIInterfaceOrientationPortraitUpsideDown', 'UIInterfaceOrientationLandscapeLeft', 'UIInterfaceOrientationLandscapeRight'],
                      'CFBundleURLTypes': [{'CFBundleURLName': 'EmperorClaw sign-in', 'CFBundleURLSchemes': ['com.emperorclaw.app']}]})
     if folder == 'iPhone':
-        info.update({'NSCameraUsageDescription': 'Scan the connection QR code from your own EmperorClaw server.', 'UIBackgroundModes': ['remote-notification']})
+        info.update({'NSMicrophoneUsageDescription': 'Record voice notes for your agents.', 'NSCameraUsageDescription': 'Scan the connection QR code from your own EmperorClaw server.', 'UIBackgroundModes': ['remote-notification']})
     (ROOT / folder / 'App.entitlements').write_bytes(plistlib.dumps({'aps-environment': '$(APS_ENVIRONMENT)', 'com.apple.security.application-groups': ['group.com.emperorclaw.app']}))
     (ROOT / folder / 'Info.plist').write_bytes(plistlib.dumps(info))
     schemes = PROJECT / 'xcshareddata' / 'xcschemes'

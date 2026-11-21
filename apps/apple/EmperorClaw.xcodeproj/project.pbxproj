@@ -47,6 +47,12 @@
 			"path" = "Shared/WorkViews.swift";
 			"sourceTree" = "<group>";
 		};
+		"C6D8482EB6036759F8F34133" = {
+			"isa" = "PBXFileReference";
+			"lastKnownFileType" = "sourcecode.swift";
+			"path" = "iPhone/ChatComposer.swift";
+			"sourceTree" = "<group>";
+		};
 		"CEF7A20287C825CAC988F4CD" = {
 			"isa" = "PBXFileReference";
 			"lastKnownFileType" = "sourcecode.swift";
@@ -615,6 +621,10 @@
 			"isa" = "PBXBuildFile";
 			"fileRef" = "10E521E5BB6699EBC54C0834";
 		};
+		"D07D7A98EB097C659391B68A" = {
+			"isa" = "PBXBuildFile";
+			"fileRef" = "C6D8482EB6036759F8F34133";
+		};
 		"12DB38A45B618A08DA9C0C04" = {
 			"isa" = "PBXBuildFile";
 			"fileRef" = "CEF7A20287C825CAC988F4CD";
@@ -658,6 +668,7 @@
 				"C5BE08DB64EEE13042A583B6",
 				"AAFB82D793ED10299D8CB3D3",
 				"82AEC999A2D1017E1605B151",
+				"D07D7A98EB097C659391B68A",
 				"12DB38A45B618A08DA9C0C04",
 				"E6E7515FDDBEF144E00D4288",
 				"773BD53107C50DFC3094822B",
@@ -867,6 +878,7 @@
 				"7945ADA334933A7949283808",
 				"2E2FABAB3D34E765D099FBB7",
 				"10E521E5BB6699EBC54C0834",
+				"C6D8482EB6036759F8F34133",
 				"CEF7A20287C825CAC988F4CD",
 				"AE5C370FCD3791D869306FB3",
 				"78492DAD9EAB974DA5EBE1E9",

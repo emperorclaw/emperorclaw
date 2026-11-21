@@ -207,3 +207,17 @@ test('history appears still; new rows rise in; finished work collapses instead o
     await expect(page.locator('.live-area.is-closing')).toHaveText(/Thinking it through/);
     await expect(page.locator('.live-area')).toHaveCount(0);
 });
+test('attachments render as typed chips and open through the native bridge', async ({ page }) => {
+    const files = [
+        { id: '11111111-1111-4111-8111-000000000001', name: 'Pasted image 22.40.jpg', contentType: 'image/jpeg', sizeBytes: 240_000 },
+        { id: '11111111-1111-4111-8111-000000000002', name: 'Voice note 0:12.m4a', contentType: 'audio/mp4', sizeBytes: 96_000 },
+        { id: '11111111-1111-4111-8111-000000000003', name: 'Q3 plan.pdf', contentType: 'application/pdf', sizeBytes: 2_400_000 },
+    ];
+    await update(page, payload({ messages: [{ ...message('1', 'Voice note (0:12)', 'human'), metadataJson: { attachments: files } }] }));
+    await expect(page.locator('.attachment-image')).toContainText('Pasted image');
+    await expect(page.locator('.attachment-audio')).toContainText('Voice note');
+    await expect(page.locator('.attachment-audio')).toContainText('0:12');
+    await expect(page.locator('.attachment-doc')).toContainText('PDF · 2.3 MB');
+    await page.locator('.attachment-audio').click();
+    await expect.poll(() => page.evaluate(() => (window as unknown as { nativeMessages: { type: string; file?: { id: string } }[] }).nativeMessages.filter(m => m.type === 'attachment').map(m => m.file?.id))).toEqual(['11111111-1111-4111-8111-000000000002']);
+});

@@ -19,7 +19,17 @@ body { font: -apple-system-body; background: transparent; color: var(--foregroun
 .chat-message.human .body { background: color-mix(in srgb, #2ab7d6 16%, transparent); }
 .chat-message button, #transcript > button, .attachment { min-height: 44px; }
 #latest { position: fixed; bottom: 10px; right: 16px; min-height: 44px; padding: 6px 14px; border-radius: 24px; background: var(--background); border: 1px solid var(--border); box-shadow: 0 2px 8px #0003; }
-.attachment { display: flex; align-items: center; color: var(--color-cyan-400); }
+.attachment { display: flex; align-items: center; gap: 10px; width: 100%; max-width: 320px; margin-top: 8px; padding: 8px 12px 8px 8px; text-align: left;
+  border-radius: 14px; background: color-mix(in srgb, var(--foreground) 6%, transparent); border: 1px solid color-mix(in srgb, var(--foreground) 8%, transparent); color: var(--foreground); }
+.attachment:active { transform: scale(.98); }
+.attachment-icon { width: 36px; height: 36px; border-radius: 10px; display: grid; place-items: center; flex-shrink: 0; }
+.attachment-icon svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+.attachment-image .attachment-icon { color: #2ab7d6; background: color-mix(in srgb, #2ab7d6 16%, transparent); }
+.attachment-audio .attachment-icon { color: #f59e0b; background: color-mix(in srgb, #f59e0b 16%, transparent); }
+.attachment-doc .attachment-icon { color: #818cf8; background: color-mix(in srgb, #818cf8 16%, transparent); }
+.attachment-text { display: flex; flex-direction: column; min-width: 0; }
+.attachment-title { font: 600 14px ui-rounded, -apple-system, system-ui; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.attachment-detail { font-size: 12px; color: var(--muted-foreground); }
 .chat-empty { min-height: 60vh; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; gap: 6px; padding: 24px; color: var(--muted-foreground); font-size: 14px; }
 .chat-empty p { margin: 0; max-width: 280px; }
 .chat-empty-title { color: var(--foreground); font-size: 17px; font-weight: 600; letter-spacing: -.01em; }
@@ -123,15 +133,37 @@ body { font: -apple-system-body; background: transparent; color: var(--foregroun
 .reduced-motion .shimmer { color: var(--muted-foreground); background:none; }
 .reduced-motion .typing-dots i { opacity:.7; }
 
-/* Smooth layout: containers follow their content instead of jumping. */
-.smooth-height { overflow: hidden; transition: height .36s cubic-bezier(.3,.7,.25,1); }
+/* Motion system: SwiftUI-equivalent springs (.smooth bounce 0, .snappy bounce .15),
+   generated as linear() curves. Older WebKit (iOS 17.0-17.1) falls back to close béziers. */
+:root {
+    --spring-smooth: cubic-bezier(.32,.72,0,1); --spring-smooth-duration: .5s;
+    --spring-snappy: cubic-bezier(.3,1.25,.5,1); --spring-snappy-duration: .45s;
+    --spring-gentle: cubic-bezier(.32,.72,0,1); --spring-gentle-duration: .65s;
+}
+@supports (transition-timing-function: linear(0, 1)) {
+  :root {
+    --spring-smooth: linear(0.0, 0.0324, 0.1084, 0.2048, 0.3072, 0.4069, 0.4991, 0.5816, 0.6536, 0.7154, 0.7676, 0.8113, 0.8475, 0.8773, 0.9016, 0.9213, 0.9373, 0.9501, 0.9605, 0.9687, 0.9753, 0.9805, 0.9847, 0.9879, 0.9905, 0.9926, 0.9942, 0.9955, 0.9965, 0.9972, 0.9978, 0.9983, 0.9987, 0.999, 0.9992, 0.9994, 1); --spring-smooth-duration: 0.72s;
+    --spring-snappy: linear(0.0, 0.0333, 0.1136, 0.2183, 0.3316, 0.4433, 0.5471, 0.6397, 0.7194, 0.7864, 0.8412, 0.8851, 0.9195, 0.9458, 0.9656, 0.98, 0.9902, 0.9971, 1.0016, 1.0043, 1.0057, 1.0063, 1.0062, 1.0058, 1.0052, 1.0045, 1.0037, 1.0031, 1.0025, 1.0019, 1.0015, 1.0011, 1.0008, 1.0006, 1.0004, 1.0003, 1); --spring-snappy-duration: 0.67s;
+    --spring-gentle: linear(0.0, 0.0324, 0.1084, 0.2048, 0.3072, 0.4069, 0.4991, 0.5816, 0.6536, 0.7154, 0.7676, 0.8113, 0.8475, 0.8773, 0.9016, 0.9213, 0.9373, 0.9501, 0.9605, 0.9687, 0.9753, 0.9805, 0.9847, 0.9879, 0.9905, 0.9926, 0.9942, 0.9955, 0.9965, 0.9972, 0.9978, 0.9983, 0.9987, 0.999, 0.9992, 0.9994, 1); --spring-gentle-duration: 0.96s;
+  }
+}
+/* Containers follow their content instead of jumping. */
+.smooth-height { overflow: hidden; transition: height var(--spring-smooth-duration) var(--spring-smooth); }
 .smooth-height-inner { display: flow-root; }
-.row-enter { animation: row-rise .4s cubic-bezier(.3,.7,.25,1) both; }
-@keyframes row-rise { from { opacity: 0; transform: translateY(8px) scale(.985); } to { opacity: 1; transform: none; } }
-.live-area { display: grid; grid-template-rows: 1fr; opacity: 1; transition: grid-template-rows .38s cubic-bezier(.3,.7,.25,1), opacity .26s ease .06s; }
-.live-area.is-closing { grid-template-rows: 0fr; opacity: 0; transition: opacity .22s ease, grid-template-rows .42s cubic-bezier(.45,0,.25,1) .1s; }
+/* New content arrives the Apple way: rises, scales up a touch and comes into focus. */
+.row-enter { animation: row-rise var(--spring-snappy-duration) var(--spring-snappy) both, row-focus .32s ease-out both; transform-origin: 50% 100%; }
+.chat-message.human.row-enter { transform-origin: 100% 100%; }
+.chat-message.agent.row-enter { transform-origin: 0 100%; }
+@keyframes row-rise { from { transform: translateY(14px) scale(.96); } to { transform: none; } }
+@keyframes row-focus { from { opacity: 0; filter: blur(6px); } to { opacity: 1; filter: none; } }
+.live-area { display: grid; grid-template-rows: 1fr; opacity: 1; filter: none;
+  transition: grid-template-rows var(--spring-smooth-duration) var(--spring-smooth), opacity .28s ease .04s, filter .28s ease; }
+.live-area.is-closing { grid-template-rows: 0fr; opacity: 0; filter: blur(4px);
+  transition: opacity .2s ease, filter .2s ease, grid-template-rows var(--spring-gentle-duration) var(--spring-gentle) .08s; }
 .live-area-inner { min-height: 0; overflow: hidden; }
-.activity-line .shimmer { animation: shimmer-sweep 2.2s linear infinite, text-fade .3s ease both; }
-@keyframes text-fade { from { opacity: 0; } to { opacity: 1; } }
+/* Step text changes dissolve through a brief blur rather than swapping. */
+.activity-line .shimmer { animation: shimmer-sweep 2.2s linear infinite, text-focus .36s ease-out both; }
+@keyframes text-focus { from { opacity: 0; filter: blur(3px); } to { opacity: 1; filter: none; } }
+.typing-dots i { animation-timing-function: cubic-bezier(.45,0,.55,1); }
 .reduced-motion .smooth-height, .reduced-motion .live-area { transition: none; }
-.reduced-motion .row-enter { animation: none; }
+.reduced-motion .row-enter, .reduced-motion .activity-line .shimmer { animation: none; }

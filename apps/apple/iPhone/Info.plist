@@ -35,6 +35,8 @@
 	<true/>
 	<key>NSCameraUsageDescription</key>
 	<string>Scan the connection QR code from your own EmperorClaw server.</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>Record voice notes for your agents.</string>
 	<key>UIBackgroundModes</key>
 	<array>
 		<string>remote-notification</string>

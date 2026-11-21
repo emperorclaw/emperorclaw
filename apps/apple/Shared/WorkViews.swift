@@ -289,6 +289,9 @@ struct ChatScreen: View {
     @State private var sending = false
     @State private var error: String?
     @State private var attachments: [JSONValue] = []
+    #if os(iOS)
+    @State private var tray: [ComposerAttachment] = []
+    #endif
     @State private var importing = false
     @State private var directID: String?
     @State private var chatOptions: [WorkItem] = []
@@ -332,28 +335,16 @@ struct ChatScreen: View {
             #endif
             if let error { Text(error).font(.caption).foregroundStyle(.orange).padding(8) }
             if error != nil { Button("Start a new message") { draft = ""; attachments = []; sendID = UUID(); error = nil } .font(.caption) }
+            #if os(watchOS)
             if !attachments.isEmpty { Text("\(attachments.count) attachment(s) ready").font(.caption).padding(5) }
+            #endif
             #if os(iOS)
-            let canSend = !sending && !(draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && attachments.isEmpty) && model.mayWrite
-            HStack(alignment: .bottom, spacing: 8) {
-                Button { importing = true } label: {
-                    Image(systemName: "plus").font(.body.weight(.semibold)).foregroundStyle(.secondary)
-                        .frame(width: 36, height: 36).background(Color.cardSurface, in: Circle())
-                }.frame(minWidth: 44, minHeight: 44).accessibilityLabel("Attach file").disabled(sending)
-                HStack(alignment: .bottom, spacing: 6) {
-                    TextField("Message \(title)…", text: $draft, axis: .vertical).lineLimit(1...6).accessibilityLabel("Message").disabled(sending)
-                        .padding(.vertical, 9).padding(.leading, 14)
-                    Button { Task { await send() } } label: {
-                        Image(systemName: sending ? "ellipsis" : "arrow.up").font(.body.weight(.bold)).foregroundStyle(canSend ? Color.white : Color.secondary)
-                            .frame(width: 30, height: 30).background(canSend ? Color.accentColor : Color.secondary.opacity(0.2), in: Circle())
-                            .symbolEffect(.variableColor.iterative, isActive: sending)
-                            .contentTransition(.symbolEffect(.replace))
-                    }.disabled(!canSend).padding(4).accessibilityLabel("Send message")
-                }
-                .background(Color.cardSurface, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
-                .overlay(RoundedRectangle(cornerRadius: 20, style: .continuous).strokeBorder(Color.secondary.opacity(0.18)))
-                .animation(.snappy, value: canSend)
-            }.padding(.horizontal, 10).padding(.vertical, 8).background(.bar)
+            ChatComposer(draft: $draft, placeholder: "Message \(title)…", canWrite: model.mayWrite, sending: sending, tray: tray,
+                         onSend: { Task { await send() } },
+                         onAttach: { data, name, mime, kind in attach(data, name: name, mime: mime, kind: kind) },
+                         onRemove: removeAttachment,
+                         onPickFiles: { importing = true },
+                         onVoiceNote: sendVoiceNote)
             .sensoryFeedback(.impact(weight: .light), trigger: sendID)
             .sensoryFeedback(.error, trigger: error)
             #else
@@ -388,8 +379,15 @@ struct ChatScreen: View {
             }.navigationTitle("Conversations") }
         }
         #if os(iOS)
-        .fileImporter(isPresented: $importing, allowedContentTypes: [.item]) { result in
-            Task { do { let url = try result.get(); let access = url.startAccessingSecurityScopedResource(); defer { if access { url.stopAccessingSecurityScopedResource() } }; let size = try url.resourceValues(forKeys: [.fileSizeKey]).fileSize ?? 0; guard size <= 25 * 1024 * 1024 else { throw MobileFailure.responseTooLarge }; let data = try Data(contentsOf: url); let mime = UTType(filenameExtension: url.pathExtension)?.preferredMIMEType ?? "application/octet-stream"; let file = try await model.client.upload(workspace, data: data, name: url.lastPathComponent, mime: mime, commandID: UUID()); attachments.append(file) } catch { self.error = error.localizedDescription } }
+        .fileImporter(isPresented: $importing, allowedContentTypes: [.item], allowsMultipleSelection: true) { result in
+            guard let urls = try? result.get() else { return }
+            for url in urls.prefix(6) {
+                let access = url.startAccessingSecurityScopedResource(); defer { if access { url.stopAccessingSecurityScopedResource() } }
+                guard let size = try? url.resourceValues(forKeys: [.fileSizeKey]).fileSize, size <= 25 * 1024 * 1024, let data = try? Data(contentsOf: url) else { error = MobileFailure.responseTooLarge.localizedDescription; continue }
+                let mime = UTType(filenameExtension: url.pathExtension)?.preferredMIMEType ?? "application/octet-stream"
+                let kind: ComposerAttachment.Kind = mime.hasPrefix("image/") ? (UIImage(data: data).map { .image($0) } ?? .document(url.pathExtension)) : mime.hasPrefix("audio/") ? .voice(0) : .document(url.pathExtension)
+                attach(data, name: url.lastPathComponent, mime: mime, kind: kind)
+            }
         }
         .quickLookPreview($previewURL)
         #endif
@@ -405,6 +403,9 @@ struct ChatScreen: View {
     }
     private func switchConversation(_ id: String?) {
         directID = id; newChat = false; transcript = ChatTranscript(); attachments = []; error = nil
+        #if os(iOS)
+        tray = []
+        #endif
         conversationGeneration = UUID(); regularRequest = UUID(); loadingOlder = false; attemptedText = nil
         draft = UserDefaults.standard.string(forKey: key) ?? ""
         sendID = UserDefaults.standard.string(forKey: key + ":command").flatMap(UUID.init(uuidString:)) ?? UUID()
@@ -485,12 +486,55 @@ struct ChatScreen: View {
             let result = try await model.client.work(workspace, path: "chat", method: "POST", body: .object(body), commandID: sendID)
             guard key == requestKey else { return false }
             if newChat { directID = result["thread"]["id"].text; newChat = false }
-            draft = ""; attachments = []; sendID = UUID(); error = nil; forceBottom += 1; await load()
+            draft = ""; attachments = []; sendID = UUID(); error = nil; forceBottom += 1
+            #if os(iOS)
+            tray = []
+            #endif
+            await load()
             UserDefaults.standard.removeObject(forKey: savedDraftKey)
             UserDefaults.standard.removeObject(forKey: savedDraftKey + ":command"); attemptedText = nil
             return true
         } catch { if key == requestKey { self.error = error.localizedDescription }; return false }
     }
+    #if os(iOS)
+    /// Uploads immediately so sending is instant; the chip shows progress or failure.
+    private func attach(_ data: Data, name: String, mime: String, kind: ComposerAttachment.Kind) {
+        let item = ComposerAttachment(name: name, kind: kind)
+        tray.append(item)
+        Task {
+            do {
+                let file = try await model.client.upload(workspace, data: data, name: name, mime: mime, commandID: UUID())
+                guard let index = tray.firstIndex(where: { $0.id == item.id }) else { return } // removed meanwhile
+                tray[index].uploaded = file; attachments.append(file)
+            } catch {
+                if let index = tray.firstIndex(where: { $0.id == item.id }) { tray[index].failed = error.localizedDescription }
+            }
+        }
+    }
+    private func removeAttachment(_ id: UUID) {
+        if let uploaded = tray.first(where: { $0.id == id })?.uploaded { attachments.removeAll { $0["id"] == uploaded["id"] } }
+        tray.removeAll { $0.id == id }
+    }
+    /// Voice notes send as soon as recording stops, like Messages.
+    private func sendVoiceNote(_ url: URL, _ duration: TimeInterval) {
+        guard let data = try? Data(contentsOf: url) else { error = "The voice note could not be read."; return }
+        try? FileManager.default.removeItem(at: url)
+        let length = Duration.seconds(duration).formatted(.time(pattern: .minuteSecond))
+        let item = ComposerAttachment(name: "Voice note \(length).m4a", kind: .voice(duration))
+        tray.append(item)
+        Task {
+            do {
+                let file = try await model.client.upload(workspace, data: data, name: item.name, mime: "audio/mp4", commandID: UUID())
+                guard let index = tray.firstIndex(where: { $0.id == item.id }) else { return }
+                tray[index].uploaded = file; attachments.append(file)
+                if draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { draft = "Voice note (\(length))" }
+                _ = await send()
+            } catch {
+                if let index = tray.firstIndex(where: { $0.id == item.id }) { tray[index].failed = error.localizedDescription }
+            }
+        }
+    }
+    #endif
     private func listChats() async { guard let agentID else { return }; do { chatOptions = try await model.client.work(workspace, path: "conversations", query: ["agentId": agentID])["chats"].items.map(WorkItem.init); showChats = true } catch { self.error = error.localizedDescription } }
     private func openAttachment(_ file: JSONValue) async {
         #if os(iOS)

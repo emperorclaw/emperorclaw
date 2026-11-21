@@ -65,6 +65,14 @@ carousel: crown + company + working gauge, one needs-you tile, team rows and qui
 DEBUG-only `--qa-team` / `--qa-agent` launch arguments open below-the-fold Watch screens for
 simulator capture, since watch simulators accept no injected touches here.
 
+Motion uses SwiftUI-equivalent springs in the chat renderer (`.smooth` bounce 0, `.snappy` bounce .15),
+generated as CSS `linear()` curves with bézier fallbacks for iOS 17.0–17.1; new rows rise, scale and
+un-blur in, the live row springs open and collapses after fading, and Reduce Motion stops all of it.
+The composer (`iPhone/ChatComposer.swift`) accepts pasted images (custom UITextView), Photos and Files
+via a + menu, shows an upload tray with progress, and records AAC voice notes iMessage-style (mic
+replaces send when empty; recording bar with timer and levels). Audio setup runs off the main thread
+with a 5 s timeout so a stalled input can never freeze the UI. Attachments render as typed chips.
+
 ## Views and shared content
 
 Views has native search, scope/panel summaries and private-access indicators.
