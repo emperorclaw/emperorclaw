@@ -108,3 +108,23 @@ maybe('mobile Views reads reuse web access rules and cannot create or mutate vie
     assert.equal((await call(c, 'views', 'POST', {})).status, 404);
     assert.equal((await call(c, `views/${view.id}`, 'PATCH', {})).status, 404);
 });
+maybe('assignees offer agents and people to editors, nothing to viewers', async () => {
+    await resetDb(); const c = await connection(); const agent = await seedAgent(c.companyId);
+    const list = await (await call(c, 'assignees')).json();
+    assert.ok(list.agents.some((a: { id: string }) => a.id === agent.id));
+    assert.ok(list.members.length >= 1);
+    const viewer = await connection('viewer');
+    const none = await (await call(viewer, 'assignees')).json();
+    assert.deepEqual(none, { agents: [], members: [] });
+});
+maybe('an agent owning a stale in-progress task is not shown as working', async () => {
+    await resetDb(); const c = await connection(); const agent = await seedAgent(c.companyId);
+    const { db } = await import('@/db'); const { agents } = await import('@/db/schema'); const { eq } = await import('drizzle-orm');
+    await db.update(agents).set({ lastSeenAt: new Date() }).where(eq(agents.id, agent.id));
+    const created = await (await call(c, 'tasks', 'POST', { title: 'Cron run from last week', useDefaultProject: true, assignee: { type: 'agent', id: agent.id } })).json();
+    assert.equal((await call(c, `tasks/${created.task.id}`, 'PATCH', { state: 'in_progress' })).status, 200);
+    const { loadAgentActivity } = await import('@/lib/agent-activity');
+    const [now] = (await loadAgentActivity(c.companyId, { viewerUserId: c.human.userId, scope: null, agentIds: [agent.id] })).filter((a) => a.agentId === agent.id);
+    assert.notEqual(now.state, 'working');
+    assert.equal(now.task?.id, created.task.id);
+});

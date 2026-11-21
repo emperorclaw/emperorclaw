@@ -57,7 +57,13 @@ export function createRelay({ secrets, send, stateFile, clock = Date.now }) {
     // At-most-once attempt: ambiguous APNs outcomes aren't blindly resent.
     if (delivered.size > 50000) return [429, { error: 'Try later' }];
     delivered.set(eventKey, now + 86400000);
-    await send(input, { aps: { alert: { title: 'EmperorClaw', body: 'Your team needs your attention. Open to review.' }, sound: 'default', 'content-available': 1 }, emperor: { installation: input.installationId, company: input.companyId, kind: input.kind, id: input.resourceId } });
+    // Optional end-to-end sealed content: opaque to this relay and to APNs; the
+    // device's notification extension decrypts it with its own key.
+    const sealed = typeof input.sealed === 'string' && /^[A-Za-z0-9_-]{40,2800}$/.test(input.sealed) ? input.sealed : null;
+    const category = ['approval', 'reply', 'attention'].includes(input.category) ? input.category : null;
+    const aps = { alert: { title: 'EmperorClaw', body: 'Your team needs your attention. Open to review.' }, sound: 'default', 'content-available': 1,
+      ...(sealed ? { 'mutable-content': 1, 'thread-id': `${input.companyId}:${input.kind}` } : {}), ...(sealed && category ? { category: `emperor.${category}` } : {}) };
+    await send(input, { aps, emperor: { installation: input.installationId, company: input.companyId, kind: input.kind, id: input.resourceId, ...(sealed ? { sealed } : {}) } });
     return [200, { accepted: true }];
   };
 }

@@ -45,3 +45,21 @@ test('expired challenge is rejected', async () => {
   const input = envelope(); await request(handle, '/v1/enroll', input); now += 11 * 60000;
   assert.equal((await request(handle, '/v1/confirm', { ...input, timestamp: now, challenge: sent[0].emperor.challenge }))[0], 403);
 });
+test('sealed content is forwarded opaquely with a category; malformed blobs fall back to generic', async () => {
+  const sent = [], handle = createRelay({ secrets: { [installationId]: secret }, send: async (input, payload) => sent.push(payload) });
+  const input = envelope();
+  await request(handle, '/v1/enroll', input);
+  await request(handle, '/v1/confirm', { ...input, challenge: sent[0].emperor.challenge });
+  const sealed = 'A'.repeat(60);
+  const event = { ...input, eventId: randomUUID(), companyId: randomUUID(), resourceId: randomUUID(), kind: 'inbox', sealed, category: 'reply' };
+  assert.equal((await request(handle, '/v1/push', event))[0], 200);
+  const pushed = sent.at(-1);
+  assert.equal(pushed.emperor.sealed, sealed);
+  assert.equal(pushed.aps['mutable-content'], 1);
+  assert.equal(pushed.aps.category, 'emperor.reply');
+  assert.equal(pushed.aps.alert.body, 'Your team needs your attention. Open to review.'); // generic fallback if the device can't decrypt
+  assert.equal((await request(handle, '/v1/push', { ...event, eventId: randomUUID(), sealed: '<script>', category: 'evil' }))[0], 200);
+  assert.equal(sent.at(-1).emperor.sealed, undefined);
+  assert.equal(sent.at(-1).aps.category, undefined);
+  assert.equal(sent.at(-1).aps['mutable-content'], undefined);
+});

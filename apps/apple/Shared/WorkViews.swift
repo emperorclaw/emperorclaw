@@ -654,6 +654,7 @@ struct TaskScreen: View {
     @State private var agent = ""
     @State private var lastBody: JSONValue?
     @State private var briefExpanded = false
+    @State private var assigning = false
     var task: JSONValue { story["task"] }
     var taskContext: String { "Task: \(task["title"].text) [\(id)]" }
     var body: some View {
@@ -760,11 +761,20 @@ struct TaskScreen: View {
             }
         } label: { Label("Ask an agent about this", systemImage: "bubble.left.and.text.bubble.right") }
         if model.mayWrite {
-            Menu {
-                ForEach(story["assignees"]["agents"].items.map(WorkItem.init)) { a in
-                    Button(a["name"].text) { Task { await mutate(path: "tasks/\(id)", method: "PATCH", body: .object(["assignedAgentId": .string(a.id)])) } }
+            Button { assigning = true } label: {
+                HStack {
+                    Label("Assign to…", systemImage: "person.crop.circle.badge.plus")
+                    Spacer()
+                    if !task["owner"]["name"].text.isEmpty { Text(task["owner"]["name"].text).foregroundStyle(.secondary).lineLimit(1) }
                 }
-            } label: { Label("Assign to…", systemImage: "person.crop.circle.badge.plus") }.disabled(busy)
+            }.disabled(busy)
+            .sheet(isPresented: $assigning) {
+                AssigneePicker(options: assigneeOptions(story["assignees"], agents: model.snapshots[workspace.id]?.agents ?? []),
+                               current: task["owner"]["id"].text.isEmpty ? nil : "\(task["owner"]["type"].text):\(task["owner"]["id"].text)") { choice in
+                    let assignee: JSONValue = choice.map { .object(["type": .string($0.kind.rawValue), "id": .string($0.id)]) } ?? .null
+                    Task { await mutate(path: "tasks/\(id)", method: "PATCH", body: .object(["assignee": assignee])) }
+                }
+            }
             Menu {
                 ForEach(["inbox", "in_progress", "review", "blocked", "done", "failed"], id: \.self) { state in
                     let style = TaskStateStyle(state)
@@ -911,6 +921,11 @@ struct NewTaskScreen: View {
     @State private var description = ""
     @State private var project = ""
     @State private var agent = ""
+    #if os(iOS)
+    @State private var assignee: AssigneeOption?
+    @State private var assigning = false
+    #endif
+    @State private var assignees: JSONValue = .null
     @State private var projects: [WorkItem] = []
     @State private var error: String?
     @State private var busy = false
@@ -922,13 +937,52 @@ struct NewTaskScreen: View {
             TextField("Task title", text: $title)
             TextField("Description", text: $description, axis: .vertical).lineLimit(3...8)
             Picker("Project", selection: $project) { Text("General").tag(""); ForEach(projects) { Text($0["goal"].text).tag($0.id) } }
+            #if os(iOS)
+            Button { assigning = true } label: {
+                HStack {
+                    Text("Assignee").foregroundStyle(.primary)
+                    Spacer()
+                    if let assignee {
+                        MemberMonogram(name: assignee.name, id: assignee.id, size: 22, isHuman: assignee.kind == .human)
+                        Text(assignee.name).foregroundStyle(.secondary)
+                    } else { Text("Unassigned").foregroundStyle(.secondary) }
+                    Image(systemName: "chevron.right").font(.footnote.weight(.semibold)).foregroundStyle(.tertiary)
+                }
+            }
+            .sheet(isPresented: $assigning) {
+                AssigneePicker(options: assigneeOptions(assignees, agents: model.snapshots[workspace.id]?.agents ?? []), current: assignee?.key) { assignee = $0 }
+            }
+            #else
             Picker("Agent", selection: $agent) { Text("Unassigned").tag(""); ForEach(model.snapshots[workspace.id]?.agents ?? []) { Text($0.name).tag($0.id) } }
+            #endif
             Button(busy ? "Creating…" : "Create task") { Task { await create() } }.disabled(title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || busy)
         }.navigationTitle("New task").toolbar { ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } } }
-            .task { description = initialText; do { projects = try await model.client.work(workspace, path: "projects")["projects"].items.map(WorkItem.init) } catch { self.error = error.localizedDescription } }
+            .task {
+                description = initialText
+                do { projects = try await model.client.work(workspace, path: "projects")["projects"].items.map(WorkItem.init) } catch { self.error = error.localizedDescription }
+                // Older servers have no assignees route: fall back to the agent roster.
+                assignees = (try? await model.client.work(workspace, path: "assignees")) ?? .object(["agents": .array((model.snapshots[workspace.id]?.agents ?? []).map { .object(["id": .string($0.id), "name": .string($0.name)]) })])
+            }
     }
-    private func create() async { busy = true; defer { busy = false }; do { var body: [String: JSONValue] = ["title": .string(title), "description": .string(description), "useDefaultProject": .bool(project.isEmpty)]; if !project.isEmpty { body["projectId"] = .string(project) }; if !agent.isEmpty { body["assignedAgentId"] = .string(agent) }; let payload = JSONValue.object(body); if lastBody != payload { commandID = UUID(); lastBody = payload }; _ = try await model.client.work(workspace, path: "tasks", method: "POST", body: payload, commandID: commandID); dismiss() } catch { self.error = error.localizedDescription } }
+    private func create() async { busy = true; defer { busy = false }; do { var body: [String: JSONValue] = ["title": .string(title), "description": .string(description), "useDefaultProject": .bool(project.isEmpty)]; if !project.isEmpty { body["projectId"] = .string(project) }; if !agent.isEmpty { body["assignedAgentId"] = .string(agent) }
+        #if os(iOS)
+        if let assignee { body["assignee"] = .object(["type": .string(assignee.kind.rawValue), "id": .string(assignee.id)]) }
+        #endif
+        let payload = JSONValue.object(body); if lastBody != payload { commandID = UUID(); lastBody = payload }; _ = try await model.client.work(workspace, path: "tasks", method: "POST", body: payload, commandID: commandID); dismiss() } catch { self.error = error.localizedDescription } }
 }
+
+#if os(iOS)
+/// Agents and people from an `assignees` payload, enriched with live roster status.
+func assigneeOptions(_ assignees: JSONValue, agents roster: [Agent]) -> [AssigneeOption] {
+    let byID = Dictionary(roster.map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a })
+    let agents = assignees["agents"].items.map { item -> AssigneeOption in
+        let live = byID[item["id"].text]
+        return AssigneeOption(kind: .agent, id: item["id"].text, name: item["name"].text, detail: live.map { $0.paused == true ? "Paused" : $0.statusLabel } ?? "", working: live?.isWorking ?? false)
+    }
+    let people = assignees["members"].items.map { AssigneeOption(kind: .human, id: $0["id"].text, name: $0["name"].text, detail: "Person") }
+    return agents + people
+}
+#endif
 
 struct ApprovalScreen: View {
     @EnvironmentObject var model: AppModel

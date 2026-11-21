@@ -141,9 +141,10 @@ public actor MobileClient {
         try FileManager.default.moveItem(at: temporary, to: target)
         return target
     }
-    public func configurePush(_ installation: Installation, token: String? = nil, environment: String = "sandbox", challenge: String? = nil, enabled: Bool = true, kinds: [String] = ["approval", "agent_failed", "agent_down", "mention"]) async throws {
+    public func configurePush(_ installation: Installation, token: String? = nil, environment: String = "sandbox", challenge: String? = nil, enabled: Bool = true, kinds: [String] = ["approval", "decision", "mention", "reply", "agent_failed", "agent_down"], contentKey: String? = nil) async throws {
         let auth = try await credentials(for: installation)
         var values: [String: JSONValue] = ["enabled": .bool(enabled), "environment": .string(environment), "kinds": .array(kinds.map(JSONValue.string))]
+        if let contentKey { values["contentKey"] = .string(contentKey) }
         if let token { values["deviceToken"] = .string(token) }; if let challenge { values["challenge"] = .string(challenge) }
         let _: JSONValue = try await request(JSONValue.self, server: installation.server, path: "api/mobile/v1/push", method: "POST", token: auth.accessToken, payload: JSONEncoder().encode(JSONValue.object(values)))
     }

@@ -225,6 +225,21 @@ async function loadNames(companyId: string, viewer: TaskViewer): Promise<StoryNa
     };
 }
 
+/**
+ * Who this viewer may assign tasks to, under the same rules as a task's
+ * `assignees` (task story): viewers get none, scoped members only their agents
+ * and no people. Used by the mobile New task form.
+ */
+export async function listTaskAssignees(companyId: string, viewer: TaskViewer): Promise<{ agents: { id: string; name: string }[]; members: { id: string; name: string }[] }> {
+    if (["viewer"].includes(viewer.role)) return { agents: [], members: [] };
+    const names = await loadNames(companyId, viewer);
+    const agentScope = scopedAgentIds(viewer.scope);
+    return {
+        agents: agentScope ? names.agentList.filter((agent) => agentScope.includes(agent.id)) : names.agentList,
+        members: viewer.scope ? [] : names.memberList,
+    };
+}
+
 type ThreadInfo = {
     id: string;
     type: string;

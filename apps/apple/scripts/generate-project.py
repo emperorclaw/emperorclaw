@@ -72,6 +72,22 @@ for target_name, sdk, deployment, family, bundle in [
     config_list = obj(target_name + 'ConfigList', 'XCConfigurationList', buildConfigurations=configs, defaultConfigurationIsVisible='0', defaultConfigurationName='Release')
     target = obj(target_name, 'PBXNativeTarget', buildConfigurationList=config_list, buildPhases=phases, buildRules=[], dependencies=[], name=target_name, packageProductDependencies=[dep], productName=target_name, productReference=product, productType='com.apple.product-type.app-extension')
     targets.append(target); widget_targets[target_name] = (target, product)
+# Notification service extension (iPhone): opens end-to-end sealed push content.
+nse_source = obj('NotificationService/NotificationService.swift', 'PBXFileReference', lastKnownFileType='sourcecode.swift', path='NotificationService/NotificationService.swift', sourceTree='<group>')
+file_refs['NotificationService/NotificationService.swift'] = nse_source
+nse_product = obj('NotificationService.appex', 'PBXFileReference', explicitFileType='wrapper.app-extension', path='NotificationService.appex', sourceTree='BUILT_PRODUCTS_DIR')
+products.append(nse_product)
+nse_dep = obj('NotificationServiceCore', 'XCSwiftPackageProductDependency', package=package, productName='EmperorCore')
+nse_phases = [obj('NotificationServiceSources', 'PBXSourcesBuildPhase', buildActionMask='2147483647', files=[obj('NotificationServiceSourceFile', 'PBXBuildFile', fileRef=nse_source)], runOnlyForDeploymentPostprocessing='0'),
+              obj('NotificationServiceFrameworks', 'PBXFrameworksBuildPhase', buildActionMask='2147483647', files=[obj('NotificationServiceCoreFile', 'PBXBuildFile', productRef=nse_dep)], runOnlyForDeploymentPostprocessing='0'),
+              privacy_resources('NotificationService')]
+nse_configs = [obj('NotificationService' + config, 'XCBuildConfiguration', buildSettings={'SDKROOT': 'iphoneos', 'SUPPORTED_PLATFORMS': 'iphoneos iphonesimulator', 'IPHONEOS_DEPLOYMENT_TARGET': '17.0', 'TARGETED_DEVICE_FAMILY': '1,2', 'PRODUCT_BUNDLE_IDENTIFIER': 'com.emperorclaw.app.notifications', 'PRODUCT_NAME': '$(TARGET_NAME)', 'SWIFT_VERSION': '5.0', 'INFOPLIST_FILE': 'NotificationService/Info.plist', 'CODE_SIGN_ENTITLEMENTS': 'NotificationService/NotificationService.entitlements', 'APPLICATION_EXTENSION_API_ONLY': 'YES', 'SKIP_INSTALL': 'YES', 'CODE_SIGN_STYLE': 'Automatic', 'MARKETING_VERSION': '0.1.0', 'CURRENT_PROJECT_VERSION': '1'}, name=config) for config in ['Debug', 'Release']]
+nse_config_list = obj('NotificationServiceConfigList', 'XCConfigurationList', buildConfigurations=nse_configs, defaultConfigurationIsVisible='0', defaultConfigurationName='Release')
+nse_target = obj('NotificationService', 'PBXNativeTarget', buildConfigurationList=nse_config_list, buildPhases=nse_phases, buildRules=[], dependencies=[], name='NotificationService', packageProductDependencies=[nse_dep], productName='NotificationService', productReference=nse_product, productType='com.apple.product-type.app-extension')
+targets.append(nse_target)
+(ROOT / 'NotificationService').mkdir(exist_ok=True)
+(ROOT / 'NotificationService' / 'Info.plist').write_bytes(plistlib.dumps({'CFBundleDisplayName': 'EmperorClaw', 'CFBundleName': '$(PRODUCT_NAME)', 'CFBundleExecutable': '$(EXECUTABLE_NAME)', 'CFBundleIdentifier': '$(PRODUCT_BUNDLE_IDENTIFIER)', 'CFBundlePackageType': 'XPC!', 'CFBundleShortVersionString': '$(MARKETING_VERSION)', 'CFBundleVersion': '$(CURRENT_PROJECT_VERSION)', 'NSExtension': {'NSExtensionPointIdentifier': 'com.apple.usernotifications.service', 'NSExtensionPrincipalClass': '$(PRODUCT_MODULE_NAME).NotificationService'}}))
+(ROOT / 'NotificationService' / 'NotificationService.entitlements').write_bytes(plistlib.dumps({'com.apple.security.application-groups': ['group.com.emperorclaw.app']}))
 (ROOT / 'Widgets' / 'Info.plist').write_bytes(plistlib.dumps({'CFBundleDisplayName': 'EmperorClaw', 'CFBundleName': '$(PRODUCT_NAME)', 'CFBundleExecutable': '$(EXECUTABLE_NAME)', 'CFBundleIdentifier': '$(PRODUCT_BUNDLE_IDENTIFIER)', 'CFBundlePackageType': 'XPC!', 'CFBundleShortVersionString': '$(MARKETING_VERSION)', 'CFBundleVersion': '$(CURRENT_PROJECT_VERSION)', 'NSExtension': {'NSExtensionPointIdentifier': 'com.apple.widgetkit-extension'}}))
 (ROOT / 'Widgets' / 'Widgets.entitlements').write_bytes(plistlib.dumps({'com.apple.security.application-groups': ['group.com.emperorclaw.app']}))
 for name, folder, sdk, deployment, family, bundle in [
@@ -97,6 +113,10 @@ for name, folder, sdk, deployment, family, bundle in [
     widget_proxy = obj(name + 'WidgetProxy', 'PBXContainerItemProxy', containerPortal=ident('Project'), proxyType='1', remoteGlobalIDString=widget_target, remoteInfo=widget_name)
     dependencies.append(obj(name + 'WidgetDependency', 'PBXTargetDependency', target=widget_target, targetProxy=widget_proxy))
     if name == 'EmperorPhone':
+        nse_embed = obj('NotificationServiceEmbedFile', 'PBXBuildFile', fileRef=nse_product, settings={'ATTRIBUTES': ['RemoveHeadersOnCopy']})
+        phases.append(obj('NotificationServiceEmbed', 'PBXCopyFilesBuildPhase', buildActionMask='2147483647', dstPath='', dstSubfolderSpec='13', files=[nse_embed], name='Embed Notification Service', runOnlyForDeploymentPostprocessing='0'))
+        nse_proxy = obj('NotificationServiceProxy', 'PBXContainerItemProxy', containerPortal=ident('Project'), proxyType='1', remoteGlobalIDString=nse_target, remoteInfo='NotificationService')
+        dependencies.append(obj('NotificationServiceDependency', 'PBXTargetDependency', target=nse_target, targetProxy=nse_proxy))
         embed = obj('EmbedWatchBuild', 'PBXBuildFile', fileRef=ident('EmperorWatch.app'), settings={'ATTRIBUTES': ['RemoveHeadersOnCopy']})
         phases.append(obj('EmbedWatch', 'PBXCopyFilesBuildPhase', buildActionMask='2147483647', dstPath='$(CONTENTS_FOLDER_PATH)/Watch', dstSubfolderSpec='16', files=[embed], name='Embed Watch Content', runOnlyForDeploymentPostprocessing='0'))
         proxy = obj('WatchProxy', 'PBXContainerItemProxy', containerPortal=ident('Project'), proxyType='1', remoteGlobalIDString=ident('EmperorWatch'), remoteInfo='EmperorWatch')
