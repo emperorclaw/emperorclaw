@@ -1,0 +1,99 @@
+Bundled license information:
+
+react/cjs/react.production.js:
+  /**
+   * @license React
+   * react.production.js
+   *
+   * Copyright (c) Meta Platforms, Inc. and affiliates.
+   *
+   * This source code is licensed under the MIT license found in the
+   * LICENSE file in the root directory of this source tree.
+   */
+
+scheduler/cjs/scheduler.production.js:
+  /**
+   * @license React
+   * scheduler.production.js
+   *
+   * Copyright (c) Meta Platforms, Inc. and affiliates.
+   *
+   * This source code is licensed under the MIT license found in the
+   * LICENSE file in the root directory of this source tree.
+   */
+
+react-dom/cjs/react-dom.production.js:
+  /**
+   * @license React
+   * react-dom.production.js
+   *
+   * Copyright (c) Meta Platforms, Inc. and affiliates.
+   *
+   * This source code is licensed under the MIT license found in the
+   * LICENSE file in the root directory of this source tree.
+   */
+
+react-dom/cjs/react-dom-client.production.js:
+  /**
+   * @license React
+   * react-dom-client.production.js
+   *
+   * Copyright (c) Meta Platforms, Inc. and affiliates.
+   *
+   * This source code is licensed under the MIT license found in the
+   * LICENSE file in the root directory of this source tree.
+   */
+
+react/cjs/react-jsx-runtime.production.js:
+  /**
+   * @license React
+   * react-jsx-runtime.production.js
+   *
+   * Copyright (c) Meta Platforms, Inc. and affiliates.
+   *
+   * This source code is licensed under the MIT license found in the
+   * LICENSE file in the root directory of this source tree.
+   */
+
+@tabler/icons-react/dist/esm/defaultAttributes.mjs:
+@tabler/icons-react/dist/esm/createReactComponent.mjs:
+@tabler/icons-react/dist/esm/icons/IconAlertTriangle.mjs:
+@tabler/icons-react/dist/esm/icons/IconArrowDownRight.mjs:
+@tabler/icons-react/dist/esm/icons/IconArrowRight.mjs:
+@tabler/icons-react/dist/esm/icons/IconArrowUpRight.mjs:
+@tabler/icons-react/dist/esm/icons/IconArrowsMaximize.mjs:
+@tabler/icons-react/dist/esm/icons/IconBook.mjs:
+@tabler/icons-react/dist/esm/icons/IconBrain.mjs:
+@tabler/icons-react/dist/esm/icons/IconBulb.mjs:
+@tabler/icons-react/dist/esm/icons/IconCalendarDue.mjs:
+@tabler/icons-react/dist/esm/icons/IconChartBar.mjs:
+@tabler/icons-react/dist/esm/icons/IconCheck.mjs:
+@tabler/icons-react/dist/esm/icons/IconChecklist.mjs:
+@tabler/icons-react/dist/esm/icons/IconChevronDown.mjs:
+@tabler/icons-react/dist/esm/icons/IconChevronRight.mjs:
+@tabler/icons-react/dist/esm/icons/IconCircleCheck.mjs:
+@tabler/icons-react/dist/esm/icons/IconCircleX.mjs:
+@tabler/icons-react/dist/esm/icons/IconCode.mjs:
+@tabler/icons-react/dist/esm/icons/IconCopy.mjs:
+@tabler/icons-react/dist/esm/icons/IconExclamationCircle.mjs:
+@tabler/icons-react/dist/esm/icons/IconFile.mjs:
+@tabler/icons-react/dist/esm/icons/IconFolder.mjs:
+@tabler/icons-react/dist/esm/icons/IconInfoCircle.mjs:
+@tabler/icons-react/dist/esm/icons/IconLayoutGrid.mjs:
+@tabler/icons-react/dist/esm/icons/IconLoader2.mjs:
+@tabler/icons-react/dist/esm/icons/IconMessageReport.mjs:
+@tabler/icons-react/dist/esm/icons/IconPlayerStop.mjs:
+@tabler/icons-react/dist/esm/icons/IconRobot.mjs:
+@tabler/icons-react/dist/esm/icons/IconSend.mjs:
+@tabler/icons-react/dist/esm/icons/IconSparkles.mjs:
+@tabler/icons-react/dist/esm/icons/IconTool.mjs:
+@tabler/icons-react/dist/esm/icons/IconUser.mjs:
+@tabler/icons-react/dist/esm/icons/IconUsers.mjs:
+@tabler/icons-react/dist/esm/icons/IconX.mjs:
+@tabler/icons-react/dist/esm/tabler-icons-react.mjs:
+  /**
+   * @license @tabler/icons-react v3.45.0 - MIT
+   *
+   * This source code is licensed under the MIT license.
+   * See the LICENSE file in the root directory of this source tree.
+   */

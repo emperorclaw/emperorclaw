@@ -7,8 +7,10 @@ import path from 'node:path';
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../..');
 const out = path.join(root, 'apps/apple/iPhone/ChatWeb');
 await mkdir(out, { recursive: true });
-await build({ absWorkingDir: root, entryPoints: ['apps/apple/ChatWeb/transcript.tsx'], outfile: path.join(out, 'transcript.js'), bundle: true, minify: true, platform: 'browser', target: 'safari17', jsx: 'automatic', alias: { 'next/link': './apps/apple/ChatWeb/link.tsx' }, define: { 'process.env.NODE_ENV': '"production"' }, legalComments: 'eof' });
+await build({ absWorkingDir: root, entryPoints: ['apps/apple/ChatWeb/transcript.tsx'], outfile: path.join(out, 'transcript.js'), bundle: true, minify: true, platform: 'browser', target: 'safari17', jsx: 'automatic', alias: { 'next/link': './apps/apple/ChatWeb/link.tsx' }, define: { 'process.env.NODE_ENV': '"production"' }, legalComments: 'linked' });
 // Scope Tailwind to the renderer sources. Never scan the generated JS bundle.
+const license = path.join(out, 'transcript.js.LEGAL.txt');
+await writeFile(license, (await readFile(license, 'utf8')).replace(/[ \t]+$/gm, ''));
 const theme = (await readFile(path.join(root, 'src/app/globals.css'), 'utf8')).replace('@import "tailwindcss";', '@import "tailwindcss" source(none);');
 const source = theme + '\n' + await readFile(path.join(root, 'apps/apple/ChatWeb/transcript.css'), 'utf8');
 const css = await postcss([tailwind({ base: root, optimize: true })]).process(source, { from: path.join(root, 'apps/apple/ChatWeb/transcript.css') });
