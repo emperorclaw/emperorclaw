@@ -9,6 +9,16 @@ tagged (e.g. `## [1.2.0] — 2026-07-22`). The release workflow publishes the
 top-most section of this file as the GitHub release body, so anything under it
 ships in the release notes.
 
+## [0.42.3] — 2026-11-21
+
+### Fixed
+
+- **A seen prompt says Seen, and Responding is not duplicated.** Once an agent has picked up a message the transcript labels it Seen instead of Queued, and the streaming card no longer repeats Responding while the thinking row is already on screen.
+
+### Upgrade
+
+- No new database migration. Partial replies keep their existing opt-in: `EMPEROR_CHAT_STREAMING=1` plus a Hermes bridge that carries `partial-replies-v1`.
+
 ## [0.42.2] — 2026-11-21
 
 ### Fixed
