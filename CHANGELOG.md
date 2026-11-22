@@ -9,6 +9,12 @@ tagged (e.g. `## [1.2.0] — 2026-07-22`). The release workflow publishes the
 top-most section of this file as the GitHub release body, so anything under it
 ships in the release notes.
 
+## [0.42.7] — 2026-11-22
+
+### Fixed
+
+- **The Update button can no longer move production to a floating image.** `POST /api/ops/update` pulled `ghcr.io/emperorclaw/emperorclaw:latest` and recreated the app with it: with production pinned by digest, that both bypassed the release gate and undid the pin until the next `docker compose up`. The destination now resolves from `EMPEROR_UPDATE_IMAGE`, else the operator's compose `image:` (only when `EMPEROR_UPDATE_DIR` mounts it), else the reference the running container was created with; a floating destination (`latest`, no tag) over a pinned container is refused with **409** before the backup and the pull, so a refusal has no side effects. The response's `steps` gained `resolve-image`, `digest-before` and `digest-after`, and the container is recreated from the resolved reference instead of a constant.
+
 ## [0.42.6] — 2026-11-22
 
 ### Fixed
