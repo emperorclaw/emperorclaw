@@ -21,7 +21,7 @@ import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { eq } from "drizzle-orm";
 import { dbAvailable, getDb, getSchema, resetDb, seedAgent, seedCompanyWithToken } from "./_helper";
-import { bearer, call, seedMcpToken } from "./_access-helper";
+import { actAs, bearer, call, mcpClientFor, seedHuman, seedMcpToken } from "./_access-helper";
 
 const maybe = dbAvailable ? test : test.skip;
 
@@ -196,6 +196,44 @@ maybe("archiving a held task releases the hold as well", async () => {
     const [after] = await w.db.select().from(w.tasks).where(eq(w.tasks.id, w.task.id));
     assert.ok(after.deletedAt, "the task must be archived");
     assert.equal(after.leaseOwner, null, "an archived row must not hold a lease");
+    assert.equal(after.leaseSession, null);
+    assert.equal(after.leaseUntil, null);
+});
+
+maybe("the UI's own PATCH closes a held task and drops the lease too", async () => {
+    // `PATCH /api/tasks/{id}` is the board's route: a person, a session, a role
+    // check — and the same `updateTaskForCompany` underneath.
+    const w = await world();
+    await claim(w, "session-ui");
+    actAs(await seedHuman(w.companyId, "owner"));
+
+    const ui = await import("@/app/api/tasks/[id]/route");
+    const res = await call(ui.PATCH, `/api/tasks/${w.task.id}`, {
+        method: "PATCH",
+        params: { id: w.task.id },
+        body: { state: "done" },
+    });
+    assert.equal(res.status, 200, `UI PATCH failed: ${JSON.stringify(res.json)}`);
+
+    const [after] = await w.db.select().from(w.tasks).where(eq(w.tasks.id, w.task.id));
+    assert.equal(after.state, "done");
+    assert.equal(after.leaseOwner, null, "closing from the board releases the hold");
+    assert.equal(after.leaseSession, null);
+    assert.equal(after.leaseUntil, null);
+});
+
+maybe("the update_task tool closes a held task and drops the lease too", async () => {
+    // The agents' own path: no HTTP route, the MCP tool and the same writer.
+    const w = await world();
+    await claim(w, "session-tool");
+    const client = await mcpClientFor(w.companyId, w.agent.id);
+
+    const res = await client.tool("update_task", { taskId: w.task.id, state: "done" });
+    assert.equal(res.isError, false, `update_task failed: ${res.text}`);
+
+    const [after] = await w.db.select().from(w.tasks).where(eq(w.tasks.id, w.task.id));
+    assert.equal(after.state, "done");
+    assert.equal(after.leaseOwner, null, "closing through update_task releases the hold");
     assert.equal(after.leaseSession, null);
     assert.equal(after.leaseUntil, null);
 });
