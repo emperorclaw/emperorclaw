@@ -4,7 +4,9 @@ import { promisify } from "util";
 import { requirePlatformAdminSession } from "@/lib/platform-admin";
 import fs from "fs";
 import http from "http";
+import path from "path";
 import { DOCKER_SOCKET, isDocker, dockerCall, dockerPull, getOwnContainerId } from "@/lib/docker";
+import { resolveUpdateTarget, describeImageRef, updateHttpStatus, parseComposeImage, parseImageRef } from "@/lib/update-image";
 
 export const dynamic = "force-dynamic";
 const execAsync = promisify(exec);
@@ -14,7 +16,10 @@ const execAsync = promisify(exec);
 // installer uses $HOME/emperorclaw); override with EMPEROR_UPDATE_DIR if needed.
 const PROJECT_DIR = process.env.EMPEROR_UPDATE_DIR || process.cwd();
 const GITHUB_RELEASES_API = "https://api.github.com/repos/emperorclaw/emperorclaw/releases/latest";
-const IMAGE = "ghcr.io/emperorclaw/emperorclaw:latest";
+// Only used when neither EMPEROR_UPDATE_IMAGE nor the reference the container was
+// created from says anything. It is a floating tag, so the guard below refuses it
+// on a digest-pinned container — which is how production runs.
+const DEFAULT_IMAGE = "ghcr.io/emperorclaw/emperorclaw:latest";
 
 type UpdateStep = {
     step: string;
@@ -147,8 +152,32 @@ async function backupDatabaseViaDocker(): Promise<{ step: UpdateStep; fatal: boo
     }
 }
 
-async function dockerUpdateSelf(): Promise<UpdateStep[]> {
+/**
+ * The `image:` the operator's compose file declares. Only consulted when
+ * EMPEROR_UPDATE_DIR points at a mounted project directory: the compose file
+ * baked into the app image is the repo template (`:latest`), not this host's
+ * pinned reference, and reading it would answer the wrong question.
+ */
+function readComposeImage(dir: string, runningReference: string): string | null {
+    const repository = parseImageRef(runningReference)?.repository ?? "";
+    for (const name of ["docker-compose.yml", "docker-compose.yaml", "compose.yml", "compose.yaml"]) {
+        const file = path.join(dir, name);
+        try {
+            if (!fs.existsSync(file)) continue;
+            const image = parseComposeImage(fs.readFileSync(file, "utf8"), repository);
+            if (image) return image;
+        } catch {
+            // An unreadable or malformed file simply is not a source.
+        }
+    }
+    return null;
+}
+
+type UpdateResult = { steps: UpdateStep[]; refused: boolean };
+
+async function dockerUpdateSelf(): Promise<UpdateResult> {
     const steps: UpdateStep[] = [];
+    const done = (refused = false): UpdateResult => ({ steps, refused });
 
     // 1. Find own container
     let cid: string;
@@ -157,7 +186,7 @@ async function dockerUpdateSelf(): Promise<UpdateStep[]> {
         steps.push({ step: "find-container", status: "ok", output: cid.slice(0, 12) });
     } catch (e) {
         steps.push({ step: "find-container", status: "error", output: (e as Error).message });
-        return steps;
+        return done();
     }
 
     // 2. Inspect current config
@@ -168,21 +197,68 @@ async function dockerUpdateSelf(): Promise<UpdateStep[]> {
         steps.push({ step: "inspect-container", status: "ok", output: "Config captured" });
     } catch (e) {
         steps.push({ step: "inspect-container", status: "error", output: (e as Error).message });
-        return steps;
+        return done();
     }
+
+    // 2b. Decide what may be promoted before touching anything: pulling a floating
+    // tag over a digest-pinned container is exactly the release-gate bypass this
+    // route used to be.
+    const containerCfg = (info.Config ?? {}) as Record<string, unknown>;
+    const runningImage = typeof info.Image === "string" ? info.Image : "";
+    const composedImage = typeof containerCfg.Image === "string" ? containerCfg.Image : "";
+    const composeDir = (process.env.EMPEROR_UPDATE_DIR ?? "").trim();
+    const composeFileImage = composeDir ? readComposeImage(composeDir, composedImage) : null;
+    const target = resolveUpdateTarget({
+        envImage: process.env.EMPEROR_UPDATE_IMAGE,
+        composeFileImage,
+        composeImage: composedImage,
+        // Container inspect's Image is the local image id; Config.Image is the
+        // reference compose actually asked for, which is what a pin lives in.
+        runningImage: composedImage,
+        defaultImage: DEFAULT_IMAGE,
+    });
+    steps.push({
+        step: "resolve-image",
+        status: target.ok ? "ok" : "error",
+        output: target.ok
+            ? `${target.ref} (from ${target.source}${target.floating ? ", floating — not gated" : ", pinned"})`
+            : target.message,
+    });
+    if (!target.ok) return done(true);
+    steps.push({
+        step: "digest-before",
+        status: "ok",
+        output: `${describeImageRef(composedImage)} · local ${runningImage.slice(0, 19)}`,
+    });
 
     // 3. Back up the database (fail-closed: abort if a dump was possible but failed)
     const backup = await backupDatabaseViaDocker();
     steps.push(backup.step);
-    if (backup.fatal) return steps;
+    if (backup.fatal) return done();
 
     // 4. Pull latest image
     try {
-        const msg = await dockerPull(IMAGE, "linux/amd64");
-        steps.push({ step: "pull-image", status: "ok", output: msg });
+        const msg = await dockerPull(target.ref, "linux/amd64");
+        steps.push({ step: "pull-image", status: "ok", output: `${target.ref}: ${msg}` });
     } catch (e) {
         steps.push({ step: "pull-image", status: "error", output: (e as Error).message });
-        return steps;
+        return done();
+    }
+
+    // 3b. Record what the pull actually landed on, so the response says which
+    // bytes production moved to and not just which tag was asked for.
+    try {
+        const { code, data } = await dockerCall("GET", `/images/${encodeURIComponent(target.ref)}/json`);
+        const digests = code === 200 && Array.isArray((data as Record<string, unknown>).RepoDigests)
+            ? ((data as Record<string, unknown>).RepoDigests as string[])
+            : [];
+        steps.push({
+            step: "digest-after",
+            status: code === 200 ? "ok" : "error",
+            output: digests.length > 0 ? digests.join(", ") : describeImageRef(target.ref),
+        });
+    } catch (e) {
+        steps.push({ step: "digest-after", status: "error", output: (e as Error).message });
     }
 
     // 4. Build replacement config from old container
@@ -193,7 +269,7 @@ async function dockerUpdateSelf(): Promise<UpdateStep[]> {
     const netNames = Object.keys(nets);
 
     const createBody = {
-        Image: IMAGE,
+        Image: target.ref,
         Env: cfg.Env,
         Cmd: cfg.Cmd,
         Entrypoint: cfg.Entrypoint,
@@ -218,13 +294,13 @@ async function dockerUpdateSelf(): Promise<UpdateStep[]> {
         const { code, data } = await dockerCall("POST", path, createBody);
         if (code !== 201) {
             steps.push({ step: "create-container", status: "error", output: `HTTP ${code}: ${JSON.stringify(data).slice(0, 200)}` });
-            return steps;
+            return done();
         }
         newCid = (data as { Id: string }).Id;
         steps.push({ step: "create-container", status: "ok", output: newCid.slice(0, 12) });
     } catch (e) {
         steps.push({ step: "create-container", status: "error", output: (e as Error).message });
-        return steps;
+        return done();
     }
 
     // 6. Stop old
@@ -241,7 +317,7 @@ async function dockerUpdateSelf(): Promise<UpdateStep[]> {
         steps.push({ step: "start-new", status: "ok", output: "New container running. Refresh in a moment." });
     } catch (e) {
         steps.push({ step: "start-new", status: "error", output: (e as Error).message });
-        return steps;
+        return done();
     }
 
     // 8. Cleanup old
@@ -252,7 +328,7 @@ async function dockerUpdateSelf(): Promise<UpdateStep[]> {
     // runtime image at startup (reconcileManagedHermesRuntimes in
     // src/lib/hermes-provisioning.ts), one at a time, in the background.
 
-    return steps;
+    return done();
 }
 
 // ===================================================================
@@ -266,9 +342,12 @@ export async function POST() {
 
     // ---- Docker with socket: pull + recreate ----
     if (isDocker() && fs.existsSync(DOCKER_SOCKET)) {
-        const steps = await dockerUpdateSelf();
-        const ok = steps.every(s => s.status !== "error");
-        return NextResponse.json({ success: ok, mode: "docker", steps }, { status: ok ? 200 : 500 });
+        const result = await dockerUpdateSelf();
+        // 409 Conflict, not 500: refusing to promote a floating reference over a
+        // pinned container is a policy decision, not a broken server.
+        const status = updateHttpStatus(result);
+        const ok = status === 200;
+        return NextResponse.json({ success: ok, mode: "docker", refused: result.refused, steps: result.steps }, { status });
     }
 
     // ---- Docker without socket: tell user to mount it ----

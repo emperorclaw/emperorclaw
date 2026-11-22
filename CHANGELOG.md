@@ -9,6 +9,75 @@ tagged (e.g. `## [1.2.0] — 2026-07-22`). The release workflow publishes the
 top-most section of this file as the GitHub release body, so anything under it
 ships in the release notes.
 
+## [0.42.9] — 2026-11-22
+
+### Fixed
+
+- **Closing a task releases its hold, whichever route closes it.** `updateTaskForCompany` — the writer behind `PATCH /api/mcp/tasks/{id}` and the MCP tools — carried `lease_owner`, `lease_session` and `lease_until` forward on every write, so a `state=done` sent by a client left the row finished **with the lease still set**. It now revokes the lease against the resulting state rather than against a transition, which also heals legacy rows on their next touch. `acquireTaskLease` refuses a terminal row (`409 Task is done: a finished task holds no lease…`) so a claim cannot re-arm what the transition just released, and archiving through `DELETE /api/mcp/tasks/{id}` releases the hold too. `TERMINAL_TASK_STATES` is now the single list (`done`, `failed`, `dead_letter`) shared by the predicate and the SQL guard.
+
+## [0.42.8] — 2026-11-22
+
+### Fixed
+
+- **A heartbeat renews only the hold it represents.** `acknowledgeAgentHeartbeat` refreshed `lease_until` on *every* `in_progress` task of the agent, so a session that died holding a lease kept it alive as long as any other session of the same agent kept beating: the lease never expired, the watchdog never reclaimed, and the live session got 409 forever unless it passed `takeover`. It now renews only unclaimed `in_progress` rows (the platform marker the watchdog reads) and the lease of the session named in the optional new `session` body field; anything else expires on its own TTL.
+- **A heartbeat is not progress.** The same write stamped `updated_at`, the field the stall sweep filters on, so a beat silenced the stall signal for every task an online agent held. The heartbeat no longer touches `updated_at`, and a test pins it so the sweep cannot be silently disabled again.
+- **Terminal transitions release the lease completely.** `done`/`failed`, approvals, the watchdog's retry and dead-letter path, agent deletion and archive now clear `lease_owner`, `lease_session` and `lease_until`; before, only the explicit release cleared the session and the dead-letter path cleared nothing.
+
+## [0.42.7] — 2026-11-22
+
+### Fixed
+
+- **The Update button can no longer move production to a floating image.** `POST /api/ops/update` pulled `ghcr.io/emperorclaw/emperorclaw:latest` and recreated the app with it: with production pinned by digest, that both bypassed the release gate and undid the pin until the next `docker compose up`. The destination now resolves from `EMPEROR_UPDATE_IMAGE`, else the operator's compose `image:` (only when `EMPEROR_UPDATE_DIR` mounts it), else the reference the running container was created with; a floating destination (`latest`, no tag) over a pinned container is refused with **409** before the backup and the pull, so a refusal has no side effects. The response's `steps` gained `resolve-image`, `digest-before` and `digest-after`, and the container is recreated from the resolved reference instead of a constant.
+
+## [0.42.6] — 2026-11-22
+
+### Fixed
+
+- **An id that is not a UUID is now a 404 or a 400, not a 500.** `GET /api/mcp/tasks/{id}` no longer hands a non-UUID id (for example the 8-character short code) to the Postgres driver. Inside the current company the id resolves by prefix — 8 to 31 hex characters: one match returns the task, none returns 404, several return 409 — and anything else returns 400 whose message says what to send. Company scoping is preserved: a prefix that matches only tasks of another company still answers 404, not 409.
+- **`e2e-ui` no longer waits for a network idle the chat page never reaches.** `tests/e2e/chat-experience.spec.ts` used `waitUntil: "networkidle"` across the streaming transport, which flaked on an unchanged sha; it now waits on the state it actually needs. `ci.yml` gained a `workflow_dispatch` trigger so a repeat measurement is a fresh run on the intact sha instead of a rerun of the failed job and its cache.
+
+## [0.42.5] — 2026-11-21
+
+### Changed
+
+- **A `v*` tag no longer publishes an image before its CI is green.** Docker Publish gained a `gate` job — a new reusable workflow, `.github/workflows/release-gate.yml` — that waits for the CI run of the tagged commit on the tag's own ref and fails the publish when that run is red or never finishes. A failing suite can no longer reach `ghcr.io/emperorclaw/emperorclaw:latest` — and through Watchtower, production — minutes before CI reports. Both the main and the Hermes image publishes are gated; the SemVer check, the `latest` tag and the release creation are unchanged.
+- **A release now takes as long as the full CI suite, not ~3 minutes.** The image used to be built in parallel with CI; it is now built only after the tag's own run finishes green, including `e2e-ui` and the Hermes image contract. The Hermes publish runs the gate and the contract suites in parallel, so tag-to-swap is `max(CI, contract)` plus the build.
+
+### Known limitations
+
+- The gate ships inside the tag it protects: `docker-publish.yml` runs from the tagged commit, so a tag pointing at a commit that predates `release-gate.yml` still executes the old, ungated workflow and publishes immediately. Until the gate moves to a `workflow_run` trigger, tag a commit that contains it — `docs/RELEASE.md` says so in the checklist.
+
+## [0.42.4] — 2026-11-21
+
+### Fixed
+
+- **A fresh install reproduces production's schema.** Four append-only migrations close the last divergences between the repository's migration chain and the schema production has been running since before the journal existed. `agents.monthly_budget_cents` is nullable again (null or 0 means unlimited, and every reader already coerced), `agents.monthly_token_usage` widens to `bigint` so the counter cannot hit the 32-bit ceiling, and the two production-only tables `paired_workers` and `ops_cleanup_backups` are declared baselines. Both are also declared in the Drizzle schema so a generated migration never emits a `DROP` for them.
+
+### Upgrade
+
+- Four new database migrations (`0091`–`0094`). On an existing database they change nothing: the table shapes, unique indexes and foreign keys are already there. A fresh install now ends up with the same 1.742 objects as production. `paired_workers` and `ops_cleanup_backups` keep their rows — `ops_cleanup_backups` still holds its June undo snapshot.
+
+## [0.42.3] — 2026-11-21
+
+### Fixed
+
+- **A seen prompt says Seen, and Responding is not duplicated.** Once an agent has picked up a message the transcript labels it Seen instead of Queued, and the streaming card no longer repeats Responding while the thinking row is already on screen.
+
+### Upgrade
+
+- No new database migration. Partial replies keep their existing opt-in: `EMPEROR_CHAT_STREAMING=1` plus a Hermes bridge that carries `partial-replies-v1`.
+
+## [0.42.2] — 2026-11-21
+
+### Fixed
+
+- **Real Views in the iPhone app.** The mobile API now exposes the existing View list and detail reads, with the same company, module, scope and private-content permissions as the web. View editing remains on the web.
+- **Fleet character identity.** Mobile snapshots include existing avatar appearances so the app can show the same characters as the web dashboard.
+
+### Upgrade
+
+- No new database migration or sign-in permission. Existing mobile sessions continue to work. The updated native app is installed separately; a server update does not replace the app.
+
 ## [0.42.1] — 2026-11-21
 
 ### Fixed

@@ -1,18 +1,41 @@
 import { test, expect, type Page } from "@playwright/test";
 import { randomUUID, createHash } from "node:crypto";
 
+/**
+ * Waiting for an idle network is a race on this app: the chat page keeps the
+ * preview/streaming connection open on purpose, so "networkidle" — 500 ms with
+ * no open connection — is not a state it ever reaches once the stream is live.
+ * That cost the v0.42.3 tag run its e2e-ui job: the transport was already
+ * streaming, the wait never settled, and the test died in `page.goto` with a
+ * 90 s timeout. Every navigation below waits for the document and then for the
+ * element the test needs.
+ *
+ * Signing in goes through the credentials endpoint rather than the form: a form
+ * submit fired before hydration does nothing, which is the other half of the
+ * same flake, and the session cookie lands in this browser context either way.
+ */
+async function signIn(page: Page) {
+    const email = process.env.E2E_EMAIL ?? "admin@acme.com";
+    const password = process.env.E2E_PASSWORD ?? "password123";
+    const { csrfToken } = await (await page.request.get("/api/auth/csrf")).json();
+    const attempt = await page.request.post("/api/auth/callback/credentials", {
+        form: { csrfToken, email, password, json: "true" },
+    });
+    expect(attempt.ok(), await attempt.text()).toBeTruthy();
+    const session = await (await page.request.get("/api/auth/session")).json();
+    expect(session?.user?.email, "the session cookie is in this browser context").toBe(email);
+}
+
 async function openChat(page: Page) {
     await page.addInitScript(() => localStorage.setItem("emperor:interactive-tour:v1", "done"));
-    await page.goto("/login", { waitUntil: "networkidle" });
-    await page.locator('input[type="email"]').fill(process.env.E2E_EMAIL ?? "admin@acme.com");
-    await page.locator('input[type="password"]').fill(process.env.E2E_PASSWORD ?? "password123");
-    await page.locator('button[type="submit"]').click();
-    await page.waitForURL(url => !url.pathname.startsWith("/login"));
+    await signIn(page);
     const response = await page.request.get("/api/agents");
     const { agents } = await response.json();
     const agent = agents.find((row: { use: string }) => row.use === "full");
     expect(agent).toBeTruthy();
-    await page.goto(`/messages?agent=${agent.id}`, { waitUntil: "networkidle" });
+    await page.goto(`/messages?agent=${agent.id}`, { waitUntil: "domcontentloaded" });
+    // The composer is the deterministic "the chat is interactive" signal: it
+    // only mounts once the thread is loaded, and it is what the tests type into.
     const input = page.getByRole("textbox", { name: `Message ${agent.name}` });
     await expect(input).toBeVisible();
     return { agent, input };
@@ -71,13 +94,16 @@ test("real preview transport settles into exactly one durable reply", async ({ p
     const chat = await (await page.request.get(`/api/chat?targetAgentId=${agent.id}`)).json();
     const { default: postgres } = await import("postgres");
     const sql = postgres(process.env.POSTGRES_CONNECTION_STRING!, { max: 1 });
+    // The thread payload does not carry the company id, and every row written
+    // below needs it: take it from the agent that owns the thread.
+    const [{ company_id: companyId }] = await sql`select company_id from agents where id=${agent.id}`;
     const runId = randomUUID(), responseId = randomUUID();
     const token = `ec_chat_test_${randomUUID()}`;
     const tokenHash = createHash("sha256").update(token).digest("hex");
     let savedId: string | null = null;
     try {
-        await sql`insert into company_tokens(company_id, agent_id, token_hash, name, scope) values(${chat.thread.companyId},${agent.id},${tokenHash},'chat e2e','mcp_full')`;
-        await sql`insert into agent_runs(id, company_id, agent_id, thread_id) values(${runId},${chat.thread.companyId},${agent.id},${chat.thread.id})`;
+        await sql`insert into company_tokens(company_id, agent_id, token_hash, name, scope) values(${companyId},${agent.id},${tokenHash},'chat e2e','mcp_full')`;
+        await sql`insert into agent_runs(id, company_id, agent_id, thread_id) values(${runId},${companyId},${agent.id},${chat.thread.id})`;
         const endpoint = `/api/mcp/agents/runs/${runId}/responses?agentId=${agent.id}`;
         const headers = { authorization: `Bearer ${token}` };
         const reply = `Partial response ${randomUUID()}`;

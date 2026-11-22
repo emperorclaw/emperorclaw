@@ -5,7 +5,7 @@ import { tasks } from "@/db/schema";
 import { eq, and, isNull } from "drizzle-orm";
 import { broadcastMcpEvent } from "@/lib/pubsub";
 import { updateTaskForCompany } from "@/lib/openclaw/tasks";
-import { getTaskDetailForCompany } from "@/lib/openclaw/task-context";
+import { getTaskDetailForCompany, resolveTaskIdForCompany } from "@/lib/openclaw/task-context";
 import { serializeTaskWithAssignee } from "@/lib/task-assignee";
 import { assertMcpMayAssign, mcpAccessErrorResponse, mcpMayUseProject, mcpRouteAccess } from "@/lib/mcp-access";
 import { auditTaskTitle, mcpRequestActor, recordAudit } from "@/lib/audit";
@@ -39,7 +39,15 @@ export async function GET(
     }
 
     const companyId = auth.companyToken!.companyId;
-    const { id: taskId } = await params;
+    const { id: rawTaskId } = await params;
+    // A short code or a truncated id is not a UUID, and handing it to Postgres
+    // ended in a 500 with `invalid input syntax for type uuid` (2026-11-21,
+    // /api/mcp/tasks/7793dcfa). Resolve it here and answer 400/404/409 instead.
+    const resolved = await resolveTaskIdForCompany(companyId, rawTaskId);
+    if (!resolved.ok) {
+        return NextResponse.json({ error: resolved.error }, { status: resolved.status });
+    }
+    const taskId = resolved.id;
 
     try {
         const task = await getTaskDetailForCompany(companyId, taskId);
@@ -68,8 +76,16 @@ export async function PATCH(
     }
 
     const companyId = auth.companyToken!.companyId;
-    const { id: taskId } = await params;
-    const endpoint = `/api/mcp/tasks/${taskId}`;
+    const { id: rawTaskId } = await params;
+    const endpoint = `/api/mcp/tasks/${rawTaskId}`;
+
+    // Resolve before the idempotency row: a malformed id must not leave a cache
+    // entry behind, and the caller gets 400/404 instead of a driver 500.
+    const resolved = await resolveTaskIdForCompany(companyId, rawTaskId);
+    if (!resolved.ok) {
+        return NextResponse.json({ error: resolved.error }, { status: resolved.status });
+    }
+    const taskId = resolved.id;
 
     const { requestHash, cachedResponse, error, status } = await checkIdempotency(req, companyId, endpoint);
     if (error) return NextResponse.json({ error }, { status });
@@ -166,8 +182,14 @@ export async function DELETE(
     }
 
     const companyId = auth.companyToken!.companyId;
-    const { id: taskId } = await params;
-    const endpoint = `/api/mcp/tasks/${taskId}`;
+    const { id: rawTaskId } = await params;
+    const endpoint = `/api/mcp/tasks/${rawTaskId}`;
+
+    const resolved = await resolveTaskIdForCompany(companyId, rawTaskId);
+    if (!resolved.ok) {
+        return NextResponse.json({ error: resolved.error }, { status: resolved.status });
+    }
+    const taskId = resolved.id;
 
     const { requestHash, cachedResponse, error, status } = await checkIdempotency(req, companyId, endpoint);
     if (error) return NextResponse.json({ error }, { status });
@@ -193,6 +215,12 @@ export async function DELETE(
 
         const [deletedTask] = await db.update(tasks).set({
             deletedAt: new Date(),
+            // An archived task is not work anyone can pick up again, so the
+            // hold goes with it — otherwise the row keeps advertising a lease
+            // (and a `lease_until` that the sweep reads) while being invisible.
+            leaseOwner: null,
+            leaseSession: null,
+            leaseUntil: null,
         }).where(eq(tasks.id, taskId)).returning();
 
         await recordAudit({ companyId, actor: await mcpRequestActor(companyId, auth.companyToken!, agentId), action: "task.archived", target: { type: "task", id: taskId }, after: { archived: true }, meta: { label: auditTaskTitle(existing), projectId: existing.projectId } });

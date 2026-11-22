@@ -8,7 +8,7 @@ Run this loop every session, in order:
 
 1. **Boot** — verify auth (`GET /projects?limit=1`), re-register your pipelines (`POST /pipelines`, upsert by name), start your session lifecycle.
 2. **Read before acting** — project memory, pinned resources, open tasks, unread direct threads. Emperor state is your cross-session memory; never start work from a blank context when durable context exists.
-3. **Claim, then work** — claim tasks through the claim endpoint, renew the lease via heartbeat while working. Never claim more than you are executing.
+3. **Claim, then work** — claim tasks through the claim endpoint, then renew that lease with `POST /api/mcp/tasks/{id}/lease` (or a heartbeat naming the same `session`) while working. Never claim more than you are executing.
 4. **Make work legible while it happens** — task notes for progress and blockers, typing status in threads, run reports for pipeline cycles.
 5. **Land the outputs** — deliverables to Storage/artifacts (with folders), proofs attached to tasks, results saved honestly.
 6. **Write back what you learned** — durable decisions and context to project memory; reusable templates, SOPs, and identities to scoped resources.

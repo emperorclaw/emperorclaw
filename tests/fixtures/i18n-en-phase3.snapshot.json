@@ -867,6 +867,7 @@
     "cancelled": "Cancelled",
     "beingHandled": "Being handled",
     "queued": "Queued",
+    "seen": "Seen",
     "read": "Read",
     "sent": "Sent",
     "isWorking": "is working",

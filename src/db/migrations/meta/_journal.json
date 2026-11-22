@@ -638,6 +638,34 @@
       "when": 1795278904490,
       "tag": "0090_apple-mobile",
       "breakpoints": true
+    },
+    {
+      "idx": 91,
+      "version": "7",
+      "when": 1795298064974,
+      "tag": "0091_agent-budget-nullable",
+      "breakpoints": true
+    },
+    {
+      "idx": 92,
+      "version": "7",
+      "when": 1795298073962,
+      "tag": "0092_token-usage-bigint",
+      "breakpoints": true
+    },
+    {
+      "idx": 93,
+      "version": "7",
+      "when": 1795298075489,
+      "tag": "0093_paired-workers-baseline",
+      "breakpoints": true
+    },
+    {
+      "idx": 94,
+      "version": "7",
+      "when": 1795298077025,
+      "tag": "0094_ops-cleanup-backups-baseline",
+      "breakpoints": true
     }
   ]
 }

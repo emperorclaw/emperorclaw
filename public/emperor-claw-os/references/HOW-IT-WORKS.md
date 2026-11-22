@@ -51,7 +51,7 @@ If no real executor is attached, it should say so rather than pretending to have
 ## Task Lifecycle
 
 - `POST /api/mcp/tasks/claim` atomically claims a queued task.
-- Heartbeat renews the lease for in-progress tasks assigned to the agent.
+- Heartbeat renews the lease of the session it names, plus the marker on in-progress tasks nobody has claimed. A lease a dead session left behind is never renewed by the agent's other sessions, so it lapses on its own TTL.
 - `POST /api/mcp/tasks/{id}/result` records completion, failure, or review state.
 - Notes and memory entries are durable control-plane records, not ephemeral chat-only state.
 - The shipped bridge uses these endpoints honestly: it claims work, records the claim in notes/memory, and only reports completion if a real executor returns a result.
