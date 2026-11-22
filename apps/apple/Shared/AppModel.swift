@@ -11,6 +11,8 @@ final class AppModel: ObservableObject {
     @Published private(set) var errors: [String: String] = [:]
     @Published private(set) var loading: Set<String> = []
     @Published var notice: String?
+    /// Connections whose session expired or was revoked: show "Sign in again".
+    @Published private(set) var expired: Set<String> = []
     @Published var destination: WorkspaceLink?
     @Published var tab = 0
     /// Decisions + blockers for the selected workspace (web attention rules).
@@ -39,6 +41,7 @@ final class AppModel: ObservableObject {
         WidgetCache.remove(installationID: installation.id)
         if let index = installations.firstIndex(where: { $0.id == installation.id }) { installations[index] = installation }
         else { installations.append(installation) }
+        expired.remove(installation.id); errors[installation.id] = nil
         snapshots = snapshots.filter { $0.key != installation.id }; companies[installation.id] = nil
         // A new sign-in may be a different person on the same server. Never
         // enroll that person's watch using the previous account's credential.
@@ -98,7 +101,7 @@ final class AppModel: ObservableObject {
             let snapshot = try await client.snapshot(installation)
             guard generations[installationID] == generation,
                   installations.first(where: { $0.id == installationID })?.companyID == snapshot.companyId else { return }
-            snapshots[installationID] = snapshot; errors[installationID] = nil
+            snapshots[installationID] = snapshot; errors[installationID] = nil; expired.remove(installationID)
             WidgetCache.write(.init(installationID: installationID, companyID: snapshot.companyId, name: "\(installation.name) · \(available.first { $0.id == snapshot.companyId }?.name ?? "Company")", working: snapshot.workingCount, total: snapshot.agents.count, needsYou: needsYou[installationID], date: Date()))
             WidgetCenter.shared.reloadAllTimelines()
         } catch {
@@ -109,6 +112,7 @@ final class AppModel: ObservableObject {
                     default: break
                     }
                 }
+                if case .signInRequired? = error as? MobileFailure { expired.insert(installationID) }
                 errors[installationID] = error.localizedDescription
             }
         }

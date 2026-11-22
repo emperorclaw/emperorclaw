@@ -53,6 +53,7 @@ struct WatchOffice: View {
         .sensoryFeedback(.selection, trigger: tapped)
         .accessibilityElement(children: .contain)
         .accessibilityLabel("\(company) office. \(cast.filter(\.isWorking).count) working of \(cast.count) agents.")
+        .accessibilityIdentifier("watch.office")
     }
 
     // MARK: header & caption

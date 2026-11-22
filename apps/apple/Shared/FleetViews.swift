@@ -166,6 +166,7 @@ struct ConnectionsView: View {
     @State private var sending = false
     @State private var renaming: Installation?
     @State private var newName = ""
+    @State private var reauth: Installation?
     @AppStorage("appearance") private var appearance = "system"
     var body: some View {
         NavigationStack {
@@ -192,6 +193,9 @@ struct ConnectionsView: View {
                             }
                         }
                         #if os(iOS)
+                        if model.expired.contains(installation.id) {
+                            Button("Sign in again", systemImage: "person.crop.circle.badge.exclamationmark") { reauth = installation }
+                        }
                         Button("Rename instance") { newName = installation.name; renaming = installation }
                         Button(installation.favorite ? "Remove favorite" : "Favorite", systemImage: installation.favorite ? "star.fill" : "star") { model.toggleFavorite(installation.id) }
                         Button("Reconnect Apple Watch", systemImage: "applewatch") {
@@ -217,6 +221,7 @@ struct ConnectionsView: View {
             #if os(iOS)
             .searchable(text: $query, prompt: "Name or server")
             .sheet(isPresented: $add) { ConnectView() }
+            .sheet(item: $reauth) { ConnectView(reauth: $0) }
             #endif
             .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Done") { dismiss() } } }
             .confirmationDialog("Disconnect this device?", isPresented: Binding(get: { disconnect != nil }, set: { if !$0 { disconnect = nil } })) {

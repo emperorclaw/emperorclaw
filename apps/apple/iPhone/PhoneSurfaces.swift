@@ -38,6 +38,7 @@ struct PhoneHome: View {
     @State private var selectedAgent: Agent?
     @State private var fleetHeight = 520.0
     @State private var refreshTick = 0
+    @State private var reauth: Installation?
     var body: some View {
         NavigationStack {
             Group {
@@ -46,7 +47,10 @@ struct PhoneHome: View {
                         VStack(alignment: .leading, spacing: 22) {
                             HomeHeader(snapshot: model.snapshots[workspace.id]) { connections = true }
                                 .frame(maxWidth: 760, alignment: .leading)
-                            if let error = model.errors[workspace.id] {
+                            if model.expired.contains(workspace.id) {
+                                SignInAgainCard(name: workspace.name) { reauth = workspace }
+                                    .frame(maxWidth: 760, alignment: .leading)
+                            } else if let error = model.errors[workspace.id] {
                                 ErrorRow(error: error) { Task { await model.refresh() } }
                             }
                             NeedsYouCard(workspace: workspace, refreshKey: refreshTick)
@@ -89,6 +93,7 @@ struct PhoneHome: View {
             }
             .sheet(isPresented: $connections) { ConnectionsView() }
             .sheet(isPresented: $directory) { FleetView(agentsOnly: true) }
+            .sheet(item: $reauth) { ConnectView(reauth: $0) }
             .sheet(item: $selectedAgent) { agent in
                 if let workspace = model.selected { NavigationStack { ChatScreen(workspace: workspace, title: agent.name, agentID: agent.id).toolbar { ToolbarItem(placement: .cancellationAction) { Button("Done") { selectedAgent = nil } } } } }
             }
@@ -252,5 +257,26 @@ private struct PhoneViewDetail: View {
         do { let result = try await model.client.work(workspace, path: "views/\(id)"); try Task.checkCancellation(); guard requestID == request else { return }; view = result["view"]; error = nil }
         catch is CancellationError { return }
         catch { guard requestID == request else { return }; self.error = error.localizedDescription; if (error as? MobileFailure)?.invalidatesContent == true { view = nil } }
+    }
+}
+
+/// Shown when the server says this phone's session expired or was revoked.
+struct SignInAgainCard: View {
+    let name: String
+    let action: () -> Void
+    var body: some View {
+        HStack(spacing: 14) {
+            Image(systemName: "person.crop.circle.badge.exclamationmark")
+                .font(.title2).symbolRenderingMode(.hierarchical).foregroundStyle(.orange)
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Session expired").font(.headline)
+                Text("Sign in to \(name) again to see your team.").font(.subheadline).foregroundStyle(.secondary)
+            }
+            Spacer(minLength: 8)
+            Button("Sign in", action: action).buttonStyle(.borderedProminent).buttonBorderShape(.capsule)
+                .accessibilityIdentifier("home.signInAgain")
+        }
+        .padding(16)
+        .background(Color.cardSurface, in: RoundedRectangle(cornerRadius: DS.Radius.card, style: .continuous))
     }
 }

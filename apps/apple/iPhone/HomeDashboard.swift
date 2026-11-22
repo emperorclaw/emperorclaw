@@ -118,10 +118,12 @@ struct NeedsYouCard: View {
     private var allClear: some View {
         Button { model.tab = 1 } label: {
             HStack(spacing: 14) {
-                Image(systemName: "checkmark.seal.fill").font(.title2).foregroundStyle(.green).symbolRenderingMode(.hierarchical).symbolEffect(.bounce, value: loaded)
-                    .frame(width: 44, height: 44).background(Color.green.opacity(0.12), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                // Never claim "All clear" when the Inbox couldn't be checked.
+                let tint: Color = failed ? .orange : .green
+                Image(systemName: failed ? "exclamationmark.triangle.fill" : "checkmark.seal.fill").font(.title2).foregroundStyle(tint).symbolRenderingMode(.hierarchical).symbolEffect(.bounce, value: loaded)
+                    .frame(width: 44, height: 44).background(tint.opacity(0.12), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
                 VStack(alignment: .leading, spacing: 3) {
-                    Text("All clear").font(.headline).fontDesign(.rounded).foregroundStyle(.primary)
+                    Text(failed ? "Inbox unavailable" : "All clear").font(.headline).fontDesign(.rounded).foregroundStyle(.primary)
                     Text(failed ? "Couldn’t check your Inbox. Pull to refresh." : "Nothing needs you right now.").font(.subheadline).foregroundStyle(.secondary)
                 }
                 Spacer(minLength: 0)

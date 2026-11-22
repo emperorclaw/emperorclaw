@@ -1078,6 +1078,107 @@
 			"productReference" = "CB64DAF34777AB4F2D20C6C7";
 			"productType" = "com.apple.product-type.application";
 		};
+		"C4E5BCFBA6A5F53DF9D0E4F6" = {
+			"isa" = "PBXFileReference";
+			"lastKnownFileType" = "sourcecode.swift";
+			"path" = "WatchUITests/WatchUITests.swift";
+			"sourceTree" = "<group>";
+		};
+		"E00BBD239C2B5A7417934ED2" = {
+			"isa" = "PBXFileReference";
+			"explicitFileType" = "wrapper.cfbundle";
+			"path" = "EmperorWatchUITests.xctest";
+			"sourceTree" = "BUILT_PRODUCTS_DIR";
+		};
+		"F4B92703BA0A8FC1B5891F2F" = {
+			"isa" = "PBXBuildFile";
+			"fileRef" = "C4E5BCFBA6A5F53DF9D0E4F6";
+		};
+		"7C27C6D1375772F20B5D7D47" = {
+			"isa" = "PBXSourcesBuildPhase";
+			"buildActionMask" = "2147483647";
+			"files" = (
+				"F4B92703BA0A8FC1B5891F2F",
+			);
+			"runOnlyForDeploymentPostprocessing" = "0";
+		};
+		"F6DBA84640596ECD44D40EDB" = {
+			"isa" = "PBXFrameworksBuildPhase";
+			"buildActionMask" = "2147483647";
+			"files" = (
+			);
+			"runOnlyForDeploymentPostprocessing" = "0";
+		};
+		"17C2E5AF08F714F79ADA7272" = {
+			"isa" = "XCBuildConfiguration";
+			"buildSettings" = {
+				"SDKROOT" = "watchos";
+				"SUPPORTED_PLATFORMS" = "watchos watchsimulator";
+				"WATCHOS_DEPLOYMENT_TARGET" = "10.0";
+				"TARGETED_DEVICE_FAMILY" = "4";
+				"PRODUCT_BUNDLE_IDENTIFIER" = "com.emperorclaw.app.watchkitapp.uitests";
+				"PRODUCT_NAME" = "$(TARGET_NAME)";
+				"SWIFT_VERSION" = "5.0";
+				"GENERATE_INFOPLIST_FILE" = "YES";
+				"TEST_TARGET_NAME" = "EmperorWatch";
+				"CODE_SIGN_STYLE" = "Automatic";
+			};
+			"name" = "Debug";
+		};
+		"B771F62FB6BCAA5EB99D8294" = {
+			"isa" = "XCBuildConfiguration";
+			"buildSettings" = {
+				"SDKROOT" = "watchos";
+				"SUPPORTED_PLATFORMS" = "watchos watchsimulator";
+				"WATCHOS_DEPLOYMENT_TARGET" = "10.0";
+				"TARGETED_DEVICE_FAMILY" = "4";
+				"PRODUCT_BUNDLE_IDENTIFIER" = "com.emperorclaw.app.watchkitapp.uitests";
+				"PRODUCT_NAME" = "$(TARGET_NAME)";
+				"SWIFT_VERSION" = "5.0";
+				"GENERATE_INFOPLIST_FILE" = "YES";
+				"TEST_TARGET_NAME" = "EmperorWatch";
+				"CODE_SIGN_STYLE" = "Automatic";
+			};
+			"name" = "Release";
+		};
+		"F9C42367B0A3C5E267CB697A" = {
+			"isa" = "XCConfigurationList";
+			"buildConfigurations" = (
+				"17C2E5AF08F714F79ADA7272",
+				"B771F62FB6BCAA5EB99D8294",
+			);
+			"defaultConfigurationIsVisible" = "0";
+			"defaultConfigurationName" = "Debug";
+		};
+		"BCFC872991D882ABED62C20C" = {
+			"isa" = "PBXContainerItemProxy";
+			"containerPortal" = "985959785319747668373CC6";
+			"proxyType" = "1";
+			"remoteGlobalIDString" = "5E13CCCA0BF3E37B514E4D57";
+			"remoteInfo" = "EmperorWatch";
+		};
+		"26A22AE40194379DFDF32576" = {
+			"isa" = "PBXTargetDependency";
+			"target" = "5E13CCCA0BF3E37B514E4D57";
+			"targetProxy" = "BCFC872991D882ABED62C20C";
+		};
+		"03A41B078A68E23ED711386B" = {
+			"isa" = "PBXNativeTarget";
+			"buildConfigurationList" = "F9C42367B0A3C5E267CB697A";
+			"buildPhases" = (
+				"7C27C6D1375772F20B5D7D47",
+				"F6DBA84640596ECD44D40EDB",
+			);
+			"buildRules" = (
+			);
+			"dependencies" = (
+				"26A22AE40194379DFDF32576",
+			);
+			"name" = "EmperorWatchUITests";
+			"productName" = "EmperorWatchUITests";
+			"productReference" = "E00BBD239C2B5A7417934ED2";
+			"productType" = "com.apple.product-type.bundle.ui-testing";
+		};
 		"4EDC8BFAFC6BD936B849F38C" = {
 			"isa" = "PBXGroup";
 			"children" = (
@@ -1086,6 +1187,7 @@
 				"78329D0806B708F85442F1D7",
 				"AC221E5FDB0608A8ABCA2716",
 				"CB64DAF34777AB4F2D20C6C7",
+				"E00BBD239C2B5A7417934ED2",
 			);
 			"name" = "Products";
 			"sourceTree" = "<group>";
@@ -1121,6 +1223,7 @@
 				"AC5EA28A09717838C9BBE6CA",
 				"949BC4BD2DD255B20433C109",
 				"CD6C8FDB4518BF3BBC5EE11B",
+				"C4E5BCFBA6A5F53DF9D0E4F6",
 				"4EDC8BFAFC6BD936B849F38C",
 			);
 			"sourceTree" = "<group>";
@@ -1177,6 +1280,7 @@
 				"F002E2E02A47EA705DF3EABB",
 				"5E13CCCA0BF3E37B514E4D57",
 				"00849C3BB02990F10BC57499",
+				"03A41B078A68E23ED711386B",
 			);
 		};
 	};

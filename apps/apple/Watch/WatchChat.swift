@@ -34,10 +34,12 @@ struct WatchAgentList: View {
                         }
                     }.padding(.vertical, 2)
                 }
+                .accessibilityIdentifier("watch.agent.\(agent.name)")
             }
         }
         .listStyle(.carousel)
         .navigationTitle("Agents")
+        .accessibilityIdentifier("watch.agents")
     }
     private func line(_ agent: Agent) -> String {
         if agent.paused == true { return "Paused" }
@@ -91,6 +93,7 @@ struct WatchAgentChat: View {
             .onChange(of: transcript.messages.count) { _, _ in withAnimation(.smooth) { proxy.scrollTo("bottom", anchor: .bottom) } }
         }
         .navigationTitle(title)
+        .accessibilityIdentifier("watch.chat")
         .sheet(isPresented: $recording) { WatchVoiceRecorder { url, duration in Task { await sendVoice(url, duration) } } }
         .sensoryFeedback(.success, trigger: sentTick)
         .sensoryFeedback(.error, trigger: error)
@@ -156,8 +159,8 @@ struct WatchAgentChat: View {
                 Button { recording = true } label: {
                     Image(systemName: "mic.fill").font(.title3.weight(.semibold)).foregroundStyle(.black)
                         .frame(maxWidth: .infinity, minHeight: 40).background(EmperorTheme.brightAccent, in: Capsule())
-                }.buttonStyle(.plain).accessibilityLabel("Record voice message").disabled(sending || !model.mayWrite)
-                TextField("Reply", text: $draft).frame(minHeight: 40).accessibilityLabel("Reply by dictation or scribble")
+                }.buttonStyle(.plain).accessibilityLabel("Record voice message").accessibilityIdentifier("watch.chat.mic").disabled(sending || !model.mayWrite)
+                TextField("Reply", text: $draft).frame(minHeight: 40).accessibilityLabel("Reply by dictation or scribble").accessibilityIdentifier("watch.chat.reply")
                     .onSubmit { Task { await send(draft) } }.disabled(sending || !model.mayWrite)
             }
             HStack(spacing: 6) {
@@ -225,13 +228,14 @@ struct WatchVoiceRecorder: View {
             }.frame(width: 84, height: 84)
             Text(Duration.seconds(recorder.elapsed), format: .time(pattern: .minuteSecond))
                 .font(.system(.title3, design: .rounded).weight(.semibold)).monospacedDigit().contentTransition(.numericText())
+                .accessibilityIdentifier("watch.recorder.timer")
             if let message = recorder.error { Text(message).font(.caption2).foregroundStyle(.orange).multilineTextAlignment(.center) }
             HStack(spacing: 10) {
-                Button { recorder.cancel(); dismiss() } label: { Image(systemName: "xmark").frame(maxWidth: .infinity) }.tint(.gray).accessibilityLabel("Discard")
+                Button { recorder.cancel(); dismiss() } label: { Image(systemName: "xmark").frame(maxWidth: .infinity) }.tint(.gray).accessibilityLabel("Discard").accessibilityIdentifier("watch.recorder.discard")
                 Button {
                     if let note = recorder.stop() { done(note.url, note.duration) }
                     dismiss()
-                } label: { Image(systemName: "arrow.up").frame(maxWidth: .infinity) }.tint(EmperorTheme.brightAccent).disabled(!recorder.isRecording).accessibilityLabel("Send voice message")
+                } label: { Image(systemName: "arrow.up").frame(maxWidth: .infinity) }.tint(EmperorTheme.brightAccent).disabled(!recorder.isRecording).accessibilityLabel("Send voice message").accessibilityIdentifier("watch.recorder.send")
             }
         }
         .task { await recorder.start() }

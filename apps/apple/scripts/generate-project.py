@@ -157,6 +157,29 @@ for name, folder, sdk, deployment, family, bundle in [
 <AnalyzeAction buildConfiguration="Debug"/><ArchiveAction buildConfiguration="Release" revealArchiveInOrganizer="YES"/>
 </Scheme>''')
 
+# Watch UI tests (XCUITest on the watchOS simulator): tap through the app like a person.
+uit_source = obj('WatchUITests/WatchUITests.swift', 'PBXFileReference', lastKnownFileType='sourcecode.swift', path='WatchUITests/WatchUITests.swift', sourceTree='<group>')
+file_refs['WatchUITests/WatchUITests.swift'] = uit_source
+uit_product = obj('EmperorWatchUITests.xctest', 'PBXFileReference', explicitFileType='wrapper.cfbundle', path='EmperorWatchUITests.xctest', sourceTree='BUILT_PRODUCTS_DIR')
+products.append(uit_product)
+uit_phases = [obj('WatchUITestsSources', 'PBXSourcesBuildPhase', buildActionMask='2147483647', files=[obj('WatchUITestsSourceFile', 'PBXBuildFile', fileRef=uit_source)], runOnlyForDeploymentPostprocessing='0'),
+              obj('WatchUITestsFrameworks', 'PBXFrameworksBuildPhase', buildActionMask='2147483647', files=[], runOnlyForDeploymentPostprocessing='0')]
+uit_configs = [obj('WatchUITests' + config, 'XCBuildConfiguration', buildSettings={'SDKROOT': 'watchos', 'SUPPORTED_PLATFORMS': 'watchos watchsimulator', 'WATCHOS_DEPLOYMENT_TARGET': '10.0', 'TARGETED_DEVICE_FAMILY': '4',
+               'PRODUCT_BUNDLE_IDENTIFIER': 'com.emperorclaw.app.watchkitapp.uitests', 'PRODUCT_NAME': '$(TARGET_NAME)', 'SWIFT_VERSION': '5.0', 'GENERATE_INFOPLIST_FILE': 'YES',
+               'TEST_TARGET_NAME': 'EmperorWatch', 'CODE_SIGN_STYLE': 'Automatic'}, name=config) for config in ['Debug', 'Release']]
+uit_config_list = obj('WatchUITestsConfigList', 'XCConfigurationList', buildConfigurations=uit_configs, defaultConfigurationIsVisible='0', defaultConfigurationName='Debug')
+uit_proxy = obj('WatchUITestsProxy', 'PBXContainerItemProxy', containerPortal=ident('Project'), proxyType='1', remoteGlobalIDString=ident('EmperorWatch'), remoteInfo='EmperorWatch')
+uit_target = obj('EmperorWatchUITests', 'PBXNativeTarget', buildConfigurationList=uit_config_list, buildPhases=uit_phases, buildRules=[],
+                 dependencies=[obj('WatchUITestsDependency', 'PBXTargetDependency', target=ident('EmperorWatch'), targetProxy=uit_proxy)],
+                 name='EmperorWatchUITests', productName='EmperorWatchUITests', productReference=uit_product, productType='com.apple.product-type.bundle.ui-testing')
+targets.append(uit_target)
+(PROJECT / 'xcshareddata' / 'xcschemes' / 'EmperorWatchUITests.xcscheme').write_text(f'''<?xml version="1.0" encoding="UTF-8"?>
+<Scheme LastUpgradeVersion="1600" version="1.3">
+<BuildAction parallelizeBuildables="YES" buildImplicitDependencies="YES"><BuildActionEntries><BuildActionEntry buildForTesting="YES" buildForRunning="YES" buildForProfiling="NO" buildForArchiving="NO" buildForAnalyzing="NO"><BuildableReference BuildableIdentifier="primary" BlueprintIdentifier="{ident('EmperorWatch')}" BuildableName="EmperorWatch.app" BlueprintName="EmperorWatch" ReferencedContainer="container:EmperorClaw.xcodeproj"/></BuildActionEntry></BuildActionEntries></BuildAction>
+<TestAction buildConfiguration="Debug" selectedDebuggerIdentifier="Xcode.DebuggerFoundation.Debugger.LLDB" selectedLauncherIdentifier="Xcode.DebuggerFoundation.Launcher.LLDB" shouldUseLaunchSchemeArgsEnv="YES"><Testables><TestableReference skipped="NO"><BuildableReference BuildableIdentifier="primary" BlueprintIdentifier="{uit_target}" BuildableName="EmperorWatchUITests.xctest" BlueprintName="EmperorWatchUITests" ReferencedContainer="container:EmperorClaw.xcodeproj"/></TestableReference></Testables></TestAction>
+<LaunchAction buildConfiguration="Debug" selectedDebuggerIdentifier="Xcode.DebuggerFoundation.Debugger.LLDB" selectedLauncherIdentifier="Xcode.DebuggerFoundation.Launcher.LLDB" launchStyle="0" useCustomWorkingDirectory="NO" ignoresPersistentStateOnLaunch="NO" debugDocumentVersioning="YES" debugServiceExtension="internal" allowLocationSimulation="YES"><BuildableProductRunnable runnableDebuggingMode="0"><BuildableReference BuildableIdentifier="primary" BlueprintIdentifier="{ident('EmperorWatch')}" BuildableName="EmperorWatch.app" BlueprintName="EmperorWatch" ReferencedContainer="container:EmperorClaw.xcodeproj"/></BuildableProductRunnable></LaunchAction>
+</Scheme>''')
+
 products_group = obj('Products', 'PBXGroup', children=products, name='Products', sourceTree='<group>')
 main = obj('Main', 'PBXGroup', children=list(file_refs.values()) + [products_group], sourceTree='<group>')
 project_configs = [obj('Project' + config, 'XCBuildConfiguration', buildSettings={'CLANG_ENABLE_MODULES': 'YES', 'SWIFT_VERSION': '5.0'}, name=config) for config in ['Debug', 'Release']]

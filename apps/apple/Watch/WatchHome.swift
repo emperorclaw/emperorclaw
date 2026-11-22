@@ -20,8 +20,27 @@ struct WatchHome: View {
                 if let workspace = model.selected {
                     let agents = model.snapshots[workspace.id]?.agents ?? []
                     TabView(selection: $page) {
-                        WatchOffice(agents: agents, company: model.companyName, needsYou: counts["needsYou"].count) { chat = .agent($0.id) }
-                            .tag(0)
+                        Group {
+                            if agents.isEmpty, let error = model.errors[workspace.id] {
+                                // Never a silent empty office: say why and how to fix it.
+                                ScrollView {
+                                    VStack(spacing: 8) {
+                                        Image(systemName: "person.crop.circle.badge.exclamationmark").font(.title2).foregroundStyle(.orange)
+                                        Text("Can’t reach your team").font(.system(.headline, design: .rounded))
+                                        Text(error).font(.caption2).foregroundStyle(.secondary).multilineTextAlignment(.center)
+                                        Text("On iPhone, open Connections and choose Send to Apple Watch.").font(.caption2).multilineTextAlignment(.center)
+                                        Button("Try again") { Task { await reload(workspace) } }.controlSize(.small)
+                                    }.padding(.horizontal, 6)
+                                }
+                                .accessibilityIdentifier("watch.office.error")
+                            } else if agents.isEmpty {
+                                VStack(spacing: 8) { ProgressView(); Text("Bringing your team…").font(.caption2).foregroundStyle(.secondary) }
+                                    .accessibilityIdentifier("watch.office.loading")
+                            } else {
+                                WatchOffice(agents: agents, company: model.companyName, needsYou: counts["needsYou"].count) { chat = .agent($0.id) }
+                            }
+                        }
+                        .tag(0)
                         WatchAgentList(agents: agents, open: { chat = .agent($0.id) }, openTeam: { chat = .team })
                             .tag(1)
                         home(workspace).tag(2)
