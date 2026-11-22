@@ -7,6 +7,10 @@ on:
     tags: ["v*"]
   pull_request:
     branches: [main]
+  # Ask for the same gate again on an unchanged sha. A flaky job can then be
+  # re-measured as a new run instead of a re-run of the old one, which is the
+  # only way to tell "the suite is green" from "the first attempt happened to be".
+  workflow_dispatch:
 
 # Cancel in-progress runs for the same ref when a new commit is pushed.
 concurrency:
