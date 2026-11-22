@@ -9,6 +9,12 @@ tagged (e.g. `## [1.2.0] — 2026-07-22`). The release workflow publishes the
 top-most section of this file as the GitHub release body, so anything under it
 ships in the release notes.
 
+## [0.42.9] — 2026-11-22
+
+### Fixed
+
+- **Closing a task releases its hold, whichever route closes it.** `updateTaskForCompany` — the writer behind `PATCH /api/mcp/tasks/{id}` and the MCP tools — carried `lease_owner`, `lease_session` and `lease_until` forward on every write, so a `state=done` sent by a client left the row finished **with the lease still set**. It now revokes the lease against the resulting state rather than against a transition, which also heals legacy rows on their next touch. `acquireTaskLease` refuses a terminal row (`409 Task is done: a finished task holds no lease…`) so a claim cannot re-arm what the transition just released, and archiving through `DELETE /api/mcp/tasks/{id}` releases the hold too. `TERMINAL_TASK_STATES` is now the single list (`done`, `failed`, `dead_letter`) shared by the predicate and the SQL guard.
+
 ## [0.42.8] — 2026-11-22
 
 ### Fixed
