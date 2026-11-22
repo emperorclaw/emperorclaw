@@ -1,5 +1,5 @@
 import { randomUUID } from "crypto";
-import { and, asc, desc, eq, inArray, isNull, sql, type SQL } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, isNull, notInArray, sql, type SQL } from "drizzle-orm";
 import { db } from "@/db";
 import {
   agents,
@@ -14,7 +14,7 @@ import { createApprovalRequest, getLatestPendingApproval, taskHasPendingApproval
 import { normalizeAgentRef, resolveAgentId } from "@/lib/mcp";
 import { taskAssignmentDenial, taskStateChangeDenial, validateTaskStateTransition } from "@/lib/project-workflow";
 import { broadcastMcpEvent } from "@/lib/pubsub";
-import { isTerminalTaskState, normalizeTaskState, TASK_STATES, type PersistedTaskState, type TaskState } from "@/lib/task-state";
+import { isTerminalTaskState, normalizeTaskState, TASK_STATES, TERMINAL_TASK_STATES, type PersistedTaskState, type TaskState } from "@/lib/task-state";
 import { normalizeTaskSpec } from "@/lib/openclaw/task-spec";
 import { getTaskAssignee, resolveTaskAssignee } from "@/lib/task-assignee";
 import { getAgentScope, getAllowedProjectIds, isProjectAllowed, scopeCondition } from "@/lib/agent-scope";
@@ -440,7 +440,17 @@ export async function updateTaskForCompany(input: UpdateTaskInput) {
     resolvedAssignedAgentId === existingTask.assignedAgentId &&
     !resolvedAssignedMemberId,
   );
-  const revokeLease = assignmentWasRequested && !preservingActiveAgent;
+  // A terminal task can never hold a lease. The hold is not merely useless
+  // once the work is over: the board, the stall sweep and every other session
+  // of the agent read it as live work, and a `done` row kept owner, session
+  // and expiry because the PATCH that finished it was not on the list of paths
+  // that released the mutex (2026-11-22, task 52497C91).
+  //
+  // Written against the *resulting* state, not only against a transition, so a
+  // write to an already-terminal row heals the leases inherited from before the
+  // fix instead of faithfully preserving them.
+  const leaseEnds = isTerminalTaskState((normalizedState ?? existingTask.state) as PersistedTaskState);
+  const revokeLease = leaseEnds || (assignmentWasRequested && !preservingActiveAgent);
 
   const [task] = await db.update(tasks).set({
     priority: typeof input.priority === "number" ? input.priority : existingTask.priority,
@@ -1117,6 +1127,9 @@ export async function acquireTaskLease(input: {
     eq(tasks.companyId, input.companyId),
     isNull(tasks.deletedAt),
     eq(tasks.assignedAgentId, internalAgentId),
+    // Finished work is not claimable. Without this a single POST re-armed the
+    // lease on a `done` row right after the transition released it.
+    notInArray(tasks.state, [...TERMINAL_TASK_STATES]),
     sql`(
       ${takeover}::boolean = true
       OR ${tasks.leaseOwner} IS NULL
@@ -1227,6 +1240,12 @@ async function diagnoseLeaseFailure(
   if (!existing) return { status: 404, error: "Task not found" };
   if (existing.assignedAgentId !== internalAgentId) {
     return { status: 403, error: "Task is not assigned to this agent" };
+  }
+  if (isTerminalTaskState(existing.state as PersistedTaskState)) {
+    return {
+      status: 409,
+      error: `Task is ${existing.state}: a finished task holds no lease, so it cannot be claimed or renewed.`,
+    };
   }
   const until = existing.leaseUntil ? existing.leaseUntil.toISOString() : "unknown";
   const holder = existing.leaseOwner ?? internalAgentId;

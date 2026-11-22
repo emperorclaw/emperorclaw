@@ -215,6 +215,12 @@ export async function DELETE(
 
         const [deletedTask] = await db.update(tasks).set({
             deletedAt: new Date(),
+            // An archived task is not work anyone can pick up again, so the
+            // hold goes with it — otherwise the row keeps advertising a lease
+            // (and a `lease_until` that the sweep reads) while being invisible.
+            leaseOwner: null,
+            leaseSession: null,
+            leaseUntil: null,
         }).where(eq(tasks.id, taskId)).returning();
 
         await recordAudit({ companyId, actor: await mcpRequestActor(companyId, auth.companyToken!, agentId), action: "task.archived", target: { type: "task", id: taskId }, after: { archived: true }, meta: { label: auditTaskTitle(existing), projectId: existing.projectId } });
