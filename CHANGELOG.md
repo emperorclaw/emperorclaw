@@ -9,6 +9,14 @@ tagged (e.g. `## [1.2.0] — 2026-07-22`). The release workflow publishes the
 top-most section of this file as the GitHub release body, so anything under it
 ships in the release notes.
 
+## [0.42.8] — 2026-11-22
+
+### Fixed
+
+- **A heartbeat renews only the hold it represents.** `acknowledgeAgentHeartbeat` refreshed `lease_until` on *every* `in_progress` task of the agent, so a session that died holding a lease kept it alive as long as any other session of the same agent kept beating: the lease never expired, the watchdog never reclaimed, and the live session got 409 forever unless it passed `takeover`. It now renews only unclaimed `in_progress` rows (the platform marker the watchdog reads) and the lease of the session named in the optional new `session` body field; anything else expires on its own TTL.
+- **A heartbeat is not progress.** The same write stamped `updated_at`, the field the stall sweep filters on, so a beat silenced the stall signal for every task an online agent held. The heartbeat no longer touches `updated_at`, and a test pins it so the sweep cannot be silently disabled again.
+- **Terminal transitions release the lease completely.** `done`/`failed`, approvals, the watchdog's retry and dead-letter path, agent deletion and archive now clear `lease_owner`, `lease_session` and `lease_until`; before, only the explicit release cleared the session and the dead-letter path cleared nothing.
+
 ## [0.42.7] — 2026-11-22
 
 ### Fixed
