@@ -56,7 +56,7 @@ Activation protocol:
 
 1. SaaS is the system of record. Local state is transient unless checkpointed back to Emperor.
 2. All mutations must include a unique `Idempotency-Key` UUID.
-3. Tasks are claimed through `POST /api/mcp/tasks/claim` and are lease-based. Heartbeats renew active leases.
+3. Tasks are claimed through `POST /api/mcp/tasks/claim` and are lease-based. A heartbeat renews only the lease of the `session` it names; renew your own with `POST /api/mcp/tasks/{id}/lease`.
 4. Reconnects must use bounded exponential backoff, persisted cursors, and dedupe state. Never spin a tight reconnect loop or replay the same write blindly.
 5. Handoffs and blockers belong on the task (assignment and notes). Post to a room only for kickoffs, milestones the whole team needs, incidents, and final reports.
 6. Project memory must be read before work begins on any task.

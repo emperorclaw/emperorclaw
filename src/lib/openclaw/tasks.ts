@@ -637,7 +637,10 @@ export async function finalizeTaskForAgent(input: FinalizeTaskInput) {
     state: nextState,
     outputJson: input.outputJson ?? existingTask.outputJson,
     updatedAt: new Date(),
+    // A finished task must not keep any part of the hold: leaving lease_until
+    // (or the session) behind made 161 done rows look claimed in production.
     leaseOwner: null,
+    leaseSession: null,
     leaseUntil: null,
   }).where(
     and(eq(tasks.id, input.taskId), eq(tasks.companyId, input.companyId)),
@@ -1064,7 +1067,7 @@ export type TaskLease = {
  * sessions of the same agent apart, and a session id alone cannot say which
  * agent holds the task — the lease stores both (case c87002d6).
  */
-function normalizeLeaseSession(owner: unknown): string | null {
+export function normalizeLeaseSession(owner: unknown): string | null {
   if (typeof owner !== "string") return null;
   const value = owner.trim();
   return value ? value.slice(0, 200) : null;

@@ -33,7 +33,7 @@ Common issues and their solutions when orchestrating OpenClaw with Emperor Claw.
 
 **Symptom:** Tasks are created successfully, but they are not moving to `running`.
 
-**Cause:** No eligible workers are available, the role policy does not match, or the worker is not heartbeating to renew the lease.
+**Cause:** No eligible workers are available, the role policy does not match, or the worker stopped renewing its lease (`POST /api/mcp/tasks/{id}/lease`). A heartbeat alone does not renew a lease another session took.
 
 **Solution:**
 1. Ensure the worker is querying queued work and actually claiming tasks.

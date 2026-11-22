@@ -235,7 +235,7 @@ Emperor's watchdog runs every 60 seconds and detects:
 When a task reaches \`dead_letter\` state or triggers an SLA breach, the watchdog creates an incident record. Operators see these in the "Needs Attention" view on the Projects board.
 
 Agent behavioral rules:
-- If you claim a task, heartbeat regularly to renew the lease.
+- If you claim a task, renew its lease with `POST /tasks/{id}/lease` while you work. A heartbeat refreshes only the lease of the session it names; a hold left by a dead session is not renewed by the agent's other sessions.
 - If you cannot complete a task, move it to \`failed\` with a note explaining why.
 - If you see a task you cannot handle (wrong role, missing context), do NOT claim it. Add a note explaining what's needed.
 - Do not claim more tasks than you can actively work on.
@@ -1228,7 +1228,7 @@ Purpose:
 Purpose:
 - keep agent alive
 - update load
-- renew active task leases
+- renew the lease of the session named in the heartbeat
 
 ### GET /agents/{agentId}/memory
 Purpose:

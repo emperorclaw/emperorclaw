@@ -29,6 +29,9 @@ export async function POST(req: NextRequest) {
             companyId,
             agentId,
             currentLoad,
+            // Optional: a bridge that holds a lease names its session so the
+            // heartbeat renews that hold and only that hold.
+            session: typeof body.session === "string" ? body.session : null,
         });
 
         if (!agent) {
