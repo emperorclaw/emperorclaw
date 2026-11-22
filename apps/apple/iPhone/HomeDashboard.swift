@@ -33,10 +33,10 @@ struct HomeHeader: View {
                     HStack(spacing: 7) {
                         Circle().fill(snapshot.workingCount > 0 ? Color.green : Color.secondary).frame(width: 8, height: 8)
                             .overlay { if snapshot.workingCount > 0 && !reduceMotion { Circle().fill(Color.green.opacity(0.45)).scaleEffect(pulse ? 2.6 : 1).opacity(pulse ? 0 : 0.8) } }
-                        Text(snapshot.workingCount == 0 ? "Team is idle" : "\(snapshot.workingCount) working").contentTransition(.numericText())
+                        Text(snapshot.workingCount == 0 ? "Team is idle" : "\(snapshot.workingCount) working").rollingNumber(snapshot.workingCount)
                     }
                     Text("·").foregroundStyle(.tertiary)
-                    Text("\(snapshot.agents.count) agents")
+                    Text("\(snapshot.agents.count) agents").rollingNumber(snapshot.agents.count)
                 }
                 .font(.subheadline.weight(.medium)).monospacedDigit().foregroundStyle(.secondary)
                 .accessibilityElement(children: .combine)
@@ -64,6 +64,7 @@ struct NeedsYouCard: View {
     @State private var counts: JSONValue = .null
     @State private var loaded = false
     @State private var failed = false
+    @Namespace private var zoom
     private static let actionKinds: Set<String> = ["approval", "decision", "incident", "agent", "paused", "run_failed", "task_blocked", "request", "stalled"]
 
     private var urgent: [WorkItem] {
@@ -80,7 +81,9 @@ struct NeedsYouCard: View {
             else if urgent.isEmpty { allClear }
             else { needsYou }
         }
-        .animation(.snappy, value: urgent.map(\.id))
+        .animation(Motion.settle, value: urgent.map(\.id))
+        .animation(Motion.settle, value: loaded)
+        .sensoryFeedback(.warning, trigger: urgent.filter(isDecision).count) { old, new in new > old && loaded }
         .task(id: "\(refreshKey):\(scene)") {
             guard scene == .active else { return }
             await load()
@@ -100,7 +103,8 @@ struct NeedsYouCard: View {
             }.padding(.bottom, 12)
             ForEach(Array(urgent.prefix(3).enumerated()), id: \.element.id) { index, entry in
                 if index > 0 { SoftDivider().padding(.leading, 52) }
-                NavigationLink { destination(entry) } label: { NeedsYouRow(entry: entry, decision: isDecision(entry)) }.buttonStyle(QuietCardPress())
+                NavigationLink { destination(entry).zoomDestination(entry.id, in: zoom) } label: { NeedsYouRow(entry: entry, decision: isDecision(entry)).zoomSource(entry.id, in: zoom) }
+                    .buttonStyle(QuietCardPress()).rowTransition()
             }
             if urgent.count > 3 || counts["fyi"].count > 0 {
                 SoftDivider().padding(.top, 4)
@@ -187,7 +191,7 @@ private struct NeedsYouRow: View {
 private struct CountChip: View {
     let value: Int; let label: String; let color: Color
     var body: some View {
-        Text("\(value) \(label)").font(.caption.weight(.semibold)).monospacedDigit()
+        Text("\(value) \(label)").font(.caption.weight(.semibold)).monospacedDigit().rollingNumber(value)
             .foregroundStyle(.primary).padding(.horizontal, 9).padding(.vertical, 4)
             .background(color.opacity(0.18), in: Capsule())
     }

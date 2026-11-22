@@ -36,18 +36,22 @@ struct WorkList: View {
     @State private var filter = "All"
     @State private var nextBefore: String?
     @Environment(\.scenePhase) private var scene
+    @Namespace private var zoom
     var isTasks: Bool { kind == "Projects" }
     var body: some View {
         List {
             if let error { Section { ErrorRow(error: error) { Task { await load() } } } }
-            if loading && rows.isEmpty { ProgressView("Loading…") }
+            // Skeleton rows hold the layout while the first page loads: no jump when data lands.
+            if loading && rows.isEmpty {
+                Section { ForEach(0..<4, id: \.self) { _ in WorkRow(title: "Loading the latest work for you", subtitle: "From your team", icon: "circle.dashed").redacted(reason: .placeholder) } }
+            }
             if isTasks {
                 #if os(iOS)
                 Section {
                     ScrollView(.horizontal) {
                         HStack(spacing: 8) {
                             ForEach(["All", "Active", "Blocked", "Completed"], id: \.self) { value in
-                                FilterChip(title: value, count: count(for: value), selected: filter == value) { withAnimation(.snappy) { filter = value } }
+                                FilterChip(title: value, count: count(for: value), selected: filter == value, namespace: zoom) { withAnimation(Motion.settle) { filter = value } }
                             }
                         }.padding(.vertical, 2)
                     }.scrollIndicators(.hidden)
@@ -58,7 +62,7 @@ struct WorkList: View {
             }
             if isTasks {
                 ForEach(rows.filter { matches($0, filter) }) { item in
-                    NavigationLink { TaskScreen(workspace: workspace, id: item.id) } label: { TaskRow(item: item, assignee: agentName(item["assignedAgentId"].text)) }
+                    NavigationLink { TaskScreen(workspace: workspace, id: item.id).zoomDestination(item.id, in: zoom) } label: { TaskRow(item: item, assignee: agentName(item["assignedAgentId"].text), assigneeAgent: model.snapshots[workspace.id]?.agents.first { $0.id == item["assignedAgentId"].text }).zoomSource(item.id, in: zoom) }
                 }
             } else {
                 ForEach(inboxGroups, id: \.title) { group in
@@ -89,6 +93,8 @@ struct WorkList: View {
         .background(Color(.systemGroupedBackground))
         #endif
         .refreshable { await load() }
+        .animation(Motion.settle, value: rows.map(\.id))
+        .animation(Motion.settle, value: loading)
         .sensoryFeedback(.selection, trigger: filter)
         #if os(iOS)
         .toolbar { if isTasks { ToolbarItem(placement: .topBarLeading) { Button { create = true } label: { Image(systemName: "plus") }.disabled(!model.mayWrite).accessibilityLabel("New task") } } }
@@ -121,11 +127,11 @@ struct WorkList: View {
     @ViewBuilder private func inboxLink(_ item: WorkItem, tint: Color) -> some View {
         let subtitle = [item["memberName"].text, item["reason"].text.isEmpty ? item["detail"].text : item["reason"].text].filter { !$0.isEmpty }.joined(separator: " · ")
         if !item["approvalId"].text.isEmpty {
-            NavigationLink { ApprovalScreen(workspace: workspace, id: item["approvalId"].text) } label: { WorkRow(title: item["title"].text, subtitle: subtitle, icon: "hand.raised", tint: tint) }
+            NavigationLink { ApprovalScreen(workspace: workspace, id: item["approvalId"].text).zoomDestination(item.id, in: zoom) } label: { WorkRow(title: item["title"].text, subtitle: subtitle, icon: "hand.raised", tint: tint).zoomSource(item.id, in: zoom) }
         } else if !item["taskId"].text.isEmpty {
-            NavigationLink { TaskScreen(workspace: workspace, id: item["taskId"].text) } label: { WorkRow(title: item["title"].text, subtitle: subtitle, icon: "exclamationmark.bubble", tint: tint) }
+            NavigationLink { TaskScreen(workspace: workspace, id: item["taskId"].text).zoomDestination(item.id, in: zoom) } label: { WorkRow(title: item["title"].text, subtitle: subtitle, icon: "exclamationmark.bubble", tint: tint).zoomSource(item.id, in: zoom) }
         } else {
-            NavigationLink { AttentionDetail(workspace: workspace, item: item) } label: { WorkRow(title: item["title"].text, subtitle: subtitle, icon: "bubble.left", tint: tint) }
+            NavigationLink { AttentionDetail(workspace: workspace, item: item).zoomDestination(item.id, in: zoom) } label: { WorkRow(title: item["title"].text, subtitle: subtitle, icon: "bubble.left", tint: tint).zoomSource(item.id, in: zoom) }
         }
     }
     private func load(older: Bool = false) async {
@@ -189,7 +195,7 @@ struct GroupRow: View {
                     Text(preview).font(.subheadline).foregroundStyle(.secondary).lineLimit(1)
                     Spacer(minLength: 4)
                     if unread > 0 {
-                        Text("\(min(unread, 99))").font(.caption2.weight(.bold)).monospacedDigit().foregroundStyle(.white)
+                        Text("\(min(unread, 99))").font(.caption2.weight(.bold)).monospacedDigit().rollingNumber(unread).foregroundStyle(.white)
                             .padding(.horizontal, 6).frame(minWidth: 20, minHeight: 20).background(Color.accentColor, in: Capsule())
                     }
                 }
@@ -216,6 +222,7 @@ struct GroupRow: View {
 struct TaskRow: View {
     let item: WorkItem
     var assignee: String?
+    var assigneeAgent: Agent? = nil
     var body: some View {
         let style = TaskStateStyle(item["state"].text)
         HStack(alignment: .top, spacing: 14) {
@@ -225,7 +232,12 @@ struct TaskRow: View {
                 Text(item["title"].text).font(.body.weight(.semibold)).fontDesign(.rounded).lineLimit(3).fixedSize(horizontal: false, vertical: true)
                 HStack(spacing: 8) {
                     StatusPill(text: style.label, color: style.color)
-                    if let assignee { Label(assignee, systemImage: "person.crop.circle").labelStyle(.titleAndIcon).font(.caption).foregroundStyle(.secondary).lineLimit(1) }
+                    if let assignee {
+                        HStack(spacing: 5) {
+                            if let assigneeAgent { AgentMonogram(agent: assigneeAgent, size: 18) } else { Image(systemName: "person.crop.circle") }
+                            Text(assignee).lineLimit(1)
+                        }.font(.caption).foregroundStyle(.secondary)
+                    }
                 }
             }
         }.padding(.vertical, 6).accessibilityElement(children: .combine)
@@ -236,18 +248,28 @@ struct FilterChip: View {
     let title: String
     var count: Int? = nil
     let selected: Bool
+    /// Shared by a row of chips so the selection glides from one to the next.
+    var namespace: Namespace.ID? = nil
     let action: () -> Void
     var body: some View {
         Button(action: action) {
             HStack(spacing: 6) {
                 Text(title)
-                if let count, count > 0 { Text(count, format: .number).monospacedDigit().foregroundStyle(selected ? Color.groupedBackground.opacity(0.7) : .secondary) }
+                if let count, count > 0 { Text(count, format: .number).monospacedDigit().rollingNumber(count).foregroundStyle(selected ? Color.groupedBackground.opacity(0.7) : .secondary) }
             }
             .font(.subheadline.weight(selected ? .semibold : .medium)).fontDesign(.rounded)
             .padding(.horizontal, 14).frame(minHeight: 36)
             .foregroundStyle(selected ? Color.groupedBackground : Color.primary)
-            .background(selected ? Color.primary : Color.cardSurface, in: Capsule())
-        }.buttonStyle(.plain).accessibilityAddTraits(selected ? .isSelected : [])
+            .background {
+                ZStack {
+                    Capsule().fill(Color.cardSurface)
+                    if selected {
+                        if let namespace { Capsule().fill(Color.primary).matchedGeometryEffect(id: "chip.selection", in: namespace) }
+                        else { Capsule().fill(Color.primary) }
+                    }
+                }
+            }
+        }.buttonStyle(PressableStyle(scale: 0.94)).accessibilityAddTraits(selected ? .isSelected : [])
     }
 }
 
@@ -310,7 +332,7 @@ struct ChatDirectory: View {
                     }
                     if !pairs.isEmpty {
                         VStack(alignment: .leading, spacing: DS.Space.s) {
-                            Button { withAnimation(.smooth(duration: 0.35)) { showAgentConversations.toggle() } } label: {
+                            Button { withAnimation(Motion.settle) { showAgentConversations.toggle() } } label: {
                                 HStack {
                                     SectionLabel(text: "Agent conversations", systemImage: "arrow.left.arrow.right")
                                     Text("\(pairs.count)").font(.caption.weight(.semibold)).monospacedDigit().foregroundStyle(.secondary)
@@ -329,6 +351,8 @@ struct ChatDirectory: View {
                     }
                 }.padding(.horizontal, 20).padding(.vertical, DS.Space.s).frame(maxWidth: 760).frame(maxWidth: .infinity)
             }.background(Color(.systemGroupedBackground)).searchable(text: $query, prompt: "Find a conversation")
+                .animation(Motion.settle, value: groups.map { "\($0.id)\($0["lastMessageAt"].text)" })
+                .animation(Motion.settle, value: query)
             #else
             List {
                 if let error { ErrorRow(error: error) { Task { await load() } } }
@@ -655,6 +679,7 @@ struct TaskScreen: View {
     @State private var lastBody: JSONValue?
     @State private var briefExpanded = false
     @State private var assigning = false
+    @State private var saved = 0
     var task: JSONValue { story["task"] }
     var taskContext: String { "Task: \(task["title"].text) [\(id)]" }
     var body: some View {
@@ -680,7 +705,7 @@ struct TaskScreen: View {
                                 }
                             }
                         if long {
-                            Button { withAnimation(.smooth(duration: 0.4)) { briefExpanded.toggle() } } label: {
+                            Button { withAnimation(Motion.settle) { briefExpanded.toggle() } } label: {
                                 Label(briefExpanded ? "Show less" : "Show full brief", systemImage: briefExpanded ? "chevron.up" : "chevron.down").font(.subheadline.weight(.semibold))
                             }
                         }
@@ -718,13 +743,17 @@ struct TaskScreen: View {
         .listStyle(.insetGrouped)
         #endif
         .task { await load() }.refreshable { await load() }
+        .overlay { if story == .null && error == nil { ProgressView() } }
+        .animation(Motion.settle, value: task["state"].text)
+        .animation(Motion.settle, value: story["entries"].items.count)
+        .sensoryFeedback(.success, trigger: saved)
     }
     #if os(iOS)
     private var header: some View {
         let style = TaskStateStyle(task["state"].text)
         return VStack(alignment: .leading, spacing: 14) {
             HStack(spacing: 8) {
-                StatusPill(text: style.label, color: style.color)
+                StatusPill(text: style.label, color: style.color).id(style.label).transition(.scale(scale: 0.8).combined(with: .opacity))
                 if task["priority"].count > 0 { StatusPill(text: "P\(task["priority"].count)", color: .orange) }
                 if task["approval"]["pending"].count > 0 { StatusPill(text: "Awaiting approval", color: .orange) }
                 Spacer()
@@ -734,7 +763,8 @@ struct TaskScreen: View {
                 if !task["owner"]["name"].text.isEmpty {
                     metaRow(label: "Owner") {
                         HStack(spacing: 8) {
-                            MemberMonogram(name: task["owner"]["name"].text, id: task["owner"]["id"].text, size: 22, isHuman: task["owner"]["type"].text == "human")
+                            if let agent = model.snapshots[workspace.id]?.agents.first(where: { $0.id == task["owner"]["id"].text }) { AgentMonogram(agent: agent, size: 24) }
+                            else { MemberMonogram(name: task["owner"]["name"].text, id: task["owner"]["id"].text, size: 22, isHuman: task["owner"]["type"].text == "human") }
                             Text(task["owner"]["name"].text).font(.subheadline.weight(.medium))
                         }
                     }
@@ -791,7 +821,7 @@ struct TaskScreen: View {
     }
     #endif
     private func load(older: Bool = false) async { do { let result = try await model.client.work(workspace, path: "tasks/\(id)", query: older ? ["before": story["nextBefore"].text] : [:]); if older, case .object(var values) = result { values["entries"] = .array(story["entries"].items + result["entries"].items); story = .object(values) } else { story = result }; error = nil } catch { self.error = error.localizedDescription; if (error as? MobileFailure)?.invalidatesContent == true { story = .null } } }
-    private func mutate(path: String, method: String, body: JSONValue) async -> Bool { busy = true; defer { busy = false }; if body != lastBody { commandID = UUID(); lastBody = body }; do { _ = try await model.client.work(workspace, path: path, method: method, body: body, commandID: commandID); commandID = UUID(); lastBody = nil; error = nil; await load(); return true } catch { self.error = error.localizedDescription; return false } }
+    private func mutate(path: String, method: String, body: JSONValue) async -> Bool { busy = true; defer { busy = false }; if body != lastBody { commandID = UUID(); lastBody = body }; do { _ = try await model.client.work(workspace, path: path, method: method, body: body, commandID: commandID); commandID = UUID(); lastBody = nil; error = nil; saved += 1; await load(); return true } catch { self.error = error.localizedDescription; return false } }
 }
 
 private struct TaskAgentChatLink: View {
@@ -994,6 +1024,7 @@ struct ApprovalScreen: View {
     @State private var busy = false
     @State private var commandID = UUID()
     @State private var note = ""
+    @State private var decided = 0
     var approval: JSONValue { detail["approval"] }
     private var tasks: [WorkItem] { detail["tasks"].items.map(WorkItem.init) }
     private var requester: Agent? { model.snapshots[workspace.id]?.agents.first { $0.id == approval["requesterAgentId"].text } }
@@ -1008,6 +1039,7 @@ struct ApprovalScreen: View {
                             Text(ApprovalCopy.kind(approval)).font(.caption.weight(.semibold)).foregroundStyle(.secondary).textCase(.uppercase)
                             Spacer()
                             StatusPill(text: ApprovalCopy.status(approval["status"].text), color: ApprovalCopy.tint(approval["status"].text))
+                                .id(approval["status"].text).transition(.scale(scale: 0.8).combined(with: .opacity))
                         }
                         Text(ApprovalCopy.title(approval, tasks: tasks)).font(.system(.title3, design: .rounded).weight(.semibold))
                         HStack(spacing: 8) {
@@ -1081,12 +1113,15 @@ struct ApprovalScreen: View {
             }
         }.navigationTitle("Approval").task { await load() }.refreshable { await load() }
         .overlay { if detail == .null && error == nil { ProgressView() } }
+        .animation(Motion.settle, value: approval["status"].text)
+        .animation(Motion.settle, value: detail == .null)
+        .sensoryFeedback(trigger: decided) { _, _ in approval["status"].text == "approved" ? .success : .impact(weight: .medium) }
         .confirmationDialog("Confirm this decision for \(workspace.name)?", isPresented: Binding(get: { decision != nil }, set: { if !$0 { decision = nil } })) {
             if let choice = decision { Button(choice == "approved" ? "Approve action" : "Reject action", role: choice == "rejected" ? .destructive : nil) { Task { await decide(choice) }; decision = nil } }
         } message: { Text("The server will check current permissions and whether this request is still pending.") }
     }
     private func load() async { do { detail = try await model.client.work(workspace, path: "approvals/\(id)"); error = nil } catch { self.error = error.localizedDescription; if (error as? MobileFailure)?.invalidatesContent == true { detail = .null } } }
-    private func decide(_ status: String) async { busy = true; defer { busy = false }; do { _ = try await model.client.work(workspace, path: "approvals/\(id)", method: "PATCH", body: .object(["status": .string(status), "resolutionNote": .string(note)]), commandID: commandID); commandID = UUID(); await load() } catch { let message = error.localizedDescription; await load(); self.error = message } }
+    private func decide(_ status: String) async { busy = true; defer { busy = false }; do { _ = try await model.client.work(workspace, path: "approvals/\(id)", method: "PATCH", body: .object(["status": .string(status), "resolutionNote": .string(note)]), commandID: commandID); commandID = UUID(); await load(); decided += 1 } catch { let message = error.localizedDescription; await load(); self.error = message } }
 }
 
 /// Plain-language copy for an approval, matching the web card (lib/approval-card-copy.ts).

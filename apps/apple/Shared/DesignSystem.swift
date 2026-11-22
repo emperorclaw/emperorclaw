@@ -81,19 +81,78 @@ struct AgentMonogram: View {
     let agent: Agent
     var size: CGFloat = 44
     var body: some View {
-        let base = Color(hue: agent.hue, saturation: 0.55, brightness: 0.85)
-        Text(String(agent.name.prefix(1)).uppercased())
-            .font(.system(size: size * 0.44, weight: .bold, design: .rounded))
-            .foregroundStyle(.white)
+        // The agent's own pixel character on its hue: the same face as the Home
+        // office and the Watch, so people recognise agents everywhere.
+        PixelAvatar(look: CharacterLook.resolve(id: agent.id, appearance: agent.avatarAppearance),
+                    mood: agent.isWorking ? .focused : .neutral, size: size * 0.78, animated: agent.isWorking, seed: CharacterLook.hash(agent.id))
             .frame(width: size, height: size)
-            .background(LinearGradient(colors: [base, Color(hue: agent.hue, saturation: 0.7, brightness: 0.55)], startPoint: .topLeading, endPoint: .bottomTrailing),
+            .background(LinearGradient(colors: [Color(hue: agent.hue, saturation: 0.35, brightness: 0.42), Color(hue: agent.hue, saturation: 0.55, brightness: 0.22)],
+                                       startPoint: .topLeading, endPoint: .bottomTrailing),
                         in: RoundedRectangle(cornerRadius: size * 0.32, style: .continuous))
+            .overlay(RoundedRectangle(cornerRadius: size * 0.32, style: .continuous).strokeBorder(.white.opacity(0.08)))
             .overlay(alignment: .bottomTrailing) {
                 Circle().fill(agent.statusColor).frame(width: size * 0.28, height: size * 0.28)
                     .overlay(Circle().stroke(Color.groupedBackground, lineWidth: 2.5))
                     .offset(x: 3, y: 3)
             }
             .accessibilityHidden(true)
+    }
+}
+
+// MARK: - Motion
+
+/// One motion language: springs that settle without bounce, like the system.
+enum Motion {
+    /// Layout changes, rows arriving and leaving.
+    static let settle = Animation.spring(response: 0.42, dampingFraction: 0.86)
+    /// Small state flips: pills, counts, toggles.
+    static let snap = Animation.spring(response: 0.28, dampingFraction: 0.9)
+    /// Press feedback.
+    static let press = Animation.spring(response: 0.22, dampingFraction: 0.72)
+}
+
+/// Cards and rows that respond to a touch: a slight sink and dim, released on a spring.
+struct PressableStyle: ButtonStyle {
+    var scale: CGFloat = 0.97
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .contentShape(Rectangle())
+            .scaleEffect(configuration.isPressed && !reduceMotion ? scale : 1)
+            .opacity(configuration.isPressed ? 0.88 : 1)
+            .animation(Motion.press, value: configuration.isPressed)
+    }
+}
+
+extension ButtonStyle where Self == PressableStyle {
+    static var pressable: PressableStyle { PressableStyle() }
+}
+
+extension View {
+    /// A row arriving or leaving: fades and slides a little, never pops.
+    func rowTransition() -> some View {
+        transition(.asymmetric(insertion: .opacity.combined(with: .move(edge: .top)).combined(with: .scale(scale: 0.98, anchor: .top)),
+                               removal: .opacity.combined(with: .scale(scale: 0.96))))
+    }
+    /// Counts roll to their new value instead of jumping.
+    func rollingNumber<V: Equatable>(_ value: V) -> some View {
+        contentTransition(.numericText()).animation(Motion.snap, value: value)
+    }
+    /// Source of a zoom transition into a detail screen (iOS 18+, a plain push before).
+    @ViewBuilder func zoomSource(_ id: some Hashable, in namespace: Namespace.ID) -> some View {
+        #if os(iOS)
+        if #available(iOS 18.0, *) { matchedTransitionSource(id: id, in: namespace) } else { self }
+        #else
+        self
+        #endif
+    }
+    /// The detail screen a zoomSource opens.
+    @ViewBuilder func zoomDestination(_ id: some Hashable, in namespace: Namespace.ID) -> some View {
+        #if os(iOS)
+        if #available(iOS 18.0, *) { navigationTransition(.zoom(sourceID: id, in: namespace)) } else { self }
+        #else
+        self
+        #endif
     }
 }
 

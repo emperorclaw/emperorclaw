@@ -77,6 +77,6 @@ struct QuietCardPress: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
         configuration.label.scaleEffect(configuration.isPressed && !reduceMotion ? 0.985 : 1)
             .opacity(configuration.isPressed ? 0.84 : 1)
-            .animation(reduceMotion ? nil : .easeOut(duration: 0.18), value: configuration.isPressed)
+            .animation(reduceMotion ? nil : Motion.press, value: configuration.isPressed)
     }
 }

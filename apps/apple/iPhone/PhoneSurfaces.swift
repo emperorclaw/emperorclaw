@@ -160,7 +160,7 @@ private struct ViewsDirectory: View {
                 if filtered.contains(where: { $0.id != featured?.id }) {
                     galleryLabel("YOUR COLLECTION")
                     LazyVGrid(columns: [GridItem(.adaptive(minimum: 250), spacing: 16, alignment: .top)], alignment: .leading, spacing: 16) {
-                        ForEach(filtered.filter { $0.id != featured?.id }) { view in card(view) }
+                        ForEach(filtered.filter { $0.id != featured?.id }) { view in card(view).rowTransition() }
                     }
                 }
                 if !loading && error == nil && views.isEmpty {
@@ -171,6 +171,8 @@ private struct ViewsDirectory: View {
             }.padding(24).frame(maxWidth: 1000).frame(maxWidth: .infinity)
         }.background(Color(.systemGroupedBackground)).searchable(text: $query, prompt: "Search your collection")
             .task { await load() }.refreshable { await load() }
+            .animation(Motion.settle, value: filtered.map(\.id))
+            .animation(Motion.settle, value: loading)
             .sensoryFeedback(.selection, trigger: filter)
     }
     private var collectionLabel: String {
@@ -184,13 +186,13 @@ private struct ViewsDirectory: View {
             HStack(alignment: .firstTextBaseline) {
                 SectionLabel(text: collectionLabel, systemImage: "building.2")
                 Spacer()
-                if !loading && error == nil { Text("\(views.count) views").font(.footnote.weight(.medium)).foregroundStyle(.secondary).monospacedDigit() }
+                if !loading && error == nil { Text("\(views.count) views").font(.footnote.weight(.medium)).foregroundStyle(.secondary).monospacedDigit().rollingNumber(views.count) }
             }
             Text("A clearer perspective.").font(.largeTitle.weight(.bold)).fontDesign(.rounded).tracking(-0.5).fixedSize(horizontal: false, vertical: true)
             ScrollView(.horizontal) {
                 HStack(spacing: 8) {
                     ForEach(["All", "Pinned", "Projects"], id: \.self) { value in
-                        FilterChip(title: value, count: value == "All" ? nil : views.filter { value == "Pinned" ? $0["pinned"].flag : $0["scopeType"].text == "project" }.count, selected: filter == value) { withAnimation(.snappy) { filter = value } }
+                        FilterChip(title: value, count: value == "All" ? nil : views.filter { value == "Pinned" ? $0["pinned"].flag : $0["scopeType"].text == "project" }.count, selected: filter == value, namespace: viewTransition) { withAnimation(Motion.settle) { filter = value } }
                     }
                 }.padding(.vertical, 2)
             }.scrollIndicators(.hidden)
