@@ -995,20 +995,73 @@ struct ApprovalScreen: View {
     @State private var commandID = UUID()
     @State private var note = ""
     var approval: JSONValue { detail["approval"] }
+    private var tasks: [WorkItem] { detail["tasks"].items.map(WorkItem.init) }
+    private var requester: Agent? { model.snapshots[workspace.id]?.agents.first { $0.id == approval["requesterAgentId"].text } }
+    private var details: [ApprovalField] { ApprovalField.from(approval["metadataJson"]) }
     var body: some View {
         List {
             if let error { ErrorRow(error: error) { Task { await load() } } }
-            Section("Review request") {
-                Text(workspace.name).font(.caption).foregroundStyle(.secondary)
-                Text(approval["actionType"].text).font(.headline)
-                Text(approval["status"].text).font(.caption)
-                RichTextBlock(text: approval["rationale"].text, workspace: workspace)
-                // The full visible arguments must be reviewed before deciding.
-                if approval["actionArgsJson"] != .null { Text(readable(approval["actionArgsJson"])).font(.body.monospaced()) }
-                if approval["metadataJson"]["actionArgs"] != .null { Text(readable(approval["metadataJson"]["actionArgs"])).font(.body.monospaced()) }
-                if approval["metadataJson"]["args"] != .null { Text(readable(approval["metadataJson"]["args"])).font(.body.monospaced()) }
+            if detail != .null {
+                Section {
+                    VStack(alignment: .leading, spacing: 10) {
+                        HStack(alignment: .firstTextBaseline) {
+                            Text(ApprovalCopy.kind(approval)).font(.caption.weight(.semibold)).foregroundStyle(.secondary).textCase(.uppercase)
+                            Spacer()
+                            StatusPill(text: ApprovalCopy.status(approval["status"].text), color: ApprovalCopy.tint(approval["status"].text))
+                        }
+                        Text(ApprovalCopy.title(approval, tasks: tasks)).font(.system(.title3, design: .rounded).weight(.semibold))
+                        HStack(spacing: 8) {
+                            if let requester { AgentMonogram(agent: requester, size: 22) }
+                            Text(requester.map { "Asked by \($0.name)" } ?? "Asked by an agent").font(.subheadline)
+                            if let date = ISO8601DateFormatter.fractional.date(from: approval["requestedAt"].text) ?? ISO8601DateFormatter().date(from: approval["requestedAt"].text) {
+                                Text("· \(date, style: .relative) ago").font(.subheadline).foregroundStyle(.secondary)
+                            }
+                        }
+                    }.padding(.vertical, 4)
+                }
+                // A permission ask's rationale is only its arguments joined on one
+                // line (lib/action-policy-server.ts); Details shows them properly.
+                if !approval["rationale"].text.isEmpty && approval["metadataJson"]["args"].items.isEmpty {
+                    Section("Why") { RichTextBlock(text: approval["rationale"].text, workspace: workspace) }
+                }
+                // Everything the action would do must be visible before deciding.
+                if !details.isEmpty {
+                    Section("Details") {
+                        ForEach(details) { field in
+                            if let taskID = field.taskID {
+                                NavigationLink { TaskScreen(workspace: workspace, id: taskID) } label: { Label("Open the related task", systemImage: "checklist") }
+                            } else if field.stacked {
+                                VStack(alignment: .leading, spacing: 6) {
+                                    Text(field.label).font(.caption).foregroundStyle(.secondary)
+                                    Text(field.value).font(field.isCode ? .callout.monospaced() : .body)
+                                        #if os(iOS)
+                                        .textSelection(.enabled)
+                                        #endif
+                                }.padding(.vertical, 4)
+                            } else {
+                                LabeledContent(field.label) { Text(field.value).multilineTextAlignment(.trailing) }
+                            }
+                        }
+                    }
+                }
+                if !tasks.isEmpty {
+                    Section(tasks.count == 1 ? "Task" : "Tasks") {
+                        ForEach(tasks) { task in
+                            NavigationLink { TaskScreen(workspace: workspace, id: task.id) } label: {
+                                Label(task["inputJson"]["title"].text.isEmpty ? "Untitled task" : task["inputJson"]["title"].text, systemImage: "checklist")
+                            }
+                        }
+                    }
+                }
+                if approval["status"].text != "pending" {
+                    Section("Decision") {
+                        if let date = ISO8601DateFormatter.fractional.date(from: approval["resolvedAt"].text) ?? ISO8601DateFormatter().date(from: approval["resolvedAt"].text) {
+                            LabeledContent(ApprovalCopy.status(approval["status"].text)) { Text(date, format: .dateTime.day().month().hour().minute()) }
+                        }
+                        if !approval["resolutionNote"].text.isEmpty { Text(approval["resolutionNote"].text) }
+                    }
+                }
             }
-            ForEach(detail["tasks"].items.map(WorkItem.init)) { task in NavigationLink(task["inputJson"]["title"].text.isEmpty ? "Review affected task" : task["inputJson"]["title"].text) { TaskScreen(workspace: workspace, id: task.id) } }
             if approval["status"].text == "pending" && detail["mobileDecision"]["mayDecide"].flag {
                 #if os(watchOS)
                 if detail["mobileDecision"]["watchEligible"].flag {
@@ -1017,21 +1070,140 @@ struct ApprovalScreen: View {
                 }
                 Button("Review on iPhone") { model.watchLink.handoff(workspace: workspace, kind: "approval", id: id) }
                 #else
+                Section { TextField("Note for the agent (optional)", text: $note, axis: .vertical) }
                 Section {
-                    TextField("Decision note (optional)", text: $note, axis: .vertical)
-                    Button("Approve") { decision = "approved" }.disabled(busy)
-                    Button("Reject", role: .destructive) { decision = "rejected" }.disabled(busy)
+                    HStack(spacing: 12) {
+                        Button(role: .destructive) { decision = "rejected" } label: { Text("Reject").frame(maxWidth: .infinity) }.buttonStyle(.bordered)
+                        Button { decision = "approved" } label: { Text("Approve").frame(maxWidth: .infinity) }.buttonStyle(.borderedProminent)
+                    }.controlSize(.large).disabled(busy).listRowBackground(Color.clear).listRowInsets(EdgeInsets())
                 }
                 #endif
             }
         }.navigationTitle("Approval").task { await load() }.refreshable { await load() }
+        .overlay { if detail == .null && error == nil { ProgressView() } }
         .confirmationDialog("Confirm this decision for \(workspace.name)?", isPresented: Binding(get: { decision != nil }, set: { if !$0 { decision = nil } })) {
             if let choice = decision { Button(choice == "approved" ? "Approve action" : "Reject action", role: choice == "rejected" ? .destructive : nil) { Task { await decide(choice) }; decision = nil } }
         } message: { Text("The server will check current permissions and whether this request is still pending.") }
     }
     private func load() async { do { detail = try await model.client.work(workspace, path: "approvals/\(id)"); error = nil } catch { self.error = error.localizedDescription; if (error as? MobileFailure)?.invalidatesContent == true { detail = .null } } }
     private func decide(_ status: String) async { busy = true; defer { busy = false }; do { _ = try await model.client.work(workspace, path: "approvals/\(id)", method: "PATCH", body: .object(["status": .string(status), "resolutionNote": .string(note)]), commandID: commandID); commandID = UUID(); await load() } catch { let message = error.localizedDescription; await load(); self.error = message } }
-    private func readable(_ value: JSONValue) -> String { let encoder = JSONEncoder(); encoder.outputFormatting = [.prettyPrinted, .sortedKeys]; return (try? encoder.encode(value)).flatMap { String(data: $0, encoding: .utf8) } ?? "" }
+}
+
+/// Plain-language copy for an approval, matching the web card (lib/approval-card-copy.ts).
+enum ApprovalCopy {
+    static func actionName(_ approval: JSONValue) -> String {
+        let label = approval["metadataJson"]["actionLabel"].text.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !label.isEmpty { return label }
+        let type = approval["actionType"].text
+        if type == "task_done" { return "Mark task done" }
+        return humanize(type)
+    }
+    static func kind(_ approval: JSONValue) -> String {
+        approval["actionType"].text == "task_done" ? "Finish task" : "Permission request"
+    }
+    static func title(_ approval: JSONValue, tasks: [WorkItem]) -> String {
+        let task = tasks.first?["inputJson"]["title"].text ?? ""
+        let action = actionName(approval)
+        if task.isEmpty { return action }
+        return approval["actionType"].text == "task_done" ? task : "\(action): \(task)"
+    }
+    static func status(_ raw: String) -> String {
+        switch raw {
+        case "pending": return "Waiting"
+        case "approved": return "Approved"
+        case "rejected": return "Rejected"
+        case "dismissed": return "Dismissed"
+        case "expired": return "Expired"
+        default: return humanize(raw)
+        }
+    }
+    static func tint(_ raw: String) -> Color {
+        switch raw { case "pending": return .orange; case "approved": return .green; case "rejected": return .red; default: return .secondary }
+    }
+    /// "send_email" → "Send email", "toAddress" → "To address".
+    static func humanize(_ key: String) -> String {
+        var out = ""
+        for (i, ch) in key.enumerated() {
+            if ch == "_" || ch == "-" || ch == "." { out.append(" "); continue }
+            if ch.isUppercase, i > 0, out.last != " " { out.append(" ") }
+            out.append(contentsOf: String(ch).lowercased())
+        }
+        let trimmed = out.trimmingCharacters(in: .whitespaces)
+        return trimmed.prefix(1).uppercased() + trimmed.dropFirst()
+    }
+}
+
+/// One readable line of what an approval would do, from its stored arguments.
+struct ApprovalField: Identifiable {
+    let id: String
+    let key: String
+    let label: String
+    let value: String
+    let isCode: Bool
+    var isLong: Bool { isCode || value.count > 120 || value.contains("\n") }
+    /// Too long to sit beside its label.
+    var stacked: Bool { isLong || value.count > 32 }
+    /// A task this action is about ("task_id": uuid): shown as a link, not a raw id.
+    var taskID: String? {
+        let k = key.lowercased().replacingOccurrences(of: "_", with: "")
+        return k == "taskid" && UUID(uuidString: value) != nil ? value : nil
+    }
+    /// Bookkeeping keys that are not part of what the action does.
+    private static let hidden: Set<String> = ["kind", "actionKey", "actionLabel", "tokenId", "argsHash", "threadId", "cardMessageId"]
+    static func from(_ metadata: JSONValue) -> [ApprovalField] {
+        var fields: [ApprovalField] = []
+        // Action asks store [{field, value}] under "args" (lib/action-policy-rules.ts).
+        var args: [ApprovalField] = []
+        for (i, item) in metadata["args"].items.enumerated() where !item["field"].text.isEmpty {
+            args.append(make(id: "args.\(i)", key: item["field"].text, raw: item["value"]))
+        }
+        // Who and what first (to, subject, from), other facts next, long text (an email body) last.
+        let order = ["to", "cc", "bcc", "subject", "from", "replyto", "title", "name", "url"]
+        func rank(_ field: ApprovalField) -> Int {
+            if field.isLong { return 1000 }
+            let key = field.key.lowercased().replacingOccurrences(of: "_", with: "")
+            return order.firstIndex(of: key) ?? 500
+        }
+        fields += args.enumerated().sorted { (rank($0.element), $0.offset) < (rank($1.element), $1.offset) }.map(\.element)
+        for key in ["actionArgs", "actionArgsJson"] where metadata[key] != .null {
+            fields += flatten(metadata[key], prefix: key)
+        }
+        if case .object(let object) = metadata {
+            for (key, value) in object.sorted(by: { $0.key < $1.key }) where !hidden.contains(key) && !key.hasSuffix("Id") && !key.hasSuffix("Ids") && !["args", "actionArgs", "actionArgsJson"].contains(key) && value != .null {
+                fields.append(make(id: key, key: key, raw: value))
+            }
+        }
+        return fields
+    }
+    private static func flatten(_ value: JSONValue, prefix: String) -> [ApprovalField] {
+        if case .object(let object) = value {
+            return object.sorted { $0.key < $1.key }.filter { $0.value != .null }.map { make(id: "\(prefix).\($0.key)", key: $0.key, raw: $0.value) }
+        }
+        return [make(id: prefix, key: "Arguments", raw: value)]
+    }
+    private static func make(id: String, key: String, raw: JSONValue) -> ApprovalField {
+        let (text, code) = render(raw)
+        return ApprovalField(id: id, key: key, label: ApprovalCopy.humanize(key), value: text, isCode: code)
+    }
+    /// Strings stay text unless they are JSON; objects and arrays are shown indented.
+    private static func render(_ raw: JSONValue) -> (String, Bool) {
+        switch raw {
+        case .string(let s):
+            let trimmed = s.trimmingCharacters(in: .whitespacesAndNewlines)
+            if (trimmed.hasPrefix("{") || trimmed.hasPrefix("[")), let data = trimmed.data(using: .utf8), let parsed = try? JSONDecoder().decode(JSONValue.self, from: data) { return (pretty(parsed), true) }
+            return (s, false)
+        case .bool(let b): return (b ? "Yes" : "No", false)
+        case .number(let n): return (n.rounded() == n && abs(n) < 1e15 ? String(Int64(n)) : String(n), false)
+        case .array(let items) where items.allSatisfy({ if case .string = $0 { return true }; return false }):
+            return (items.map(\.text).joined(separator: ", "), false)
+        case .object, .array: return (pretty(raw), true)
+        default: return (raw.text, false)
+        }
+    }
+    private static func pretty(_ value: JSONValue) -> String {
+        let encoder = JSONEncoder(); encoder.outputFormatting = [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes]
+        return (try? encoder.encode(value)).flatMap { String(data: $0, encoding: .utf8) } ?? ""
+    }
 }
 
 struct AttentionDetail: View {
