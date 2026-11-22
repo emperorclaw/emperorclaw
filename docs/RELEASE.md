@@ -56,6 +56,27 @@ public for the first time.
       tag moves and Watchtower has nothing to swap. Check with
       `gh run list --workflow="Docker Publish" --limit 3`.
 
+      Measured on `v0.42.5` (`02b0553f`, 2026-11-21), from the tag push to the
+      container swap:
+
+      | UTC | What | Elapsed |
+      |---|---|---|
+      | 23:44:09 | tag pushed; publish and CI of the tag start | — |
+      | 23:44:15 | gate finds the tag's own CI run and starts polling | +6 s |
+      | 00:06:34 | CI of the tag green; gate passes | +22 min |
+      | 00:06:39 → 00:10:24 | `build-and-push` | +3 min 45 s |
+      | 00:09:55 | GitHub release published | |
+      | 00:11:06 → 00:11:17 | Watchtower finds the new digest, swaps the container | +27 min |
+
+      So a release now takes ~27 minutes before production changes, of which
+      ~22 are the CI suite the gate is waiting on. That is the cost of the gate:
+      before it, the image was published ~3 minutes after the tag regardless of
+      the CI result.
+
+      On the Hermes publish the `contract` suite (16 min) runs **in parallel**
+      with the gate, not before it: that run took 27 min 53 s in total, against
+      the 43 min 51 s it would have taken serialized behind the gate.
+
 ## What version the app reports
 
 The tag is the source of truth. Docker Publish resolves `GITHUB_REF_NAME`,
