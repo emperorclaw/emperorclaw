@@ -145,6 +145,11 @@ export async function PATCH(
             assignedAgentId: body.assignedAgentId !== undefined ? body.assignedAgentId : undefined,
             state: body.state,
             inputJson: body.inputJson && typeof body.inputJson === "object" ? body.inputJson : undefined,
+            // Dependencies are a real write on this endpoint (reported 2026-11-22 against 0.42.9):
+            // the field used to be dropped here, so a PATCH that declared a
+            // blocker answered 200 with nothing written. Shape, existence,
+            // company and cycles are refused inside updateTaskForCompany.
+            blockedByTaskIds: body.blockedByTaskIds,
             // A status change or a reassignment is signed by the token alone.
             // `agentId` in the body is a claim by the caller, and with a company
             // token it would let the writer declare itself the assignee and pass

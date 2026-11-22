@@ -41,6 +41,9 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
             state: body.state,
             inputJson,
             blockedReason: body.blockedReason !== undefined ? body.blockedReason : undefined,
+            // Same silent-drop bug as the MCP PATCH (reported 2026-11-22 against 0.42.9): the
+            // member-facing edit had no way to touch a dependency at all.
+            blockedByTaskIds: body.blockedByTaskIds,
             actorType: "human",
             actorId: ctx.userId,
         });

@@ -9,6 +9,12 @@ tagged (e.g. `## [1.2.0] — 2026-07-22`). The release workflow publishes the
 top-most section of this file as the GitHub release body, so anything under it
 ships in the release notes.
 
+## [Unreleased]
+
+### Fixed
+
+- **A task dependency now reaches the row, and a refused one changes nothing.** `PATCH /api/mcp/tasks/{id}` (and the member-facing `PATCH /api/tasks/{id}`) accepted `blockedByTaskIds`, answered **200** and wrote nothing: the caller believed the task was waiting on another one while the board, the review buckets and the next-task query still saw it free. The field is now written to `tasks.blocked_by_task_ids`, the column the claim guard reads, and validated as a whole **before** the `UPDATE` — an id that does not exist in this company, a soft-deleted task, the task itself or a cycle is refused with **400** and the row keeps its previous dependencies. `[]` clears them, omitting the field leaves them alone, and the change is recorded on the task timeline with its previous value. The MCP `update_task` tool exposes the same field.
+
 ## [0.42.9] — 2026-11-22
 
 ### Fixed
