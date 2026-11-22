@@ -75,10 +75,13 @@ export function normalizeTaskState(input: unknown): TaskState | null {
   }
 }
 
+/** States in which the work is over and no session may hold the task. */
+export const TERMINAL_TASK_STATES = [
+  TASK_STATES.done,
+  TASK_STATES.failed,
+  TASK_STATES.deadLetter,
+] as const satisfies readonly PersistedTaskState[];
+
 export function isTerminalTaskState(state: PersistedTaskState): boolean {
-  return (
-    state === TASK_STATES.done ||
-    state === TASK_STATES.failed ||
-    state === TASK_STATES.deadLetter
-  );
+  return (TERMINAL_TASK_STATES as readonly string[]).includes(state);
 }
