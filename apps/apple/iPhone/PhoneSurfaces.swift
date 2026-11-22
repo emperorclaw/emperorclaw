@@ -12,12 +12,20 @@ struct PhoneSurface: View {
     var values: [String: JSONValue]
     var selectAgent: (String) -> Void = { _ in }
     var contentHeight: (Double) -> Void = { _ in }
+    /// Shown natively until the web surface has painted, so content never sits blank.
+    var placeholder: AnyView? = nil
     @State private var rendered = false
     var body: some View {
-        ChatWebView(payload: payload, workspace: workspace, client: model.client,
-                    openLink: { openURL($0) }, selectAgent: selectAgent, contentHeight: contentHeight,
-                    didRenderSurface: { rendered = true })
-            .overlay { if !rendered { ProgressView("Loading content…").font(.caption).tint(Color.secondary).allowsHitTesting(false) } }
+        ZStack(alignment: .top) {
+            ChatWebView(payload: payload, workspace: workspace, client: model.client,
+                        openLink: { openURL($0) }, selectAgent: selectAgent, contentHeight: contentHeight,
+                        didRenderSurface: { withAnimation(Motion.settle) { rendered = true } })
+                .opacity(rendered || placeholder == nil ? 1 : 0)
+            if !rendered {
+                if let placeholder { placeholder.transition(.opacity) }
+                else { ProgressView("Loading content…").font(.caption).tint(Color.secondary).allowsHitTesting(false).frame(maxHeight: .infinity) }
+            }
+        }
     }
     private var payload: JSONValue {
         var data: [String: JSONValue] = ["messages": .array([]), "previews": .array([]), "participants": .array([]), "agentNames": .object([:]), "liveRuns": .array([]), "replyRuns": .object([:]), "hasMore": .bool(false), "loaded": .bool(true), "streaming": .bool(false), "title": .string(""), "locale": .string(Locale.current.identifier), "mayWrite": .bool(false), "forceBottom": .number(0), "loadingOlder": .bool(false)]
@@ -63,8 +71,9 @@ struct PhoneHome: View {
                                     } else {
                                         PhoneSurface(workspace: workspace, values: ["mode": .string("fleet"), "embedded": .bool(true), "agents": encodedAgents(snapshot.agents), "fresh": .bool(model.errors[workspace.id] == nil && scene == .active)],
                                                      selectAgent: { id in selectedAgent = snapshot.agents.first { $0.id == id } },
-                                                     contentHeight: { measured in if abs(fleetHeight - measured) > 1 { fleetHeight = measured } })
-                                            .frame(height: fleetHeight).padding(.horizontal, -20)
+                                                     contentHeight: { measured in if abs(fleetHeight - measured) > 1 { fleetHeight = measured } },
+                                                     placeholder: AnyView(TeamGrid(agents: snapshot.agents) { selectedAgent = $0 }.padding(.horizontal, 20)))
+                                            .frame(minHeight: fleetHeight, alignment: .top).padding(.horizontal, -20)
                                     }
                                 }
                             } else { ProgressView("Bringing your team closer…").frame(maxWidth: .infinity).padding(.vertical, 60) }
@@ -280,5 +289,35 @@ struct SignInAgainCard: View {
         }
         .padding(16)
         .background(Color.cardSurface, in: RoundedRectangle(cornerRadius: DS.Radius.card, style: .continuous))
+    }
+}
+
+/// Native team tiles: the instant view of the team while the office scene
+/// loads, and the fallback if it never does.
+struct TeamGrid: View {
+    let agents: [Agent]
+    let select: (Agent) -> Void
+    private var sorted: [Agent] { agents.sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending } }
+    var body: some View {
+        LazyVGrid(columns: [GridItem(.adaptive(minimum: 150), spacing: 12)], spacing: 12) {
+            ForEach(sorted) { agent in
+                Button { select(agent) } label: {
+                    VStack(alignment: .leading, spacing: 10) {
+                        HStack(spacing: 6) {
+                            Circle().fill(agent.statusLabel == "Working" ? Color.green : Color.secondary).frame(width: 7, height: 7)
+                            Text(agent.statusLabel).font(.caption.weight(.medium)).foregroundStyle(.secondary)
+                        }
+                        AgentMonogram(agent: agent, size: 48).frame(maxWidth: .infinity)
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(agent.name).font(.headline).fontDesign(.rounded).lineLimit(1)
+                            Text(agent.taskTitle ?? agent.activity ?? "Ready").font(.subheadline).foregroundStyle(.secondary).lineLimit(1)
+                        }
+                    }
+                    .padding(14).frame(maxWidth: .infinity, alignment: .leading)
+                    .background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 22, style: .continuous))
+                }
+                .buttonStyle(PressableStyle()).accessibilityLabel("\(agent.name), \(agent.statusLabel). Open conversation")
+            }
+        }
     }
 }
