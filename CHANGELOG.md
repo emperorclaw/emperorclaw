@@ -9,6 +9,13 @@ tagged (e.g. `## [1.2.0] — 2026-07-22`). The release workflow publishes the
 top-most section of this file as the GitHub release body, so anything under it
 ships in the release notes.
 
+## [0.42.6] — 2026-11-22
+
+### Fixed
+
+- **An id that is not a UUID is now a 404 or a 400, not a 500.** `GET /api/mcp/tasks/{id}` no longer hands a non-UUID id (for example the 8-character short code) to the Postgres driver. Inside the current company the id resolves by prefix — 8 to 31 hex characters: one match returns the task, none returns 404, several return 409 — and anything else returns 400 whose message says what to send. Company scoping is preserved: a prefix that matches only tasks of another company still answers 404, not 409.
+- **`e2e-ui` no longer waits for a network idle the chat page never reaches.** `tests/e2e/chat-experience.spec.ts` used `waitUntil: "networkidle"` across the streaming transport, which flaked on an unchanged sha; it now waits on the state it actually needs. `ci.yml` gained a `workflow_dispatch` trigger so a repeat measurement is a fresh run on the intact sha instead of a rerun of the failed job and its cache.
+
 ## [0.42.5] — 2026-11-21
 
 ### Changed
