@@ -114,6 +114,7 @@ export async function deleteAgentAndData(input: {
         await tx.update(tasks).set({
             assignedAgentId: null,
             leaseOwner: null,
+            leaseSession: null,
             leaseUntil: null,
             processingStartedAt: null,
             updatedAt: now,

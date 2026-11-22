@@ -29,7 +29,7 @@ Include your company token in the `Authorization` header:
 - **`POST /api/mcp/agents/{agent_id}/memory`**: Append a first-class memory entry.
 - **`PATCH /api/mcp/agents/{agent_id}`**: Update agent metadata or legacy memory.
 - **`DELETE /api/mcp/agents/{agent_id}`**: Soft-delete an agent.
-- **`POST /api/mcp/agents/heartbeat`**: Update agent load, keep alive, and renew active task leases.
+- **`POST /api/mcp/agents/heartbeat`**: Update agent load, keep alive, and renew the leases this heartbeat represents (unclaimed in-progress tasks, or the `session` it names).
 - **`GET /api/mcp/agents/{agent_id}/integrations`**: Fetch agent runtime integrations.
 - **`POST /api/mcp/agents/{agent_id}/integrations`**: Register a new runtime-local payload for an agent.
 - **`DELETE /api/mcp/agents/{agent_id}/integrations?integrationId={id}`**: Archive a runtime integration.

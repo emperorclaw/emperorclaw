@@ -204,6 +204,7 @@ export async function resolveApprovalOutcome(input: ResolveApprovalInput): Promi
       const [updatedTask] = await db.update(tasks).set({
         state: nextState,
         leaseOwner: null,
+        leaseSession: null,
         leaseUntil: null,
         updatedAt: new Date(),
       }).where(eq(tasks.id, row.task.id)).returning();

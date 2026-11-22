@@ -28,7 +28,8 @@ export function startWatchdog() {
     setInterval(runWatchdog, WATCHDOG_INTERVAL_MS);
 }
 
-async function runWatchdog() {
+/** One sweep. Exported so tests can drive a reclaim without waiting for the loop. */
+export async function runWatchdog() {
     const client = await pool.connect();
     try {
         // Attempt to acquire advisory lock
@@ -59,6 +60,7 @@ async function runWatchdog() {
                     state: TASK_STATES.inbox,
                     retries: task.retries + 1,
                     leaseOwner: null,
+                    leaseSession: null,
                     leaseUntil: null,
                     assignedAgentId: null,
                     assignedMemberId: null,
@@ -89,6 +91,10 @@ async function runWatchdog() {
             } else {
                 const [deadLetterTask] = await db.update(tasks).set({
                     state: TASK_STATES.deadLetter,
+                    // Terminal: the hold dies with the attempt.
+                    leaseOwner: null,
+                    leaseSession: null,
+                    leaseUntil: null,
                     updatedAt: new Date(),
                 }).where(and(
                     eq(tasks.id, task.id),

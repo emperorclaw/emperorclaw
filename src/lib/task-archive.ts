@@ -84,7 +84,14 @@ export async function archiveTasksForCaller(caller: ArchiveCaller, ids: string[]
     let archived: TaskRow[] = [];
     if (allowed.length > 0) {
         const now = new Date();
-        archived = await db.update(tasks).set({ deletedAt: now, updatedAt: now }).where(and(
+        archived = await db.update(tasks).set({
+            deletedAt: now,
+            updatedAt: now,
+            // Archived is out of play: no hold survives it.
+            leaseOwner: null,
+            leaseSession: null,
+            leaseUntil: null,
+        }).where(and(
             inArray(tasks.id, allowed.map((task) => task.id)),
             eq(tasks.companyId, caller.companyId),
             isNull(tasks.deletedAt),
