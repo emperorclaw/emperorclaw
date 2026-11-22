@@ -99,11 +99,126 @@ type UpdateTaskInput = {
   inputJson?: Record<string, unknown> | null;
   /** Required when moving a task into `blocked`; cleared when it leaves. */
   blockedReason?: string | null;
+  /**
+   * Replace the task's dependencies. `undefined` leaves them alone and `[]`
+   * clears them. Typed `unknown` on purpose: the route hands over what the
+   * client sent and `resolveBlockedByTaskIds` refuses a malformed list instead
+   * of filtering it into something the caller never asked for.
+   */
+  blockedByTaskIds?: unknown;
   actorType?: "agent" | "human" | "system";
   actorId?: string | null;
   /** Overrides actorType/actorId in the activity log (an MCP token id). */
   actor?: AuditActor;
 };
+
+/** A task blocked by more than this is a plan, not a dependency list. */
+export const TASK_MAX_DEPENDENCIES = 50;
+
+type BlockedByResolution =
+  | { ok: true; ids: string[] }
+  | { ok: false; error: string };
+
+/**
+ * Normalizes a `blockedByTaskIds` write and refuses everything that would make
+ * the dependency graph a lie:
+ *
+ * - a malformed list (not an array, or entries that are not ids);
+ * - an id outside this company or already deleted — the claim guard joins the
+ *   dependency to the task row, so a dangling id silently blocks nothing while
+ *   the board claims the task is waiting;
+ * - the task itself;
+ * - a cycle, which would keep every task in it unclaimable with no way to see
+ *   why from the board.
+ *
+ * The company's task rows are read in one query: the graph is one row per task
+ * and the cycle check needs the whole graph anyway, so that same read answers
+ * existence and ownership too.
+ */
+export async function resolveBlockedByTaskIds(input: {
+  companyId: string;
+  taskId: string;
+  raw: unknown;
+}): Promise<BlockedByResolution> {
+  if (!Array.isArray(input.raw)) {
+    return { ok: false, error: "blockedByTaskIds must be an array of task ids." };
+  }
+
+  const ids: string[] = [];
+  for (const value of input.raw) {
+    if (typeof value !== "string" || !value.trim()) {
+      return { ok: false, error: "blockedByTaskIds must contain task ids only." };
+    }
+    const id = value.trim();
+    if (!ids.includes(id)) ids.push(id);
+  }
+
+  if (ids.length > TASK_MAX_DEPENDENCIES) {
+    return { ok: false, error: `A task can be blocked by at most ${TASK_MAX_DEPENDENCIES} tasks.` };
+  }
+  if (ids.includes(input.taskId)) {
+    return { ok: false, error: "A task cannot be blocked by itself." };
+  }
+  if (ids.length === 0) {
+    return { ok: true, ids };
+  }
+
+  const graph = new Map<string, string[]>();
+  const rows = await db.select({
+    id: tasks.id,
+    blockedByTaskIds: tasks.blockedByTaskIds,
+  }).from(tasks).where(
+    and(eq(tasks.companyId, input.companyId), isNull(tasks.deletedAt)),
+  );
+  for (const row of rows) {
+    graph.set(row.id, dependencyIds(row.blockedByTaskIds));
+  }
+
+  const missing = ids.filter((id) => !graph.has(id));
+  if (missing.length > 0) {
+    return { ok: false, error: `Blocked-by task not found in this company: ${missing.join(", ")}` };
+  }
+
+  graph.set(input.taskId, ids);
+  const cycle = findDependencyCycle(input.taskId, graph);
+  if (cycle) {
+    return { ok: false, error: `Dependency cycle: ${cycle.join(" -> ")}` };
+  }
+
+  return { ok: true, ids };
+}
+
+function dependencyIds(value: unknown): string[] {
+  return Array.isArray(value) ? value.filter((entry): entry is string => typeof entry === "string") : [];
+}
+
+/**
+ * Walks task -> blocked-by edges from `start` and returns the closed path when
+ * `start` is reachable from itself, or null. `visited` keeps it linear on a
+ * diamond-shaped graph.
+ */
+function findDependencyCycle(start: string, graph: Map<string, string[]>): string[] | null {
+  const path: string[] = [start];
+  const onPath = new Set<string>([start]);
+  const visited = new Set<string>();
+
+  const walk = (id: string): string[] | null => {
+    for (const next of graph.get(id) ?? []) {
+      if (next === start) return [...path, start];
+      if (onPath.has(next) || visited.has(next)) continue;
+      visited.add(next);
+      path.push(next);
+      onPath.add(next);
+      const cycle = walk(next);
+      if (cycle) return cycle;
+      path.pop();
+      onPath.delete(next);
+    }
+    return null;
+  };
+
+  return walk(start);
+}
 
 export async function claimNextTaskForAgent(input: ClaimTaskInput) {
   const strictOwnerRole = input.strictOwnerRole !== false;
@@ -429,6 +544,24 @@ export async function updateTaskForCompany(input: UpdateTaskInput) {
     return { status: 400 as const, error: titleError };
   }
 
+  // A dependency write used to be accepted by the PATCH handlers and dropped
+  // before the UPDATE: 200, nothing written, and the caller believed the task
+  // was blocked (reported 2026-11-22 against 0.42.9). The column is the one
+  // the claim guard reads, so the write lands here — validated as a whole
+  // before the UPDATE, which is what keeps a refused write off the row.
+  let nextBlockedByTaskIds = dependencyIds(existingTask.blockedByTaskIds);
+  if (input.blockedByTaskIds !== undefined) {
+    const resolved = await resolveBlockedByTaskIds({
+      companyId: input.companyId,
+      taskId: input.taskId,
+      raw: input.blockedByTaskIds,
+    });
+    if (!resolved.ok) {
+      return { status: 400 as const, error: resolved.error };
+    }
+    nextBlockedByTaskIds = resolved.ids;
+  }
+
   const previousAssignee = getTaskAssignee(existingTask);
   const nextAssignee = getTaskAssignee({
     assignedAgentId: resolvedAssignedAgentId,
@@ -461,6 +594,7 @@ export async function updateTaskForCompany(input: UpdateTaskInput) {
     leaseUntil: revokeLease ? null : existingTask.leaseUntil,
     state: normalizedState || existingTask.state,
     inputJson: normalizedSpec.inputJson,
+    blockedByTaskIds: nextBlockedByTaskIds,
     updatedAt: new Date(),
   }).where(
     and(eq(tasks.id, input.taskId), eq(tasks.companyId, input.companyId)),
@@ -482,6 +616,8 @@ export async function updateTaskForCompany(input: UpdateTaskInput) {
       previousAssignee,
       assignee: nextAssignee,
       state: normalizedState,
+      blockedByTaskIds: input.blockedByTaskIds !== undefined ? nextBlockedByTaskIds : undefined,
+      previousBlockedByTaskIds: input.blockedByTaskIds !== undefined ? dependencyIds(existingTask.blockedByTaskIds) : undefined,
       readiness: normalizedSpec.readiness,
       missingFields: normalizedSpec.missingFields,
     },
