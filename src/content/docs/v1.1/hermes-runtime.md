@@ -81,6 +81,7 @@ Optional per-agent settings:
 | --- | --- | --- |
 | `EMPEROR_CLAW_HERMES_MAX_PARALLEL_TURNS` | `3` | Threads handled at the same time. Use `1` on small hosts and for agents sharing a working directory |
 | `EMPEROR_CLAW_HERMES_COMPACT_AFTER_TOKENS` | `60000` | Context size that triggers compaction after a reply. `0` turns it off |
+| `EMPEROR_CLAW_HERMES_FRESH_AFTER_IDLE_MINUTES` | `240` | A thread quiet for longer than this starts a fresh Hermes session on its next message, seeded with the thread's recent messages and open tasks, instead of resuming the old one. `0` turns it off |
 | `EMPEROR_CLAW_HERMES_TURN_IDLE_TIMEOUT_SECONDS` | `900` | Interrupt a turn after this long with no activity |
 | `EMPEROR_CLAW_HERMES_CWD` | `$HOME` | Working directory for new sessions |
 

@@ -390,6 +390,39 @@ class SessionManagerTest(unittest.IsolatedAsyncioTestCase):
         finally:
             await link.close()
 
+    async def test_idle_thread_starts_a_fresh_generation(self) -> None:
+        gw, link, manager = await self._manager("normal_turn")
+        try:
+            rec = await manager.ensure("fx-normal", policy(fresh_after_idle_s=4 * 3600))
+            # Never had a turn yet: nothing to rotate.
+            self.assertIs(manager.plan("fx-normal", policy(fresh_after_idle_s=4 * 3600)), rec)
+            rec.last_turn_at = iso_ago(3 * 3600)  # quiet for 3 h: still the same session
+            self.assertIs(manager.plan("fx-normal", policy(fresh_after_idle_s=4 * 3600)), rec)
+            rec.last_turn_at = iso_ago(5 * 3600)  # quiet for 5 h: a new generation (fresh + seed)
+            fresh = manager.plan("fx-normal", policy(fresh_after_idle_s=4 * 3600))
+            self.assertEqual(fresh.generation, rec.generation + 1)
+            self.assertIsNone(fresh.session_id)
+            # The knob is not a create param, so it never forces a new generation by itself.
+            self.assertEqual(fresh.create_params, build_create_params(
+                agent_id="probe-agent", thread_id="fx-normal", generation=fresh.generation,
+                policy=policy(), profile_home=self.home))
+        finally:
+            await link.close()
+
+    async def test_idle_rotation_off_keeps_resuming(self) -> None:
+        gw, link, manager = await self._manager("normal_turn")
+        try:
+            rec = await manager.ensure("fx-normal", policy())
+            rec.last_turn_at = iso_ago(30 * 24 * 3600)
+            self.assertIs(manager.plan("fx-normal", policy(fresh_after_idle_s=0)), rec)
+        finally:
+            await link.close()
+
+
+def iso_ago(seconds: float) -> str:
+    from datetime import datetime, timedelta, timezone
+    return (datetime.now(timezone.utc) - timedelta(seconds=seconds)).strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3] + "Z"
+
 
 if __name__ == "__main__":
     unittest.main()

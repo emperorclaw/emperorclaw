@@ -13,6 +13,13 @@ test("new Hermes profiles get the fast-path config defaults", () => {
     assert.equal(defaults.size, HERMES_PROFILE_CONFIG_DEFAULTS.length, "keys must be unique so re-applying is idempotent");
 });
 
+test("what survives a compaction stays small: one pinned message, pruned and capped tool output", () => {
+    const defaults = new Map(HERMES_PROFILE_CONFIG_DEFAULTS);
+    assert.equal(defaults.get("compression.protect_first_n"), "1");
+    assert.equal(defaults.get("compression.proactive_prune_min_result_chars"), "4000");
+    assert.equal(defaults.get("tool_output.max_bytes"), "16000");
+});
+
 test("0.9 runtime keys: approval and clarify backstops, restart drain, no title calls", () => {
     const defaults = new Map(HERMES_PROFILE_CONFIG_DEFAULTS);
     assert.equal(defaults.get("approvals.timeout"), "60");

@@ -178,6 +178,13 @@ class SessionManager:
         if rec is None:
             floor = getattr(self._store, "generation_floor", lambda _t: 0)(thread_id)
             return self._new_generation(thread_id, max(1, floor + 1), policy)
+        if self._idle_expired(rec, policy):
+            # A resumed session re-sends its whole history on every model call, and after hours
+            # of quiet the provider's prompt cache is cold too. Start over: the first turn of the
+            # new generation carries the thread's recent messages (seed) and the open tasks.
+            self._log.info("thread=%s idle %.0f min: generation %d -> %d", thread_id,
+                           _age_seconds(rec.last_turn_at) / 60, rec.generation, rec.generation + 1)
+            return self._new_generation(thread_id, rec.generation + 1, policy)
         candidate = build_create_params(agent_id=self._agent_id, thread_id=thread_id,
                                         generation=rec.generation, policy=policy,
                                         profile_home=self._profile_home)
@@ -188,6 +195,13 @@ class SessionManager:
                            rec.generation + 1)
             return self._new_generation(thread_id, rec.generation + 1, policy)
         return rec  # throttled: keep replaying the stored params verbatim
+
+    @staticmethod
+    def _idle_expired(rec: ThreadSession, policy: SessionPolicy) -> bool:
+        """True when the thread had a turn and has been quiet for `fresh_after_idle_s` since."""
+        if policy.fresh_after_idle_s <= 0 or not rec.session_id or not rec.last_turn_at:
+            return False
+        return _age_seconds(rec.last_turn_at) >= policy.fresh_after_idle_s
 
     async def ensure(self, thread_id: str, policy: SessionPolicy) -> ThreadSession:
         async with self._lock(thread_id):

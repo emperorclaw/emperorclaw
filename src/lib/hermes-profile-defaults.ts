@@ -17,6 +17,18 @@ export const HERMES_PROFILE_CONFIG_DEFAULTS: ReadonlyArray<readonly [key: string
     // also compacts after the reply (60k), so this is the backstop.
     ["compression.threshold_tokens", "80000"],
     ["compression.proactive_prune_tokens", "48000"],
+    // Measured 2026-11 (616 runs of the two busiest agents): ~100-130k tokens per
+    // model call even right after a compaction, ~20-45 calls per task run, and
+    // `terminal` the dominant tool. What survives a compaction is the pinned head
+    // plus the recent tail, and both were full of raw tool output:
+    // - pin only the opening user message (the thread seed), not the first tool
+    //   call/result pair, which Hermes otherwise keeps verbatim forever;
+    ["compression.protect_first_n", "1"],
+    // - let the no-LLM prune shrink old tool results from 4k chars, not 8k;
+    ["compression.proactive_prune_min_result_chars", "4000"],
+    // - cap one terminal result at ~4k tokens (head and tail kept; the agent can
+    //   re-run with grep/head/tail for the middle) instead of ~13k.
+    ["tool_output.max_bytes", "16000"],
     // Off: Hermes checks idle compaction at the START of the next turn, so the
     // first message after a quiet spell waited for a full summary call (~80s
     // measured). Threshold compaction above still bounds the context.

@@ -440,7 +440,7 @@ class ContextBuilder:
                  doctrine_resource_id: str = "", operating_guide_path: str = "", shared_max_chars: int = 6000,
                  max_chars_per_resource: Optional[int] = None, ttl_s: float = 600.0, profile_ttl_s: float = 60.0,
                  run_budget_s: int = 0, cwd: str = "", toolsets: Sequence[str] = (),
-                 logger: Optional[logging.Logger] = None, clock: Any = time.monotonic) -> None:
+                 fresh_after_idle_s: float = 0.0, logger: Optional[logging.Logger] = None, clock: Any = time.monotonic) -> None:
         self._client = client
         self._request = client.request
         self.agent_id, self.agent_name, self.agent_role = agent_id, agent_name, agent_role
@@ -450,6 +450,7 @@ class ContextBuilder:
         self._guide = load_operating_guide(operating_guide_path)
         self._ttl, self._profile_ttl = ttl_s, profile_ttl_s
         self._run_budget, self._cwd, self._toolsets = run_budget_s, cwd, tuple(toolsets)
+        self._fresh_after_idle_s = max(0.0, float(fresh_after_idle_s))
         self._log = logger or logging.getLogger("emperor_bridge.context")
         self._clock = clock
         self.capabilities: frozenset[str] = frozenset()
@@ -468,7 +469,8 @@ class ContextBuilder:
                    context_mode=cfg.context_mode, doctrine_resource_id=cfg.doctrine_resource_id,
                    operating_guide_path=cfg.operating_guide_path, shared_max_chars=cfg.shared_resource_max_chars,
                    max_chars_per_resource=cfg.max_chars_per_resource, run_budget_s=cfg.turn_timeout_s, cwd=cfg.cwd,
-                   toolsets=cfg.toolsets, logger=logger)
+                   toolsets=cfg.toolsets, fresh_after_idle_s=getattr(cfg, "fresh_after_idle_s", 0.0),
+                   logger=logger)
 
     # ---- server data -----------------------------------------------------------------------
 
@@ -616,7 +618,8 @@ class ContextBuilder:
         urgent = bool(previous_params) and old_env.get(IDENTITY_ENV) not in (None, identity)
         return SessionPolicy(system_prompt=text, thread_type=thread_type or "direct", cwd=self._cwd,
                              toolsets=self._toolsets or SessionPolicy.toolsets, run_budget_seconds=self._run_budget,
-                             extra_client_env={IDENTITY_ENV: identity}, urgent=urgent)
+                             extra_client_env={IDENTITY_ENV: identity}, urgent=urgent,
+                             fresh_after_idle_s=self._fresh_after_idle_s)
 
     # ---- per turn --------------------------------------------------------------------------
 

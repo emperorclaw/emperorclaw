@@ -910,6 +910,9 @@ builtin_defaults() {
 compression.threshold_tokens=80000
 compression.proactive_prune_tokens=48000
 compression.idle_compact_after_seconds=0
+compression.protect_first_n=1
+compression.proactive_prune_min_result_chars=4000
+tool_output.max_bytes=16000
 tools.tool_search.enabled=off
 approvals.timeout=60
 agent.restart_drain_timeout=30

@@ -158,6 +158,7 @@ class AgentConfig:
     max_parallel_turns: int = 3
     followup_mode: str = "coalesce"
     compact_after_tokens: int = 60000
+    fresh_after_idle_s: float = 4 * 3600.0
     turn_timeout_s: int = 0
     turn_idle_timeout_s: float = 900.0
     event_flush_ms: int = 500
@@ -244,6 +245,7 @@ class AgentConfig:
             max_parallel_turns=get.integer("EMPEROR_CLAW_HERMES_MAX_PARALLEL_TURNS", 3, 1),
             followup_mode=(get.get("EMPEROR_CLAW_HERMES_FOLLOWUP") or "coalesce").lower(),
             compact_after_tokens=get.integer("EMPEROR_CLAW_HERMES_COMPACT_AFTER_TOKENS", 60000, 0),
+            fresh_after_idle_s=get.number("EMPEROR_CLAW_HERMES_FRESH_AFTER_IDLE_MINUTES", 240, 0) * 60,
             turn_timeout_s=get.integer("EMPEROR_CLAW_HERMES_TURN_TIMEOUT_SECONDS", 0, 0),
             turn_idle_timeout_s=get.number("EMPEROR_CLAW_HERMES_TURN_IDLE_TIMEOUT_SECONDS", 900, 0),
             event_flush_ms=get.integer("EMPEROR_CLAW_HERMES_EVENT_FLUSH_MS", 500, 50),

@@ -256,6 +256,9 @@ class SessionPolicy:
     extra_client_env: Mapping[str, str] = field(default_factory=dict)
     urgent: bool = False
     refresh_min_interval_s: float = 6 * 3600
+    # Start a new generation (fresh session + continuity seed) when the thread's last turn is
+    # older than this; 0 = never. Not a create param: it never changes the policy hash.
+    fresh_after_idle_s: float = 0.0
 
 
 @dataclass
