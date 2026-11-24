@@ -6,6 +6,7 @@ import { coerceStoredOrganization, validateOrganizationTree, type OrganizationNo
 import { organizationBriefing, type OrgName } from "@/lib/organization-briefing";
 import { cachedOrganization, invalidateOrganizationCache } from "@/lib/organization-cache";
 import { addTeamToChart, initialChart, type ChartTeam } from "@/lib/organization-setup";
+import { chartLive, chartTeamIds, reconcileOrganizationChart } from "@/lib/organization-reconcile";
 import { mcpAccessForAgent } from "@/lib/mcp-access";
 import type { CoordinatorRef } from "@/lib/team-coordination";
 
@@ -30,7 +31,22 @@ export async function loadOrganization(companyId: string) {
     ]);
     if (!company) throw new GroupError("Company not found", 404);
     const stored: OrganizationConfig = coerceStoredOrganization(company.config) ?? { leader: null, teamIds: [] };
-    const config = { ...stored, teamIds: stored.teamIds.filter(id => groups.some(group => group.id === id)) };
+    // A saved chart is a snapshot of who sat where, and rooms move without it:
+    // serve it reconciled with the rooms it names, so a former coordinator, a
+    // member who left or a deleted agent never reaches a reader.
+    const nodes = stored.nodes?.length ? reconcileOrganizationChart(stored.nodes, groups, chartLive(roster, people)) : stored.nodes;
+    // Only the flat lists are touched: the leader stays whoever the chart was
+    // saved with unless reconciliation dropped it, and a room the chart names is
+    // added to the stored list rather than replacing it.
+    const rootDropped = !!nodes && !!stored.nodes?.length && !nodes.some(node => node.id === stored.nodes!.find(candidate => candidate.parentId === null)?.id);
+    const root = nodes?.find(node => node.parentId === null);
+    const teamIds = new Set([...stored.teamIds, ...(nodes ? chartTeamIds(nodes) : [])]);
+    const config: OrganizationConfig = {
+        ...stored,
+        ...(nodes ? { nodes } : {}),
+        leader: rootDropped ? (root?.kind === "person" ? root.person : null) : stored.leader,
+        teamIds: [...teamIds].filter(id => groups.some(group => group.id === id)),
+    };
     const leader = config.leader ? (config.leader.kind === "agent" ? roster : people).find(member => member.id === config.leader!.id) : null;
     if (config.leader && !leader) config.leader = null;
     const teams = groups.filter(group => config.teamIds.includes(group.id));
