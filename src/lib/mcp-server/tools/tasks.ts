@@ -174,12 +174,13 @@ export function registerTaskTools(server: McpServer, companyId: string, callerAg
             state: z.string().optional().describe("New task state: 'inbox', 'in_progress', 'review', 'blocked', 'done', or 'failed'. Setting 'blocked' requires blockedReason."),
             blockedReason: z.string().optional().describe("Why the task is blocked (required for state 'blocked'; ignored otherwise). Use a short, specific reason naming the person or dependency you are waiting on."),
             inputJson: z.record(z.string(), z.unknown()).optional(),
+            blockedByTaskIds: z.array(z.string()).optional().describe("Replace the tasks this one is waiting on, by id ([] clears). A claimed task stays unclaimable until each listed task is done."),
         },
-    }, async ({ taskId, title, goal, priority, assignee, assignedAgentId, state, blockedReason, inputJson }) => {
+    }, async ({ taskId, title, goal, priority, assignee, assignedAgentId, state, blockedReason, inputJson, blockedByTaskIds }) => {
         try {
             await requireTask(taskId);
             await assertMcpMayAssign(companyId, await access(), { assignee, assignedAgentId });
-            const task = await updateTaskForCompany({ companyId, taskId, title, goal, priority, assignee, assignedAgentId, state, blockedReason, inputJson, actorType: "agent", actorId: callerAgentId ?? null, actor: mcpActor(callerAgentId, tokenId, operatorUserId) });
+            const task = await updateTaskForCompany({ companyId, taskId, title, goal, priority, assignee, assignedAgentId, state, blockedReason, inputJson, blockedByTaskIds, actorType: "agent", actorId: callerAgentId ?? null, actor: mcpActor(callerAgentId, tokenId, operatorUserId) });
             return jsonResult({ message: "Task updated", task });
         } catch (e) {
             return errorResult(e);
