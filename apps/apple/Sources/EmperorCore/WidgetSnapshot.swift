@@ -14,7 +14,7 @@ public struct WidgetSnapshot: Codable, Identifiable, Sendable {
     }
 }
 public enum WidgetCache {
-    public static let group = "group.com.emperorclaw.app"
+    public static let group = "group.com.emperorclaw.ios"
     public static func read() -> [WidgetSnapshot] {
         guard let data = UserDefaults(suiteName: group)?.data(forKey: "fleetWidgets") else { return [] }
         return (try? JSONDecoder().decode([WidgetSnapshot].self, from: data)) ?? []

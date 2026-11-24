@@ -25,7 +25,7 @@
 	<key>WKApplication</key>
 	<true/>
 	<key>WKCompanionAppBundleIdentifier</key>
-	<string>com.emperorclaw.app</string>
+	<string>com.emperorclaw.ios</string>
 	<key>WKWatchOnly</key>
 	<false/>
 </dict>

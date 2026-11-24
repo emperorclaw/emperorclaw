@@ -56,8 +56,8 @@ widget_source = obj('Widgets/FleetWidget.swift', 'PBXFileReference', lastKnownFi
 file_refs['Widgets/FleetWidget.swift'] = widget_source
 widget_targets = {}
 for target_name, sdk, deployment, family, bundle in [
-    ('PhoneWidgets', 'iphoneos', '17.0', '1,2', 'com.emperorclaw.app.widgets'),
-    ('WatchWidgets', 'watchos', '10.0', '4', 'com.emperorclaw.app.watchkitapp.widgets')]:
+    ('PhoneWidgets', 'iphoneos', '17.0', '1,2', 'com.emperorclaw.ios.widgets'),
+    ('WatchWidgets', 'watchos', '10.0', '4', 'com.emperorclaw.ios.watchkitapp.widgets')]:
     product = obj(target_name + '.appex', 'PBXFileReference', explicitFileType='wrapper.app-extension', path=target_name + '.appex', sourceTree='BUILT_PRODUCTS_DIR')
     products.append(product)
     dep = obj(target_name + 'Core', 'XCSwiftPackageProductDependency', package=package, productName='EmperorCore')
@@ -81,18 +81,18 @@ nse_dep = obj('NotificationServiceCore', 'XCSwiftPackageProductDependency', pack
 nse_phases = [obj('NotificationServiceSources', 'PBXSourcesBuildPhase', buildActionMask='2147483647', files=[obj('NotificationServiceSourceFile', 'PBXBuildFile', fileRef=nse_source)], runOnlyForDeploymentPostprocessing='0'),
               obj('NotificationServiceFrameworks', 'PBXFrameworksBuildPhase', buildActionMask='2147483647', files=[obj('NotificationServiceCoreFile', 'PBXBuildFile', productRef=nse_dep)], runOnlyForDeploymentPostprocessing='0'),
               privacy_resources('NotificationService')]
-nse_configs = [obj('NotificationService' + config, 'XCBuildConfiguration', buildSettings={'SDKROOT': 'iphoneos', 'SUPPORTED_PLATFORMS': 'iphoneos iphonesimulator', 'IPHONEOS_DEPLOYMENT_TARGET': '17.0', 'TARGETED_DEVICE_FAMILY': '1,2', 'PRODUCT_BUNDLE_IDENTIFIER': 'com.emperorclaw.app.notifications', 'PRODUCT_NAME': '$(TARGET_NAME)', 'SWIFT_VERSION': '5.0', 'INFOPLIST_FILE': 'NotificationService/Info.plist', 'CODE_SIGN_ENTITLEMENTS': 'NotificationService/NotificationService.entitlements', 'APPLICATION_EXTENSION_API_ONLY': 'YES', 'SKIP_INSTALL': 'YES', 'CODE_SIGN_STYLE': 'Automatic', 'MARKETING_VERSION': '0.1.0', 'CURRENT_PROJECT_VERSION': '1'}, name=config) for config in ['Debug', 'Release']]
+nse_configs = [obj('NotificationService' + config, 'XCBuildConfiguration', buildSettings={'SDKROOT': 'iphoneos', 'SUPPORTED_PLATFORMS': 'iphoneos iphonesimulator', 'IPHONEOS_DEPLOYMENT_TARGET': '17.0', 'TARGETED_DEVICE_FAMILY': '1,2', 'PRODUCT_BUNDLE_IDENTIFIER': 'com.emperorclaw.ios.notifications', 'PRODUCT_NAME': '$(TARGET_NAME)', 'SWIFT_VERSION': '5.0', 'INFOPLIST_FILE': 'NotificationService/Info.plist', 'CODE_SIGN_ENTITLEMENTS': 'NotificationService/NotificationService.entitlements', 'APPLICATION_EXTENSION_API_ONLY': 'YES', 'SKIP_INSTALL': 'YES', 'CODE_SIGN_STYLE': 'Automatic', 'MARKETING_VERSION': '0.1.0', 'CURRENT_PROJECT_VERSION': '1'}, name=config) for config in ['Debug', 'Release']]
 nse_config_list = obj('NotificationServiceConfigList', 'XCConfigurationList', buildConfigurations=nse_configs, defaultConfigurationIsVisible='0', defaultConfigurationName='Release')
 nse_target = obj('NotificationService', 'PBXNativeTarget', buildConfigurationList=nse_config_list, buildPhases=nse_phases, buildRules=[], dependencies=[], name='NotificationService', packageProductDependencies=[nse_dep], productName='NotificationService', productReference=nse_product, productType='com.apple.product-type.app-extension')
 targets.append(nse_target)
 (ROOT / 'NotificationService').mkdir(exist_ok=True)
 (ROOT / 'NotificationService' / 'Info.plist').write_bytes(plistlib.dumps({'CFBundleDisplayName': 'EmperorClaw', 'CFBundleName': '$(PRODUCT_NAME)', 'CFBundleExecutable': '$(EXECUTABLE_NAME)', 'CFBundleIdentifier': '$(PRODUCT_BUNDLE_IDENTIFIER)', 'CFBundlePackageType': 'XPC!', 'CFBundleShortVersionString': '$(MARKETING_VERSION)', 'CFBundleVersion': '$(CURRENT_PROJECT_VERSION)', 'NSExtension': {'NSExtensionPointIdentifier': 'com.apple.usernotifications.service', 'NSExtensionPrincipalClass': '$(PRODUCT_MODULE_NAME).NotificationService'}}))
-(ROOT / 'NotificationService' / 'NotificationService.entitlements').write_bytes(plistlib.dumps({'com.apple.security.application-groups': ['group.com.emperorclaw.app']}))
+(ROOT / 'NotificationService' / 'NotificationService.entitlements').write_bytes(plistlib.dumps({'com.apple.security.application-groups': ['group.com.emperorclaw.ios']}))
 (ROOT / 'Widgets' / 'Info.plist').write_bytes(plistlib.dumps({'CFBundleDisplayName': 'EmperorClaw', 'CFBundleName': '$(PRODUCT_NAME)', 'CFBundleExecutable': '$(EXECUTABLE_NAME)', 'CFBundleIdentifier': '$(PRODUCT_BUNDLE_IDENTIFIER)', 'CFBundlePackageType': 'XPC!', 'CFBundleShortVersionString': '$(MARKETING_VERSION)', 'CFBundleVersion': '$(CURRENT_PROJECT_VERSION)', 'NSExtension': {'NSExtensionPointIdentifier': 'com.apple.widgetkit-extension'}}))
-(ROOT / 'Widgets' / 'Widgets.entitlements').write_bytes(plistlib.dumps({'com.apple.security.application-groups': ['group.com.emperorclaw.app']}))
+(ROOT / 'Widgets' / 'Widgets.entitlements').write_bytes(plistlib.dumps({'com.apple.security.application-groups': ['group.com.emperorclaw.ios']}))
 for name, folder, sdk, deployment, family, bundle in [
-    ('EmperorWatch', 'Watch', 'watchos', '10.0', '4', 'com.emperorclaw.app.watchkitapp'),
-    ('EmperorPhone', 'iPhone', 'iphoneos', '17.0', '1,2', 'com.emperorclaw.app'),
+    ('EmperorWatch', 'Watch', 'watchos', '10.0', '4', 'com.emperorclaw.ios.watchkitapp'),
+    ('EmperorPhone', 'iPhone', 'iphoneos', '17.0', '1,2', 'com.emperorclaw.ios'),
 ]:
     product = obj(name + '.app', 'PBXFileReference', explicitFileType='wrapper.application', path=name + '.app', sourceTree='BUILT_PRODUCTS_DIR')
     products.append(product)
@@ -139,13 +139,13 @@ for name, folder, sdk, deployment, family, bundle in [
             'CFBundleIdentifier': '$(PRODUCT_BUNDLE_IDENTIFIER)', 'CFBundleInfoDictionaryVersion': '6.0', 'CFBundleName': '$(PRODUCT_NAME)',
             'CFBundlePackageType': 'APPL', 'CFBundleShortVersionString': '$(MARKETING_VERSION)', 'CFBundleVersion': '$(CURRENT_PROJECT_VERSION)'}
     if folder == 'Watch':
-        info.update({'WKApplication': True, 'WKCompanionAppBundleIdentifier': 'com.emperorclaw.app', 'WKWatchOnly': False, 'NSMicrophoneUsageDescription': 'Send voice messages to your agents from your wrist.'})
+        info.update({'WKApplication': True, 'WKCompanionAppBundleIdentifier': 'com.emperorclaw.ios', 'WKWatchOnly': False, 'NSMicrophoneUsageDescription': 'Send voice messages to your agents from your wrist.'})
     else:
         info.update({'LSRequiresIPhoneOS': True, 'UILaunchScreen': {'UIColorName': 'LaunchBackground', 'UIImageName': 'LaunchEmblem', 'UIImageRespectsSafeAreaInsets': True}, 'UISupportedInterfaceOrientations': ['UIInterfaceOrientationPortrait', 'UIInterfaceOrientationPortraitUpsideDown', 'UIInterfaceOrientationLandscapeLeft', 'UIInterfaceOrientationLandscapeRight'],
                      'CFBundleURLTypes': [{'CFBundleURLName': 'EmperorClaw sign-in', 'CFBundleURLSchemes': ['com.emperorclaw.app']}]})
     if folder == 'iPhone':
         info.update({'NSMicrophoneUsageDescription': 'Record voice notes for your agents.', 'NSCameraUsageDescription': 'Scan the connection QR code from your own EmperorClaw server.', 'UIBackgroundModes': ['remote-notification']})
-    (ROOT / folder / 'App.entitlements').write_bytes(plistlib.dumps({'aps-environment': '$(APS_ENVIRONMENT)', 'com.apple.security.application-groups': ['group.com.emperorclaw.app']}))
+    (ROOT / folder / 'App.entitlements').write_bytes(plistlib.dumps({'aps-environment': '$(APS_ENVIRONMENT)', 'com.apple.security.application-groups': ['group.com.emperorclaw.ios']}))
     (ROOT / folder / 'Info.plist').write_bytes(plistlib.dumps(info))
     schemes = PROJECT / 'xcshareddata' / 'xcschemes'
     schemes.mkdir(parents=True, exist_ok=True)
@@ -165,7 +165,7 @@ products.append(uit_product)
 uit_phases = [obj('WatchUITestsSources', 'PBXSourcesBuildPhase', buildActionMask='2147483647', files=[obj('WatchUITestsSourceFile', 'PBXBuildFile', fileRef=uit_source)], runOnlyForDeploymentPostprocessing='0'),
               obj('WatchUITestsFrameworks', 'PBXFrameworksBuildPhase', buildActionMask='2147483647', files=[], runOnlyForDeploymentPostprocessing='0')]
 uit_configs = [obj('WatchUITests' + config, 'XCBuildConfiguration', buildSettings={'SDKROOT': 'watchos', 'SUPPORTED_PLATFORMS': 'watchos watchsimulator', 'WATCHOS_DEPLOYMENT_TARGET': '10.0', 'TARGETED_DEVICE_FAMILY': '4',
-               'PRODUCT_BUNDLE_IDENTIFIER': 'com.emperorclaw.app.watchkitapp.uitests', 'PRODUCT_NAME': '$(TARGET_NAME)', 'SWIFT_VERSION': '5.0', 'GENERATE_INFOPLIST_FILE': 'YES',
+               'PRODUCT_BUNDLE_IDENTIFIER': 'com.emperorclaw.ios.watchkitapp.uitests', 'PRODUCT_NAME': '$(TARGET_NAME)', 'SWIFT_VERSION': '5.0', 'GENERATE_INFOPLIST_FILE': 'YES',
                'TEST_TARGET_NAME': 'EmperorWatch', 'CODE_SIGN_STYLE': 'Automatic'}, name=config) for config in ['Debug', 'Release']]
 uit_config_list = obj('WatchUITestsConfigList', 'XCConfigurationList', buildConfigurations=uit_configs, defaultConfigurationIsVisible='0', defaultConfigurationName='Debug')
 uit_proxy = obj('WatchUITestsProxy', 'PBXContainerItemProxy', containerPortal=ident('Project'), proxyType='1', remoteGlobalIDString=ident('EmperorWatch'), remoteInfo='EmperorWatch')
@@ -182,7 +182,7 @@ targets.append(uit_target)
 
 products_group = obj('Products', 'PBXGroup', children=products, name='Products', sourceTree='<group>')
 main = obj('Main', 'PBXGroup', children=list(file_refs.values()) + [products_group], sourceTree='<group>')
-project_configs = [obj('Project' + config, 'XCBuildConfiguration', buildSettings={'CLANG_ENABLE_MODULES': 'YES', 'SWIFT_VERSION': '5.0'}, name=config) for config in ['Debug', 'Release']]
+project_configs = [obj('Project' + config, 'XCBuildConfiguration', buildSettings={'CLANG_ENABLE_MODULES': 'YES', 'DEVELOPMENT_TEAM': 'Z7F7XSA445', 'SWIFT_VERSION': '5.0'}, name=config) for config in ['Debug', 'Release']]
 config_list = obj('ProjectConfigList', 'XCConfigurationList', buildConfigurations=project_configs, defaultConfigurationIsVisible='0', defaultConfigurationName='Release')
 root = obj('Project', 'PBXProject', attributes={'LastUpgradeCheck': '1600', 'BuildIndependentTargetsInParallel': 'YES'}, buildConfigurationList=config_list,
            compatibilityVersion='Xcode 14.0', developmentRegion='en', hasScannedForEncodings='0', knownRegions=['en', 'Base'], mainGroup=main,

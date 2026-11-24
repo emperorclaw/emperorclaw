@@ -225,7 +225,7 @@
 				"SUPPORTED_PLATFORMS" = "iphoneos iphonesimulator";
 				"IPHONEOS_DEPLOYMENT_TARGET" = "17.0";
 				"TARGETED_DEVICE_FAMILY" = "1,2";
-				"PRODUCT_BUNDLE_IDENTIFIER" = "com.emperorclaw.app.widgets";
+				"PRODUCT_BUNDLE_IDENTIFIER" = "com.emperorclaw.ios.widgets";
 				"PRODUCT_NAME" = "$(TARGET_NAME)";
 				"SWIFT_VERSION" = "5.0";
 				"INFOPLIST_FILE" = "Widgets/Info.plist";
@@ -245,7 +245,7 @@
 				"SUPPORTED_PLATFORMS" = "iphoneos iphonesimulator";
 				"IPHONEOS_DEPLOYMENT_TARGET" = "17.0";
 				"TARGETED_DEVICE_FAMILY" = "1,2";
-				"PRODUCT_BUNDLE_IDENTIFIER" = "com.emperorclaw.app.widgets";
+				"PRODUCT_BUNDLE_IDENTIFIER" = "com.emperorclaw.ios.widgets";
 				"PRODUCT_NAME" = "$(TARGET_NAME)";
 				"SWIFT_VERSION" = "5.0";
 				"INFOPLIST_FILE" = "Widgets/Info.plist";
@@ -341,7 +341,7 @@
 				"SUPPORTED_PLATFORMS" = "watchos watchsimulator";
 				"WATCHOS_DEPLOYMENT_TARGET" = "10.0";
 				"TARGETED_DEVICE_FAMILY" = "4";
-				"PRODUCT_BUNDLE_IDENTIFIER" = "com.emperorclaw.app.watchkitapp.widgets";
+				"PRODUCT_BUNDLE_IDENTIFIER" = "com.emperorclaw.ios.watchkitapp.widgets";
 				"PRODUCT_NAME" = "$(TARGET_NAME)";
 				"SWIFT_VERSION" = "5.0";
 				"INFOPLIST_FILE" = "Widgets/Info.plist";
@@ -361,7 +361,7 @@
 				"SUPPORTED_PLATFORMS" = "watchos watchsimulator";
 				"WATCHOS_DEPLOYMENT_TARGET" = "10.0";
 				"TARGETED_DEVICE_FAMILY" = "4";
-				"PRODUCT_BUNDLE_IDENTIFIER" = "com.emperorclaw.app.watchkitapp.widgets";
+				"PRODUCT_BUNDLE_IDENTIFIER" = "com.emperorclaw.ios.watchkitapp.widgets";
 				"PRODUCT_NAME" = "$(TARGET_NAME)";
 				"SWIFT_VERSION" = "5.0";
 				"INFOPLIST_FILE" = "Widgets/Info.plist";
@@ -463,7 +463,7 @@
 				"SUPPORTED_PLATFORMS" = "iphoneos iphonesimulator";
 				"IPHONEOS_DEPLOYMENT_TARGET" = "17.0";
 				"TARGETED_DEVICE_FAMILY" = "1,2";
-				"PRODUCT_BUNDLE_IDENTIFIER" = "com.emperorclaw.app.notifications";
+				"PRODUCT_BUNDLE_IDENTIFIER" = "com.emperorclaw.ios.notifications";
 				"PRODUCT_NAME" = "$(TARGET_NAME)";
 				"SWIFT_VERSION" = "5.0";
 				"INFOPLIST_FILE" = "NotificationService/Info.plist";
@@ -483,7 +483,7 @@
 				"SUPPORTED_PLATFORMS" = "iphoneos iphonesimulator";
 				"IPHONEOS_DEPLOYMENT_TARGET" = "17.0";
 				"TARGETED_DEVICE_FAMILY" = "1,2";
-				"PRODUCT_BUNDLE_IDENTIFIER" = "com.emperorclaw.app.notifications";
+				"PRODUCT_BUNDLE_IDENTIFIER" = "com.emperorclaw.ios.notifications";
 				"PRODUCT_NAME" = "$(TARGET_NAME)";
 				"SWIFT_VERSION" = "5.0";
 				"INFOPLIST_FILE" = "NotificationService/Info.plist";
@@ -676,7 +676,7 @@
 				"SUPPORTED_PLATFORMS" = "watchos watchsimulator";
 				"WATCHOS_DEPLOYMENT_TARGET" = "10.0";
 				"TARGETED_DEVICE_FAMILY" = "4";
-				"PRODUCT_BUNDLE_IDENTIFIER" = "com.emperorclaw.app.watchkitapp";
+				"PRODUCT_BUNDLE_IDENTIFIER" = "com.emperorclaw.ios.watchkitapp";
 				"PRODUCT_NAME" = "$(TARGET_NAME)";
 				"SWIFT_VERSION" = "5.0";
 				"APS_ENVIRONMENT" = "development";
@@ -701,7 +701,7 @@
 				"SUPPORTED_PLATFORMS" = "watchos watchsimulator";
 				"WATCHOS_DEPLOYMENT_TARGET" = "10.0";
 				"TARGETED_DEVICE_FAMILY" = "4";
-				"PRODUCT_BUNDLE_IDENTIFIER" = "com.emperorclaw.app.watchkitapp";
+				"PRODUCT_BUNDLE_IDENTIFIER" = "com.emperorclaw.ios.watchkitapp";
 				"PRODUCT_NAME" = "$(TARGET_NAME)";
 				"SWIFT_VERSION" = "5.0";
 				"APS_ENVIRONMENT" = "production";
@@ -1000,7 +1000,7 @@
 				"SUPPORTED_PLATFORMS" = "iphoneos iphonesimulator";
 				"IPHONEOS_DEPLOYMENT_TARGET" = "17.0";
 				"TARGETED_DEVICE_FAMILY" = "1,2";
-				"PRODUCT_BUNDLE_IDENTIFIER" = "com.emperorclaw.app";
+				"PRODUCT_BUNDLE_IDENTIFIER" = "com.emperorclaw.ios";
 				"PRODUCT_NAME" = "$(TARGET_NAME)";
 				"SWIFT_VERSION" = "5.0";
 				"APS_ENVIRONMENT" = "development";
@@ -1025,7 +1025,7 @@
 				"SUPPORTED_PLATFORMS" = "iphoneos iphonesimulator";
 				"IPHONEOS_DEPLOYMENT_TARGET" = "17.0";
 				"TARGETED_DEVICE_FAMILY" = "1,2";
-				"PRODUCT_BUNDLE_IDENTIFIER" = "com.emperorclaw.app";
+				"PRODUCT_BUNDLE_IDENTIFIER" = "com.emperorclaw.ios";
 				"PRODUCT_NAME" = "$(TARGET_NAME)";
 				"SWIFT_VERSION" = "5.0";
 				"APS_ENVIRONMENT" = "production";
@@ -1116,7 +1116,7 @@
 				"SUPPORTED_PLATFORMS" = "watchos watchsimulator";
 				"WATCHOS_DEPLOYMENT_TARGET" = "10.0";
 				"TARGETED_DEVICE_FAMILY" = "4";
-				"PRODUCT_BUNDLE_IDENTIFIER" = "com.emperorclaw.app.watchkitapp.uitests";
+				"PRODUCT_BUNDLE_IDENTIFIER" = "com.emperorclaw.ios.watchkitapp.uitests";
 				"PRODUCT_NAME" = "$(TARGET_NAME)";
 				"SWIFT_VERSION" = "5.0";
 				"GENERATE_INFOPLIST_FILE" = "YES";
@@ -1132,7 +1132,7 @@
 				"SUPPORTED_PLATFORMS" = "watchos watchsimulator";
 				"WATCHOS_DEPLOYMENT_TARGET" = "10.0";
 				"TARGETED_DEVICE_FAMILY" = "4";
-				"PRODUCT_BUNDLE_IDENTIFIER" = "com.emperorclaw.app.watchkitapp.uitests";
+				"PRODUCT_BUNDLE_IDENTIFIER" = "com.emperorclaw.ios.watchkitapp.uitests";
 				"PRODUCT_NAME" = "$(TARGET_NAME)";
 				"SWIFT_VERSION" = "5.0";
 				"GENERATE_INFOPLIST_FILE" = "YES";
@@ -1232,6 +1232,7 @@
 			"isa" = "XCBuildConfiguration";
 			"buildSettings" = {
 				"CLANG_ENABLE_MODULES" = "YES";
+				"DEVELOPMENT_TEAM" = "Z7F7XSA445";
 				"SWIFT_VERSION" = "5.0";
 			};
 			"name" = "Debug";
@@ -1240,6 +1241,7 @@
 			"isa" = "XCBuildConfiguration";
 			"buildSettings" = {
 				"CLANG_ENABLE_MODULES" = "YES";
+				"DEVELOPMENT_TEAM" = "Z7F7XSA445";
 				"SWIFT_VERSION" = "5.0";
 			};
 			"name" = "Release";

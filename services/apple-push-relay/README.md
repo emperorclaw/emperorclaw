@@ -8,7 +8,7 @@ Set these environment variables on the relay host:
 
 - `APNS_KEY_PATH`: path to the Apple APNs authentication `.p8` private key, readable only by the service account.
 - `APNS_TEAM_ID`, `APNS_KEY_ID`: Apple team and authentication-key IDs.
-- `APNS_TOPIC`: iPhone bundle ID, initially `com.emperorclaw.app`. Watch topic appends `.watchkitapp`.
+- `APNS_TOPIC`: iPhone bundle ID, `com.emperorclaw.ios`. Watch topic appends `.watchkitapp`.
 - `PUSH_INSTALLATIONS_JSON`: JSON object mapping each server's discovery `installationId` to its own random shared secret of at least 32 characters. Never reuse one secret across installations.
 - `PUSH_STATE_FILE`: persistent path for confirmed device bindings (default `./data/devices.json`). Protect and back up this directory. Pending challenges/deduplication are memory-only.
 - `PORT`: optional loopback listening port.
