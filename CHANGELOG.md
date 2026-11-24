@@ -9,6 +9,19 @@ tagged (e.g. `## [1.2.0] — 2026-07-22`). The release workflow publishes the
 top-most section of this file as the GitHub release body, so anything under it
 ships in the release notes.
 
+## [0.42.11] — 2026-11-24
+
+### Added
+
+- **Sealed, actionable push notifications for the iPhone and Watch apps.** A new push-only `reply` event fires when an agent answers you in a direct chat (no inbox row, email or webhook); mobile push kinds default to approval, decision, mention, reply, agent_failed and agent_down. Notification content is sealed per device with AES-256-GCM under a key that never leaves the phone, so the relay and APNs see only ciphertext. Approvals carry Approve / Reject actions (device authentication required), replies accept inline text, and both run with the saved connection and normal server permissions.
+- **Mobile reads for assignees, views and agent appearances.** `GET` routes for searchable assignees (agents and people, reusing the task-story assignment rules), authorized view reads and agent avatar appearances back the native apps.
+- **Apple push relay** (`services/apple-push-relay`) defaults to the `com.emperorclaw.ios` topic.
+
+### Fixed
+
+- **"Working" means working.** An agent shows as working only with an open run or a live status line, not because it owns a long-lived in-progress task.
+- **"Mobile service unavailable" names the real cause** (relay not configured, unreachable, or rejecting the key), and a failed push enrollment no longer retries and re-alerts on every launch.
+
 ## [0.42.10] — 2026-11-22
 
 ### Fixed
