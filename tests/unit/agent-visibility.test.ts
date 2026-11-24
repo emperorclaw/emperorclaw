@@ -56,8 +56,10 @@ test("runWorkLabel: another person's private thread reads 'a private chat' with 
 test("runWorkLabel: own private and shared/team/group threads get a link", () => {
     assert.deepEqual(runWorkLabel(run({ threadId: "t1", threadKind: "own-private" })), { text: "a chat", href: "/messages?agent=a1&thread=t1" });
     assert.deepEqual(runWorkLabel(run({ threadId: "t1", threadKind: "operations" })), { text: "the work log", href: "/messages?agent=a1&thread=t1" });
-    assert.deepEqual(runWorkLabel(run({ threadId: "t1", threadKind: "team" })), { text: "the team channel", href: "/messages" });
-    assert.deepEqual(runWorkLabel(run({ threadId: "t1", threadKind: "group" })), { text: "a group chat", href: "/messages" });
+    assert.deepEqual(runWorkLabel(run({ threadId: "t1", threadKind: "team" })), { text: "the team channel", href: "/messages?team=1" });
+    // A group run names the group and opens that group, not whatever chat was on screen.
+    assert.deepEqual(runWorkLabel(run({ threadId: "t1", threadKind: "group" })), { text: "a group chat", href: "/messages?group=t1" });
+    assert.deepEqual(runWorkLabel(run({ threadId: "t1", threadKind: "group", threadTitle: "Launch crew" })), { text: "the group “Launch crew”", href: "/messages?group=t1" });
 });
 
 test("summarizeAlsoWorking: picks the newest other-thread run and counts the rest", () => {

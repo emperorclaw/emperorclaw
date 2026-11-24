@@ -226,7 +226,7 @@ export async function loadRunningRuns(
 
     const [threadRows, taskRows, visibleProjects] = await Promise.all([
         threadIds.length > 0
-            ? db.select({ id: messageThreads.id, type: messageThreads.type, ownerUserId: messageThreads.ownerUserId, isPrivate: messageThreads.isPrivate })
+            ? db.select({ id: messageThreads.id, type: messageThreads.type, ownerUserId: messageThreads.ownerUserId, isPrivate: messageThreads.isPrivate, title: messageThreads.title })
                 .from(messageThreads).where(and(eq(messageThreads.companyId, companyId), inArray(messageThreads.id, threadIds)))
             : Promise.resolve([]),
         taskIds.length > 0
@@ -257,6 +257,7 @@ export async function loadRunningRuns(
             taskTitle: task && taskVisible ? taskTitle({ inputJson: task.inputJson, taskType: task.taskType }) : null,
             taskHidden: Boolean(row.taskId) && !taskVisible,
             startedAt: row.startedAt.toISOString(),
+            threadTitle: visible && kind === "group" ? thread?.title ?? null : null,
         };
     });
 }

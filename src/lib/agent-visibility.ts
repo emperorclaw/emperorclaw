@@ -23,6 +23,8 @@ export interface RunThreadDetails {
     type: string;
     ownerUserId?: string | null;
     isPrivate?: boolean | null;
+    /** A group's name; shown in "Also working on" (team and group threads are public). */
+    title?: string | null;
 }
 
 /**
@@ -41,6 +43,8 @@ export interface RunningRun {
     taskHidden: boolean;
     /** Null for another person's private chat: its timing is not shown. */
     startedAt: string | null;
+    /** The group's name for a "group" run (optional: older servers omit it). */
+    threadTitle?: string | null;
 }
 
 /** Classify a run's thread for the viewer: its kind and whether the thread is visible. */
@@ -73,9 +77,16 @@ export function runWorkLabel(run: RunningRun): { text: string; href: string | nu
         case "operations":
             return { text: "the work log", href: run.threadId ? directThreadLink(run.threadId, run.agentId) : null };
         case "team":
-            return { text: "the team channel", href: "/messages" };
-        case "group":
-            return { text: "a group chat", href: "/messages" };
+            return { text: "the team channel", href: "/messages?team=1" };
+        case "group": {
+            // Name the group and open it, not just the Messages page (which reopens
+            // whatever conversation was on screen last).
+            const name = run.threadTitle?.trim();
+            return {
+                text: name ? `the group “${name}”` : "a group chat",
+                href: run.threadId ? `/messages?group=${encodeURIComponent(run.threadId)}` : "/messages",
+            };
+        }
         case "own-private":
         case "other":
         default:

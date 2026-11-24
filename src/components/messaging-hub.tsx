@@ -281,6 +281,8 @@ export function MessagingHub({
         const requestedGroup = new URLSearchParams(window.location.search).get("group");
         // `?thread=<id>`: a notification names the exact direct conversation.
         const requestedThread = new URLSearchParams(window.location.search).get("thread");
+        // `?team=1`: "Also working on the team channel" opens the team channel.
+        const requestedTeam = new URLSearchParams(window.location.search).get("team") === "1";
         const requestedSecondary = requestedThread ? secondaryDirectThreads.find((t) => t.threadId === requestedThread) : undefined;
         // `?thread=` is exact for any of the person's chats (an archived one too, when the link names its agent).
         const requestedDirect = requestedThread && !requestedSecondary ? resolveDirect(requestedThread, requestedAgent) : null;
@@ -296,7 +298,9 @@ export function MessagingHub({
         setShowAgentConversations(localStorage.getItem(AGENT_CONVERSATIONS_KEY) === "1");
         const savedFocusMode = localStorage.getItem(FOCUS_MODE_KEY) === "1";
 
-        if (requestedSecondary) {
+        if (requestedTeam) {
+            openTeamChannel();
+        } else if (requestedSecondary) {
             openSecondaryState(requestedSecondary);
         } else if (requestedDirect) {
             openDirectSelection(requestedDirect);
@@ -398,6 +402,46 @@ export function MessagingHub({
         setMobileChatOpen(true);
         localStorage.setItem(ACTIVE_CONVERSATION_KEY, TEAM_CONVERSATION);
         syncUrl({});
+    };
+
+    /**
+     * Open a `/messages?…` link in place. The deep-link params are read only once
+     * per page load, so a same-page <Link> would otherwise just leave the current
+     * conversation on screen. Returns false for links this page does not handle.
+     */
+    const openMessagesHref = (href: string): boolean => {
+        let url: URL;
+        try {
+            url = new URL(href, window.location.origin);
+        } catch {
+            return false;
+        }
+        if (url.origin !== window.location.origin || url.pathname !== "/messages") return false;
+        const group = url.searchParams.get("group");
+        const thread = url.searchParams.get("thread");
+        const agent = url.searchParams.get("agent");
+        if (group) {
+            if (!groups.some((g) => g.id === group)) return false;
+            if (groups.find((g) => g.id === group)?.isAgentPair) setShowAgentConversations(true);
+            openGroup(group);
+            return true;
+        }
+        if (url.searchParams.get("team") === "1") {
+            openTeamChannel();
+            return true;
+        }
+        if (thread || agent) {
+            const secondary = thread ? secondaryDirectThreads.find((t) => t.threadId === thread) : undefined;
+            if (secondary) {
+                openSecondaryState(secondary);
+                return true;
+            }
+            const selection = resolveDirect(thread, agent) ?? (agent ? { agentId: agent, threadId: thread } : null);
+            if (!selection) return false;
+            openDirectSelection(selection);
+            return true;
+        }
+        return false;
     };
 
     /** The agent's row: the chat last viewed with it, else its main chat. */
@@ -942,6 +986,7 @@ export function MessagingHub({
                             directThreadId={selectedDirectThreadId}
                             onThreadChange={activeSecondaryThread ? undefined : onDirectThreadChange}
                             onUnreadTotal={activeSecondaryThread ? undefined : onAgentUnread}
+                            onOpenMessagesLink={openMessagesHref}
                         />
                     </div>
                 )}

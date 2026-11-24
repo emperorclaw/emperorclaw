@@ -174,6 +174,7 @@ export function AgentDirectChat({
     directThreadId = null,
     onThreadChange,
     onUnreadTotal,
+    onOpenMessagesLink,
     showStopAll = false,
 }: {
     agentId: string;
@@ -191,6 +192,8 @@ export function AgentDirectChat({
     onThreadChange?: (threadId: string | null, info?: { archived?: boolean }) => void;
     /** Unread messages across all of the viewer's open chats with the agent, kept live. */
     onUnreadTotal?: (count: number) => void;
+    /** Inside Messages: open a `/messages?…` link in place; returns false to let the link navigate. */
+    onOpenMessagesLink?: (href: string) => boolean;
     /** The agent page: offer "Stop all chats" (agent-wide) to those allowed to use it. */
     showStopAll?: boolean;
 }) {
@@ -1538,7 +1541,13 @@ export function AgentDirectChat({
                                 {chatLabel(alsoWorkingChat)}{alsoWorking.primary.startedAt && <> · <WorkElapsed startedAt={alsoWorking.primary.startedAt} /></>}
                             </button>
                         ) : alsoWorking.primary.href ? (
-                            <Link href={alsoWorking.primary.href} className="min-w-0 truncate text-cyan-300 hover:text-cyan-200">
+                            <Link
+                                href={alsoWorking.primary.href}
+                                onClick={(event) => {
+                                    if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey || event.button !== 0) return;
+                                    if (onOpenMessagesLink?.(alsoWorking.primary!.href!)) event.preventDefault();
+                                }}
+                                className="min-w-0 truncate text-cyan-300 hover:text-cyan-200">
                                 {alsoWorking.primary.text}{alsoWorking.primary.startedAt && <> · <WorkElapsed startedAt={alsoWorking.primary.startedAt} /></>}
                             </Link>
                         ) : (
