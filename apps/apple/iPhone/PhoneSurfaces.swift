@@ -47,6 +47,11 @@ struct PhoneHome: View {
     @State private var fleetHeight = 520.0
     @State private var refreshTick = 0
     @State private var reauth: Installation?
+    @State private var enablingAlerts = false
+    @AppStorage(PushDelegate.enabledKey) private var enabledAlertsRaw = ""
+    @AppStorage("pushCardDismissedIDs") private var dismissedAlerts = ""
+    private var enabledAlerts: [String] { enabledAlertsRaw.split(separator: ",").map(String.init) }
+    private var dismissedAlertIDs: [String] { dismissedAlerts.split(separator: ",").map(String.init) }
     var body: some View {
         NavigationStack {
             Group {
@@ -60,6 +65,15 @@ struct PhoneHome: View {
                                     .frame(maxWidth: 760, alignment: .leading)
                             } else if let error = model.errors[workspace.id] {
                                 ErrorRow(error: error) { Task { await model.refresh() } }
+                            }
+                            if !model.expired.contains(workspace.id), !enabledAlerts.contains(workspace.id), !dismissedAlerts.contains(workspace.id) {
+                                AlertsCard(name: workspace.name, enabling: enablingAlerts) {
+                                    Task { enablingAlerts = true; await PushDelegate.current?.enable(for: workspace); enablingAlerts = false }
+                                } dismiss: {
+                                    withAnimation(Motion.settle) { dismissedAlerts = (dismissedAlertIDs + [workspace.id]).joined(separator: ",") }
+                                }
+                                .frame(maxWidth: 760, alignment: .leading)
+                                .transition(.move(edge: .top).combined(with: .opacity))
                             }
                             NeedsYouCard(workspace: workspace, refreshKey: refreshTick)
                                 .frame(maxWidth: 760, alignment: .leading)
@@ -272,6 +286,33 @@ private struct PhoneViewDetail: View {
 }
 
 /// Shown when the server says this phone's session expired or was revoked.
+/// Offers alerts right on Home instead of deep in Connections.
+struct AlertsCard: View {
+    let name: String
+    let enabling: Bool
+    let enable: () -> Void
+    let dismiss: () -> Void
+    var body: some View {
+        HStack(spacing: 14) {
+            Image(systemName: "bell.badge.fill")
+                .font(.title2).symbolRenderingMode(.hierarchical).foregroundStyle(.tint)
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Turn on notifications").font(.headline)
+                Text("Approvals and agent replies from \(name), even when the app is closed.").font(.subheadline).foregroundStyle(.secondary)
+            }
+            Spacer(minLength: 8)
+            VStack(spacing: 4) {
+                Button(action: enable) { if enabling { ProgressView() } else { Text("Turn on") } }
+                    .buttonStyle(.borderedProminent).buttonBorderShape(.capsule).disabled(enabling)
+                    .accessibilityIdentifier("home.enableAlerts")
+                Button("Not now", action: dismiss).font(.caption).foregroundStyle(.secondary).buttonStyle(.plain)
+            }
+        }
+        .padding(16)
+        .background(Color.cardSurface, in: RoundedRectangle(cornerRadius: DS.Radius.card, style: .continuous))
+    }
+}
+
 struct SignInAgainCard: View {
     let name: String
     let action: () -> Void

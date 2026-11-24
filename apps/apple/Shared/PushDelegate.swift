@@ -32,6 +32,13 @@ final class PushDelegate: NSObject, PushApplicationDelegate, UNUserNotificationC
         return nil
         #endif
     }
+    /// Instances whose alerts this device confirmed, read by Home's "Turn on notifications" card.
+    static let enabledKey = "pushEnabledIDs"
+    static func markEnabled(_ id: String, _ on: Bool) {
+        var ids = Set((UserDefaults.standard.string(forKey: enabledKey) ?? "").split(separator: ",").map(String.init))
+        if on { ids.insert(id) } else { ids.remove(id) }
+        UserDefaults.standard.set(ids.sorted().joined(separator: ","), forKey: enabledKey)
+    }
     @MainActor var environment: String {
         #if DEBUG
         return "sandbox"
@@ -113,10 +120,16 @@ final class PushDelegate: NSObject, PushApplicationDelegate, UNUserNotificationC
                     #endif
                     return
                 }
-                do { try await model.client.configurePush(installation, token: token, environment: environment, challenge: challenge, contentKey: Self.contentKey); pendingID = nil; UserDefaults.standard.removeObject(forKey: "pushPendingInstance"); model.notice = "Notifications enabled for \(installation.name)." }
+                do { try await model.client.configurePush(installation, token: token, environment: environment, challenge: challenge, contentKey: Self.contentKey); pendingID = nil; UserDefaults.standard.removeObject(forKey: "pushPendingInstance"); PushDelegate.markEnabled(installation.id, true); model.notice = "Notifications enabled for \(installation.name)." }
                 catch { model.notice = error.localizedDescription }
             } else if let company = event["company"], let kind = event["kind"], let id = event["id"] {
-                await model.open(WorkspaceLink.url(installationID: installationID, companyID: company, kind: kind, id: id))
+                // A reply's relay id is the message; the sealed content (opened by the
+                // notification extension) names the agent, so open that conversation.
+                if let agent = event["agent"], UUID(uuidString: agent) != nil {
+                    await model.open(WorkspaceLink.url(installationID: installationID, companyID: company, kind: "agent", id: agent))
+                } else {
+                    await model.open(WorkspaceLink.url(installationID: installationID, companyID: company, kind: kind, id: id))
+                }
             }
         }
     }
@@ -136,7 +149,7 @@ struct NotificationsView: View {
         List {
             Section { Text("Alerts for \(workspace.name)").font(.headline); Text("Approvals, direct mentions and important failures. System Focus and notification settings control when alerts appear.") }
             Button("Enable notifications") { Task { busy = true; await PushDelegate.current?.enable(for: workspace); busy = false } }.disabled(busy)
-            Button("Disable for this instance", role: .destructive) { Task { do { try await model.client.configurePush(workspace, enabled: false); model.notice = "Notifications disabled." } catch { model.notice = error.localizedDescription } } }
+            Button("Disable for this instance", role: .destructive) { Task { do { try await model.client.configurePush(workspace, enabled: false); PushDelegate.markEnabled(workspace.id, false); model.notice = "Notifications disabled." } catch { model.notice = error.localizedDescription } } }
             Text("This instance must have the optional EmperorClaw Apple push relay configured. The relay sends generic alerts; work details are fetched directly from your server.").font(.caption).foregroundStyle(.secondary)
         }.navigationTitle("Notifications")
     }
