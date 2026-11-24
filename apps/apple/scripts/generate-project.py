@@ -67,7 +67,7 @@ for target_name, sdk, deployment, family, bundle in [
     phases.append(privacy_resources(target_name))
     configs = []
     for config in ['Debug', 'Release']:
-        settings = {'SDKROOT': sdk, 'SUPPORTED_PLATFORMS': 'watchos watchsimulator' if sdk == 'watchos' else 'iphoneos iphonesimulator', ('WATCHOS_DEPLOYMENT_TARGET' if sdk == 'watchos' else 'IPHONEOS_DEPLOYMENT_TARGET'): deployment, 'TARGETED_DEVICE_FAMILY': family, 'PRODUCT_BUNDLE_IDENTIFIER': bundle, 'PRODUCT_NAME': '$(TARGET_NAME)', 'SWIFT_VERSION': '5.0', 'INFOPLIST_FILE': 'Widgets/Info.plist', 'CODE_SIGN_ENTITLEMENTS': 'Widgets/Widgets.entitlements', 'APPLICATION_EXTENSION_API_ONLY': 'YES', 'SKIP_INSTALL': 'YES', 'CODE_SIGN_STYLE': 'Automatic', 'MARKETING_VERSION': '0.1.0', 'CURRENT_PROJECT_VERSION': '1'}
+        settings = {'SDKROOT': sdk, 'SUPPORTED_PLATFORMS': 'watchos watchsimulator' if sdk == 'watchos' else 'iphoneos iphonesimulator', ('WATCHOS_DEPLOYMENT_TARGET' if sdk == 'watchos' else 'IPHONEOS_DEPLOYMENT_TARGET'): deployment, 'TARGETED_DEVICE_FAMILY': family, 'PRODUCT_BUNDLE_IDENTIFIER': bundle, 'PRODUCT_NAME': '$(TARGET_NAME)', 'SWIFT_VERSION': '5.0', 'INFOPLIST_FILE': 'Widgets/Info.plist', 'CODE_SIGN_ENTITLEMENTS': 'Widgets/Widgets.entitlements', 'APPLICATION_EXTENSION_API_ONLY': 'YES', 'SKIP_INSTALL': 'YES', 'CODE_SIGN_STYLE': 'Automatic', 'MARKETING_VERSION': '1.0', 'CURRENT_PROJECT_VERSION': '1'}
         configs.append(obj(target_name + config, 'XCBuildConfiguration', buildSettings=settings, name=config))
     config_list = obj(target_name + 'ConfigList', 'XCConfigurationList', buildConfigurations=configs, defaultConfigurationIsVisible='0', defaultConfigurationName='Release')
     target = obj(target_name, 'PBXNativeTarget', buildConfigurationList=config_list, buildPhases=phases, buildRules=[], dependencies=[], name=target_name, packageProductDependencies=[dep], productName=target_name, productReference=product, productType='com.apple.product-type.app-extension')
@@ -81,7 +81,7 @@ nse_dep = obj('NotificationServiceCore', 'XCSwiftPackageProductDependency', pack
 nse_phases = [obj('NotificationServiceSources', 'PBXSourcesBuildPhase', buildActionMask='2147483647', files=[obj('NotificationServiceSourceFile', 'PBXBuildFile', fileRef=nse_source)], runOnlyForDeploymentPostprocessing='0'),
               obj('NotificationServiceFrameworks', 'PBXFrameworksBuildPhase', buildActionMask='2147483647', files=[obj('NotificationServiceCoreFile', 'PBXBuildFile', productRef=nse_dep)], runOnlyForDeploymentPostprocessing='0'),
               privacy_resources('NotificationService')]
-nse_configs = [obj('NotificationService' + config, 'XCBuildConfiguration', buildSettings={'SDKROOT': 'iphoneos', 'SUPPORTED_PLATFORMS': 'iphoneos iphonesimulator', 'IPHONEOS_DEPLOYMENT_TARGET': '17.0', 'TARGETED_DEVICE_FAMILY': '1,2', 'PRODUCT_BUNDLE_IDENTIFIER': 'com.emperorclaw.ios.notifications', 'PRODUCT_NAME': '$(TARGET_NAME)', 'SWIFT_VERSION': '5.0', 'INFOPLIST_FILE': 'NotificationService/Info.plist', 'CODE_SIGN_ENTITLEMENTS': 'NotificationService/NotificationService.entitlements', 'APPLICATION_EXTENSION_API_ONLY': 'YES', 'SKIP_INSTALL': 'YES', 'CODE_SIGN_STYLE': 'Automatic', 'MARKETING_VERSION': '0.1.0', 'CURRENT_PROJECT_VERSION': '1'}, name=config) for config in ['Debug', 'Release']]
+nse_configs = [obj('NotificationService' + config, 'XCBuildConfiguration', buildSettings={'SDKROOT': 'iphoneos', 'SUPPORTED_PLATFORMS': 'iphoneos iphonesimulator', 'IPHONEOS_DEPLOYMENT_TARGET': '17.0', 'TARGETED_DEVICE_FAMILY': '1,2', 'PRODUCT_BUNDLE_IDENTIFIER': 'com.emperorclaw.ios.notifications', 'PRODUCT_NAME': '$(TARGET_NAME)', 'SWIFT_VERSION': '5.0', 'INFOPLIST_FILE': 'NotificationService/Info.plist', 'CODE_SIGN_ENTITLEMENTS': 'NotificationService/NotificationService.entitlements', 'APPLICATION_EXTENSION_API_ONLY': 'YES', 'SKIP_INSTALL': 'YES', 'CODE_SIGN_STYLE': 'Automatic', 'MARKETING_VERSION': '1.0', 'CURRENT_PROJECT_VERSION': '1'}, name=config) for config in ['Debug', 'Release']]
 nse_config_list = obj('NotificationServiceConfigList', 'XCConfigurationList', buildConfigurations=nse_configs, defaultConfigurationIsVisible='0', defaultConfigurationName='Release')
 nse_target = obj('NotificationService', 'PBXNativeTarget', buildConfigurationList=nse_config_list, buildPhases=nse_phases, buildRules=[], dependencies=[], name='NotificationService', packageProductDependencies=[nse_dep], productName='NotificationService', productReference=nse_product, productType='com.apple.product-type.app-extension')
 targets.append(nse_target)
@@ -127,7 +127,7 @@ for name, folder, sdk, deployment, family, bundle in [
                     ('WATCHOS_DEPLOYMENT_TARGET' if folder == 'Watch' else 'IPHONEOS_DEPLOYMENT_TARGET'): deployment,
                     'TARGETED_DEVICE_FAMILY': family, 'PRODUCT_BUNDLE_IDENTIFIER': bundle, 'PRODUCT_NAME': '$(TARGET_NAME)',
                     'SWIFT_VERSION': '5.0', 'APS_ENVIRONMENT': 'development' if config == 'Debug' else 'production', 'CODE_SIGN_ENTITLEMENTS': folder + '/App.entitlements', 'INFOPLIST_FILE': folder + '/Info.plist', 'GENERATE_INFOPLIST_FILE': 'NO',
-                    'MARKETING_VERSION': '0.1.0', 'CURRENT_PROJECT_VERSION': '1', 'CODE_SIGN_STYLE': 'Automatic',
+                    'MARKETING_VERSION': '1.0', 'CURRENT_PROJECT_VERSION': '1', 'CODE_SIGN_STYLE': 'Automatic', 'SKIP_INSTALL': 'YES' if folder == 'Watch' else 'NO',
                     'SWIFT_ACTIVE_COMPILATION_CONDITIONS': 'DEBUG' if config == 'Debug' else '',
                     'ASSETCATALOG_COMPILER_APPICON_NAME': 'AppIcon', 'ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME': 'AccentColor', 'SWIFT_OPTIMIZATION_LEVEL': '-Onone' if config == 'Debug' else '-O', 'ENABLE_USER_SCRIPT_SANDBOXING': 'YES'}
         configs.append(obj(name + config, 'XCBuildConfiguration', buildSettings=settings, name=config))
@@ -135,7 +135,7 @@ for name, folder, sdk, deployment, family, bundle in [
     target = obj(name, 'PBXNativeTarget', buildConfigurationList=config_list, buildPhases=phases, buildRules=[], dependencies=dependencies,
                  name=name, packageProductDependencies=[dependency], productName=name, productReference=product, productType='com.apple.product-type.application')
     targets.append(target)
-    info = {'CFBundleDevelopmentRegion': 'en', 'CFBundleDisplayName': 'EmperorClaw', 'CFBundleExecutable': '$(EXECUTABLE_NAME)',
+    info = {'CFBundleDevelopmentRegion': 'en', 'ITSAppUsesNonExemptEncryption': False, 'CFBundleDisplayName': 'EmperorClaw', 'CFBundleExecutable': '$(EXECUTABLE_NAME)',
             'CFBundleIdentifier': '$(PRODUCT_BUNDLE_IDENTIFIER)', 'CFBundleInfoDictionaryVersion': '6.0', 'CFBundleName': '$(PRODUCT_NAME)',
             'CFBundlePackageType': 'APPL', 'CFBundleShortVersionString': '$(MARKETING_VERSION)', 'CFBundleVersion': '$(CURRENT_PROJECT_VERSION)'}
     if folder == 'Watch':
