@@ -9,6 +9,19 @@ tagged (e.g. `## [1.2.0] — 2026-07-22`). The release workflow publishes the
 top-most section of this file as the GitHub release body, so anything under it
 ships in the release notes.
 
+## [0.42.12] — 2026-11-24
+
+### Changed
+
+- **Hermes agents spend far fewer tokens per model call (bridge 0.42.12).** Measured in November, the two busiest agents sent ~100–130k tokens on every model call — even right after a compaction — with 20–45 calls per task run. A thread quiet for longer than `EMPEROR_CLAW_HERMES_FRESH_AFTER_IDLE_MINUTES` (default 240, `0` = off) now starts a fresh Hermes session on its next message, seeded with the thread's recent messages and open tasks, instead of resuming a session whose whole history (and a cold prompt cache) is re-sent on every call. New Hermes profile defaults keep raw tool output out of what survives a compaction: `compression.protect_first_n=1`, `compression.proactive_prune_min_result_chars=4000` and `tool_output.max_bytes=16000` (head and tail of a long terminal output are kept). Existing remote runtimes pick up the profile defaults when the installer runs again.
+
+### Fixed
+
+- **"Also working on" opens the conversation it names.** For a group it linked to Messages, which reopened whatever conversation was on screen; it now names the group and opens it (the team channel opens the team channel), and inside Messages the link switches conversation in place.
+- **Chats open at the newest message.** Opening a conversation no longer restores an old reading position; it lands on the latest message and keeps following new ones.
+- **The organization chart follows its rooms.** The MCP organization tree and the chart page reconcile the saved chart against the live rooms: a room's coordinator leads its team, members who left or no longer exist are dropped, and a deleted room takes its branch with it.
+- **Apple apps:** tapping a reply notification opens that agent's chat, and Home offers to turn on notifications until the device confirms alerts.
+
 ## [0.42.11] — 2026-11-24
 
 ### Added
