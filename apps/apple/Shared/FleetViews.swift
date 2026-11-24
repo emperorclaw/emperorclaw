@@ -2,7 +2,8 @@ import SwiftUI
 import EmperorCore
 
 enum EmperorTheme {
-    static let accent = Color(red: 0.02, green: 0.47, blue: 0.62)
+    /// Adaptive brand teal from the asset catalog: 5.5:1+ on light surfaces, 8:1+ on dark.
+    static let accent = Color("AccentColor")
     static let brightAccent = Color(red: 0.35, green: 0.83, blue: 0.96)
 }
 
@@ -103,6 +104,22 @@ private struct Metric: View {
 struct AgentRow: View {
     let agent: Agent
     var body: some View {
+        #if os(iOS)
+        HStack(spacing: 14) {
+            AgentMonogram(agent: agent, size: 46)
+            VStack(alignment: .leading, spacing: 4) {
+                HStack(alignment: .firstTextBaseline) {
+                    Text(agent.name).font(.headline).fontDesign(.rounded).foregroundStyle(.primary).lineLimit(1)
+                    Spacer(minLength: 8)
+                    Text(agent.paused == true ? "Paused" : agent.statusLabel).font(.caption.weight(.semibold)).foregroundStyle(agent.isWorking ? Color.green : .secondary)
+                }
+                if let line = agent.activity ?? agent.taskTitle, !line.isEmpty {
+                    Text(line).font(.subheadline).foregroundStyle(.secondary).lineLimit(1)
+                } else { Text(agent.role.isEmpty ? "Ready when you are" : agent.role).font(.subheadline).foregroundStyle(.secondary).lineLimit(1) }
+            }
+        }
+        .accessibilityElement(children: .combine)
+        #else
         VStack(alignment: .leading, spacing: 5) {
             Text(agent.name).font(.headline)
             Label(agent.statusLabel, systemImage: agent.statusLabel == "Working" ? "bolt.fill" : "circle")
@@ -111,6 +128,7 @@ struct AgentRow: View {
             if let task = agent.taskTitle { Text(task).font(.subheadline).lineLimit(2) }
             else if let activity = agent.activity { Text(activity).font(.subheadline).foregroundStyle(.secondary).lineLimit(2) }
         }.padding(.vertical, 4)
+        #endif
     }
 }
 
@@ -148,6 +166,7 @@ struct ConnectionsView: View {
     @State private var sending = false
     @State private var renaming: Installation?
     @State private var newName = ""
+    @State private var reauth: Installation?
     @AppStorage("appearance") private var appearance = "system"
     var body: some View {
         NavigationStack {
@@ -174,6 +193,9 @@ struct ConnectionsView: View {
                             }
                         }
                         #if os(iOS)
+                        if model.expired.contains(installation.id) {
+                            Button("Sign in again", systemImage: "person.crop.circle.badge.exclamationmark") { reauth = installation }
+                        }
                         Button("Rename instance") { newName = installation.name; renaming = installation }
                         Button(installation.favorite ? "Remove favorite" : "Favorite", systemImage: installation.favorite ? "star.fill" : "star") { model.toggleFavorite(installation.id) }
                         Button("Reconnect Apple Watch", systemImage: "applewatch") {
@@ -199,6 +221,7 @@ struct ConnectionsView: View {
             #if os(iOS)
             .searchable(text: $query, prompt: "Name or server")
             .sheet(isPresented: $add) { ConnectView() }
+            .sheet(item: $reauth) { ConnectView(reauth: $0) }
             #endif
             .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Done") { dismiss() } } }
             .confirmationDialog("Disconnect this device?", isPresented: Binding(get: { disconnect != nil }, set: { if !$0 { disconnect = nil } })) {

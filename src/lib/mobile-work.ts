@@ -7,7 +7,7 @@ import { mobileRequestContext } from "@/lib/mobile-context";
 import { mobileJson, mobileError } from "@/lib/mobile-response";
 import { buildAttention, attentionAccessFromGuard } from "@/lib/attention";
 import { memberVisibleProjectIds } from "@/lib/member-scope";
-import { loadTaskStory, taskViewerFromGuard } from "@/lib/task-story-reads";
+import { listTaskAssignees, loadTaskStory, taskViewerFromGuard } from "@/lib/task-story-reads";
 import { canAdmin } from "@/lib/role-matrix";
 import { consumeRateLimit } from "@/lib/rate-limit";
 import { approvalDecisionAccess } from "@/lib/approval-access";
@@ -82,6 +82,9 @@ export async function mobileWork(request: NextRequest, companyId: string, path: 
                 const rows = await db.select().from(tasks).where(and(eq(tasks.companyId, companyId), isNull(tasks.deletedAt), filter,
                     beforeDate && !isNaN(beforeDate.getTime()) ? lt(tasks.createdAt, beforeDate) : undefined)).orderBy(desc(tasks.createdAt), desc(tasks.id)).limit(101);
                 return mobileJson({ tasks: rows.slice(0, 100).map((task) => ({ ...task, title: (task.inputJson as { title?: string })?.title || task.taskType })), hasMore: rows.length > 100, nextBefore: rows.length > 100 ? rows[99].createdAt.toISOString() : null });
+            }
+            if (request.method === "GET" && path.join("/") === "assignees") {
+                return mobileJson(await listTaskAssignees(companyId, await taskViewerFromGuard(ctx)));
             }
             if (request.method === "GET" && path.length === 2 && path[0] === "tasks" && /^[0-9a-f-]{36}$/i.test(path[1])) {
                 const story = await loadTaskStory(companyId, path[1], await taskViewerFromGuard(ctx), { before: request.nextUrl.searchParams.get("before") });

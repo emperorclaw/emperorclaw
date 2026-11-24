@@ -12,6 +12,8 @@ struct ConnectView: View {
     @State private var busy = false
     @State private var error: String?
     @State private var scanning = false
+    /// Set when renewing an expired connection: same server, same name.
+    var reauth: Installation? = nil
     var body: some View {
         NavigationStack {
             Form {
@@ -23,7 +25,8 @@ struct ConnectView: View {
                 Section { Text("Sign in on your own server. Each instance keeps its own connection and permissions.").foregroundStyle(.secondary) }
                 if let error { Section { Label(error, systemImage: "exclamationmark.triangle").foregroundStyle(.red) } }
                 Section { Button { Task { await connect() } } label: { HStack { Text(busy ? "Connecting…" : "Connect securely"); if busy { Spacer(); ProgressView() } } }.disabled(busy || address.isEmpty) }
-            }.navigationTitle("Add instance")
+            }.navigationTitle(reauth == nil ? "Add instance" : "Sign in again")
+                .onAppear { if let reauth, address.isEmpty { address = reauth.server.absoluteString; name = reauth.name } }
                 .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() }.disabled(busy) } }
         }
         .sheet(isPresented: $scanning) { QRScanner { address = $0; scanning = false } }
@@ -40,7 +43,9 @@ struct ConnectView: View {
             }
             let attempt = SignInAttempt()
             let callback = try await authentication.authenticate(using: attempt.authorizationURL(server: server, deviceName: "iPhone"), callbackURLScheme: "com.emperorclaw.app")
-            let installation = Installation(id: discovery.installationId, name: name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? server.host! : String(name.prefix(80)), server: server)
+            if let reauth, reauth.id != discovery.installationId { error = "This address belongs to a different installation."; return }
+            var installation = Installation(id: discovery.installationId, name: name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? server.host! : String(name.prefix(80)), server: server)
+            if let reauth { installation.favorite = reauth.favorite; installation.companyID = reauth.companyID }
             try await model.client.connect(installation, code: attempt.code(from: callback), verifier: attempt.verifier)
             model.add(installation); dismiss()
         } catch { self.error = error.localizedDescription }

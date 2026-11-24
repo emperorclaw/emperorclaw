@@ -1720,6 +1720,7 @@
       "anAgent": "an agent",
       "someone": "someone",
       "askTitle": "Ask the agent about this panel",
+      "expandLabel": "Expand {title}",
       "askLabel": "Ask about the panel {title}",
       "noData": "No data yet.",
       "overduePrefix": "Overdue: ",

@@ -17,7 +17,21 @@ final class PushDelegate: NSObject, PushApplicationDelegate, UNUserNotificationC
     @MainActor private var pendingID: String?
     @MainActor private var token: String?
     @MainActor private var waiting: [AnyHashable: Any]?
-    override init() { super.init(); Task { @MainActor in Self.current = self; token = PushTokenStorage.read(); pendingID = UserDefaults.standard.string(forKey: "pushPendingInstance"); UNUserNotificationCenter.current().delegate = self } }
+    override init() {
+        super.init()
+        #if os(iOS)
+        NotificationActions.register()
+        #endif
+        Task { @MainActor in Self.current = self; token = PushTokenStorage.read(); pendingID = UserDefaults.standard.string(forKey: "pushPendingInstance"); UNUserNotificationCenter.current().delegate = self }
+    }
+    /// iPhone seals content end to end; the watch keeps generic alerts (no extension).
+    static var contentKey: String? {
+        #if os(iOS)
+        return PushContentKey.ensure()
+        #else
+        return nil
+        #endif
+    }
     @MainActor var environment: String {
         #if DEBUG
         return "sandbox"
@@ -60,10 +74,29 @@ final class PushDelegate: NSObject, PushApplicationDelegate, UNUserNotificationC
     private func receivedToken(_ data: Data) { let value = data.map { String(format: "%02x", $0) }.joined(); Task { @MainActor in token = value; PushTokenStorage.save(value); if let waiting { self.waiting = nil; receive(waiting) } else { await enroll(value) } } }
     @MainActor private func enroll(_ value: String) async {
         guard let model, let id = pendingID, let installation = model.installations.first(where: { $0.id == id }) else { return }
-        do { try await model.client.configurePush(installation, token: value, environment: environment); model.notice = "Tap the confirmation notification to finish enabling alerts for this instance." }
-        catch { model.notice = error.localizedDescription }
+        do { try await model.client.configurePush(installation, token: value, environment: environment, contentKey: Self.contentKey); model.notice = "Tap the confirmation notification to finish enabling alerts for this instance." }
+        catch {
+            // Don't retry (and re-alert) on every launch; the person can try again from Notifications.
+            pendingID = nil; UserDefaults.standard.removeObject(forKey: "pushPendingInstance")
+            model.notice = error.localizedDescription
+        }
     }
-    func userNotificationCenter(_ center: UNUserNotificationCenter, didReceive response: UNNotificationResponse, withCompletionHandler completionHandler: @escaping () -> Void) { receive(response.notification.request.content.userInfo); completionHandler() }
+    func userNotificationCenter(_ center: UNUserNotificationCenter, didReceive response: UNNotificationResponse, withCompletionHandler completionHandler: @escaping () -> Void) {
+        #if os(iOS)
+        if [NotificationActions.approve, NotificationActions.reject, NotificationActions.reply].contains(response.actionIdentifier) {
+            // Background action: no UI, no AppModel needed — saved connections and Keychain credentials suffice.
+            let saved = UserDefaults.standard.data(forKey: "installations").flatMap { try? JSONDecoder().decode([Installation].self, from: $0) } ?? []
+            Task {
+                let result = await NotificationActions.perform(response, client: MobileClient(), installations: saved)
+                if let result { NotificationActions.confirm(result, replacing: response.notification.request) }
+                else { receive(response.notification.request.content.userInfo) }
+                completionHandler()
+            }
+            return
+        }
+        #endif
+        receive(response.notification.request.content.userInfo); completionHandler()
+    }
     func userNotificationCenter(_ center: UNUserNotificationCenter, willPresent notification: UNNotification, withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void) { completionHandler([.banner, .sound]) }
     private func receive(_ info: [AnyHashable: Any]) {
         guard let event = info["emperor"] as? [String: String], let installationID = event["installation"] else { return }
@@ -80,7 +113,7 @@ final class PushDelegate: NSObject, PushApplicationDelegate, UNUserNotificationC
                     #endif
                     return
                 }
-                do { try await model.client.configurePush(installation, token: token, environment: environment, challenge: challenge); pendingID = nil; UserDefaults.standard.removeObject(forKey: "pushPendingInstance"); model.notice = "Notifications enabled for \(installation.name)." }
+                do { try await model.client.configurePush(installation, token: token, environment: environment, challenge: challenge, contentKey: Self.contentKey); pendingID = nil; UserDefaults.standard.removeObject(forKey: "pushPendingInstance"); model.notice = "Notifications enabled for \(installation.name)." }
                 catch { model.notice = error.localizedDescription }
             } else if let company = event["company"], let kind = event["kind"], let id = event["id"] {
                 await model.open(WorkspaceLink.url(installationID: installationID, companyID: company, kind: kind, id: id))

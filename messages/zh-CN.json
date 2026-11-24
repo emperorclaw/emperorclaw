@@ -1720,6 +1720,7 @@
       "anAgent": "一个智能体",
       "someone": "某人",
       "askTitle": "向智能体询问此面板",
+      "expandLabel": "展开 {title}",
       "askLabel": "询问面板 {title}",
       "noData": "暂无数据。",
       "overduePrefix": "已逾期：",

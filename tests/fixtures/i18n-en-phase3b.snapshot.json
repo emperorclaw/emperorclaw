@@ -741,6 +741,9 @@
       "noAgentsCoverScope": "No agent's scope covers this view.",
       "narrowKeepsMaintainer": "{name} maintains it and keeps access, so it can still refresh it.",
       "narrowNoMaintainer": "No agent maintains this view, so no agent will be able to refresh it after this."
+    },
+    "panel": {
+      "expandLabel": "Expand {title}"
     }
   },
   "settings": {

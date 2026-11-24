@@ -7,7 +7,7 @@ struct EmperorWatchApp: App {
     @StateObject private var model = AppModel()
     var body: some Scene {
         WindowGroup {
-            FleetView().id(model.workspaceKey).environmentObject(model).tint(EmperorTheme.brightAccent)
+            WatchHome().id(model.workspaceKey).environmentObject(model).tint(EmperorTheme.brightAccent)
                 .task { push.model = model; model.start(); await push.restore() }
                 .onOpenURL { url in Task { await model.open(url) } }
                 .sheet(item: $model.destination) { link in ResourceSheet(link: link).environmentObject(model) }

@@ -6,18 +6,177 @@
 @source '../../../src/components/chat/streaming-markdown.tsx';
 @source '../../../src/components/run-timeline.tsx';
 html, body, #root { height: 100%; margin: 0; overflow: hidden; }
+html { background: transparent; }
 body { font: -apple-system-body; background: transparent; color: var(--foreground); -webkit-text-size-adjust: 100%; }
 #transcript { height: 100%; overflow: auto; overscroll-behavior: contain; overflow-anchor: none; padding: 14px; box-sizing: border-box; }
 .chat-message { margin: 0 0 14px; min-width: 0; overflow-wrap: anywhere; }
-.chat-message > header { font-size: 12px; color: var(--muted-foreground); margin-bottom: 5px; }
+.chat-message > header { font: 600 12px/1.2 ui-rounded, -apple-system, system-ui; letter-spacing: .01em; color: var(--muted-foreground); margin: 0 4px 6px; }
+.chat-message.human { margin-left: 14%; }
+.chat-message.human > header { text-align: right; }
+.chat-message.agent .body { border-top-left-radius: 6px; }
+.chat-message.human .body { border-top-right-radius: 6px; }
 .chat-message .body { border-radius: 14px; padding: 12px; background: color-mix(in srgb, var(--foreground) 6%, transparent); }
-.chat-message.human .body { background: color-mix(in srgb, cyan 10%, transparent); }
+.chat-message.human .body { background: color-mix(in srgb, #2ab7d6 16%, transparent); }
 .chat-message button, #transcript > button, .attachment { min-height: 44px; }
 #latest { position: fixed; bottom: 10px; right: 16px; min-height: 44px; padding: 6px 14px; border-radius: 24px; background: var(--background); border: 1px solid var(--border); box-shadow: 0 2px 8px #0003; }
-.attachment { display: flex; align-items: center; color: var(--color-cyan-400); }
-.activity { font-size: 12px; padding: 12px; border-left: 2px solid var(--color-cyan-400); margin-bottom: 12px; }
-.markdown-content pre, .markdown-content table { max-width: 100%; }
-.markdown-content pre { overflow-x: auto; }
+.attachment { display: flex; align-items: center; gap: 10px; width: 100%; max-width: 320px; margin-top: 8px; padding: 8px 12px 8px 8px; text-align: left;
+  border-radius: 14px; background: color-mix(in srgb, var(--foreground) 6%, transparent); border: 1px solid color-mix(in srgb, var(--foreground) 8%, transparent); color: var(--foreground); }
+.attachment:active { transform: scale(.98); }
+.attachment-icon { width: 36px; height: 36px; border-radius: 10px; display: grid; place-items: center; flex-shrink: 0; }
+.attachment-icon svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+.attachment-image .attachment-icon { color: #2ab7d6; background: color-mix(in srgb, #2ab7d6 16%, transparent); }
+.attachment-audio .attachment-icon { color: #f59e0b; background: color-mix(in srgb, #f59e0b 16%, transparent); }
+.attachment-doc .attachment-icon { color: #818cf8; background: color-mix(in srgb, #818cf8 16%, transparent); }
+.attachment-text { display: flex; flex-direction: column; min-width: 0; }
+.attachment-title { font: 600 14px ui-rounded, -apple-system, system-ui; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.attachment-detail { font-size: 12px; color: var(--muted-foreground); }
+.chat-empty { min-height: 60vh; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; gap: 6px; padding: 24px; color: var(--muted-foreground); font-size: 14px; }
+.chat-empty p { margin: 0; max-width: 280px; }
+.chat-empty-title { color: var(--foreground); font-size: 17px; font-weight: 600; letter-spacing: -.01em; }
+.activity { font-size: 12px; padding: 12px 14px; border-left: 2px solid var(--color-cyan-400); border-radius: 4px 14px 14px 4px; background: color-mix(in srgb, #2ab7d6 6%, transparent); margin-bottom: 12px; }
+.markdown-content pre { max-width: 100%; overflow-x: auto; }
 
-/* Preserve readable cells on a narrow phone; the shared wrapper scrolls. */
-.markdown-content table { min-width: 28rem; }
+/* Tables keep their natural width and scroll sideways inside the shared wrapper,
+   instead of squeezing columns until code breaks letter by letter. */
+.markdown-content table { width: max-content; min-width: 100%; max-width: none; }
+.markdown-content th, .markdown-content td { overflow-wrap: normal; word-break: normal; max-width: 16rem; vertical-align: top; }
+.markdown-content td code, .markdown-content th code { white-space: nowrap; }
+@source '../../../src/components/views/view-panels.tsx';
+.surface-scroll { height:100%; overflow:auto; overscroll-behavior:contain; }
+.surface-body { padding:20px; max-width:1200px; margin:auto; overflow-wrap:anywhere; }
+.surface-document { padding:0; }
+.embedded, .embedded body, .embedded #root { height:auto; overflow:visible; }
+.surface-embedded { height:auto; overflow:visible; }
+.surface-eyebrow { font-size:.75rem; font-weight:600; letter-spacing:.06em; color:var(--muted-foreground); }
+.view-intro { margin-bottom:24px; max-width:680px; }
+.view-intro h1 { font-size:clamp(24px,4vw,36px); font-weight:750; letter-spacing:-.035em; margin:8px 0 12px; }
+.surface-private { padding:48px 16px; text-align:center; color:var(--muted-foreground); }
+.surface-private h2 { color:var(--foreground); font-size:1.375rem; margin:16px 0; }
+.fleet-floor { display:grid; grid-template-columns:repeat(auto-fit,minmax(min(100%,8.5rem),1fr)); gap:10px; }
+/* Overview density: role descriptions and agent details belong in the directory. */
+.surface-fleet { padding:12px 20px 20px; }
+.fleet-desk { --desk-top:#e7dbcb; --desk-front:#d1c0aa; text-align:left; padding:12px; border-radius:20px; border:1px solid var(--border); background:linear-gradient(150deg,color-mix(in srgb,hsl(var(--agent-hue) 65% 70%) 11%,var(--background)),var(--background)); box-shadow:0 3px 12px #00000004; cursor:pointer; color:var(--foreground); min-width:0; transition:transform .18s ease; }
+.dark .fleet-desk { --desk-top:#3e4854; --desk-front:#29313c; }
+.fleet-desk:active { transform:scale(.985); }
+.fleet-desk:focus-visible { outline:3px solid var(--foreground); outline-offset:3px; }
+.desk-status { display:flex; align-items:center; gap:5px; font-size:.6875rem; color:var(--muted-foreground); }
+.desk-status i { width:7px; height:7px; border-radius:50%; background:#84929e; flex-shrink:0; }
+.desk-status i[data-status=working] { background:#168e71; }
+.desk-status i[data-status=blocked], .desk-status i[data-status=waiting] { background:#b77715; }
+.desk-dots { margin-left:auto; letter-spacing:2px; }
+.desk-stage { height:48px; display:flex; justify-content:center; padding-top:4px; }
+.desk-stage svg { height:100%; width:100px; overflow:visible; }
+.desk-copy h2 { font-weight:750; font-size:1rem; letter-spacing:-.025em; margin:7px 0 4px; white-space:nowrap; text-overflow:ellipsis; overflow:hidden; }
+.desk-work { font-size:.75rem; line-height:1.35; margin:0; min-height:1.35em; display:-webkit-box; -webkit-box-orient:vertical; -webkit-line-clamp:1; overflow:hidden; }
+.is-working .desk-figure { animation:desk-breathe 3s ease-in-out infinite; transform-origin:0 0; }
+.is-working .desk-terminal, .is-working .desk-dots { animation:desk-pulse 2s ease-in-out infinite; }
+@keyframes desk-breathe { 50% { transform:translateY(-1.5px) rotate(.7deg); } }
+@keyframes desk-pulse { 50% { opacity:.35; } }
+.fleet-still *, .reduced-motion * { animation:none !important; transition:none !important; }
+@media(prefers-reduced-motion:reduce) { .fleet-desk, .fleet-desk * { animation:none !important; transition:none !important; } }
+@media(min-width:600px) { .surface-body { padding:28px; } .surface-document { padding:0; } .surface-fleet { padding:16px 28px 28px; } .fleet-floor { grid-template-columns:repeat(auto-fit,minmax(160px,1fr)); gap:14px; } .fleet-desk { padding:14px; } .desk-stage { height:76px; } }
+/* A quiet editorial reader around the exact production panel renderers. */
+.surface-view { --chart-1:#168575; --chart-2:#4b82b5; --chart-3:#b68b47; max-width:1100px; padding:24px 20px 40px; }
+.view-intro { margin:0 0 24px; max-width:none; }
+.view-kicker { display:flex; justify-content:space-between; align-items:center; gap:16px; }
+.view-kicker .surface-eyebrow { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; text-transform:uppercase; }
+.view-panel-count { flex-shrink:0; font-size:.6875rem; color:var(--muted-foreground); font-variant-numeric:tabular-nums; }
+.view-intro h1 { font-family:ui-rounded,-apple-system,system-ui,sans-serif; font-size:clamp(1.75rem,5vw,2.75rem); font-weight:700; line-height:1.1; letter-spacing:-.025em; margin:18px 0 14px; max-width:22ch; }
+.view-description { max-width:56ch; color:var(--muted-foreground); font-size:.875rem; line-height:1.6; }
+.view-curator { display:flex; align-items:center; gap:5px; margin-top:20px; font-size:.6875rem; color:var(--muted-foreground); }
+.view-curator strong { font-weight:500; color:var(--foreground); }
+.curator-mark { margin-right:4px; color:var(--chart-1); }
+.view-rule { height:1px; margin-top:24px; background:linear-gradient(90deg,var(--border),transparent); }
+.surface-view > .grid { gap:14px; }
+.surface-view section[data-panel-type] { padding:20px; border-radius:24px; border-color:color-mix(in srgb,var(--foreground) 8%,transparent); box-shadow:0 4px 20px #00000003; }
+.surface-view section[data-panel-type] > header { align-items:center; margin-bottom:16px; }
+.surface-view section[data-panel-type] > header h2 { font-size:.8125rem; font-weight:550; white-space:normal; letter-spacing:-.01em; }
+.surface-view section[data-panel-type] > footer { margin-top:20px; font-size:.625rem; letter-spacing:.01em; }
+.surface-view section[data-panel-type=metric] .text-3xl { font-size:2.5rem; font-weight:500; letter-spacing:-.05em; }
+.panel-focus { display:flex; align-items:center; justify-content:center; flex-shrink:0; min-width:44px; min-height:44px; margin:-10px -10px -10px 0; border-radius:50%; color:var(--muted-foreground); }
+.panel-focus:active { background:color-mix(in srgb,var(--foreground) 7%,transparent); }
+.panel-focus:focus-visible, .focus-toolbar button:focus-visible { outline:2px solid var(--foreground); outline-offset:2px; }
+.panel-dialog { position:fixed; inset:0; width:calc(100% - 24px); max-width:1000px; height:calc(100% - 24px); max-height:none; padding:0; margin:auto; border:1px solid var(--border); border-radius:28px; background:var(--background); color:var(--foreground); box-shadow:0 20px 80px #0004; overflow:hidden; }
+.panel-dialog::backdrop { background:#10182070; backdrop-filter:blur(8px); }
+.focus-shell { display:flex; flex-direction:column; height:100%; }
+.focus-toolbar { display:flex; align-items:center; justify-content:space-between; padding:12px 20px; border-bottom:1px solid var(--border); }
+.focus-toolbar button { display:flex; gap:12px; align-items:center; min-height:44px; padding:0 12px; border-radius:24px; font-size:.875rem; font-weight:500; }
+.focus-toolbar button span { font-size:1.5rem; font-weight:300; }
+.focus-content { padding:20px; overflow:auto; flex:1; }
+.focus-content section[data-panel-type] { min-height:calc(100dvh - 160px); box-shadow:none; }
+.focus-content section[data-panel-type] > div { max-height:none; }
+.focus-content section[data-panel-type] > header h2 { font-size:1.25rem; }
+.surface-private { min-height:65vh; display:flex; flex-direction:column; align-items:center; justify-content:center; }
+.private-mark { font-size:3rem; line-height:1; margin-bottom:24px; color:var(--muted-foreground); }
+.surface-private h2 { font-family:ui-rounded,-apple-system,system-ui,sans-serif; font-size:1.75rem; font-weight:700; letter-spacing:-.02em; }
+.surface-private p { font-size:.875rem; line-height:1.6; }
+@media(min-width:768px) { .surface-view { padding:32px 28px 48px; } .view-intro { margin-bottom:28px; } .surface-view > .grid { gap:18px; } .surface-view section[data-panel-type] { padding:24px; border-radius:28px; } }
+
+/* Live reply indicators, modelled on leading assistants: motion instead of status words. */
+.sr-only { position:absolute; width:1px; height:1px; padding:0; margin:-1px; overflow:hidden; clip:rect(0,0,0,0); white-space:nowrap; border:0; }
+.preview-note { font-size:12px; color: var(--muted-foreground); margin:8px 0 0; }
+.chat-message .body.is-typing { display:inline-flex; padding:14px 16px; }
+.typing-dots { display:inline-flex; gap:5px; align-items:center; height:10px; }
+.typing-dots i { width:7px; height:7px; border-radius:50%; background: var(--muted-foreground); animation: typing-bounce 1.2s ease-in-out infinite; }
+.typing-dots i:nth-child(2) { animation-delay:.15s; } .typing-dots i:nth-child(3) { animation-delay:.3s; }
+@keyframes typing-bounce { 0%,60%,100% { transform:translateY(0); opacity:.35; } 30% { transform:translateY(-4px); opacity:1; } }
+.stream-caret { display:inline-block; width:9px; height:9px; margin-left:4px; border-radius:50%; background:#2ab7d6; vertical-align:middle; animation: caret-pulse 1s ease-in-out infinite; }
+.markdown-content + .stream-caret, .body > .stream-caret { display:block; margin:6px 0 0; }
+@keyframes caret-pulse { 0%,100% { transform:scale(.7); opacity:.45; } 50% { transform:scale(1); opacity:1; } }
+.activity-line { display:flex; align-items:center; gap:7px; margin:0; font-size:13px; }
+.activity-name { font: 600 13px ui-rounded, -apple-system, system-ui; color: var(--foreground); flex-shrink:0; }
+.thinking-glyph { width:16px; height:16px; flex-shrink:0; fill:#2ab7d6; transform-origin:center; animation: glyph-breathe 2.4s ease-in-out infinite; }
+@keyframes glyph-breathe { 0% { transform:rotate(0) scale(.85); } 50% { transform:rotate(90deg) scale(1.08); } 100% { transform:rotate(180deg) scale(.85); } }
+.shimmer { min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; color:transparent; -webkit-background-clip:text; background-clip:text;
+  background-image: linear-gradient(90deg, var(--muted-foreground) 0%, var(--muted-foreground) 40%, var(--foreground) 50%, var(--muted-foreground) 60%, var(--muted-foreground) 100%);
+  background-size:250% 100%; animation: shimmer-sweep 2.2s linear infinite; }
+@keyframes shimmer-sweep { from { background-position:100% 0; } to { background-position:-150% 0; } }
+.reduced-motion .typing-dots i, .reduced-motion .stream-caret, .reduced-motion .thinking-glyph, .reduced-motion .shimmer { animation:none; }
+.reduced-motion .shimmer { color: var(--muted-foreground); background:none; }
+.reduced-motion .typing-dots i { opacity:.7; }
+
+/* Motion system: SwiftUI-equivalent springs (.smooth bounce 0, .snappy bounce .15),
+   generated as linear() curves. Older WebKit (iOS 17.0-17.1) falls back to close béziers. */
+:root {
+    --spring-smooth: cubic-bezier(.32,.72,0,1); --spring-smooth-duration: .5s;
+    --spring-snappy: cubic-bezier(.3,1.25,.5,1); --spring-snappy-duration: .45s;
+    --spring-gentle: cubic-bezier(.32,.72,0,1); --spring-gentle-duration: .65s;
+}
+@supports (transition-timing-function: linear(0, 1)) {
+  :root {
+    --spring-smooth: linear(0.0, 0.0324, 0.1084, 0.2048, 0.3072, 0.4069, 0.4991, 0.5816, 0.6536, 0.7154, 0.7676, 0.8113, 0.8475, 0.8773, 0.9016, 0.9213, 0.9373, 0.9501, 0.9605, 0.9687, 0.9753, 0.9805, 0.9847, 0.9879, 0.9905, 0.9926, 0.9942, 0.9955, 0.9965, 0.9972, 0.9978, 0.9983, 0.9987, 0.999, 0.9992, 0.9994, 1); --spring-smooth-duration: 0.72s;
+    --spring-snappy: linear(0.0, 0.0333, 0.1136, 0.2183, 0.3316, 0.4433, 0.5471, 0.6397, 0.7194, 0.7864, 0.8412, 0.8851, 0.9195, 0.9458, 0.9656, 0.98, 0.9902, 0.9971, 1.0016, 1.0043, 1.0057, 1.0063, 1.0062, 1.0058, 1.0052, 1.0045, 1.0037, 1.0031, 1.0025, 1.0019, 1.0015, 1.0011, 1.0008, 1.0006, 1.0004, 1.0003, 1); --spring-snappy-duration: 0.67s;
+    --spring-gentle: linear(0.0, 0.0324, 0.1084, 0.2048, 0.3072, 0.4069, 0.4991, 0.5816, 0.6536, 0.7154, 0.7676, 0.8113, 0.8475, 0.8773, 0.9016, 0.9213, 0.9373, 0.9501, 0.9605, 0.9687, 0.9753, 0.9805, 0.9847, 0.9879, 0.9905, 0.9926, 0.9942, 0.9955, 0.9965, 0.9972, 0.9978, 0.9983, 0.9987, 0.999, 0.9992, 0.9994, 1); --spring-gentle-duration: 0.96s;
+  }
+}
+/* Containers follow their content instead of jumping. */
+.smooth-height { overflow: hidden; transition: height var(--spring-smooth-duration) var(--spring-smooth); }
+.smooth-height-inner { display: flow-root; }
+/* New content arrives the Apple way: rises, scales up a touch and comes into focus. */
+.row-enter { animation: row-rise var(--spring-snappy-duration) var(--spring-snappy) both, row-focus .32s ease-out both; transform-origin: 50% 100%; }
+.chat-message.human.row-enter { transform-origin: 100% 100%; }
+.chat-message.agent.row-enter { transform-origin: 0 100%; }
+@keyframes row-rise { from { transform: translateY(14px) scale(.96); } to { transform: none; } }
+@keyframes row-focus { from { opacity: 0; filter: blur(6px); } to { opacity: 1; filter: none; } }
+.live-area { display: grid; grid-template-rows: 1fr; opacity: 1; filter: none;
+  transition: grid-template-rows var(--spring-smooth-duration) var(--spring-smooth), opacity .28s ease .04s, filter .28s ease; }
+.live-area.is-closing { grid-template-rows: 0fr; opacity: 0; filter: blur(4px);
+  transition: opacity .2s ease, filter .2s ease, grid-template-rows var(--spring-gentle-duration) var(--spring-gentle) .08s; }
+.live-area-inner { min-height: 0; overflow: hidden; }
+/* Step text changes dissolve through a brief blur rather than swapping. */
+.activity-line .shimmer { animation: shimmer-sweep 2.2s linear infinite, text-focus .36s ease-out both; }
+@keyframes text-focus { from { opacity: 0; filter: blur(3px); } to { opacity: 1; filter: none; } }
+.typing-dots i { animation-timing-function: cubic-bezier(.45,0,.55,1); }
+.reduced-motion .smooth-height, .reduced-motion .live-area { transition: none; }
+.reduced-motion .row-enter, .reduced-motion .activity-line .shimmer { animation: none; }
+
+/* Group readability: a colour per agent, and quiet "nothing to add" notes. */
+.sender-dot { display: inline-block; width: 7px; height: 7px; border-radius: 50%; margin-right: 6px; vertical-align: 1px; }
+.chat-quiet { display: flex; align-items: center; justify-content: center; gap: 0; margin: -4px 0 12px; font: 500 12px ui-rounded, -apple-system, system-ui; color: var(--muted-foreground); opacity: .75; }
+
+/* One type system with the native app: the web's Geist font isn't bundled offline,
+   so map it to SF; titles and figures use SF Rounded like native headings and counts. */
+:root { --font-geist-sans: -apple-system, system-ui, "Helvetica Neue", sans-serif; --font-geist-mono: ui-monospace, "SF Mono", Menlo, monospace; }
+html, body { font-family: -apple-system, system-ui, sans-serif; }
+.surface-view h2, .surface-view h3, .surface-view .tabular-nums.text-3xl, .surface-view .tabular-nums.text-2xl, .desk-copy h2 { font-family: ui-rounded, -apple-system, system-ui, sans-serif; }
+.surface-view .tabular-nums { font-variant-numeric: tabular-nums; }

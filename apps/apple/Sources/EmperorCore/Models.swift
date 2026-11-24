@@ -57,6 +57,8 @@ public struct Agent: Codable, Identifiable, Equatable, Sendable {
     public var activity: String?
     public var taskTitle: String?
     public var lastSeenAt: String?
+    public var avatarAppearance: JSONValue?
+    public var avatarUrl: String?
     public var paused: Bool?
     public var statusLabel: String {
         switch state {

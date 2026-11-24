@@ -438,7 +438,11 @@ export async function loadAgentActivity(companyId: string, options: {
         const node = nodes.get(a.id);
         return {
             agentId: a.id,
-            state: deriveLiveState({ typing: Boolean(l), online, hasTaskInProgress: Boolean(task) || Boolean(run) }),
+            // "Working" means executing right now (an open run or a live status line),
+            // not merely owning an in-progress task: cron-created and long-lived tasks
+            // stay in_progress for days while the agent is idle. The task is still
+            // returned below so a card can show what the agent owns.
+            state: deriveLiveState({ typing: Boolean(l), online, hasTaskInProgress: Boolean(run) }),
             activity: l?.activity ?? null,
             activityThreadId: l?.threadId ?? null,
             run: run ? redactRunForViewer({

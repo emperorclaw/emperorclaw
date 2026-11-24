@@ -44,3 +44,48 @@ server streaming prerequisites. The authenticated Brain preview response reporte
 token delivery therefore remains disabled on this deployment. Test fixtures
 prove client rendering; enabling the existing server rollout flag and checking
 a compatible runtime are still required to verify real partial delivery.
+
+## Compact dashboard and Views redesign
+
+The signed iPhone 17 Pro simulator is connected to the existing Brain session.
+Visual inspection confirms all eight real agents are visible together, in four
+compact rows: character, name, status and one activity line. Role descriptions,
+large introduction text and per-card action footers were removed after review.
+The directory and conversations retain the detailed workflows.
+
+The shared bundle passes nine WebKit tests, including eight fully visible tiles
+in a 390×620 pt surface, both appearances, reduced motion/stale data, rich task
+documents and all seven View panel types across narrow/wide sizes. The server
+suite passes 1,274 unit tests plus its static suite; fourteen disposable-database
+mobile integration tests and fifteen Swift core tests pass. TypeScript and
+focused ESLint pass. The signed phone/embedded Watch/widget build passes.
+
+The mobile Views read endpoints and avatar fields are committed separately from
+the native redesign. They still need deployment to an instance before its Views
+can be opened in this build. The installed Brain server remains v0.42.1 at this
+point. No new server release was published as part of the visual review.
+
+Xcode lists an iPhone Duo device type, but the installed iOS 27.2 runtime refuses
+to create it with “Incompatible device.” Responsive content was checked in
+WebKit; a real folding transition and physical-device accessibility remain
+unverified. See [the design record](../Design/native-redesign.md).
+
+## Views editorial refinement
+
+The native collection now has pinned/featured hierarchy, actual key-metric
+summaries, scope search and All/Pinned/Projects filters. Detail panels retain the
+production renderers with a presentation-only expansion action. Modal dismissal,
+keyboard focus restoration and removal on access revocation are covered by a new
+WebKit regression. Expanded content does not introduce additional API access.
+
+Ten WebKit regressions and 47 targeted View/access/translation tests pass.
+TypeScript, focused ESLint and the signed phone/embedded Watch/widget build pass.
+The new translated expansion label is recorded in the English copy snapshot.
+
+The labeled Debug-only design preview was visually inspected on the iPhone 17
+Pro in light and dark appearances. Opening the featured card and filtering to
+project Views were exercised through Device Hub. Preview values are fictional;
+no customer View was created or changed. The dark preview overrides appearance
+only for that debug process and does not change the saved preference. Normal
+launches still use real server data; the existing mobile Views API patch remains
+necessary on Brain. Physical-device accessibility/folding tests remain pending.

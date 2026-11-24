@@ -51,6 +51,14 @@ export const NOTIFICATION_KIND_LABELS: Record<NotificationKind, string> = {
     agent_transferred: "An agent is handed to you or away from you",
 };
 
+/**
+ * What a phone may be notified about: every inbox kind plus push-only
+ * "reply" (an agent answered you in a direct chat). Replies are not inbox
+ * rows, emails or webhooks: the chat itself is their record.
+ */
+export const MOBILE_PUSH_KINDS = [...NOTIFICATION_KINDS, "reply"] as const;
+export const DEFAULT_MOBILE_PUSH_KINDS = ["approval", "decision", "mention", "reply", "agent_failed", "agent_down"];
+
 /** Default email kinds for someone who never changed their preferences. */
 export const DEFAULT_EMAIL_KINDS: NotificationKind[] = [...NOTIFICATION_KINDS];
 
@@ -271,11 +279,14 @@ export async function notifyAgentMessage(companyId: string, message: typeof thre
         if (message.senderType !== "agent") return;
         const text = message.text || "";
         const hasChoices = /^\s*(`{3,}|~{3,})\s*choices\b/im.test(text);
-        if (!text.includes("@") && !hasChoices) return;
+        const quiet = !text.trim() || /^\s*\[no-reply\]\s*$/i.test(text);
+        if (quiet) return;
 
         const [thread] = await db.select({ id: messageThreads.id, type: messageThreads.type, title: messageThreads.title, ownerUserId: messageThreads.ownerUserId, isPrivate: messageThreads.isPrivate })
             .from(messageThreads).where(eq(messageThreads.id, message.threadId)).limit(1);
         if (!thread) return;
+        // Group/team chatter only reaches people it @mentions or asks to decide.
+        if (thread.type !== "direct" && !text.includes("@") && !hasChoices) return;
         const [agent] = message.senderId
             ? await db.select({ id: agents.id, name: agents.name }).from(agents).where(eq(agents.id, message.senderId)).limit(1)
             : [];
@@ -288,8 +299,9 @@ export async function notifyAgentMessage(companyId: string, message: typeof thre
 
         // A private direct thread is only its owner's: nobody else is told
         // about (or linked to) a conversation they cannot open.
-        const mentioned = (await mentionedHumanIds(companyId, text))
-            .filter((id) => !isPrivateDirectThread(thread) || id === thread.ownerUserId);
+        const mentioned = text.includes("@")
+            ? (await mentionedHumanIds(companyId, text)).filter((id) => !isPrivateDirectThread(thread) || id === thread.ownerUserId)
+            : [];
         // A decision is the more specific signal: whoever it is for gets that
         // one notification, not a second "mentioned you" for the same message.
         const decisionFor = hasChoices ? (mentioned.length ? mentioned : await threadHumans(companyId, thread)) : [];
@@ -318,6 +330,18 @@ export async function notifyAgentMessage(companyId: string, message: typeof thre
                 sourceId: message.id,
                 dedupeKey: `decision:${thread.id}`,
             });
+        }
+        // A plain answer in your direct chat: a phone notification you can reply to.
+        if (thread.type === "direct") {
+            const already = new Set([...mentionOnly, ...decisionFor]);
+            const readers = (await threadHumans(companyId, thread)).filter((id) => !already.has(id));
+            if (readers.length) {
+                const { pushOnlyToPhones } = await import("@/lib/mobile-push");
+                await pushOnlyToPhones(companyId, readers, {
+                    kind: "reply", title: agentName, body: preview, sourceType: "message", sourceId: message.id,
+                    reply: { agentId: agent?.id ?? null, threadId: thread.id },
+                });
+            }
         }
     } catch (error) {
         console.warn("[notifications] agent message:", error instanceof Error ? error.message : error);

@@ -81,3 +81,164 @@ test('lazily reads reasoning and entity cards through scoped native capabilities
     await expect(page.getByText('Persisted reasoning from the authorized message')).toBeVisible();
     await expect(page.evaluate(async () => { try { await fetch('/api/settings/tokens'); return false; } catch { return true; } })).resolves.toBe(true);
 });
+
+test('fleet uses web characters, real work and native agent navigation; stale and reduced motion stop animation', async ({ page }) => {
+    const agents = [{ id: uuid, name: 'Builder', role: 'Engineering', state: 'working', activity: 'Checking the iPhone layout' }];
+    await update(page, payload({ mode: 'fleet', agents, fresh: true }));
+    await expect(page.getByRole('heading', { name: 'Builder' })).toBeVisible();
+    await expect(page.locator('.desk-figure svg, .desk-figure path').first()).toBeAttached();
+    await expect(page.locator('.desk-figure')).toHaveCSS('animation-name', 'desk-breathe');
+    await page.getByRole('button', { name: /Builder, Working/ }).click();
+    expect(await page.evaluate(() => (window as unknown as { nativeMessages: unknown[] }).nativeMessages)).toContainEqual({ type: 'agent', agentId: uuid });
+    await update(page, payload({ mode: 'fleet', agents, fresh: false }));
+    await expect(page.locator('.desk-figure')).toHaveCSS('animation-name', 'none');
+    await expect(page.getByText('Last known status')).toBeVisible();
+    await update(page, payload({ mode: 'fleet', agents, fresh: true, reducedMotion: true }));
+    await expect(page.locator('.desk-figure')).toHaveCSS('animation-name', 'none');
+    await page.setViewportSize({ width: 390, height: 620 });
+    await update(page, payload({ mode: 'fleet', agents: Array.from({ length: 8 }, (_, i) => ({ ...agents[0], id: String(i), name: `Agent ${i}`, role: 'Long role description that belongs only in agent details' })), fresh: true }));
+    await expect(page.getByText('Long role description', { exact: false })).toHaveCount(0);
+    await expect(page.getByRole('button', { name: /Agent 7,/ })).toBeInViewport({ ratio: 1 });
+    await page.screenshot({ path: '/tmp/emperor-fleet-compact.png' });
+});
+
+test('rich documents report their full height and render Markdown tables', async ({ page }) => {
+    await update(page, payload({ mode: 'document', embedded: true, text: '# Project brief\n\n| Item | Result |\n| --- | --- |\n| Native | Ready |\n\n```ts\nconst ready = true;\n```' }));
+    await expect(page.getByRole('heading', { name: 'Project brief' })).toBeVisible();
+    await expect(page.locator('table')).toContainText('Ready');
+    await expect.poll(() => page.evaluate(() => (window as unknown as { nativeMessages: { type: string; height?: number }[] }).nativeMessages.some(m => m.type === 'height' && (m.height ?? 0) > 100))).toBe(true);
+});
+
+test('all seven View panels adapt between narrow and wide layouts in both appearances; metadata remains private', async ({ page }) => {
+    const chart = { series: [{ name: 'Agents', points: [{ x: 'Mon', y: 2 }, { x: 'Tue', y: 5 }] }] };
+    const panels = [
+        { type: 'metric', data: { value: 8, unit: 'agents' } },
+        { type: 'line', data: chart }, { type: 'bar', data: chart },
+        { type: 'table', data: { columns: [{ key: 'name', label: 'Name' }], rows: [{ name: 'Builder' }] } },
+        { type: 'list', data: { items: [{ title: 'Review native build', value: 'Ready' }] } },
+        { type: 'markdown', data: { text: '**Release** is ready' } },
+        { type: 'progress', data: { value: 3, max: 5 } },
+    ].map((p, i) => ({ ...p, id: `panel-${i}`, title: `Panel ${p.type}`, w: 6, h: 2, updatedAt: new Date().toISOString(), updatedBy: null }));
+    const view = { title: 'Team pulse', access: 'full', panels, createdAt: new Date().toISOString() };
+    for (const width of [320, 430, 850]) {
+        await page.setViewportSize({ width, height: 900 });
+        for (const dark of [true, false]) {
+            await update(page, payload({ mode: 'view', view, dark }));
+            await expect(page.getByRole('heading', { name: 'Team pulse' })).toBeVisible();
+            for (const panel of panels) await expect(page.getByText(panel.title, { exact: true })).toHaveCount(1);
+            await expect(page.locator('.surface-scroll')).toHaveJSProperty('scrollWidth', width);
+        }
+    }
+    await page.screenshot({ path: '/tmp/emperor-views-wide.png', fullPage: true });
+    await update(page, payload({ mode: 'view', view: { ...view, access: 'metadata' } }));
+    await expect(page.getByRole('heading', { name: 'This view is private' })).toBeVisible();
+    await expect(page.getByText('Panel metric', { exact: true })).toHaveCount(0);
+});
+
+test('View focus expands the real panel, supports dismissal and clears private data when access changes', async ({ page }) => {
+    const panel = { id: 'delivery', title: 'Delivery momentum', type: 'table', w: 12, h: 3, data: { columns: [{ key: 'name', label: 'Project' }], rows: [{ name: 'Aurora' }] }, updatedAt: new Date().toISOString(), updatedBy: null };
+    const view = { title: 'Operations, in focus.', access: 'full', scopeLabel: 'Company', maintainer: { name: 'Atlas' }, panels: [panel], createdAt: new Date().toISOString() };
+    await update(page, payload({ mode: 'view', view, dark: false }));
+    await page.getByRole('button', { name: 'Expand Delivery momentum' }).click();
+    await expect(page.getByRole('dialog', { name: 'Delivery momentum expanded' })).toBeVisible();
+    await expect(page.getByRole('dialog').locator('table')).toContainText('Aurora');
+    await expect(page.getByRole('button', { name: 'Close expanded panel' })).toBeFocused();
+    await page.keyboard.press('Escape');
+    await expect(page.getByRole('dialog')).toHaveCount(0);
+    await expect(page.getByRole('button', { name: 'Expand Delivery momentum' })).toBeFocused();
+    await page.getByRole('button', { name: 'Expand Delivery momentum' }).click();
+    await page.getByRole('button', { name: 'Close expanded panel' }).click();
+    await expect(page.getByRole('dialog')).toHaveCount(0);
+    await page.getByRole('button', { name: 'Expand Delivery momentum' }).click();
+    await update(page, payload({ mode: 'view', view: { ...view, access: 'metadata' } }));
+    await expect(page.getByRole('dialog')).toHaveCount(0);
+    await expect(page.getByText('Aurora')).toHaveCount(0);
+});
+test('signals the first painted transcript once and explains an empty conversation without hiding activity', async ({ page }) => {
+    const painted = () => page.evaluate(() => (window as unknown as { nativeMessages: { type: string }[] }).nativeMessages.filter(message => message.type === 'painted').length);
+    await update(page, payload({ loaded: false }));
+    await expect(page.getByText('Loading conversation…')).toBeVisible(); expect(await painted()).toBe(0);
+    await update(page, payload());
+    await expect(page.getByText('Start a conversation with Builder')).toBeVisible();
+    await expect.poll(painted).toBe(1);
+    await update(page, payload({ participants: [{ participantType: 'agent', participantId: uuid, typingUntil: new Date(Date.now() + 60_000).toISOString(), currentActivity: 'Reading project files' }] }));
+    await expect(page.locator('.chat-empty')).toHaveCount(0);
+    await update(page, payload({ messages: [message('1', 'Hello')] }));
+    await expect(page.locator('.chat-empty')).toHaveCount(0); expect(await painted()).toBe(1);
+});
+test('shows motion, not status words, while a reply is on its way', async ({ page }) => {
+    const preview = { responseId: uuid, runId: uuid, agentId: uuid, agentName: 'Builder', segmentIndex: 0, revision: 1, text: '', state: 'streaming', updatedAt: '2026-11-21T12:10:00Z', finalMessageId: null, runStatus: 'running' };
+    await update(page, payload({ previews: [preview] }));
+    await expect(page.locator('.typing-dots')).toBeVisible();
+    await expect(page.locator('.sr-only', { hasText: 'Responding…' })).toHaveCount(1); // VoiceOver only
+    await expect(page.locator('.preview-note')).toHaveCount(0);
+    await update(page, payload({ previews: [{ ...preview, revision: 2, text: 'Hello there' }] }));
+    await expect(page.locator('.typing-dots')).toHaveCount(0);
+    await expect(page.locator('.stream-caret')).toBeVisible();
+    await update(page, payload({ previews: [{ ...preview, revision: 3, text: 'Hello there', state: 'interrupted' }] }));
+    await expect(page.locator('.stream-caret')).toHaveCount(0);
+    await expect(page.getByText('Response interrupted')).toBeVisible();
+    const run = { runId: uuid, agentId: uuid, status: 'running', startedAt: new Date().toISOString(), current: { kind: 'reasoning', summary: 'Reading project files', sinceMs: 1000 }, steps: [] };
+    await update(page, payload({ liveRuns: [run] }));
+    await expect(page.locator('.activity .thinking-glyph')).toBeVisible();
+    await expect(page.locator('.activity .shimmer')).toHaveText('Reading project files');
+});
+test('one live indicator, always after the newest reply', async ({ page }) => {
+    const empty = { responseId: uuid, runId: uuid, agentId: uuid, agentName: 'Builder', segmentIndex: 1, revision: 1, text: '', state: 'streaming', updatedAt: '2026-11-21T12:05:00Z', finalMessageId: null, runStatus: 'running' };
+    const messages = [message('10', 'Older'), message('20', 'Newest reply')];
+    await update(page, payload({ messages, previews: [empty] }));
+    const order = () => page.locator('.chat-message').evaluateAll(rows => rows.map(row => row.querySelector('.typing-dots') ? 'dots' : row.textContent?.includes('Newest') ? 'newest' : 'other'));
+    await expect.poll(order).toEqual(['other', 'newest', 'dots']);
+    const run = { runId: uuid, agentId: uuid, status: 'running', startedAt: new Date().toISOString(), current: { kind: 'reasoning', summary: 'Still working', sinceMs: 1000 }, steps: [] };
+    await update(page, payload({ messages, previews: [empty], liveRuns: [run] }));
+    await expect(page.locator('.typing-dots')).toHaveCount(0);
+    await expect(page.locator('.thinking-glyph')).toHaveCount(1);
+});
+test('history appears still; new rows rise in; finished work collapses instead of vanishing', async ({ page }) => {
+    const history = [message('10', 'Older'), message('20', 'Newer')];
+    await update(page, payload({ messages: history }));
+    await expect(page.locator('.chat-message.row-enter')).toHaveCount(0);
+    await update(page, payload({ messages: [...history, message('30', 'Arrived later')] }));
+    await expect(page.locator('.chat-message.row-enter')).toHaveCount(1);
+    const run = { runId: uuid, agentId: uuid, status: 'running', startedAt: new Date().toISOString(), current: { kind: 'reasoning', summary: 'Thinking it through', sinceMs: 1000 }, steps: [] };
+    await update(page, payload({ messages: history, liveRuns: [run] }));
+    await expect(page.locator('.live-area.is-open .activity')).toHaveCount(1);
+    await update(page, payload({ messages: history, liveRuns: [{ ...run, status: 'completed' }] }));
+    await expect(page.locator('.live-area.is-closing')).toHaveText(/Thinking it through/);
+    await expect(page.locator('.live-area')).toHaveCount(0);
+});
+test('attachments render as typed chips and open through the native bridge', async ({ page }) => {
+    const files = [
+        { id: '11111111-1111-4111-8111-000000000001', name: 'Pasted image 22.40.jpg', contentType: 'image/jpeg', sizeBytes: 240_000 },
+        { id: '11111111-1111-4111-8111-000000000002', name: 'Voice note 0:12.m4a', contentType: 'audio/mp4', sizeBytes: 96_000 },
+        { id: '11111111-1111-4111-8111-000000000003', name: 'Q3 plan.pdf', contentType: 'application/pdf', sizeBytes: 2_400_000 },
+    ];
+    await update(page, payload({ messages: [{ ...message('1', 'Voice note (0:12)', 'human'), metadataJson: { attachments: files } }] }));
+    await expect(page.locator('.attachment-image')).toContainText('Pasted image');
+    await expect(page.locator('.attachment-audio')).toContainText('Voice note');
+    await expect(page.locator('.attachment-audio')).toContainText('0:12');
+    await expect(page.locator('.attachment-doc')).toContainText('PDF · 2.3 MB');
+    await page.locator('.attachment-audio').click();
+    await expect.poll(() => page.evaluate(() => (window as unknown as { nativeMessages: { type: string; file?: { id: string } }[] }).nativeMessages.filter(m => m.type === 'attachment').map(m => m.file?.id))).toEqual(['11111111-1111-4111-8111-000000000002']);
+});
+test('group readability: "[no-reply]" is a quiet note and agents carry a colour', async ({ page }) => {
+    const agent = { ...message('10', '[no-reply]'), senderId: uuid, senderName: 'Builder' };
+    const real = { ...message('20', 'Pushed the fix'), senderId: uuid, senderName: 'Builder' };
+    await update(page, payload({ messages: [agent, real] }));
+    await expect(page.locator('.chat-quiet')).toHaveText('Builder · nothing to add');
+    await expect(page.locator('.chat-message')).toHaveCount(1);
+    const colours = await page.locator('.sender-dot').evaluateAll(dots => dots.map(dot => getComputedStyle(dot).backgroundColor));
+    expect(colours).toHaveLength(2);
+    expect(colours[0]).toBe(colours[1]);
+});
+test('tables scroll sideways instead of breaking code letter by letter', async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 700 });
+    const table = '| Pieza | Estado hoy | Qué falta |\n| --- | --- | --- |\n| `src/lib/runtime-hosts/commands.ts:29` | `ENABLED_HOST_COMMANDS` = 4 comandos | añadirlo |';
+    await update(page, payload({ messages: [message('1', table)] }));
+    const code = page.locator('td code').first();
+    await expect(code).toBeVisible();
+    const box = await code.evaluate(node => { const r = node.getBoundingClientRect(); return { h: r.height, line: parseFloat(getComputedStyle(node).lineHeight) || 20 }; });
+    expect(box.h).toBeLessThan(box.line * 1.6); // one line, not a column of letters
+    const scrolls = await page.locator('table').first().evaluate(t => { const w = t.parentElement!; return w.scrollWidth > w.clientWidth; });
+    expect(scrolls).toBe(true);
+});

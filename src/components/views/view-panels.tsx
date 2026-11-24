@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import { IconArrowDownRight, IconArrowRight, IconArrowUpRight, IconMessageQuestion } from "@tabler/icons-react";
+import { IconArrowDownRight, IconArrowRight, IconArrowUpRight, IconMessageQuestion, IconArrowsMaximize } from "@tabler/icons-react";
 import { useTranslations } from "next-intl";
 import { CartesianChart, Legend, seriesColor, useWidth } from "@/components/rich/chart-block";
 import { Sparkline } from "@/components/rich/stats-block";
@@ -58,7 +58,7 @@ export function useNowMs(): number {
     return now;
 }
 
-export function ViewGrid({ panels, emptyHint, refreshEveryMinutes = null, since, onAsk }: {
+export function ViewGrid({ panels, emptyHint, refreshEveryMinutes = null, since, onAsk, onFocus }: {
     panels: ViewPanelView[];
     emptyHint?: React.ReactNode;
     /** The view's promised refresh interval: panels past 1.5x of it say they are overdue. */
@@ -67,6 +67,8 @@ export function ViewGrid({ panels, emptyHint, refreshEveryMinutes = null, since,
     since?: string;
     /** "Ask about this panel"; omitted when the person cannot chat with the maintaining agent. */
     onAsk?: (panel: ViewPanelView) => void;
+    /** Optional presentation-only expansion, used by the native reader. */
+    onFocus?: (panel: ViewPanelView) => void;
 }) {
     const t = useTranslations("views.panel");
     const now = useNowMs();
@@ -79,13 +81,13 @@ export function ViewGrid({ panels, emptyHint, refreshEveryMinutes = null, since,
     }
     return (
         <div className="grid grid-cols-1 gap-3 md:grid-cols-12" style={{ gridAutoRows: `minmax(${ROW_PX}px, auto)` }}>
-            {panels.map((panel) => <PanelCard key={panel.id} panel={panel} nowMs={now} refreshEveryMinutes={refreshEveryMinutes} since={since} onAsk={onAsk} />)}
+            {panels.map((panel) => <PanelCard key={panel.id} panel={panel} nowMs={now} refreshEveryMinutes={refreshEveryMinutes} since={since} onAsk={onAsk} onFocus={onFocus} />)}
         </div>
     );
 }
 
-function PanelCard({ panel, nowMs, refreshEveryMinutes, since, onAsk }: {
-    panel: ViewPanelView; nowMs: number; refreshEveryMinutes: number | null; since?: string; onAsk?: (panel: ViewPanelView) => void;
+function PanelCard({ panel, nowMs, refreshEveryMinutes, since, onAsk, onFocus }: {
+    panel: ViewPanelView; nowMs: number; refreshEveryMinutes: number | null; since?: string; onAsk?: (panel: ViewPanelView) => void; onFocus?: (panel: ViewPanelView) => void;
 }) {
     const t = useTranslations("views.panel");
     const formatAgo = useFormatAgo();
@@ -95,6 +97,7 @@ function PanelCard({ panel, nowMs, refreshEveryMinutes, since, onAsk }: {
     return (
         <section
             aria-labelledby={`panel-${panel.id}`}
+            data-panel-type={panel.type}
             className={cn("flex min-w-0 flex-col rounded-2xl border border-border bg-card p-4", COL_SPAN[panel.w] ?? "md:col-span-6", ROW_SPAN[panel.h] ?? "md:row-span-2")}
         >
             <header className="mb-2 flex min-w-0 items-start gap-2">
@@ -102,6 +105,11 @@ function PanelCard({ panel, nowMs, refreshEveryMinutes, since, onAsk }: {
                     <h2 id={`panel-${panel.id}`} className="truncate text-sm font-semibold text-foreground">{panel.title}</h2>
                     {panel.subtitle && <p className="truncate text-xs text-muted-foreground">{panel.subtitle}</p>}
                 </div>
+                {onFocus && (
+                    <button type="button" className="panel-focus" onClick={event => { event.currentTarget.focus(); onFocus(panel); }} aria-label={t("expandLabel", { title: panel.title })}>
+                        <IconArrowsMaximize size={17} aria-hidden />
+                    </button>
+                )}
                 {onAsk && (
                     <button type="button" onClick={() => onAsk(panel)} title={t("askTitle")} aria-label={t("askLabel", { title: panel.title })}
                         className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">

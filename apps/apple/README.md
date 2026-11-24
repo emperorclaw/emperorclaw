@@ -4,16 +4,18 @@ SwiftUI apps for existing, independently hosted EmperorClaw installations. Minim
 
 ## Implemented experience
 
-- Five iPhone tabs: Home, Inbox, Messages, Projects and Agents. Dashboard activity, monthly spending, task creation/assignment/status/notes/results, private/team/group conversations, attachments and contextual agent questions.
+- Five iPhone tabs: Home, Inbox, Messages, Projects and Views. Compact animated fleet overview, task creation/assignment/status/notes/results, private/team/group conversations, attachments and contextual agent questions.
 - Approvals reuse the server's permissions and decision rules. Watch decisions are restricted to short, eligible task-completion approvals; other cases hand off to iPhone.
 - Both devices save and switch among multiple installations and companies independently. Rename/favorite connections, select appearance, pause/resume new agent work, disconnect individual devices.
 - QR onboarding from web Settings → Profile → Connect iPhone and Apple Watch. QR contains only the server origin; system-browser authentication still requires consent.
 - Optional APNs notification enrollment with proof of delivery. Widgets, lock-screen accessories and watch complications pin one workspace and show cached counts with timestamps.
 
+The current visual direction and responsive behavior are documented in [Native companion design](Design/native-redesign.md).
+
 ## Run locally
 
 1. Use Node 20+ (22+ for the optional relay), PostgreSQL and an HTTPS EmperorClaw server. Apply migrations using `npm run db:migrate` against the intended development database. Native support on the v0.41.0 integration branch requires migration `0090_apple-mobile`, after the existing task-lease migrations `0088` and `0089`. Earlier unpublished mobile migration numbers were consolidated to avoid collisions.
-2. Open `EmperorClaw.xcodeproj` in compatible Xcode. Choose EmperorPhone or EmperorWatch. Set your Apple development team and provision the bundle IDs, App Group `group.com.emperorclaw.app` and push capability. The defaults are `com.emperorclaw.app`, its `.watchkitapp` companion and their `.widgets` extensions. If changing identifiers, update generator, callback, entitlements and relay topic consistently.
+2. Open `EmperorClaw.xcodeproj` in compatible Xcode. Choose EmperorPhone or EmperorWatch. Set your Apple development team and provision the bundle IDs, App Group `group.com.emperorclaw.ios` and push capability. The defaults are `com.emperorclaw.ios` (Malecu team Z7F7XSA445), its `.watchkitapp` companion and their `.widgets` extensions. If changing identifiers, update generator, callback, entitlements and relay topic consistently.
 3. On iPhone, Connections → Add instance. Enter its public HTTPS origin or scan its QR; approve access in the browser. Repeat for additional servers.
 4. On a paired watch install the companion. In iPhone Connections choose Send to Apple Watch. Watch receives its own credentials and keeps an independent active selection. Reconnect Apple Watch replaces that instance's remembered watch session.
 5. For notifications, configure [the optional relay](../../services/apple-push-relay/README.md), then enable notifications per instance in Connections. Tap the delivered enrollment notification to confirm. Re-enable after APNs token changes if delivery stops.

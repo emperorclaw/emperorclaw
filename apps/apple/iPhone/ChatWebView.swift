@@ -3,28 +3,47 @@ import WebKit
 import OSLog
 import EmperorCore
 
+/// Keeps the renderer's process and caches warm so the first conversation
+/// opens without a cold WebKit start. Content stays non-persistent.
+@MainActor enum ChatRenderer {
+    static let store = WKWebsiteDataStore.nonPersistent()
+    private static var warm: WKWebView?
+    static var documentURL: URL? { Bundle.main.url(forResource: "index", withExtension: "html", subdirectory: "ChatWeb") }
+    static func prewarm() {
+        guard warm == nil, let url = documentURL else { return }
+        let configuration = WKWebViewConfiguration(); configuration.websiteDataStore = store
+        let view = WKWebView(frame: .zero, configuration: configuration)
+        view.loadFileURL(url, allowingReadAccessTo: url.deletingLastPathComponent())
+        warm = view
+    }
+}
+
 /// One offline transcript, using the same renderer as the web. Credentials and
 /// company selection remain in MobileClient; JavaScript only receives content.
 struct ChatWebView: UIViewRepresentable {
     let payload: JSONValue
     let workspace: Installation
     let client: MobileClient
-    var loadOlder: () -> Void
-    var sendPrompt: (String) async -> Bool
-    var openAttachment: (JSONValue) -> Void
-    var openLink: (URL) -> Void
+    var loadOlder: () -> Void = {}
+    var sendPrompt: (String) async -> Bool = { _ in false }
+    var openAttachment: (JSONValue) -> Void = { _ in }
+    var openLink: (URL) -> Void = { _ in }
+    var selectAgent: (String) -> Void = { _ in }
+    var contentHeight: (Double) -> Void = { _ in }
+    var didRenderSurface: () -> Void = {}
+    var didPaintTranscript: () -> Void = {}
 
     func makeCoordinator() -> Coordinator { Coordinator(self) }
     func makeUIView(context: Context) -> WKWebView {
         let configuration = WKWebViewConfiguration()
-        configuration.websiteDataStore = .nonPersistent()
+        configuration.websiteDataStore = ChatRenderer.store
         configuration.userContentController.add(context.coordinator, name: "chat")
         let view = WKWebView(frame: .zero, configuration: configuration)
         view.navigationDelegate = context.coordinator
         view.isOpaque = false; view.backgroundColor = .clear
         view.scrollView.isScrollEnabled = false // the transcript owns its scroll anchor
         view.scrollView.backgroundColor = .clear
-        if let url = Bundle.main.url(forResource: "index", withExtension: "html", subdirectory: "ChatWeb") {
+        if let url = ChatRenderer.documentURL {
             context.coordinator.documentURL = url
             view.loadFileURL(url, allowingReadAccessTo: url.deletingLastPathComponent())
         }
@@ -75,7 +94,18 @@ struct ChatWebView: UIViewRepresentable {
                   let body = message.body as? [String: Any], let type = body["type"] as? String else { return }
             switch type {
             case "ready": ready = true; update()
+            case "surfaceReady":
+                guard ["fleet", "document", "view"].contains(parent.payload["mode"].text) else { return }
+                parent.didRenderSurface()
+            case "painted": parent.didPaintTranscript()
             case "older": parent.loadOlder()
+            case "height":
+                guard let height = body["height"] as? Double, height.isFinite, height >= 1, height <= 100_000 else { return }
+                parent.contentHeight(height)
+            case "agent":
+                guard parent.payload["mode"].text == "fleet", let id = body["agentId"] as? String,
+                      parent.payload["agents"].items.contains(where: { $0["id"].text == id }) else { return }
+                parent.selectAgent(id)
             case "attachment":
                 guard let file = body["file"] as? [String: Any], let id = file["id"] as? String,
                       let match = parent.payload["messages"].items.flatMap({ $0["metadataJson"]["attachments"].items }).first(where: { $0["id"].text == id }) else { return }
